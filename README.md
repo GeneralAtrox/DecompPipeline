@@ -6,7 +6,7 @@ machine judge: **PASS** or **FAIL**.
 
 The tool holds no game data. Each game is a **project workspace** (a folder with `project.json`), and each CPU or
 platform is a **target** under `targets/`. Today: `dreamcast_sh4` (see its README). A new CPU (for example Xbox
-360 PowerPC) is a new target.
+360 PowerPC) is a new target. `port/` builds a game's readable C as a native program (port/README.md).
 
 ## Layout (every file at most 400 lines: `decomp.py sizes`)
 
@@ -60,8 +60,7 @@ A project workspace:
 | `watcher/` | Watcher workspace, sessions, `history/` (every promoted change: before/after, diff, report) |
 
 New project: create the folder with `project.json`, copy `targets/<target>/template/TcInputs.java` to
-`oracle/TcInputs.java`, write the reference C, then `decomp.py --project <folder> setup`. Step by step, for a new
-Dreamcast game: docs/NEW_GAME.md.
+`oracle/TcInputs.java`, write the reference C, then `decomp.py --project <folder> setup`. Disc to port: docs/NEW_GAME.md.
 
 ## Run it
 
@@ -298,8 +297,7 @@ there) a failing draft is also the agent's work.c; `refine.py draft TARGETS [--a
 (core/readopt.py): `refine.py verify --adopt` tries a STALE file's earlier attempts newest first and adopts the first
 strict PASS (old file backed up to state/readopt_backup, `source: readopt attempt-NN`), else lists the function in
 state/redo.txt for `refine.py run @state/redo.txt --redo`; `refine.py adopt TARGETS` does the same for failed rows.
-The header parser keeps a `#define` whose trailing comment continues on the next line in one item (102 TC names were
-lost to the lean selection before).
+The header parser keeps a `#define` whose trailing comment continues on the next line in one item.
 
 Sync: `refine.py sync-names [TARGETS] [--dry]` (core/sync_run.py), also run at the start of `verify` (not with
 `--no-sync` or `--lean`), rewrites readable files that use a raw name the registry has named since (fn_ADDR in the

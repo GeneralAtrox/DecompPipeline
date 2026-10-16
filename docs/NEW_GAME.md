@@ -122,9 +122,28 @@ Never hand-fix a readable file: fix the design or the pipeline and re-run.
 
 ## 8. A port
 
-Toy Commander's `port/` shows the next step: a 32-bit x86 program that maps the guest RAM at its Dreamcast
-addresses, loads the boot file from your own disc at run time, compiles the readable C, and stubs every SDK and
-engine function until the platform layer replaces it.
+After the readable round, DecompPipeline's `port/` kit (port/README.md) builds your game as a 32-bit x86 Windows
+program: it maps guest RAM at its Dreamcast addresses, loads the boot file from your own disc at run time,
+compiles the readable C at `/W4 /WX`, and stubs every SDK and engine function until a platform layer replaces it.
+The kit holds no game code; your game's repository holds a port folder with:
+
+1. `game.json`: `decomp` (this workspace), `entry` (the first function to call, `void name(void)`, with its
+   address), `image_base` (where the boot file loads), and optionally `disc`, `boot_file` (else IP.BIN's),
+   `must_work` and `fsca_table`. port/README.md lists every key.
+2. `sdk`: the kit modules whose function names your registry has. `python xproject.py --project <workspace>
+   --from <earlier workspace> names` carries names over for byte-identical library functions; leave out a module
+   your registry lacks names for and write your own. With `sy_sys`, also `console` (country, language, broadcast).
+3. `sources` and `hardware`: new C for your game-range hardware functions (game.json `hardware` names them, and
+   the build checks the names against the registry) and for any SDK replacement bound to your own code.
+4. Build and run, always bounded and with `--seconds`:
+   `python tools/bounded.py 1500 python port/tools/build.py --game <port folder> --run --seconds 20`
+   (`--engine` adds the `extra_functions` readable C). Each stub is logged at its first call. Put the ones
+   start-up cannot get past in `must_work.txt`: the run stops at the first (exit code 3). Replace them one by one
+   with engine readable C, a kit module or your own source, until the main loop runs.
+
+Toy Commander's `port/` (game.json, must_work.txt, its hardware and Kamui 2 files) is a complete example. A
+replacement that only needs SDK names belongs in the kit's `sdk/`; one bound to your game's own code stays with
+your game.
 
 ## Publishing your workspace
 

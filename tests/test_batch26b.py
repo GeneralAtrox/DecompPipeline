@@ -19,7 +19,7 @@ sys.path.insert(0, str(TOOL / "tools"))
 from core import toolcfg  # noqa: E402
 
 # what the repository tracks (live's git ls-files: these roots); the rest of a stage folder is not shipped
-TRACKED_DIRS = ("core", "docs", "targets", "tests", "tools", "ui")
+TRACKED_DIRS = ("core", "docs", "port", "targets", "tests", "tools", "ui")
 TRACKED_TOP = (".gitignore", "LICENSE", "README.md", "config.json", "decomp.py", "refine.py", "xproject.py")
 IGNORED_PARTS = {"__pycache__", ".work", "ghidra_work", "backup"}
 IGNORED_NAMES = {toolcfg.LOCAL, "patterns.local.json"}
@@ -133,7 +133,11 @@ class Patterns(unittest.TestCase):
         spec = json.loads((TOOL / "tests" / "patterns.json").read_text(encoding="utf-8"))
         self.assertEqual(spec["fixtures"], [])
         rel = [pathlib.Path(f).relative_to(TOOL).as_posix() for f in tracked_files(TOOL)]
-        self.assertEqual([f for f in rel if f.endswith(".c") and not f.startswith("targets/")], [])
+        self.assertEqual([f for f in rel if f.endswith(".c") and not f.startswith(("targets/", "port/"))], [])
+        # port/ is the game-free port kit: its C may hold no guest code address, game name or game.h runtime include
+        # (tests/test_port_kit.py, the same scan)
+        import test_port_kit
+        self.assertEqual(test_port_kit.game_material(test_port_kit.kit_files()), [])
 
 
 class NoMachinePaths(unittest.TestCase):

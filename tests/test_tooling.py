@@ -27,7 +27,9 @@ stack words read before any write. From tests/test_batch29.py, the words a `mova
 the wiring of the rescue pass's store-fault repair. From tests/test_batch30.py, the tail-call rewrite with a trailing
 comment, frame addresses in a callee's own argument registers, designer renames ("was"), `(void)` dropped for a
 void callee and lint RR7 (a void callee's result used). From tests/test_reach.py, call-site coverage (the figure,
-the final audit's calls check, the verdict's reasons) and the reach pass's wiring.
+the final audit's calls check, the verdict's reasons) and the reach pass's wiring. From tests/test_port_kit.py, the
+Dreamcast port kit (game.json, the generated per-game files, no game material in port/, the runtime at /W4 /WX
+where Visual Studio's 32-bit tools are found, skipped elsewhere).
 
 usage: python tests/test_tooling.py   (or python -m unittest discover -s tests -p "test_*.py")
 """
@@ -75,6 +77,7 @@ from test_batch28 import SelfAddress  # noqa: E402,F401  (the function under tes
 from test_batch29 import Mova, Readings, Wiring  # noqa: E402,F401  (mova words, store-fault repair)
 from test_batch30 import CalleeStorage, PassThrough, SyncWasAndVoid, TailComment, VoidResult, Was  # noqa: E402,F401  (design leftovers)
 from test_port_c import FrameArgs, FrameSpans  # noqa: E402,F401  (port phase C)
+from test_port_kit import GameConfig, KitIsGameFree, RuntimeCompiles  # noqa: E402,F401  (port kit)
 from test_reach import AuditCheck, Figure, Seed, Verdict, Wiring as ReachWiring  # noqa: E402,F401  (call-site coverage)
 from test_scope import Bytes, CrossProject, Doctor as ScopeDoctor, ExtraSystems, InScope  # noqa: E402,F401  (scope)
 from test_scope_runs import Audit as ScopeAudit, FinalAuditExtras, Orchestrator  # noqa: E402,F401  (scope list, runs)
