@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Decomp Pipeline</title>
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --line: #e2e5ea; --text: #1b1f24; --muted: #667080;
+  --accent: #2f6fde; --accent-text: #ffffff; --ok: #1f8a4c; --bad: #c8372d; --warn: #b7791f; --info: #6b4fd8;
+  --chip: #eef1f5; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111418; --panel: #1a1e24; --line: #2b313a; --text: #e4e8ee; --muted: #8b95a3;
+    --accent: #5b8ff0; --accent-text: #0d1117; --ok: #45c07a; --bad: #ef6a5f; --warn: #e0a840; --info: #a08cf5;
+    --chip: #242a33;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111418; --panel: #1a1e24; --line: #2b313a; --text: #e4e8ee; --muted: #8b95a3;
+  --accent: #5b8ff0; --accent-text: #0d1117; --ok: #45c07a; --bad: #ef6a5f; --warn: #e0a840; --info: #a08cf5;
+  --chip: #242a33;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, "Segoe UI", sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 14px 20px;
+  border-bottom: 1px solid var(--line); background: var(--panel); position: sticky; top: 0; z-index: 2; }
+h1 { font-size: 16px; margin: 0 12px 0 0; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 10px; }
+main { padding: 16px 20px 40px; display: grid; gap: 16px; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); max-width: 1500px; margin: 0 auto; }
+@media (max-width: 900px) { main { grid-template-columns: minmax(0, 1fr); padding: 12px 16px 32px; } }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; min-width: 0; }
+.span2 { grid-column: 1 / -1; }
+button { font: inherit; border: 1px solid var(--line); background: var(--chip); color: var(--text);
+  padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); font-weight: 600; }
+button.danger { color: var(--bad); }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button.small { padding: 2px 8px; font-size: 12px; }
+input[type=text] { font: 13px var(--mono); padding: 6px 8px; width: 110px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--bg); color: var(--text); }
+.toggle { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; user-select: none; }
+.pill { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; background: var(--chip); }
+.pill.matched, .pill.PASS { color: var(--ok); } .pill.failed, .pill.FAIL, .pill.error { color: var(--bad); }
+.pill.skipped { color: var(--warn); } .pill.running { color: var(--info); } .pill.stopped { color: var(--muted); }
+.spacer { flex: 1; }
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; }
+.kpi { background: var(--bg); border-radius: 6px; padding: 10px 12px; }
+.kpi b { display: block; font-size: 22px; font-variant-numeric: tabular-nums; }
+.kpi span { color: var(--muted); font-size: 12px; }
+.bar { height: 8px; background: var(--chip); border-radius: 4px; overflow: hidden; margin: 12px 0 4px; }
+.bar > div { height: 100%; background: var(--ok); width: 0; transition: width .4s; }
+.tiers { display: flex; flex-wrap: wrap; gap: 16px; color: var(--muted); font-size: 12px; margin-top: 8px; }
+.usage { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 10px 24px; }
+.usage .bar { margin: 6px 0 2px; } .usage .bar.warn > div { background: var(--warn); } .usage .bar.bad > div { background: var(--bad); }
+.mono { font-family: var(--mono); }
+.muted { color: var(--muted); }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; color: var(--muted); font-weight: 500; font-size: 12px; padding: 4px 6px; border-bottom: 1px solid var(--line); }
+td { padding: 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.scroll { overflow-x: auto; }
+tr.attempts td { background: var(--bg); }
+.att { margin: 4px 0; font-size: 12px; }
+#log { font: 12px/1.5 var(--mono); height: 340px; overflow: auto; white-space: pre-wrap; word-break: break-word; margin: 0; }
+.cur { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; }
+.cur dt { color: var(--muted); } .cur dd { margin: 0; }
+#toast { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg);
+  padding: 8px 14px; border-radius: 6px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+#toast.show { opacity: 1; }
+#err { color: var(--bad); font-size: 12px; }
+input[type=number] { font: 13px var(--mono); padding: 6px 4px; width: 52px; border: 1px solid var(--line);
+  border-radius: 6px; background: var(--bg); color: var(--text); }
+.systems { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 8px; }
+.sys { background: var(--bg); border-radius: 6px; padding: 6px 9px; font-size: 12px; }
+.sys b { font-family: var(--mono); } .sys .bar { height: 5px; margin: 5px 0 0; }
+.sys.active { outline: 1px solid var(--info); }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="projTitle">Decomp</h1>
+  <span id="status" class="pill">…</span>
+  <span>
+    <input id="nw" type="number" min="1" max="8" value="4" aria-label="Number of workers">
+    <button id="btnStart" class="primary" title="Start this many workers; each takes functions from the shared queue">Start workers</button>
+  </span>
+  <button id="btnNext" title="Start one worker on the next function">Investigate next function</button>
+  <span>
+    <input id="addr" type="text" placeholder="8c04cb24" maxlength="10" aria-label="Function address">
+    <button id="btnAddr">Investigate address</button>
+  </span>
+  <label class="toggle" title="When off, the run stops after one function. When on, it continues with the next function even after a failure.">
+    <input id="loop" type="checkbox"> Loop
+  </label>
+  <label class="toggle" title="An Opus agent that repairs the oracle's input generator for functions skipped because the oracle could not produce enough valid tests. Every change must pass a strict server-side gate.">
+    <input id="watch" type="checkbox"> Watcher (Opus)
+  </label>
+  <button id="btnStop" class="danger">Stop all</button>
+  <span class="spacer"></span>
+  <span id="err"></span>
+  <span class="muted" id="cfg"></span>
+</header>
+<main>
+  <section class="span2">
+    <h2>Progress</h2>
+    <div class="kpis" id="kpis"></div>
+    <div class="bar"><div id="bar"></div></div>
+    <div class="muted" id="barText"></div>
+    <div class="tiers" id="tiers"></div>
+  </section>
+
+  <section class="span2">
+    <h2>Claude account usage <button class="small" id="btnUsage" title="Runs a one-line Haiku session to read the current numbers">Refresh</button></h2>
+    <div class="usage" id="usage"></div>
+    <div class="muted" id="usageText"></div>
+  </section>
+
+  <section>
+    <h2>Workers</h2>
+    <div class="scroll"><table><thead><tr><th>#</th><th>Function</th><th>System</th><th>Phase</th><th>Attempt</th><th>Time</th><th>Cost</th><th>Done</th><th></th></tr></thead>
+      <tbody id="workers"></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Up next</h2>
+    <div class="scroll"><table><thead><tr><th>Address</th><th>System</th><th>Tier</th><th>Score</th><th></th></tr></thead>
+      <tbody id="queue"></tbody></table></div>
+  </section>
+
+  <section class="span2">
+    <h2>Watcher <span class="muted" id="watchCfg"></span></h2>
+    <div id="watchNow" class="muted"></div>
+    <div class="muted" id="watchQueue"></div>
+    <div class="scroll"><table>
+      <thead><tr><th>When</th><th>Function</th><th>Outcome</th><th>Detail</th><th>Checks</th><th>Time</th></tr></thead>
+      <tbody id="watchHist"></tbody>
+    </table></div>
+  </section>
+
+  <section class="span2">
+    <h2>Systems</h2>
+    <div class="systems" id="systems"></div>
+  </section>
+
+  <section class="span2">
+    <h2>History</h2>
+    <div class="scroll"><table>
+      <thead><tr><th>Address</th><th>Tier</th><th>Status</th><th>Attempts</th><th>Result</th><th>Cost</th><th>Time</th><th></th></tr></thead>
+      <tbody id="history"></tbody>
+    </table></div>
+  </section>
+
+  <section class="span2">
+    <h2>Log</h2>
+    <pre id="log"></pre>
+  </section>
+</main>
+<div id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const open = new Set();
+let lastLogLen = -1, full = false, nwSet = false;
+
+function el(tag, props = {}, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") e.className = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v);
+  }
+  for (const c of kids) if (c != null) e.append(c instanceof Node ? c : String(c));
+  return e;
+}
+const fmtUsd = v => v == null ? "–" : "$" + Number(v).toFixed(v < 1 ? 3 : 2);
+const fmtDur = s => s == null ? "–" : s < 90 ? Math.round(s) + "s" : s < 5400 ? Math.round(s / 60) + "m" : (s / 3600).toFixed(1) + "h";
+const pct = (a, b) => b ? (100 * a / b).toFixed(1) + "%" : "0%";
+
+function toast(msg) {
+  const t = $("toast"); t.textContent = msg; t.classList.add("show");
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove("show"), 1800);
+}
+
+async function post(path, body) {
+  $("err").textContent = "";
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body || {}) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) $("err").textContent = j.error || ("HTTP " + r.status);
+  refresh();
+}
+
+async function copyPrompt(addr) {
+  const r = await fetch("/api/prompt/" + addr);
+  const text = JSON.stringify(await r.json(), null, 2);
+  try { await navigator.clipboard.writeText(text); }
+  catch { const ta = el("textarea"); ta.value = text; document.body.append(ta); ta.select(); document.execCommand("copy"); ta.remove(); }
+  toast("Agent prompt for " + addr + " copied");
+}
+
+function renderKpis(o) {
+  const k = [
+    [o.matched + " / " + o.eligible, "functions matched"],
+    [pct(o.bytes_matched, o.bytes_total), o.extra_functions ? "game + extra code bytes matched" : "game code bytes matched"],
+    [o.failed, "failed"], [o.skipped, "skipped (unsupported / weak oracle)"],
+    [o.remaining, "remaining eligible"], [fmtUsd(o.cost_usd) + (o.budget_usd ? " / " + fmtUsd(o.budget_usd) : ""), "API-equivalent usage (not billed on a subscription)" + (o.budget_usd ? " / cap" : "")],
+  ];
+  if (o.retire_pending) k.push([o.retire_pending, "removed functions with artefacts left: not complete until tools/retire.py runs"]);
+  $("kpis").replaceChildren(...k.map(([v, l]) => el("div", { class: "kpi" }, el("b", {}, v), el("span", {}, l))));
+  $("bar").style.width = o.eligible ? (100 * o.matched / o.eligible) + "%" : "0";
+  const ex = o.extra_functions || 0, all = o.game_functions + ex;  // extras: project.json extra_functions
+  $("barText").textContent = `${o.game_functions} game functions` + (ex ? ` + ${ex} extra functions (${o.extra_matched} / ${o.extra_eligible} eligible extras matched)` : "") + ` (${o.eligible} eligible, ${all - o.eligible} excluded: hardware/system ops); ${o.sdk_functions} SDK functions not targeted.`;
+  const t = o.tiers || {}, m = o.matched_by_tier || {};
+  $("tiers").replaceChildren(...["easy", "medium", "hard", "excluded"].map(n =>
+    el("span", {}, el("b", {}, n), ` ${m[n] || 0} / ${t[n] || 0}`)));
+}
+
+function renderUsage(u) {
+  const when = t => t ? new Date(t * 1000).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "–";
+  if (!u.windows.length) $("usage").replaceChildren(el("div", { class: "muted" }, u.probing ? "Reading usage…" : "No reading yet."));
+  else $("usage").replaceChildren(...u.windows.map(w => {
+    const p = w.percent ?? 0, bar = el("div", { class: "bar" + (p >= 90 ? " bad" : p >= 75 ? " warn" : "") }, el("div", {}));
+    bar.firstChild.style.width = Math.min(100, p) + "%";
+    return el("div", {}, el("b", {}, `${w.name}: ${w.percent == null ? "?" : w.percent + "%"} used`), bar,
+      el("span", { class: "muted" }, "resets " + when(w.resets_at)));
+  }));
+  const blocked = u.blocked_until ? ` · LIMIT REACHED: workers wait until ${when(u.blocked_until)}` : "";
+  $("usageText").textContent = (u.updated ? `as of ${when(u.updated)} (${u.source})` : "") + blocked +
+    (u.probe_error ? " · last refresh failed: " + u.probe_error : "") + (u.probing ? " · refreshing…" : "");
+  $("btnUsage").disabled = !!u.probing;
+}
+
+function renderWorkers(ws) {
+  const now = Date.now() / 1000;
+  if (!ws.length) { $("workers").replaceChildren(el("tr", {}, el("td", { colspan: 9, class: "muted" }, "No workers running."))); return; }
+  $("workers").replaceChildren(...ws.map(w => el("tr", {},
+    el("td", {}, "W" + w.id), el("td", { class: "mono" }, w.addr || "–"), el("td", {}, w.system || "–"),
+    el("td", {}, w.stopping ? "stopping… " + (w.phase || "") : (w.phase || "–")),
+    el("td", {}, w.attempt == null ? "–" : w.attempt), el("td", {}, w.started ? fmtDur(now - w.started) : "–"),
+    el("td", {}, fmtUsd(w.cost)), el("td", {}, w.done),
+    el("td", {}, el("button", { class: "small danger", onclick: () => post("/api/stop", { worker: w.id }) }, "Stop")))));
+}
+
+function renderSystems(list) {
+  $("systems").replaceChildren(...list.map(s => {
+    const bar = el("div", { class: "bar" }, el("div", {}));
+    bar.firstChild.style.width = s.eligible ? (100 * s.matched / s.eligible) + "%" : "0";
+    return el("div", { class: "sys" + (s.active ? " active" : ""), title: `${s.failed} failed/skipped, ${s.active} active` },
+      el("b", {}, s.id), " ", el("span", { class: "muted" }, s.hint || ""), el("div", {}, `${s.matched} / ${s.eligible} matched`), bar);
+  }));
+}
+
+function renderQueue(q) {
+  $("queue").replaceChildren(...q.map(f => el("tr", {},
+    el("td", { class: "mono" }, f.addr), el("td", {}, f.system || "–"), el("td", {}, f.tier), el("td", {}, f.score),
+    el("td", {}, el("button", { class: "small", onclick: () => post("/api/start", { addr: f.addr }) }, "Investigate")))));
+  for (const b of $("queue").querySelectorAll("button")) b.disabled = full;
+}
+
+function renderHistory(h) {
+  const rows = [];
+  for (const r of h) {
+    const f = r.features || {};
+    const last = r.attempts && r.attempts.length ? r.attempts[r.attempts.length - 1] : null;
+    const tog = el("button", { class: "small", onclick: () => { open.has(r.addr) ? open.delete(r.addr) : open.add(r.addr); refresh(); } },
+      open.has(r.addr) ? "Hide" : "Attempts");
+    rows.push(el("tr", {},
+      el("td", { class: "mono" }, r.addr),
+      el("td", {}, f.tier || "–"),
+      el("td", {}, el("span", { class: "pill " + (r.status || "") }, r.status || "–")),
+      el("td", {}, r.attempt_count),
+      el("td", {}, r.verdict_detail || (last && last.summary) || "–"),
+      el("td", {}, fmtUsd(r.cost_usd)),
+      el("td", {}, fmtDur(r.duration_s)),
+      el("td", {}, tog, " ", el("button", { class: "small", onclick: () => copyPrompt(r.addr) }, "Copy agent prompt"))));
+    if (open.has(r.addr)) {
+      const td = el("td", { colspan: 8 });
+      if (!r.attempts.length) td.append(el("div", { class: "muted att" }, "No attempts recorded."));
+      for (const a of r.attempts) {
+        td.append(el("div", { class: "att" },
+          el("span", { class: "pill " + (a.verdict || "") }, a.verdict || "?"), " ",
+          el("b", {}, "#" + a.n), " ", a.summary || "",
+          el("span", { class: "muted" },
+            ` · ${fmtUsd(a.cost_usd)} · ${fmtDur(a.duration_s)} · ${a.turns ?? "?"} turns` +
+            (a.denials ? ` · ${a.denials} denied tool calls` : "") + (a.killed ? ` · killed: ${a.killed}` : "") +
+            (a.tamper ? ` · TAMPER: ${a.tamper}` : "")),
+          a.final_message ? el("div", { class: "muted mono" }, "agent: " + String(a.final_message).slice(0, 300)) : null));
+      }
+      rows.push(el("tr", { class: "attempts" }, td));
+    }
+  }
+  $("history").replaceChildren(...rows);
+}
+
+function renderWatcher(w) {
+  const now = Date.now() / 1000;
+  $("watchCfg").textContent = `${w.model} (effort: ${w.effort}) · ${w.enabled ? "ON" : "OFF"} · ≤${w.max_tries} sessions per function`;
+  $("watchNow").textContent = w.current ? `${w.current.addr}: ${w.current.phase} (${fmtDur(now - w.current.since)})`
+    : !w.enabled ? "Off."
+    : !w.sweep ? "Idle: first sweep of the list starts within a minute."
+    : `Idle: last sweep ${fmtDur(now - w.sweep.time)} ago found ${w.sweep.eligible} oracle skip(s) to repair. Skipped for reasons the watcher cannot repair: `
+      + (Object.entries(w.sweep.out_of_scope).map(([k, v]) => `${k} ×${v}`).join(", ") || "none") + ".";
+  $("watchQueue").textContent = w.queue.length ? "Waiting for the watcher: " + w.queue.join(", ") : "";
+  if (!w.history.length) { $("watchHist").replaceChildren(el("tr", {}, el("td", { colspan: 6, class: "muted" }, "No watcher sessions yet."))); return; }
+  $("watchHist").replaceChildren(...w.history.map(h => {
+    const ok = (h.checks || []).filter(c => c[1]).length, checks = el("details", {}, el("summary", {}, `${ok}/${(h.checks || []).length} passed`),
+      el("pre", {}, (h.checks || []).map(c => (c[1] ? "PASS  " : "FAIL  ") + c[0] + ": " + c[2]).join("\n") +
+        (h.diff ? "\n\n" + h.diff : "") + (h.hints ? "\n\nhints:\n" + h.hints : "")));
+    return el("tr", {}, el("td", {}, h.time), el("td", { class: "mono" }, h.addr),
+      el("td", { style: `color: var(${h.outcome === "promoted" ? "--ok" : "--bad"})` }, h.outcome), el("td", {}, h.detail),
+      el("td", {}, checks), el("td", {}, h.duration_s ? fmtDur(h.duration_s) : "–"));
+  }));
+}
+
+function renderLog(lines) {
+  const box = $("log");
+  if (lines.length === lastLogLen && box.textContent) return;
+  const atBottom = box.scrollTop + box.clientHeight >= box.scrollHeight - 20;
+  box.textContent = lines.join("\n");
+  lastLogLen = lines.length;
+  if (atBottom) box.scrollTop = box.scrollHeight;
+}
+
+async function refresh() {
+  let s;
+  try { s = await (await fetch("/api/state")).json(); }
+  catch { $("status").textContent = "server offline"; $("status").className = "pill error"; return; }
+  const c = s.config, n = s.workers.length;
+  full = n >= c.max_workers;
+  $("status").textContent = n ? `Running: ${n} worker${n > 1 ? "s" : ""}` : "Idle";
+  $("status").className = "pill " + (n ? "running" : "stopped");
+  $("btnStart").disabled = full; $("btnNext").disabled = full; $("btnAddr").disabled = full; $("btnStop").disabled = !n;
+  if (!nwSet && c.workers) { $("nw").value = c.workers; $("nw").max = c.max_workers; nwSet = true; }
+  if (document.activeElement !== $("loop")) $("loop").checked = !!s.loop;
+  if (document.activeElement !== $("watch")) $("watch").checked = !!s.watcher.enabled;
+  $("cfg").textContent = `${c.model} (effort: ${c.effort || "CLI default"}) · ≤${c.max_attempts} attempts · stall ${c.stall_limit} · ${fmtUsd(c.attempt_budget_usd)}/attempt · ${c.budget_total_usd ? "cap " + fmtUsd(c.budget_total_usd) + " total" : "no total cap"}`;
+  if (s.project && $("projTitle").textContent !== s.project + " decomp") {
+    $("projTitle").textContent = s.project + " decomp"; document.title = s.project + " decomp";
+  }
+  renderKpis(s.overview); renderUsage(s.usage); renderWorkers(s.workers); renderSystems(s.systems); renderQueue(s.queue); renderHistory(s.history); renderWatcher(s.watcher); renderLog(s.log);
+}
+
+$("btnStart").onclick = () => post("/api/start", { workers: Number($("nw").value) || 1 });
+$("btnNext").onclick = () => post("/api/start", { workers: 1 });
+$("btnAddr").onclick = () => { const a = $("addr").value.trim().replace(/^0x/i, ""); if (/^[0-9a-f]{1,8}$/i.test(a)) post("/api/start", { addr: a }); else $("err").textContent = "enter a hex address"; };
+$("addr").addEventListener("keydown", e => { if (e.key === "Enter") $("btnAddr").click(); });
+$("loop").onchange = e => post("/api/loop", { enabled: e.target.checked });
+$("btnStop").onclick = () => post("/api/stop", {});
+$("watch").onchange = e => post("/api/watcher", { enabled: e.target.checked });
+$("btnUsage").onclick = () => post("/api/usage/refresh", {});
+refresh();
+setInterval(refresh, 1000);
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+backup/
+*.bak*
+*.orig
+tests/.work/
+tests/ghidra_work/
+# this machine's paths (batch 26): merged over config.json / tests/patterns.json
+config.local.json
+tests/patterns.local.json
