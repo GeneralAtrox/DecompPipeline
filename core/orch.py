@@ -10,7 +10,7 @@ import threading
 import time
 import traceback
 
-from . import brief, filelock, job, paths, retire, systems, usage, watcher
+from . import brief, filelock, job, paths, proof, retire, systems, usage, watcher
 
 ACTIVE = ("waiting", "preparing", "running")
 
@@ -103,6 +103,7 @@ class Orchestrator:
             if rec.get("status") in ACTIVE:
                 rec["status"] = "stopped"
         self.save()
+        self.proof_states = {}  # addr -> core/proof state of matched functions (filled by overview, job.finish)
         self.watcher = watcher.Watcher(self)
         self.retire_pending = self.removed_with_artefacts({f["addr"] for f in catalog["functions"]})
 
@@ -276,8 +277,22 @@ class Orchestrator:
             "tiers": dict(collections.Counter(f["tier"] for f in funcs.values())),
             "matched_by_tier": dict(collections.Counter(funcs[a]["tier"] for a in matched)),
             "cost_usd": round(self.spent(), 4), "budget_usd": self.cfg.get("budget_total_usd"),
-            "retire_pending": self.retire_pending,
+            "retire_pending": self.retire_pending, **self.proof_counts(matched),
         }
+
+    def proof_counts(self, matched):
+        """verified / matched_low_coverage / weak_harness among the matched functions (core/proof.py). States come
+        from the harness summaries once per server run (then from job.finish at each match)."""
+        todo = [a for a in matched if a not in self.proof_states]
+        if todo:
+            try:
+                for a, row in proof.scan(paths.ROOT, todo, self.cfg).items():
+                    self.proof_states[a] = row["state"]
+            except Exception as e:  # noqa: BLE001 - a report, never a reason not to serve
+                self.log(f"proof scan failed: {e}")
+                return {}
+        st = collections.Counter(self.proof_states.get(a) for a in matched)
+        return {"verified": st[proof.VERIFIED], "matched_low_coverage": st[proof.LOW], "weak_harness": st[proof.WEAK]}
 
     def state(self):
         attempt_keys = ("n", "verdict", "summary", "cost_usd", "duration_s", "tokens_in", "tokens_out", "turns",

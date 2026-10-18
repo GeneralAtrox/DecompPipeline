@@ -12,6 +12,7 @@ dispatch table and the kit's per-game files.
                    module or the host C library defines
   dispatch_NN.c    {guest address, host function, name} for every catalog function and every declared function,
                    sorted, in chunks; dispatch_index.c lists the chunks (runtime/dispatch.c searches them)
+  scene_map.c      the scene dump's map from the game's scene_dump.json (tools/scene_map.py)
   gen_report.txt   counts
 """
 import argparse
@@ -24,6 +25,7 @@ import sys
 HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import game_config  # noqa: E402
+import scene_map  # noqa: E402
 
 CHUNK_STUBS = 36
 CHUNK_ROWS = 180
@@ -38,10 +40,15 @@ DEF = re.compile(r"^(?!static\b)[A-Za-z_][\w \t*]*?\b([A-Za-z_]\w*)\s*\([^;{]*\)
 
 
 def defined_names(files):
-    """Names defined (non-static, at column 0) in the given C files."""
+    """Names defined (non-static, at column 0) in the given C files; a parameter list may run over several lines."""
     out = set()
     for f in files:
-        for ln in pathlib.Path(f).read_text(encoding="utf-8").splitlines():
+        lines = pathlib.Path(f).read_text(encoding="utf-8").splitlines()
+        for i, ln in enumerate(lines):
+            j = i
+            while ln[:1].isalpha() and ln.count("(") > ln.count(")") and j + 1 < len(lines):
+                j += 1
+                ln += " " + lines[j].strip()
             m = DEF.match(ln)
             if m and m.group(1) not in ("if", "while", "for", "switch", "return"):
                 out.add(m.group(1))
@@ -101,13 +108,13 @@ def stub_c(readable, addr, proto):
 
 
 def write_if_changed(path, text):
-    if not path.exists() or path.read_text(encoding="utf-8") != text:  # unchanged: no CMake re-configure
+    if not path.exists() or path.read_text(encoding="utf-8") != text:  # unchanged: no CMake re-configure or rebuild
         path.write_text(text, encoding="utf-8")
 
 
 def write_chunks(out, prefix, chunks, head):
     for i, chunk in enumerate(chunks):
-        (out / f"{prefix}_{i:02d}.c").write_text("\n".join(head + chunk) + "\n", encoding="utf-8")
+        write_if_changed(out / f"{prefix}_{i:02d}.c", "\n".join(head + chunk) + "\n")
 
 
 def check_names(cfg, names, protos):
@@ -124,6 +131,28 @@ def check_names(cfg, names, protos):
             raise SystemExit(f"game.json hardware {x}: registry name {names.get(x)!r}, the game's sources define {n}")
 
 
+def wrap_defines(src, files, wrap, names, pnames):
+    """game.json wrap {addr: Wrapper}: each readable file that names the wrapped function, other than its own file,
+    compiles with Name=Wrapper, so its calls (and the address it takes) go to the game's wrapper, which calls the
+    readable function itself. The verified text is compiled unchanged; only the callee's symbol differs."""
+    out = {}
+    for x, w in sorted(wrap.items()):
+        name = names.get(x)
+        if not name or x not in files:
+            raise SystemExit(f"game.json wrap {x}: not a readable function the port compiles ({name!r})")
+        if w not in pnames:
+            raise SystemExit(f"game.json wrap {x}: the game's sources define no {w}")
+        word = re.compile(rf"\b{re.escape(name)}\b")
+        for f in files:
+            if f != x and word.search((src / f"{f}.c").read_text(encoding="utf-8", errors="replace")):
+                out.setdefault(f, []).append(f"{name}={w}")
+    return out
+
+
+def wrapper_proto(proto, name, wrapper):
+    return re.sub(rf"\b{re.escape(name)}(?=\s*\()", wrapper, proto.strip().rstrip(";"), count=1) + ";"
+
+
 def main():
     a = args_parse()
     cfg = game_config.load(game_config.find_game(a.game))
@@ -132,20 +161,18 @@ def main():
     library, paths, readable = load_core(cfg["decomp"], game_config.PIPELINE)
     out = pathlib.Path(a.out) if a.out else cfg["dir"] / "build" / "gen"
     (out / "include").mkdir(parents=True, exist_ok=True)
-    for old in list(out.glob("stubs_*.c")) + list(out.glob("dispatch_*.c")):
-        old.unlink()
+    stale = list(out.glob("stubs_*.c")) + list(out.glob("dispatch_*.c"))  # the chunks of an earlier run
     reg = readable.Registry()
     files = sorted(p.stem for p in readable.SRC.glob("*.c") if re.fullmatch(r"[0-9a-f]{8}", p.stem))
     game_end = int(paths.config()["game_end"], 16)
     if not a.engine:  # the skeleton: game code only; engine (extra_functions) and SDK stay logging stubs
         files = [x for x in files if int(x, 16) < game_end]
-    write_if_changed(out / "port_files.cmake", game_config.port_files_cmake(
-        cfg, readable.SRC, files, readable.INCLUDE, paths.TARGET / "runtime_rd"))
     write_if_changed(out / "include" / "port_config.h", game_config.port_config_h(cfg))
     write_if_changed(out / "port_entry.c", game_config.port_entry_c(cfg))
     sigs, notes = library.raw_declarations(reg, files)
     game_h, nglob = port_game_h(readable, reg, sigs)
-    (out / "include" / "game.h").write_text(game_h, encoding="utf-8")
+    write_if_changed(out / "include" / "game.h", game_h)
+    write_if_changed(out / "scene_map.c", scene_map.scene_map_c(cfg, game_h, readable.INCLUDE))
 
     declared = sorted(set(reg.functions) | set(sigs))
     protos = {x: reg.proto(x, raw_sig=sigs.get(x)) for x in declared}
@@ -155,6 +182,10 @@ def main():
     defined = set(files)
     crt = {x for x in declared if names[x] in CRT}
     pnames = defined_names(cfg["sdk"] + cfg["sources"])
+    wrap = cfg["wrap"]
+    write_if_changed(out / "port_files.cmake", game_config.port_files_cmake(
+        cfg, readable.SRC, files, readable.INCLUDE, paths.TARGET / "runtime_rd",
+        wrap_defines(readable.SRC, files, wrap, names, pnames)))
     plat = {x for x in declared if names[x] in pnames and x not in defined and x not in hw}
     stubs = [x for x in declared if x not in defined and x not in hw and x not in crt and x not in plat]
     blocks = [stub_c(readable, x, protos[x]) for x in stubs]
@@ -173,13 +204,14 @@ def main():
         text = ["/* Generated by port/tools/gen_port.py: guest address -> host function. */", '#include "game.h"',
                 '#include "port_dispatch.h"', '#include "port_stub.h"', ""]
         text += [f'static u32 fn_{x}(void) {{ port_stub(0x{x}u, "fn_{x}"); return 0; }}' for x in own]
+        text += [wrapper_proto(protos[x], names[x], wrap[x]) for x in part if x in wrap]
         text += ["", f"const PortDispatch port_dispatch_{i:02d}[] = {{"]
         for x in part:
-            fn = names.get(x) or f"fn_{x}"
+            fn = wrap.get(x) or names.get(x) or f"fn_{x}"
             text.append(f'    {{0x{x}u, (PortFn){fn}, "{fn}"}},')
             rows.append(x)
         text += ["};", f"const int port_dispatch_{i:02d}_n = {len(part)};"]
-        (out / f"dispatch_{i:02d}.c").write_text("\n".join(text) + "\n", encoding="utf-8")
+        write_if_changed(out / f"dispatch_{i:02d}.c", "\n".join(text) + "\n")
     idx = ["/* Generated by port/tools/gen_port.py: the dispatch chunks, in address order. */",
            '#include "port_dispatch.h"', ""]
     idx += [f"extern const PortDispatch port_dispatch_{i:02d}[];\nextern const int port_dispatch_{i:02d}_n;"
@@ -187,12 +219,16 @@ def main():
     idx += ["", "const PortDispatchChunk port_dispatch_chunks[] = {"]
     idx += [f"    {{port_dispatch_{i:02d}, &port_dispatch_{i:02d}_n}}," for i in range(len(parts))]
     idx += ["};", f"const int port_dispatch_nchunks = {len(parts)};"]
-    (out / "dispatch_index.c").write_text("\n".join(idx) + "\n", encoding="utf-8")
+    write_if_changed(out / "dispatch_index.c", "\n".join(idx) + "\n")
+    keep = {f"stubs_{i:02d}.c" for i in range(len(chunks))} | {f"dispatch_{i:02d}.c" for i in range(len(parts))}
+    for old in stale:  # only chunks this run did not write: the rest keep their times, so nothing rebuilds
+        if old.name not in keep | {"dispatch_index.c"}:
+            old.unlink()
 
     unnamed = len(bare)
     report = [f"readable files: {len(files)}", f"registry functions: {len(reg.functions)}; unnamed functions declared "
               f"from raw signatures: {len(sigs)}", f"globals at fixed guest addresses: {nglob}",
-              f"logging stubs: {len(stubs)} in {len(chunks)} file(s); port hardware functions: {len(hw)}; host C "
+              f"logging stubs: {len(stubs)} in {len(chunks)} file(s); port hardware functions: {len(hw)}; wrapped: {len(wrap)}; host C "
               f"runtime: {len(crt)} ({', '.join(sorted(names[x] for x in crt))}); platform layer: {len(plat)}",
               f"dispatch rows: {len(rows)} in {len(parts)} chunk(s); catalog functions with no declaration "
               f"(bare logging stub): {unnamed}", *[f"note: {n}" for n in notes[:20]]]

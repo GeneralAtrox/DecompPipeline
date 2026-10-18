@@ -3,8 +3,8 @@
 // agent may not change this file. Extended by TcPrepare.
 //
 // vectors.txt, per vector: V id set, R r4..r7, F fr4..fr11, X xf0..xf15, H fr12..fr15 (runtime state), L r0..r3
-// (parameters there), G r8..r14 (runtime state), Q fr0..fr15 (Proto.fpuState), C the scripted call results,
-// M patches, E.
+// (parameters there), G r8..r14 (runtime state), A the live callees' drawn deltas (TcLive; after header lines K),
+// Q fr0..fr15 (Proto.fpuState), C the scripted call results, M patches, E.
 // expected.txt: V, RET r0 fr0, RETX (a nonstandard result register, or a u64's high word in r1), W writes, CALL
 // records (TcOracle.callRecord), XF, FH fr12..fr15 and GH r8..r14 at exit, QH fr0..fr15 and the FPSCR mode word
 // (TcOracle.modeWord) at exit, COV blocks, E.
@@ -18,6 +18,11 @@
 // Deadline (TcFacts.oracleDeadlineS, from config "ghidra_timeout_s"): when most tries run to STEP_LIMIT (a loop whose
 // count comes from the inputs: a random count word), generation would outlast Ghidra's timeout and the preparation
 // would die without a verdict. Past the deadline it stops (outOfTime) and TcPrepare refuses the function instead.
+// Call-cap fail-fast (CAP_FAIL_FAST): after that many tries in a set, at least 3/4 of them at CALL_LIMIT (a sentinel
+// walk whose end marker mocked memory never holds), a pass whose valid rate would reach under half of minValid by the
+// set's try cap ends there: each such try runs every repair at the call limit, so the full pass held a slot ~8 min for the same
+// skip. A set on course for minValid is unchanged. A call-capped run first gets the walk's end marker planted
+// (TcSentinel), so only walks it cannot see (a callee result, a marker the code transforms) still count.
 // Rescue (TcFacts.minValid, config "min_valid_vectors"): when a set ends with fewer valid vectors than the checker needs
 // (the function would be skipped), both sets are made again with every vector constant-guided and with the scripted
 // call results repaired like pointers (repairRet): a handler whose path depends on an opcode a mocked fetch returns,
@@ -36,6 +41,8 @@ import java.util.*;
 
 public abstract class TcVectors extends TcOracle {
     static final int MAX_REPAIRS = 12; // pointer repairs per vector (TcInputs.repairVec, TcCalls.repair)
+    static final int CAP_FAIL_FAST = 64; // tries per set before the call-cap fail-fast may end a pass
+    String capNote = null;  // the call-cap fail-fast ended a pass; TcPrepare refuses with it when no vector is left
 
     StringBuilder vout = new StringBuilder(), eout = new StringBuilder();
     Map<String, Integer> invalid = new TreeMap<>();
@@ -122,6 +129,7 @@ public abstract class TcVectors extends TcOracle {
         List<Long> consts = facts.coverageInputs || rescue ? TcGuide.constants(listing, body, this::poolValue) : List.of();
         long deadline = deadlineAt > 0 ? deadlineAt : facts.oracleDeadlineS <= 0 ? 0
             : ManagementFactory.getRuntimeMXBean().getStartTime() + facts.oracleDeadlineS * 1000;
+        int[] capped = new int[2];  // tries ending at CALL_LIMIT, per set (the call-cap fail-fast)
         vectors:
         for (int s = 0; s < 2; s++) {
             rnd = new Random(seed * 31 + s * 0x5bd1e995L);
@@ -130,11 +138,20 @@ public abstract class TcVectors extends TcOracle {
                     outOfTime = true;
                     break vectors;
                 }
+                if (tried[s] >= CAP_FAIL_FAST && capped[s] * 4 >= tried[s] * 3
+                    && (long) valid[s] * want[s] * 16 < (long) Math.min(facts.minValid, want[s]) * tried[s]) {
+                    capNote = String.format("oracle: stopped after %d %s tries, %d valid, %d at the call limit (a loop"
+                        + " whose end the mocks never give: a sentinel walk or a callee result)", tried[s], sets[s],
+                        valid[s], capped[s]);
+                    break vectors;
+                }
                 tried[s]++;
                 Vec v = makeVec(id % 4, proto, new ArrayList<>(globals));
                 entryFh = state ? stateValues(seed, id, idTry) : null;
                 entryLow = anyLow ? intValues(seed ^ 0x1b873593L, id, idTry, low, lowPtr) : null;
                 entryGi = gi ? intValues(seed ^ 0x5851f42dL, id, idTry, giWhich, null) : null;
+                if (live != null) live.draw(seed, id, idTry);  // TcLive: the drawn deltas (line A)
+                if (sq != null) sq.draw(entryGi, seed, id, idTry);  // TcSq: rN in the store-queue window (header line S)
                 Random h = new Random(seed * 0x2545f4914f6cdd1dL + id * 0x632be59bd9b4e019L + idTry * 0x85ebca6bL);
                 if (facts.coverageInputs || rescue) TcGuide.guide(v, proto, consts, globals, h, facts.scrLo, rescue);
                 idTry++;
@@ -146,6 +163,7 @@ public abstract class TcVectors extends TcOracle {
                 v = box[0];
                 int repairs = nrep[0];
                 if (!r.ok) {
+                    if (r.reason.startsWith("more than " + CALL_LIMIT + " calls")) capped[s]++;
                     invalid.merge(r.reason.replaceAll("[0-9a-f]{8}", "X").replaceAll("ram:\\w+", "X"), 1, Integer::sum);
                     if (examples.size() < 6) examples.add(describeFailure(r, repairs));
                     if (r.outside >= 0) {  // TcOracle.entersCallee
@@ -175,7 +193,14 @@ public abstract class TcVectors extends TcOracle {
         Result r = runOracle(v);
         int repairs = 0;
         TcCount.Cuts cuts = new TcCount.Cuts();
-        while (!r.ok && (r.faultAddr >= 0 || (countRepair && r.stepLimited)) && repairs < MAX_REPAIRS) {
+        TcSentinel ends = new TcSentinel();
+        while (!r.ok && (r.faultAddr >= 0 || (countRepair && r.stepLimited) || r.callCapped) && repairs < MAX_REPAIRS) {
+            if (r.callCapped) {  // a table walk past its end: plant the end marker (TcSentinel)
+                if (!ends.repair(this, v, r, h)) break;
+                repairs++;
+                r = runOracle(v);
+                continue;
+            }
             if (r.stepLimited) {  // overtime rescue: cut the loop's counts (TcCount)
                 if (!r.count.repair(v, r, stepLimit, h, cuts)) {
                     countSites = r.count.sites();
@@ -196,7 +221,9 @@ public abstract class TcVectors extends TcOracle {
             Vec nv = r.callFault ? TcCalls.repair(this, v, r.faultAddr, loads, r.calls.size())
                 : repairVec(v, r.faultAddr, r.faultWrite, loads);
             cuts.restore(v);
+            ends.restore(v);
             if (nv != null) cuts.restore(nv);
+            if (nv != null) ends.restore(nv);
             if (nv == null && (r.callFault || !TcRepair.entry(this, v, r.faultAddr)
                 && !(rescue && TcRepair.ret(this, v, r.faultAddr, r.calls.size(), consts, h)))) break;
             if (nv != null) v = nv;
@@ -232,6 +259,7 @@ public abstract class TcVectors extends TcOracle {
             vout.append("\nG");
             for (long x : entryGi) vout.append(' ').append(hex(x));
         }
+        if (live != null) vout.append(live.vectorLine(true));
         if (entryFq != null) {
             vout.append("\nQ");
             for (int x : entryFq) vout.append(' ').append(hex(x));

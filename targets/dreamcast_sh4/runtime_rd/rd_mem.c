@@ -1,6 +1,7 @@
 /* Readable-C runtime: the guest RAM mapped at its Dreamcast address, code-page guards, and the write report.
  * One shared section is mapped twice: at 0x8c... and at its 0x0c... mirror (RD_MIRROR_BASE), as on the SH-4 with
- * the MMU off; page protections are always changed on both views.
+ * the MMU off; page protections are always changed on both views. A harness with header line S (TcSq) maps it four
+ * more times, over the store-queue window 0xe0000000..0xe3ffffff, as the port does (port.h GUEST_SQ_BASE).
  *
  * Writes are found by comparing RAM with a snapshot taken just before the run, so a write that stores the value
  * already there is invisible. The judge compares final memory contents, so this does not change any verdict.
@@ -22,12 +23,33 @@ static u8 *g_snapshot;
 static u8 *g_code; /* 1 bit per guest byte that belongs to an instruction */
 static u8 g_page[NPAGES];
 static int g_armed;
+static HANDLE g_sec;
+int tcrt_sq_window;
+
+#define SQ_BASE 0xe0000000u
+#define SQ_VIEWS 4u
 
 static void protect(u32 addr, u32 size, DWORD prot)
 {
     DWORD old;
     VirtualProtect((void *)(uintptr_t)addr, size, prot, &old);
     VirtualProtect((void *)(uintptr_t)(addr - TCRT_RAM_BASE + RD_MIRROR_BASE), size, prot, &old);
+    for (u32 i = 0; tcrt_sq_window && i < SQ_VIEWS; i++)
+        VirtualProtect((void *)(uintptr_t)(addr - TCRT_RAM_BASE + SQ_BASE + i * TCRT_RAM_SIZE), size, prot, &old);
+}
+
+/* Header line S, before the first vector: the window's views (the system area below the image faults there too). */
+void tcrt_set_sq_window(void)
+{
+    for (u32 i = 0; !tcrt_sq_window && i < SQ_VIEWS; i++) {
+        void *at = (void *)(uintptr_t)(SQ_BASE + i * TCRT_RAM_SIZE);
+        if (MapViewOfFileEx(g_sec, FILE_MAP_ALL_ACCESS, 0, 0, TCRT_RAM_SIZE, at) != at) {
+            fprintf(stderr, "runner: cannot map the store-queue window at %08x\n", SQ_BASE + i * TCRT_RAM_SIZE);
+            exit(1);
+        }
+    }
+    tcrt_sq_window = 1;
+    protect(TCRT_RAM_BASE, TCRT_VALID_LO - TCRT_RAM_BASE, PAGE_NOACCESS);
 }
 
 int rd_is_code(u32 addr)
@@ -55,7 +77,7 @@ static FILE *open_file(const char *path, const char *mode)
 
 int tcrt_init(const char *image, const char *code_ranges, const char *fsca_table)
 {
-    HANDLE sec = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, TCRT_RAM_SIZE, NULL);
+    HANDLE sec = g_sec = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, TCRT_RAM_SIZE, NULL);
     void *mirror = (void *)(uintptr_t)RD_MIRROR_BASE;
     if (!sec || MapViewOfFileEx(sec, FILE_MAP_ALL_ACCESS, 0, 0, TCRT_RAM_SIZE, RAM) != RAM
         || MapViewOfFileEx(sec, FILE_MAP_ALL_ACCESS, 0, 0, TCRT_RAM_SIZE, mirror) != mirror) {

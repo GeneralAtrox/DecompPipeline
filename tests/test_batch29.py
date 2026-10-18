@@ -70,6 +70,34 @@ class Mova(unittest.TestCase):
             self.assertEqual(asm_pool.code_ranges(pathlib.Path(d) / "missing.txt"), [])
 
 
+class FillRaw(unittest.TestCase):
+    """The readable sandbox's raw.c notes on literal-pool placeholders (the image above: 0.0001f at +0x20)."""
+    HEAD = "    /* float literal-pool constants (placeholders, to be filled in) */\n"
+
+    def test_zero_placeholder_noted(self):
+        out = asm_pool.fill_raw(self.HEAD + "    f32 020 = 0.0f;\n\n", image(), BASE, BASE).splitlines()
+        self.assertEqual(out[1], "    f32 020 = 0.0f; /* no test reached this constant: 0x8c010020 in the image holds "
+                                 "0.0001f, write that */")
+
+    def test_wrong_guess_with_address_noted(self):
+        text = ("    /* these are placeholders */\n    f32 k = 1.0f;   /* 0x8c010020 */\n"
+                "    f32 j = 0.0001f; /* 0x8c010020 */\n")
+        out = asm_pool.fill_raw(text, image(), BASE, BASE).splitlines()
+        self.assertIn("in the image holds 0.0001f", out[1])
+        self.assertEqual(out[2], text.splitlines()[2])  # already right
+
+    def test_controls_left_alone(self):
+        for text in (self.HEAD + "    f32 024 = 0.0f;\n",       # a function pointer, not a number
+                     "    f32 020 = 0.0f;\n",                    # no placeholder block
+                     self.HEAD + "    x = 1;\n    f32 020 = 0.0f;\n",  # the block ended
+                     self.HEAD + "    f32 080 = 0.0f;\n"):       # outside the image
+            self.assertEqual(asm_pool.fill_raw(text, image(), BASE, BASE), text)
+
+    def test_line_endings_kept(self):
+        out = asm_pool.fill_raw(self.HEAD.replace("\n", "\r\n") + "    f32 020 = 0.0f;\r\n", image(), BASE, BASE)
+        self.assertTrue(out.endswith("write that */\r\n"))
+
+
 class Readings(unittest.TestCase):
     def test_plain_numbers(self):
         self.assertEqual(asm_pool._f32(0x38D1B717), "0.0001")

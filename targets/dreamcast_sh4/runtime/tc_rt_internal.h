@@ -9,10 +9,16 @@
 #define TCRT_RAM_SIZE 0x01000000u
 #define TCRT_VALID_LO 0x8c010000u
 
+/* vectors.txt header line S (TcSq: a function sending a state pointer's store queue): the store-queue window
+ * 0xe0000000..0xe3ffffff folds onto RAM too, its four views of the 16 MB, as in the port (port.h GUEST_SQ_BASE). */
+extern int tcrt_sq_window;
+void tcrt_set_sq_window(void);
+
 /* Main RAM is also visible at 0x0c... (P0); with the MMU off it is the same bytes. Every access and call target is
- * folded to its 0x8c... form, exactly as the oracle does (TcBase.fold: P0 only). */
+ * folded to its 0x8c... form, exactly as the oracle does (TcBase.fold: P0, and the window after a line S). */
 static inline u32 tcrt_fold(u32 a)
 {
+    if (tcrt_sq_window && a - 0xe0000000u < 0x04000000u) return 0x8c000000u | (a & 0x00ffffffu);
     return (a >= 0x0c000000u && a < 0x0d000000u) ? (a | 0x80000000u) : a;
 }
 #define TCRT_STACK_LO 0x8cff0000u
@@ -34,6 +40,8 @@ void tcrt_set_low(const u32 bits[4]);    /* r0..r3 at entry (line L) */
 u32 tcrt_low(int index);                 /* for the generated thunk: a parameter in r0..r3 */
 void tcrt_set_retx(u32 value);           /* for the generated thunk: the extra result word (line RETX) */
 void tcrt_set_call_returns(const u32 rets[16]);
+void tcrt_add_live(u32 target, u32 reg, u32 n, const u32 d[4]); /* header line K: a callee changing rN (TcLive) */
+void tcrt_set_draws(const u32 draws[16]); /* line A: the vector's draws for the K callees' deltas */
 void tcrt_report(FILE *out, u32 r0, u32 fr0_bits);
 
 /* tc_fpu.c: the FPU registers (fr0..fr15, xf0..xf15 = XMTRX, the FPSCR mode bits FR, SZ, PR). */

@@ -175,6 +175,17 @@ def state_notes(meta):
                   "Values its callers keep in these registers: set at entry, compared at exit and at the calls",
                   "that read them. Keep raw.c's sh4_r/sh4_set_r (r8..r14) and sh4_fr/sh4_set_fr (fr12..fr15)",
                   "calls at the same points."]
+    if meta.get("r_live"):
+        lines += ["", "## Callees that change runtime state", "",
+                  "These callees advance r8..r14 themselves (meta r_live: " + ", ".join(
+                      f"fn_{t} {r} {d}" for t, regs in meta["r_live"].items() for r, d in regs.items()) + "): the value",
+                  "changes at each such call. Read it with sh4_r(N) after the call, as raw.c does; never keep a copy",
+                  "across one."]
+    if meta.get("sq_window"):
+        lines += ["", "## The store-queue window", "",
+                  f"{meta['sq_window']} may point into the store-queue window (0xe0000000..), mapped onto RAM as in",
+                  "the port. Keep raw.c's 32-byte copies at the slots its pref sends unwritten: they are the queue's",
+                  "old contents, which no store in C puts there."]
     if meta.get("fpu_state"):
         lines += ["", "## The whole FPU is state", "",
                   "raw.c switches FPU modes: fr0..fr15, xf0..xf15 and the mode bits are compared at exit and at",

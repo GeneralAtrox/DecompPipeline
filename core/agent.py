@@ -133,6 +133,22 @@ def abi_notes(meta):
                   "They are not parameters: each test sets them at entry, and they are compared at exit. Read their",
                   "entry values with sh4_r(N) and write them with sh4_set_r(N, value) wherever the original writes them",
                   "(N = 8..14). A register the original only saves and restores keeps its entry value: leave it alone."]
+    live = meta.get("r_live") or {}
+    if live:
+        who = "; ".join(f"fn_{t}: " + ", ".join(f"{r} {d}" for r, d in regs.items()) for t, regs in live.items())
+        lines += ["", "## Callees that change runtime state", "",
+                  f"These callees leave a register changed (their own code advances it): {who} (\"?\": varies).",
+                  "tc_call applies that change, as the original's callee does. So after each such call the register",
+                  "holds a new value: read sh4_r(N) again after the call wherever the original uses it, and never keep",
+                  "a copy across the call or set it back with sh4_set_r before the next call."]
+    sq = meta.get("sq_window")
+    if sq:
+        lines += ["", "## The store-queue window", "",
+                  f"{sq} may point into the SH-4 store-queue window (0xe0000000..0xe3ffffff), which the runner maps",
+                  "onto RAM as the port does: a store there lands in RAM at once, and pref does nothing in C. One",
+                  "effect is then yours to write: where the original's `pref @a` sends a 32-byte slot it never stored",
+                  "to (`pref @r14; add #0x20,r14`), the store queue still holds the block it sent 0x40 bytes earlier,",
+                  "so copy those 32 bytes from a - 0x40 to a (word by word with rd32/wr32) before moving on."]
     return lines
 
 

@@ -8,7 +8,8 @@
         core/scope.py). Workers judge an imported file first: a pass is matched with no agent run, a fail
         becomes the agent's starting point.
   python xproject.py --project NEW --from OLD names     carry readable names (functions, globals) over to
-        NEW/readable/names/imported.json, through the address pairs of exact matches
+        NEW/readable/names/imported.json, through the address pairs of exact matches; run match + names once
+        per earlier project, best first: a name an earlier --from gave an address is kept
 """
 import argparse
 import collections
@@ -21,24 +22,35 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from core import xmatch  # noqa: E402
 
 STACK_LO = 0x8CFF0000
-ADDR_RE = re.compile(r"0x(8c[0-9a-fA-F]{6})(u?)\b")
+ADDR_RE = re.compile(r"0x([08]c[0-9a-fA-F]{6})(u?)\b")  # RAM at 0x8c... or its P0 mirror 0x0c... (Spawn)
 
 
 def relocate(text, amap, own_old, own_new):
-    """Rewrite OLD guest addresses in C source to NEW ones. Returns (text, unmapped addresses)."""
+    """Rewrite OLD guest addresses in C source to NEW ones: a literal recorded as a pair becomes the new image's
+    word verbatim; one recorded only in the other form (0x8c... vs 0x0c...) keeps its own form.
+    Returns (text, unmapped addresses)."""
     missing = set()
 
     def sub(m):
         a = m.group(1).lower()
-        if int(a, 16) >= STACK_LO:
+        if int("8c" + a[2:], 16) >= STACK_LO:
             return m.group(0)
-        if a in amap:
+        if a in amap:  # the new image's own word, in its own form (TC's 0x8c... pool word is Spawn's 0x0c...)
             return f"0x{amap[a]}{m.group(2)}"
+        other = ("0c" if a[0] == "8" else "8c") + a[2:]  # the pair recorded in the other form: keep this one's
+        if other in amap:
+            return f"0x{a[:2]}{amap[other][2:]}{m.group(2)}"
         missing.add(a)
         return m.group(0)
     text = ADDR_RE.sub(sub, text)
     text = re.sub(rf"\bfn_{own_old}\b", f"fn_{own_new}", text, flags=re.I)
     return text, sorted(missing)
+
+
+def relocate_match(text, amap, m, addr):
+    """relocate() for one match: its own pairs first. The global map drops a pair two matches disagree on (every
+    `bra X; nop` thunk matches every other one), but within this function's bytes the pair is certain."""
+    return relocate(text, {**amap, **m["pairs"]}, m["from"], addr)
 
 
 def main():
@@ -87,14 +99,15 @@ def main():
         dst = new_ws / "import"
         dst.mkdir(exist_ok=True)
         staged = clean = 0
+        label = json.loads((old_ws / "project.json").read_text(encoding="utf-8")).get("name") or old_ws.name
         for addr, m in sorted(matches.items()):
             src = old_ws / "matched" / f"{m['from']}.c"
             if not new.in_scope(addr) or not src.exists():
                 continue
             if m["kind"] != "exact" and m["ratio"] < a.near:
                 continue
-            text, missing = relocate(src.read_text(encoding="utf-8"), amap, m["from"], addr)
-            head = f"/* imported from {old_ws.parent.name} {m['from']} ({m['kind']}, {m['ratio']}) */\n"
+            text, missing = relocate_match(src.read_text(encoding="utf-8"), amap, m, addr)
+            head = f"/* imported from {label} {m['from']} ({m['kind']}, {m['ratio']}) */\n"
             if missing:
                 head += f"/* unmapped addresses of the old project: {' '.join(missing)} */\n"
             (dst / f"{addr}.c").write_text(head + text, encoding="utf-8")
@@ -102,17 +115,31 @@ def main():
             clean += not missing
         print(f"staged {staged} file(s) in {dst} ({clean} with every address relocated)")
     elif a.cmd == "names":
+        from core.retire import canonical, mirrors
+        mirror = mirrors(new_ws)  # a pool word in mirror form (Spawn's 0c... pointers) names the canonical address
+        d = new_ws / "readable" / "names"
+        path = d / "imported.json"
+        prev = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
         names = {"functions": {}, "globals": {}}
         for f in sorted((old_ws / "readable" / "names").glob("*.json")):
             reg = json.loads(f.read_text(encoding="utf-8"))
             for kind in ("functions", "globals"):
                 for addr, e in reg.get(kind, {}).items():
                     if addr in amap:
-                        names[kind][amap[addr]] = dict(e, imported_from=addr)
-        d = new_ws / "readable" / "names"
+                        names[kind][canonical(amap[addr], mirror)] = dict(e, imported_from=addr,
+                                                                          imported_ws=str(old_ws))
+        # several earlier projects in turn (--from A, then --from B): an address keeps the name an earlier project
+        # gave it; this project's own entries from a previous run are replaced
+        kept = 0
+        for kind in names:
+            for addr, e in prev.get(kind, {}).items():
+                if e.get("imported_ws") not in (None, str(old_ws)):
+                    names[kind][addr] = e
+                    kept += 1
         d.mkdir(parents=True, exist_ok=True)
-        (d / "imported.json").write_text(json.dumps(names, indent=1) + "\n", encoding="utf-8")
-        print(f"carried over {len(names['functions'])} function and {len(names['globals'])} global name(s)")
+        path.write_text(json.dumps(names, indent=1) + "\n", encoding="utf-8")
+        print(f"carried over {len(names['functions'])} function and {len(names['globals'])} global name(s)"
+              + (f", {kept} of them kept from other projects" if kept else ""))
 
 
 if __name__ == "__main__":

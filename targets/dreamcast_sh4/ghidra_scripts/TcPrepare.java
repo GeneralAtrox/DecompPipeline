@@ -153,6 +153,8 @@ public class TcPrepare extends TcVectors {
             callees.append(String.format("{\"addr\":\"%s\",\"regs\":[%s],\"signature\":\"%s\"}",
                 hex(c.getEntryPoint().getOffset()), regs, esc(cSignature("fn_" + hex(c.getEntryPoint().getOffset()), cp))));
         }
+        live = facts.paramSummaries ? TcLive.of(this, calledBy(fn, body)) : null;  // callees changing r8..r14
+        sq = TcSq.of(listing, body, proto.giState);  // a state pointer whose store queue the function sends
         di.dispose();
 
         StringBuilder params = new StringBuilder();
@@ -188,6 +190,8 @@ public class TcPrepare extends TcVectors {
         if (proto.giState != 0) {
             extra.append(",\n  \"r_state\": [\"").append(TcSig.names(proto.giState).replace(", ", "\",\"")).append("\"]");
         }
+        if (live != null) extra.append(",\n  \"r_live\": ").append(live.meta());  // TcLive
+        if (sq != null) extra.append(",\n  \"sq_window\": ").append(sq.meta());  // TcSq
         if (proto.fpuState) extra.append(",\n  \"fpu_state\": true");  // TcSig.fpuProto: the whole FPU is state
         String meta = String.format("{\n  \"addr\": \"%s\",\n  \"name\": \"%s\",\n  \"bytes\": %d,\n  \"signature\": \"%s\",\n"
                 + "  \"params\": [%s],\n  \"ret\": \"%s\",\n  \"unsupported\": %s,\n  \"callees\": [%s],\n"
@@ -207,8 +211,10 @@ public class TcPrepare extends TcVectors {
         String why = outside >= 0 ? "executes code outside its body at " + hex(outside) : outOfTime ? String.format(
             "oracle: vector generation did not finish in time (dev %d of %d tried valid, hidden %d of %d; step limit x%d:"
             + " a loop count from the inputs?)%s", valid[0], tried[0], valid[1], tried[1],
-            invalid.getOrDefault("step limit (possible infinite loop)", 0), overtimeNote) : null;
-        if (why != null) {  // refused (code outside its body, or out of time), and no vector is left to pass on
+            invalid.getOrDefault("step limit (possible infinite loop)", 0), overtimeNote)
+            : capNote != null && (valid[0] < Math.min(facts.minValid, ndev)
+                || valid[1] < Math.min(facts.minValid, nhidden)) ? capNote : null;
+        if (why != null) {  // refused (code outside its body, out of time, or the call-cap fail-fast): no vector left
             vout.setLength(0);
             eout.setLength(0);
             valid[0] = valid[1] = 0;
@@ -222,7 +228,7 @@ public class TcPrepare extends TcVectors {
             println("TcPrepare: unsupported: " + why);
         }
         String reach = why == null ? TcReach.run(this, proto, seed, seeds) : null;  // vectors reaching unreached calls
-        Files.write(harness.resolve("vectors.txt"), (fpscrLine() + vout).getBytes("UTF-8"));
+        Files.write(harness.resolve("vectors.txt"), (fpscrLine() + (live != null ? live.header() : "") + (sq != null ? sq.header() : "") + vout).getBytes("UTF-8"));
         Files.write(harness.resolve("expected.txt"), eout.toString().getBytes("UTF-8"));
         StringBuilder inv = new StringBuilder();
         for (Map.Entry<String, Integer> e : invalid.entrySet()) {
@@ -244,13 +250,20 @@ public class TcPrepare extends TcVectors {
             if (bal.length() > 0) bal.append(',');
             bal.append('"').append(esc(b)).append('"');
         }
+        StringBuilder unhit = new StringBuilder(); // report only (core/proof): starts of blocks no valid vector reached
+        for (int i = 0; why == null && i < blocks.size(); i++) {
+            if (covAll.contains(i)) continue;
+            if (unhit.length() > 0) unhit.append(',');
+            unhit.append('"').append(hex(blocks.get(i)[0])).append('"');
+        }
         String summary = String.format("{\"dev_valid\":%d,\"dev_tried\":%d,\"hidden_valid\":%d,\"hidden_tried\":%d,"
                 + "\"blocks_total\":%d,\"blocks_hit_dev\":%d,\"blocks_hit_all\":%d,\"min_block_hits\":%d,"
                 + "\"repaired\":%d,%s\"hints\":%d,\"call_sites\":{%s},\"invalid\":{%s},\"examples\":[%s]}\n",
             valid[0], tried[0], valid[1], tried[1], blocks.size(), covDev.size(), covAll.size(),
             blockHits.isEmpty() ? 0 : Collections.min(blockHits.values()), repaired, (rescued ? "\"rescued\":1," : "")
             + (textRestored > 0 ? "\"text_restored\":" + textRestored + "," : "")
-            + (bal.length() > 0 ? "\"stack_balance\":[" + bal + "]," : "") + (reach != null ? reach + "," : ""),
+            + (bal.length() > 0 ? "\"stack_balance\":[" + bal + "]," : "") + (reach != null ? reach + "," : "")
+            + (unhit.length() > 0 ? "\"blocks_unhit\":[" + unhit + "]," : ""),
             hints.size(), sites, inv, ex);
         Files.write(harness.resolve("oracle_summary.json"), summary.getBytes("UTF-8"));
         println("TcPrepare: " + summary.trim());

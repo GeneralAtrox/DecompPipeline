@@ -25,6 +25,7 @@ for p in (str(TOOL / "tools"), str(TOOL)):
 
 from core import doctor, scope, sysassign, xmatch  # noqa: E402  (pure: no core.paths)
 import completeness  # noqa: E402  (tools/completeness.py)
+import sdk_fid_lib  # noqa: E402  (tools/sdk_fid_lib.py)
 
 atexit.register(_TMP.cleanup)
 
@@ -240,6 +241,64 @@ class CrossProject(unittest.TestCase):
         self.assertTrue(img.is_game("8c010000") and not img.is_game("8c0100c0"))  # the code ranges: unchanged
         self.assertTrue(img.in_scope("8c0100c0") and img.in_scope("8c010000") and not img.in_scope("8c010080"))
         self.assertFalse(xmatch.Image(image_ws("xm0", None)).in_scope("8c0100c0"))
+
+    def test_names_key_mirror_canonical(self):
+        """A pair through a pool word in mirror form (Spawn's 0c... pointers) names the canonical (8c...) address."""
+        old, new = image_ws("xo", None), image_ws("xn", None)
+        put(old, "readable/names/S01.json", {"functions": {"8c010080": {"name": "Lib_Free"},
+                                                           "8c010000": {"name": "Game_Main"}}, "globals": {}})
+        put(new, "state/import.json", {"matches": {}, "address_map": {"8c010080": "0c010080", "8c010000": "8c010000"}})
+        p = subprocess.run([sys.executable, str(TOOL / "xproject.py"), "--project", str(new), "--from", str(old),
+                            "names"], capture_output=True, text=True, timeout=120)
+        self.assertEqual(p.returncode, 0, p.stderr)
+        got = json.loads((new / "readable/names/imported.json").read_text(encoding="utf-8"))["functions"]
+        self.assertEqual(sorted(got), ["8c010000", "8c010080"])
+        self.assertEqual(got["8c010080"]["imported_from"], "8c010080")
+
+    def test_classify_from_earlier_library(self):
+        """sdk_classify --from: a function the game calls, with no FID name, is engine; byte-identical to an earlier
+        project's library function it is SDK (rule project)."""
+        wss = [image_ws(n, None) for n in ("clo", "cln")]
+        for ws in wss:
+            img = bytearray((ws / "game.bin").read_bytes())
+            struct.pack_into("<4H", img, 0x80, 0x4F22, 0x0009, 0x4F26, 0x000B)  # a small body to match
+            (ws / "game.bin").write_bytes(bytes(img))
+            put(ws, "state/catalog.json", {"functions": [{"addr": a, "bytes": 8, "hw_refs": 0, "sys_ops": 0}
+                                                         for a in ("8c010000", "8c010080")]})
+            put(ws, "state/code_ranges.txt", "8c010000 8c010004\n8c010080 8c010088\n")
+        fid = wss[1] / "fid"
+        put(fid, "tc_fid.tsv", "\t".join(sdk_fid_lib.TC_FID_HEADER) + "\n")
+        put(fid, "graph.tsv", "8c010000\t8c010080\t\t\t\n")  # the game calls it
+
+        def cls(*more):
+            p = subprocess.run([sys.executable, str(TOOL / "tools/sdk_classify.py"), "--project", str(wss[1]), "--fid",
+                                str(fid), *more], capture_output=True, text=True, timeout=120)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            rows = (fid / "classify.tsv").read_text(encoding="utf-8").splitlines()
+            return [r.split("\t")[2:4] for r in rows[1:]]
+        self.assertEqual(cls(), [["engine", "reach"]])
+        self.assertEqual(cls("--from", str(wss[0])), [["sdk", "project"]])
+
+    def test_names_from_two_projects(self):
+        """--from A then --from B: B adds the addresses A did not name and never renames A's; rerunning A replaces
+        only A's own entries."""
+        a, b, new = image_ws("xa", None), image_ws("xb", None), image_ws("xab", None)
+        put(a, "readable/names/S01.json", {"functions": {"8c010000": {"name": "A_Main"}}, "globals": {}})
+        put(b, "readable/names/S01.json", {"functions": {"8c010000": {"name": "B_Main"},
+                                                         "8c010080": {"name": "B_Free"}}, "globals": {}})
+        amap = {"8c010000": "8c010000", "8c010080": "8c010080"}
+
+        def names(src):
+            put(new, "state/import.json", {"matches": {}, "address_map": amap})
+            p = subprocess.run([sys.executable, str(TOOL / "xproject.py"), "--project", str(new), "--from", str(src),
+                                "names"], capture_output=True, text=True, timeout=120)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            got = json.loads((new / "readable/names/imported.json").read_text(encoding="utf-8"))["functions"]
+            return {k: v["name"] for k, v in got.items()}
+        self.assertEqual(names(a), {"8c010000": "A_Main"})
+        self.assertEqual(names(b), {"8c010000": "A_Main", "8c010080": "B_Free"})
+        put(a, "readable/names/S01.json", {"functions": {"8c010000": {"name": "A_Main2"}}, "globals": {}})
+        self.assertEqual(names(a), {"8c010000": "A_Main2", "8c010080": "B_Free"})
 
 
 if __name__ == "__main__":

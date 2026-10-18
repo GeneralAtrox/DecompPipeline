@@ -311,31 +311,43 @@ s32 Gd_RemountDisc(void)
     return mount() ? FS_ERR_OK : FS_ERR_DIRREC;
 }
 
-/* The drive: CD audio is phase E, so play, pause and stop only move the drive status the game polls. */
-s32 gdFsGetDrvStat(void) { return g_drive_stat; }
+/* The drive's CD audio plays the image's audio tracks (platform.h host_cd_*). A play that ends leaves the drive in
+ * pause, as on the console, which is how games see a track end. An image without the tracks plays silence. */
+static int g_da_live; /* the drive status follows host_cd_playing */
+
+s32 gdFsGetDrvStat(void)
+{
+    if (g_drive_stat == GDD_DRVSTAT_PLAY && g_da_live && !host_cd_playing()) g_drive_stat = GDD_DRVSTAT_PAUSE;
+    return g_drive_stat;
+}
+
 s32 gdFsReqDrvStat(void) { return FS_ERR_OK; }
 
 s32 gdFsDaPlay(s32 firstTrack, s32 lastTrack, s32 repeat)
 {
-    (void)firstTrack, (void)lastTrack, (void)repeat;
+    g_da_live = host_cd_play((u32)firstTrack, (u32)lastTrack, (u32)repeat);
     g_drive_stat = GDD_DRVSTAT_PLAY;
     return FS_ERR_OK;
 }
 
 s32 Gd_DaStop(void)
 {
+    host_cd_stop();
+    g_da_live = 0;
     g_drive_stat = GDD_DRVSTAT_STANDBY;
     return FS_ERR_OK;
 }
 
 s32 Gd_DaPause(void)
 {
+    host_cd_pause(1);
     g_drive_stat = GDD_DRVSTAT_PAUSE;
     return FS_ERR_OK;
 }
 
 s32 Gd_DaResume(void)
 {
+    host_cd_pause(0);
     g_drive_stat = GDD_DRVSTAT_PLAY;
     return FS_ERR_OK;
 }

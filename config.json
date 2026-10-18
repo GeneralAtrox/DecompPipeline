@@ -3,6 +3,8 @@
   "java_home": null,
   "vcvars": null,
   "sevenzip": null,
+  "vcpkg": null,
+  "flycast": null,
   "claude": "claude",
   "model": "haiku",
   "effort": "high",
@@ -34,5 +36,8 @@
   "watcher_max_trials": 12,
   "watcher_max_gates": 3,
   "watcher_sweep_s": 60,
-  "watcher_regress_sample": 5
+  "watcher_regress_sample": 5,
+  "coverage_gate": {"min_block_pct": 90, "allow_uncovered_blocks": 1, "min_blocks": 3, "enforce": true, "waive": {}},
+  "mutation_check": {"mode": "report", "min_score": 80, "max_mutants": 16, "time_cap_s": 240, "mutant_timeout_s": 10,
+                     "seed": 1, "on_pass": false}
 }

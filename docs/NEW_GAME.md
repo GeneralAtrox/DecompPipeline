@@ -26,7 +26,23 @@ python targets/dreamcast_sh4/tools/gdrom.py info    <image.gdi|.cue>
 python targets/dreamcast_sh4/tools/gdrom.py extract <image.gdi|.cue> <new_dir>
 ```
 
-`extract` writes the boot file named in IP.BIN (for example `1ST_READ.BIN`); it loads at 0x8c010000.
+`extract` writes the boot file named in IP.BIN (for example `1ST_READ.BIN`); it loads at 0x8c010000. Keep it
+outside the workspace and any repository (`<game>/artifacts/disc/`, the workspace's `binary` points at it).
+
+Then check what else on the disc is code, and how the boot file is linked:
+
+```
+python targets/dreamcast_sh4/tools/gdrom.py scan <image.gdi|.cue> <disc_scan.tsv>
+```
+
+It scores every file as SH-4 code and lists the candidates. The boot file is the decomp's main binary. Any other
+candidate that is the game's own code (an overlay, as Spawn's 28 are) needs a workspace of its own; another
+program (Power Stone 2's DreamPassport browser, the Sega loaders MAIGO/SG_DPLDR) is not the game. Small files
+can be false hits: look at a candidate before you act on it. For each candidate it also prints:
+- the link form: a boot file linked at `0x0c...` (the P0 mirror; Spawn and Power Stone 2 are) needs
+  `"seed_functions": true` in project.json, or Ghidra finds only a fraction of the functions;
+- the library version strings (Kamui, Shinobi, the NAOMI LIBRARY, CRI, modem...): this is the library list you
+  name in step 3.
 
 ## 2. Create the workspace
 
@@ -38,17 +54,25 @@ A folder with `project.json`. Toy Commander's is the template; the fields a new 
 | `target` | `dreamcast_sh4` |
 | `binary`, `binary_sha256` | the boot file (relative to the workspace) and its hash, so a wrong file is refused |
 | `game_end` | first address of the SDK code linked after the game (see step 4); `0` until you know |
-| `references` | 2-3 functions you decompile by hand first: the controls that prove the judge works |
+| `references` | 2-3 functions you decompile by hand first: the controls that prove the judge works (`[]` until setup) |
 | `broken_control` | one reference plus a deliberately wrong copy of it, which must FAIL |
-| `port` | the monitor UI's port |
+| `port` | the monitor UI's port (one per workspace that serves at the same time) |
+| `seed_functions` | `true` for a game linked at `0x0c...` (step 1's scan says so); harmless otherwise |
+| `ghidra_timeout_s` | one function's prepare (default 900 s); setup, catalog, seed and graph get `ghidra_setup_timeout_s` (default 3600 s) |
 
-Then:
+Then, in this order (the references need the catalog and the disassembly):
 
 - copy `targets/dreamcast_sh4/template/TcInputs.java` to `oracle/TcInputs.java` (the test-vector generator;
   adjust it when your game's functions need different inputs);
-- write the reference C in `reference/ADDR.c` and the broken one;
-- `python decomp.py --project <workspace> setup` builds the Ghidra project and the function catalog;
-- run the controls: `decomp.py check ADDR --work reference/ADDR.c` must PASS, the broken file must FAIL.
+- `python decomp.py --project <workspace> setup` builds the Ghidra project and the function catalog (Power Stone
+  2's 3 MB boot file: 7 minutes, 9,597 functions);
+- pick 2-3 small game functions from `state/catalog.json` (no `hw_refs`/`sys_ops`, a leaf, one with a call, one
+  with floats), `decomp.py export work/refs ADDR...` writes their disassembly and Ghidra's C, and `decomp.py
+  prepare ADDR` shows the signature the harness expects (`harness/ADDR/meta.json`);
+- write the reference C in `reference/ADDR.c` (guest-memory API: `rd32`/`wr32`..., `tc_call` with `TcArgs`; TC's
+  and Spawn's `reference/` are examples) and the broken one (one changed constant);
+- run the controls: `decomp.py check ADDR --work reference/ADDR.c` must PASS, the broken file must FAIL; then list
+  them in `references` and `broken_control`.
 
 The judge is behavioural: each candidate runs on the same test vectors as the original code (under the SH-4
 model in `targets/dreamcast_sh4/runtime`) and must give the same registers, memory and calls. Byte matching
@@ -59,10 +83,19 @@ against a compiler is not needed, so games built with Hitachi SHC (which nobody 
 Most Dreamcast games link Katana SDK libraries (Kamui, Shinobi, Ninja, sound, the CRI middleware) after the
 game. You don't decompile those; you name them.
 
-- `tools/sdk_fid.py build` turns an SDK release you own into Ghidra Function ID databases; `tools/sdk_fid.py
-  apply` names the SDK functions in your game.
-- `tools/sdk_classify.py` sorts the library range into SDK and the studio's own engine code.
-- Set `game_end` to the start of the SDK range; engine functions linked beyond it go in `extra_functions`.
+- `tools/sdk_fid.py build` turns an SDK release you own into Ghidra Function ID databases (once per machine: the
+  databases serve every game); `tools/sdk_fid.py apply --project WS --out DIR --fidb R10.1=PATH --fidb R9=PATH`
+  names the SDK functions in your game (DIR outside any repository; Power Stone 2: 3 minutes).
+- Find `game_end`: the first library function after the game's code. FID names the SHC C runtime (`_divls`,
+  `memcpy`, `sprintf`...): on TC, Spawn and Power Stone 2 the runtime starts the library range. Code an earlier
+  workspace decompiles as game code (`xproject.py ... match` / `report`, step 4) belongs below it. Set it, then
+  re-run `sdk_fid.py apply` (it reuses the import; it only re-merges, 20 s).
+- `tools/sdk_classify.py --project WS --fid DIR --from EARLIER_WS ...` sorts the library range into SDK and the
+  studio's own engine code. The SDK databases lack the libraries Sega shipped apart (the NAOMI LIBRARY, the
+  network and sound layers): `--from` each earlier workspace counts a byte-identical copy of its library code as
+  SDK (on Power Stone 2 the engine candidates fell from 678 to 5).
+- Engine functions linked beyond `game_end` go in `extra_functions` (read `DIR/engine_functions.txt` first: a
+  small unnamed function in the middle of an SDK block is SDK code the databases miss).
 
 The SDK, and the databases built from it, are Sega material: keep them out of any repository.
 
@@ -72,13 +105,24 @@ The SDK, and the databases built from it, are Sega material: keep them out of an
 takes a function, writes raw C against the guest-memory API, and gets PASS or FAIL. Callees are mocked, so
 functions are independent.
 
+- Reuse earlier games first: for each earlier workspace, best first, `xproject.py --project WS --from OLD match`,
+  `report`, `stage` and `names` (`match` rewrites `state/import.json`, so run the four per workspace; a later
+  `stage` overwrites an earlier one's file for the same function). A worker judges a staged `import/ADDR.c`
+  before any agent run: a PASS is matched for free, a FAIL is the agent's starting point (Power Stone 2: 532
+  staged from Spawn and Toy Commander, most passing with no agent).
+- Without the UI: `POST /api/start {"workers": N}` adds N workers and `POST /api/loop {"enabled": true}` keeps
+  each one taking the next function (without it a worker does one function and exits); `GET /api/state` has the
+  counts and the log, `POST /api/stop` (optionally `{"worker": ID}`) stops them. `project.json` `priority` (a list
+  of addresses) puts the pilot at the front of the queue. Every function is prepared in Ghidra on demand, one per
+  slot (`ghidra_parallel`), so the slots, not the workers, cap the rate of cheap functions; each slot is a Ghidra
+  process (up to `GHIDRA_HEADLESS_MAXMEM`, 2G by default).
 - Pilot about 20 functions first and read the failures. A failure class that repeats is a tooling problem: fix
   the pipeline (and run the gate, below), not the functions one by one.
 - Functions that touch hardware registers or system instructions are excluded; record their intent instead.
 - `decomp.py audit` lists every unmatched function by blocker kind.
 - `tools/stack_uninit.py` lists functions that read a stack word no path wrote; `--pin` fixes it to 0 in every
-  vector (your `oracle/TcInputs.java` must support the `genrange` hint, as Toy Commander's does; the target
-  template's does not yet), then re-prepare.
+  vector (through the `genrange` hint of `oracle/TcInputs.java`; a copy older than 2026-10-16 lacks it: copy the
+  template again), then re-prepare.
 - Call sites no test vector reaches are never compared, so matched C there is unverified (Toy Commander's port
   crashed on such calls). The oracle's reach pass (on by default: target.json `reach_calls`) adds vectors that
   reach them and gives the reason for each call it cannot reach; a matched function's ledger row lists them in

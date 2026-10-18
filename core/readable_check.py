@@ -220,7 +220,7 @@ def run(cfg, harness, build_dir, sets=("dev", "hidden"), vectors=None):
     which = sets[0] if len(sets) == 1 else "all"
     cmd = [str(build_dir / "rd_runner.exe"), str(cfg["binary_path"]), str(paths.CODE_RANGES), str(paths.FSCA_TABLE),
            str(vectors or harness / "vectors.txt"), which, str(out)]
-    rc, log, reason = paths.run_bounded(cmd, cfg["check_timeout_s"])
+    rc, log, reason = check.run_runner(cmd, cfg["check_timeout_s"], out, check.output_cap(harness))
     err = f"runner {reason}" if reason else (f"runner exited with code {rc}: {log.strip()[-300:]}" if rc else None)
     return out, err
 

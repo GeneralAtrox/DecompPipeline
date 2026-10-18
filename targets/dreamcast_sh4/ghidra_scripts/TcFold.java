@@ -1,5 +1,6 @@
-// The oracle's RAM bank: main RAM through its P0 mirror (0x0c...) reads and writes the 0x8c... bytes (TcBase.fold).
-// Not a script itself; TcOracle installs it over the emulator's RAM space.
+// The oracle's RAM bank: main RAM through its P0 mirror (0x0c...) reads and writes the 0x8c... bytes (TcBase.fold),
+// and so does the store-queue window for a TcSq function, whose stores there also fill the queues (TcSq).
+// Not a script itself; TcOracle installs one per run over the emulator's RAM space.
 import ghidra.pcode.memstate.MemoryBank;
 import ghidra.pcode.memstate.MemoryPage;
 
@@ -10,14 +11,20 @@ public class TcFold extends MemoryBank {
     // the emulator would hand back the bytes stored, and the C runner (tc_p4.c) faults. TcOracle fails the vector on
     // such a read, as on any read outside RAM (Toy Commander 8c05be7c, 8c0542c4: a random r4 in P4, read back).
     long p4Read = -1;
+    final TcSq sq;  // the function's store queues (TcSq), or null
 
-    TcFold(MemoryBank in) {
+    // gi: r8..r14 at entry (TcOracle.entryGi), where the queues' state at entry comes from (TcSq.begin).
+    TcFold(MemoryBank in, TcSq sq, long[] gi) {
         super(in.getSpace(), in.isBigEndian(), in.getPageSize(), in.getMemoryFaultHandler());
         this.in = in;
+        this.sq = sq;
+        TcBase.sqWindow = sq != null;  // TcBase.fold maps the window onto RAM in this function's runs only
+        if (sq != null) sq.begin(gi);
     }
 
     @Override
     public void setChunk(long offset, int size, byte[] val) {
+        if (sq != null) sq.store(offset, size, val);
         in.setChunk(TcBase.fold(offset), size, val);
     }
 

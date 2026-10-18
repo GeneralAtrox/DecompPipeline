@@ -1,7 +1,8 @@
 """The tool's own settings: config.json (tracked, portable defaults) with config.local.json (git-ignored, this
 machine's paths) merged over it, key by key (batch 26).
 
-The machine paths (ghidra_home, java_home, vcvars, sevenzip) are null in config.json; config.local.json gives them.
+The machine paths (ghidra_home, java_home, vcvars, sevenzip, vcpkg: a vcpkg checkout for the port kit, flycast: the
+workbench emulator port/tools/emu_capture.py drives) are null in config.json; config.local.json gives them.
 Code that needs one calls need(cfg, key), which stops with an error naming the key and config.local.json.
 No imports from the rest of core, so tools/ scripts can use it alone.
 """
@@ -10,7 +11,7 @@ import pathlib
 import shutil
 
 LOCAL = "config.local.json"
-MACHINE_KEYS = ("ghidra_home", "java_home", "vcvars", "sevenzip")
+MACHINE_KEYS = ("ghidra_home", "java_home", "vcvars", "sevenzip", "vcpkg", "flycast")
 REGRESS = "regress"  # a workspace's own regression fixtures folder
 
 

@@ -127,6 +127,40 @@ void wrf32(u32 a, f32 v) { wr32(a, f2u(v)); }
 
 static u32 next_return(void) { return g_ncalls < 16 ? g_rets[g_ncalls] : 0; }
 
+int tcrt_sq_window; /* header line S (TcSq): tcrt_fold maps the store-queue window onto RAM */
+
+void tcrt_set_sq_window(void) { tcrt_sq_window = 1; }
+
+/* TcLive: the callees that change r8..r14 (vectors.txt header lines K, kept across vectors) and the vector's draws
+ * (line A). After the mocked call number k to such a callee, rN += its delta: the constant, one of its set (draw k),
+ * or 0x20 * (1 + draw % 3) when unknown, exactly as the oracle's mocked call. */
+#define MAX_LIVE 256
+static struct { u32 target, reg, n, d[4]; } g_live[MAX_LIVE];
+static u32 g_nlive;
+static u32 g_draws[16];
+
+void tcrt_add_live(u32 target, u32 reg, u32 n, const u32 d[4])
+{
+    if (g_nlive >= MAX_LIVE || reg < 8 || reg > 14 || n > 4) return;
+    g_live[g_nlive].target = tcrt_fold(target);
+    g_live[g_nlive].reg = reg;
+    g_live[g_nlive].n = n;
+    memcpy(g_live[g_nlive].d, d, sizeof g_live[0].d);
+    g_nlive++;
+}
+
+void tcrt_set_draws(const u32 draws[16]) { memcpy(g_draws, draws, sizeof g_draws); }
+
+static void live_apply(u32 target, u32 k)
+{
+    u32 draw = g_draws[k % 16];
+    for (u32 i = 0; i < g_nlive; i++) {
+        if (g_live[i].target != target) continue;
+        u32 n = g_live[i].n;
+        g_gs[g_live[i].reg - 8] += n == 1 ? g_live[i].d[0] : n ? g_live[i].d[draw % n] : 0x20u * (1u + draw % 3u);
+    }
+}
+
 static void log_call(u32 target, const TcArgs *args)
 {
     if (g_ncalls < MAX_CALLS) {
@@ -143,6 +177,7 @@ u32 tc_call(u32 target, const TcArgs *args)
 {
     u32 rv = next_return();
     log_call(tcrt_fold(target), args);
+    live_apply(tcrt_fold(target), g_ncalls); /* after the record: the callee saw the old rN */
     g_ncalls++;
     tcrt_fpu_result(rv); /* the oracle's mocked callee leaves its result in r0 and fr0 */
     return rv;
@@ -260,6 +295,7 @@ void tcrt_reset(void)
     memset(g_gs, 0, sizeof g_gs);
     memset(g_low, 0, sizeof g_low);
     memset(g_rets, 0, sizeof g_rets);
+    memset(g_draws, 0, sizeof g_draws);
     g_retx = 0;
     g_has_retx = 0;
     /* FPSCR.DN=1, as the game runs (TcOracle sets FPSCR 0x00040001; TcFpu models it): denormal operands count as

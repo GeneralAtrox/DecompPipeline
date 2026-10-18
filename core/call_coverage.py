@@ -14,17 +14,26 @@ A site counts as
   (tools/call_coverage.py reach).
 Functions without a harness summary, or with a summary without "call_sites", are counted apart (no data).
 """
-from . import paths
+import json
+
+from . import filelock
+
+
+def _read_json(path):
+    return json.loads(filelock.read_text(path)) if path.exists() else None
 
 
 def site_rows(addrs, harness_dir=None):
     """{addr: row} for the functions of addrs with call-site data. A row: total, reached, unreached (sorted site
     list), reasons {site: reason} (explained ones), tried (the harness ran the reach pass), reach_runs, found (sites
-    the reach pass reached that the first pass did not). Functions without data are left out."""
-    hdir = harness_dir or paths.HARNESS
+    the reach pass reached that the first pass did not). Functions without data are left out. With harness_dir the
+    module needs no current project (core/doctor.py checks any workspace)."""
+    if harness_dir is None:
+        from . import paths
+        harness_dir = paths.HARNESS
     out = {}
     for a in addrs:
-        s = paths.read_json(hdir / a / "oracle_summary.json")
+        s = _read_json(harness_dir / a / "oracle_summary.json")
         if not s or s.get("call_sites") is None:
             continue
         sites = s["call_sites"]
@@ -64,6 +73,7 @@ def summary_line(f):
 
 
 def matched_functions():
+    from . import paths
     led = (paths.read_json(paths.LEDGER) or {}).get("functions") or {}
     return sorted(a for a, r in led.items() if r.get("status") == "matched")
 

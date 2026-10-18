@@ -1,11 +1,16 @@
 /* The port's log: every line goes to stdout and to port.log. */
 #include <stdarg.h>
+#include <string.h>
 #include "port.h"
 
 FILE *g_port_log;
+static char g_path[520];
+
+const char *port_log_path(void) { return g_path; }
 
 void port_log_open(const char *path)
 {
+    strncpy_s(g_path, sizeof g_path, path, _TRUNCATE);
     if (fopen_s(&g_port_log, path, "w") != 0) g_port_log = NULL;
 }
 

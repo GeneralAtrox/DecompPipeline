@@ -12,6 +12,9 @@ Checks, in order (core/final_audit.py):
               overlaps, 0 unsized (excluded hw/sys functions are listed apart, never counted)
   calls       call-site coverage (tools/call_coverage.py): no matched function with a call site no vector reaches
               that the reach pass has not tried; the figure, and each unreached site with the pass's reason
+  proof       the proof gates (core/proof.py, docs/PROOF_GATES.md): no matched function below the coverage gate
+              (matched_low_coverage) or, in mutation_check mode enforce, below its minimum mutation score; INFO when
+              neither gate enforces
   raw names   no readable file calls a named function by its raw fn_ name (batch 18's audit)
   library     `refine.py library` clean (every file compiled together with game.h at /W4 /WX)
   completeness  tools/completeness.py: every game-range byte explained, no stale known_runs.tsv entry
@@ -87,6 +90,7 @@ def main():
             results.append(("verify", False))
         run("coverage", fa.check_coverage, cfg, ws, out)
         run("calls", fa.check_calls, out)
+        run("proof", fa.check_proof, cfg, ws, out)
         run("raw names", fa.check_raw_names, ws, out)
         if snap:
             run("library", fa.check_library, cfg, out, workers)

@@ -1,12 +1,39 @@
 """Local web UI + JSON API (127.0.0.1 only)."""
 import json
 import re
+import socket
+import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from . import paths
 
 UI = paths.UI / "index.html"
 USAGE_STALE_S = 1800  # while the page is open and no worker is running, re-read usage this often
+
+
+def port_taken(port, name):
+    """Why `decomp.py serve` must not start on `port`, or None. Checked before the Orchestrator exists (it marks the
+    ledger's running functions stopped): Spawn's sstma08 once had Power Stone 2's port, and a driver that found a
+    server answering there switched that project's loop and watcher off. A pipeline server that answers names its
+    project; anything else holding the port is another program."""
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/state", timeout=5) as r:
+            st = json.load(r)
+    except (OSError, ValueError):
+        st = None
+    other = st.get("project") if isinstance(st, dict) else None
+    if other == name:
+        return f"{name}'s server is already running on port {port}"
+    if other:
+        return f"port {port} is served by another project ({other}): give this project.json its own \"port\""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        s.bind(("127.0.0.1", port))
+    except OSError as e:
+        return f"port {port} is in use by another program ({e.strerror or e})"
+    finally:
+        s.close()
+    return None
 
 
 def serve(orch, port):

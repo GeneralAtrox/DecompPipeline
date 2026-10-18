@@ -81,6 +81,7 @@ void rd_sh4_report(FILE *out);
 void rd_sh4_log(u32 *rec, const u32 fr_args[8]); /* call record fields 5..12, 21..24, 29..35 and, with line Q, 36..56 */
 int rd_sh4_fpu_state(void);             /* line Q was given: the whole FPU is state */
 void rd_sh4_result(u32 bits); /* a trapped call's result, in fr0 as in r0 */
+void rd_sh4_live(u32 target, u32 k); /* after call k: its callee's change of r8..r14 (TcLive, lines K and A) */
 void rd_sh4_set_fq(const u32 bits[16]); /* fr0..fr15 at entry (line Q) */
 void rd_sh4_report_fq(FILE *out);       /* line QH: fr0..fr15 and the FPSCR mode word at exit */
 

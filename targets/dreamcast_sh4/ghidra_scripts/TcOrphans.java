@@ -102,7 +102,8 @@ public class TcOrphans extends GhidraScript {
      *  existing function is left alone. Data, not an entry: a target outside the span of the table's function
      *  entries, or one whose bytes hold a pointer word (Spawn literal pools mix function pointers with pointers to
      *  the data tables at 8c09dcb4 / 8c09e0a0). The decoded entry becomes a function through reason()
-     *  (POINTER@word); TcPrune removes it afterwards if its code cannot run. */
+     *  (POINTER@word); TcPrune removes it afterwards if its code cannot run. A candidate right after a block end counts
+     *  toward the two thirds (Spawn's 8c09deb8: 11 undecoded `jmp @rN` dispatchers, 8 functions). */
     int decodeTableEntries(Listing listing, FunctionManager fm) throws Exception {
         int n = 0;
         for (List<Address> t : tables) {
@@ -114,11 +115,13 @@ public class TcOrphans extends GhidraScript {
                 if (lo == null || a.compareTo(lo) < 0) lo = a;
                 if (hi == null || a.compareTo(hi) > 0) hi = a;
             }
-            if (entries * 3 < t.size() * 2) continue;
+            if (entries == 0) continue;
+            int shaped = 0;
+            for (Address a : t)
+                if (candidate(listing, fm, a, lo, hi) && followsBlockEnd(a)) shaped++;
+            if ((entries + shaped) * 3 < t.size() * 2) continue;
             for (Address a : t) {
-                if (a.compareTo(lo) < 0 || a.compareTo(hi) > 0 || pointerWords.contains(a.getOffset() & ~3L)
-                        || listing.getInstructionContaining(a) != null || fm.getFunctionContaining(a) != null
-                        || excluded.contains(a) || loadedAsData(a) || !untypedOrNone(listing, a)) continue;
+                if (!candidate(listing, fm, a, lo, hi)) continue;
                 Data d = listing.getDefinedDataContaining(a);
                 if (d != null) clearListing(d.getMinAddress(), d.getMaxAddress());
                 disassemble(a);
@@ -127,6 +130,31 @@ public class TcOrphans extends GhidraScript {
             }
         }
         return n;
+    }
+
+    /** A table target to decode: in the entries' span, not decoded, no pointer word, data or typed data there. */
+    boolean candidate(Listing listing, FunctionManager fm, Address a, Address lo, Address hi) {
+        return a.compareTo(lo) >= 0 && a.compareTo(hi) <= 0 && !pointerWords.contains(a.getOffset() & ~3L)
+                && listing.getInstructionContaining(a) == null && fm.getFunctionContaining(a) == null
+                && !excluded.contains(a) && !loadedAsData(a) && untypedOrNone(listing, a);
+    }
+
+    /** Back over nop/zero padding, a's first predecessor is the delay slot of rts, rte, jmp @rN, bra or braf (a case
+     *  label after a `bra` lies inside its decoded switch function, so it is never a candidate). */
+    boolean followsBlockEnd(Address a) {
+        ghidra.program.model.mem.Memory mem = currentProgram.getMemory();
+        try {
+            for (Address d = a.subtract(2); mem.contains(d.subtract(2)); d = d.subtract(2)) {
+                int op = mem.getShort(d.subtract(2)) & 0xffff;
+                if (op == 0x000b || op == 0x002b || (op & 0xf0ff) == 0x402b || (op & 0xf000) == 0xa000
+                        || (op & 0xf0ff) == 0x0023) return true;
+                int here = mem.getShort(d) & 0xffff;
+                if (here != 0x0009 && here != 0x0000) return false;
+            }
+        } catch (Exception e) {
+            return false;
+        }
+        return false;
     }
 
     /** A word pointing to x (any mirror form) that is not x's own function's local computed-jump target, or null. */
