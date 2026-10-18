@@ -153,10 +153,13 @@ public abstract class TcInputs extends TcBase {
 
     // ---------- hints: oracle/hints/<addr>.txt, applied to every vector of that function ----------
     //   ptr LOC          the word at LOC holds a pointer to a fresh chunk of pointer-rich memory
-    //   range rN LO HI   rN is uniform in [LO, HI] (decimal or 0x hex)
+    //   range rN LO HI   rN is uniform in [LO, HI] (decimal or 0x hex); "genrange LOC LO HI" sets the
+    //                    word at LOC (same LOC syntax as ptr) the same way
     //   gentopbyte ADDR LEN B PCT   fill the words in [ADDR, ADDR+LEN) (e.g. a caller stack buffer that a
     //                    stubbed callee would fill): each word's top byte is B with PCT% chance, else another
     //                    value; at least one word before the last gets B, and the last word never does
+    //   genret N VAL     call N (0-based) returns VAL in r0/fr0, e.g. a callee that really preserves an r0
+    //                    holding the caller's saved PR (VAL "sentinel" is the oracle's return address)
     // LOC is rN or 0xADDR (a global), optionally followed by +0xOFF steps; each step dereferences the
     // pointer before it: "r4+0x10c" is the word at r4+0x10c, "0x8c0c78a0+0x1c8" the word at *(0x8c0c78a0)+0x1c8.
     void applyHints(Vec v, List<String> hints) {
@@ -169,10 +172,22 @@ public abstract class TcInputs extends TcBase {
                 long hi = genNum(t[3]);
                 long span = Math.max(1, hi - lo + 1);
                 v.r[Integer.parseInt(t[1].substring(1)) - 4] = (lo + (long) (rnd.nextDouble() * span)) & 0xffffffffL;
+            } else if (t[0].equals("genrange") && t.length == 4) {
+                long lo = genNum(t[2]);
+                long span = Math.max(1, genNum(t[3]) - lo + 1);
+                genPlace(v, t[1], (lo + (long) (rnd.nextDouble() * span)) & 0xffffffffL);
             } else if (t[0].equals("gentopbyte") && t.length == 5) {
                 genTopByte(v, genNum(t[1]), (int) genNum(t[2]), (int) genNum(t[3]), (int) genNum(t[4]));
+            } else if (t[0].equals("genret") && t.length == 3) {
+                int n = (int) genNum(t[1]);
+                if (n < 0 || n >= v.rets.length) throw new IllegalArgumentException("bad genret index: " + s);
+                v.rets[n] = t[2].equals("sentinel") ? SENTINEL : genNum(t[2]) & 0xffffffffL;
             } else if (t[0].equals("ptr") && t.length == 2) {
                 genSetPtr(v, t[1]);
+            } else if (t[0].equals("genscript") && t.length >= 5) {
+                long[] vals = new long[t.length - 4];
+                for (int i = 0; i < vals.length; i++) vals[i] = genNum(t[4 + i]);
+                genScript(v, t[1], (int) genNum(t[2]), genNum(t[3]), vals);
             } else {
                 throw new IllegalArgumentException("bad hint line: " + s);
             }
@@ -203,12 +218,17 @@ public abstract class TcInputs extends TcBase {
     }
 
     void genSetPtr(Vec v, String loc) {
+        genPlace(v, loc, genChunk(v, 0));
+    }
+
+    // Store val at LOC (see the hint format above); a bare rN receives val itself.
+    void genPlace(Vec v, String loc, long val) {
         String[] p = loc.split("\\+");
         long slot;
         if (p[0].matches("r[4-7]")) {
             int i = Integer.parseInt(p[0].substring(1)) - 4;
             if (p.length == 1) {
-                v.r[i] = genChunk(v, 0);
+                v.r[i] = val;
                 return;
             }
             if (!genOwned(v.r[i])) v.r[i] = genChunk(v, 0);
@@ -218,7 +238,23 @@ public abstract class TcInputs extends TcBase {
             if (p.length > 1) slot = genDeref(v, slot) + genNum(p[1]);
         }
         for (int k = 2; k < p.length; k++) slot = genDeref(v, slot) + genNum(p[k]);
-        genPoke(v, slot, genChunk(v, 0));
+        genPoke(v, slot, val);
+    }
+
+    //   genscript LOC N END V1 V2 ...   LOC points to a fresh halfword stream (a bytecode script): 0..N
+    //                    halfwords each picked from V1.., then END
+    void genScript(Vec v, String loc, int n, long end, long[] vals) {
+        long base = genChunk(v, 2L * n + 2);
+        int len = rnd.nextInt(n + 1);
+        byte[] d = new byte[2 * len + 2];
+        for (int i = 0; i <= len; i++) {
+            long h = i == len ? end : vals[rnd.nextInt(vals.length)];
+            d[2 * i] = (byte) h;
+            d[2 * i + 1] = (byte) (h >> 8);
+        }
+        v.patchAddr.add(base);
+        v.patchData.add(d);
+        genPlace(v, loc, base);
     }
 
     boolean genOwned(long a) {

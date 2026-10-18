@@ -21,6 +21,8 @@ typedef struct {
     long long offset; /* byte offset of that sector in its file */
     char path[512];
     FILE *f; /* opened on first read, kept open */
+    int audio;   /* a CD audio track (host_disc_read_audio) */
+    u32 sectors; /* its length */
 } Track;
 
 typedef struct {
@@ -61,14 +63,25 @@ static long long file_size(const char *path)
     return n;
 }
 
-static void add_track(PortDisc *d, const char *dir, const char *name, u32 lba, long long offset)
+static Track *add_track(PortDisc *d, const char *dir, const char *name, u32 lba, long long offset)
 {
-    if (d->n >= MAX_TRACKS) return;
+    if (d->n >= MAX_TRACKS) return NULL;
     Track *t = &d->t[d->n++];
     t->lba = lba;
     t->offset = offset;
     if (strchr(name, ':') || name[0] == '/' || name[0] == '\\') strncpy_s(t->path, sizeof t->path, name, _TRUNCATE);
     else _snprintf_s(t->path, sizeof t->path, _TRUNCATE, "%s%s", dir, name);
+    return t;
+}
+
+/* An audio track runs from its first sector to the end of its file. */
+static void add_audio(PortDisc *d, const char *dir, const char *name, u32 lba, long long offset)
+{
+    Track *t = add_track(d, dir, name, lba, offset);
+    if (!t) return;
+    long long size = file_size(t->path);
+    t->audio = 1;
+    t->sectors = size > offset ? (u32)((size - offset) / RAW) : 0;
 }
 
 /* .gdi: a count line, then "number lba type sector_size file offset" (file may be quoted). */
@@ -94,6 +107,7 @@ static void parse_gdi(PortDisc *d, FILE *f, const char *dir)
         off = _atoi64(*end == '"' ? end + 1 : end);
         if (lba >= HD_LBA) add_toc(d, num, lba, type == 4);
         if (type == 4 && lba >= HD_LBA && size == RAW) add_track(d, dir, name, lba, off);
+        if (type == 0 && lba >= HD_LBA && size == RAW) add_audio(d, dir, name, lba, off);
     }
 }
 
@@ -122,6 +136,7 @@ static void parse_cue(PortDisc *d, FILE *f, const char *dir)
             prev_size = file_size(path);
             add_toc(d, track, file_lba + idx, (u32)data);
             if (data) add_track(d, dir, file, file_lba + idx, (long long)idx * RAW);
+            else add_audio(d, dir, file, file_lba + idx, (long long)idx * RAW);
         }
     }
 }
@@ -162,7 +177,7 @@ static int read_sectors(PortDisc *d, u32 lba, u32 count, u8 *out)
         Track *t = NULL;
         for (int i = d->n - 1; i >= 0 && !t; i--)
             if (lba >= d->t[i].lba) t = &d->t[i];
-        if (!t) return 0;
+        if (!t || t->audio) return 0;
         u8 raw[RAW];
         if (!t->f && (fopen_s(&t->f, t->path, "rb") != 0 || !t->f)) {
             t->f = NULL;
@@ -313,6 +328,37 @@ int host_disc_list(u32 lba, u32 size, HostDirEnt *out, int max)
     if (!g_run_disc) return -1;
     int r = walk_dir(g_run_disc, lba, size, list_visit, &l);
     return r < 0 ? -1 : r == 2 ? -2 : l.n;
+}
+
+int host_disc_audio(u32 track, u32 *lba, u32 *sectors)
+{
+    const PortDisc *d = g_run_disc;
+    for (int i = 0; d && i < d->ntoc; i++) {
+        if (d->toc[i].num != track || d->toc[i].data) continue;
+        for (int k = 0; k < d->n; k++)
+            if (d->t[k].audio && d->t[k].lba == d->toc[i].lba) {
+                *lba = d->t[k].lba;
+                *sectors = d->t[k].sectors;
+                return 1;
+            }
+    }
+    return 0;
+}
+
+int host_disc_read_audio(u32 lba, u32 count, void *out)
+{
+    PortDisc *d = g_run_disc;
+    for (int i = 0; d && i < d->n; i++) {
+        Track *t = &d->t[i];
+        if (!t->audio || lba < t->lba || lba + count > t->lba + t->sectors) continue;
+        if (!t->f && (fopen_s(&t->f, t->path, "rb") != 0 || !t->f)) {
+            t->f = NULL;
+            return 0;
+        }
+        _fseeki64(t->f, t->offset + (long long)(lba - t->lba) * RAW, SEEK_SET);
+        return fread(out, RAW, count, t->f) == count;
+    }
+    return 0;
 }
 
 /* The high-density area's TOC in the GD-ROM form: toc[track - 1] = control/ADR byte (0x41 data, 0x01 audio) << 24

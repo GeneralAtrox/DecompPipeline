@@ -58,6 +58,8 @@ def inside(rows, a):
 def candidates(packets_dir, image_lo, image_hi, body_rows, functions):
     """{addr: [(user function, load address), ...]} of value-used code-region addresses that are no function."""
     out = {}
+    if not packets_dir.is_dir():  # nothing prepared yet: no listings to read
+        return out
     for d in sorted(p for p in packets_dir.iterdir() if p.is_dir()):
         text = sh4_asm.read_packet(d)
         insns = sh4_asm.parse(text) if text else []

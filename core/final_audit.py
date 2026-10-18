@@ -147,6 +147,23 @@ def check_calls(out):
     return not f["untried"], cc.summary_line(f)
 
 
+def check_proof(cfg, ws, out):
+    """The proof gates (core/proof.py): FAIL while a matched function is matched_low_coverage (the coverage gate,
+    config coverage_gate, when it enforces) or weak_harness (mutation_check mode enforce); INFO when neither
+    enforces. Lists each one with its block counts."""
+    from . import proof
+    rows = proof.scan(ws, sorted(function_sets(ws)[3]), cfg)
+    f = proof.figure(rows)
+    gate, mset = proof.coverage_settings(cfg), proof.mutation_settings(cfg)
+    for a, r in sorted(rows.items()):
+        if r["state"] != proof.VERIFIED or r["coverage"].get("waived"):
+            c = r["coverage"]
+            out.detail(f"{a} {r['state']}: " + (f"waived: {c['waived']}" if c.get("waived") else proof.describe(r)))
+    if not (gate["enforce"] or mset["mode"] == "enforce"):
+        return None, proof.summary_line(f, gate)  # report only (an existing game working down its backlog)
+    return not ((gate["enforce"] and f[proof.LOW]) or f[proof.WEAK]), proof.summary_line(f, gate)
+
+
 def check_raw_names(ws, out):
     from . import raw_names, readable
     game, _, _, _ = function_sets(ws)

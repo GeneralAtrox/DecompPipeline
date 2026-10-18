@@ -3,6 +3,10 @@
     python gdrom.py info    <image.cue|.gdi>
     python gdrom.py list    <image.cue|.gdi> [out.tsv]
     python gdrom.py extract <image.cue|.gdi> <out_dir> [NAME ...]   (default: the boot file named in IP.BIN)
+    python gdrom.py scan    <image.cue|.gdi> [out.tsv]
+        every file scored as SH-4 code (sts.l pr,@-r15 and lds.l @r15+,pr per KB): the boot file plus any overlay or second
+        program to look at; for each code file the link form (pointers into it as 0x8c... P1 or 0x0c... P0: a P0
+        program needs project.json "seed_functions": true) and the library version strings it holds
 
 Read-only on the image. The game files live in the high-density area, whose first data track starts at LBA
 45000; IP.BIN is its first 16 sectors and the ISO 9660 volume descriptor is at 45016. Directory records hold
@@ -12,6 +16,7 @@ scrambled on GD-ROM (scrambling only applies to MIL-CD boots).
 import pathlib
 import re
 import shlex
+import struct
 import sys
 
 HD_LBA = 45000
@@ -117,14 +122,56 @@ class Disc:
         return out
 
 
+SCAN_MAX = 64 << 20  # bigger files are video or archives
+CODE_PER_KB = 0.3  # sts.l pr,@-r15 + lds.l @r15+,pr words per KB: data stays under 0.1, code is above 0.5
+VERSION_RE = re.compile(rb"[ -~]{0,40}(?:\bVer(?:sion)?\b\.?\s*\d|Copyright|\(C\))[ -~]{0,60}", re.I)
+
+
+def code_score(data, base=0x8C010000):
+    """(prologue + epilogue words per KB, P1 pointers, P0 pointers, version strings) for one file's bytes."""
+    n = len(data) // 2
+    words = struct.unpack(f"<{n}H", data[:2 * n])
+    kb = max(len(data), 1) / 1024
+    score = (words.count(0x4F22) + words.count(0x4F26)) / kb
+    end = base + len(data)
+    longs = struct.unpack(f"<{len(data) // 4}I", data[:len(data) // 4 * 4])
+    p1 = sum(1 for x in longs if base <= x < end)
+    p0 = sum(1 for x in longs if base - 0x80000000 <= x < end - 0x80000000)
+    vers = sorted({m.group(0).decode("ascii").strip() for m in VERSION_RE.finditer(data)})
+    return score, p1, p0, vers
+
+
+def scan(disc, out=None):
+    boot = disc.ip()["boot_file"]
+    rows = []
+    for path, lba, size in sorted(disc.walk()):
+        if size == 0 or size > SCAN_MAX:
+            continue
+        score, p1, p0, vers = code_score(disc.read(lba, size))
+        rows.append((path, size, score, p1, p0, vers))
+    code = [r for r in rows if r[2] >= CODE_PER_KB or r[0] == boot]
+    print(f"{len(rows)} files scanned (larger than {SCAN_MAX >> 20} MB skipped); {len(code)} look like SH-4 code:")
+    for path, size, score, p1, p0, vers in sorted(code, key=lambda r: -r[2]):
+        form = "P0 (0x0c...): seed_functions" if p0 > 4 * max(p1, 1) else "P1 (0x8c...)" if p1 > 4 * max(p0, 1) else "?"
+        print(f"  {'BOOT ' if path == boot else '     '}{path:28} {size:9}  {score:5.2f}/KB  linked {form}"
+              f"  (pointers P1 {p1}, P0 {p0})")
+        for v in vers[:40]:
+            print(f"        {v}")
+    if out:
+        pathlib.Path(out).write_text("path\tsize\tcode_per_kb\tp1\tp0\n" + "".join(
+            f"{p}\t{s}\t{c:.3f}\t{a}\t{b}\n" for p, s, c, a, b, _ in rows), encoding="utf-8")
+
+
 def main(argv):
-    if len(argv) < 2 or argv[0] not in ("info", "list", "extract"):
+    if len(argv) < 2 or argv[0] not in ("info", "list", "extract", "scan"):
         raise SystemExit(__doc__)
     disc = Disc(argv[1])
     if argv[0] == "info":
         for k, v in disc.ip().items():
             print(f"{k:12} {v}")
         print(f"{'tracks':12} {[(n, lba, p.name) for n, lba, p, _ in disc.tracks]}")
+    elif argv[0] == "scan":
+        scan(disc, argv[2] if len(argv) > 2 else None)
     elif argv[0] == "list":
         rows = sorted(disc.walk())
         text = "".join(f"{size}\t{lba}\t{path}\n" for path, lba, size in rows)

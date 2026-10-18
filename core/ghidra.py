@@ -26,10 +26,16 @@ def _env(cfg):
     return env
 
 
-def _headless(cfg, args, log_name, on_line=None, stop_flag=None, project=None):
+def whole_timeout(cfg):
+    """Seconds for a whole-program Ghidra run (setup, catalog, seed, graph): "ghidra_setup_timeout_s", else at least an
+    hour. "ghidra_timeout_s" bounds one function's prepare, far too short to analyse a large boot file."""
+    return int(cfg.get("ghidra_setup_timeout_s") or max(3600, int(cfg["ghidra_timeout_s"])))
+
+
+def _headless(cfg, args, log_name, on_line=None, stop_flag=None, project=None, timeout=None):
     exe = os.path.join(toolcfg.need(cfg, "ghidra_home"), "support", "analyzeHeadless.bat" if os.name == "nt" else "analyzeHeadless")
     cmd = [exe, str(project or paths.GHIDRA_PROJECT), paths.GHIDRA_NAME] + args
-    rc, out, reason = paths.run_bounded(cmd, cfg["ghidra_timeout_s"], env=_env(cfg), on_line=on_line, stop_flag=stop_flag)
+    rc, out, reason = paths.run_bounded(cmd, timeout or cfg["ghidra_timeout_s"], env=_env(cfg), on_line=on_line, stop_flag=stop_flag)
     paths.STATE.mkdir(parents=True, exist_ok=True)
     (paths.STATE / log_name).write_text(out, encoding="utf-8")
     if reason:
@@ -66,8 +72,8 @@ def _fixups():
     (whole spans between two functions that decode as routines ending in rts, plus their tail-jump stubs) become
     functions (state/run_functions.tsv). TcOrphans:
     functions for instructions in no function that are referenced from outside or start a prologue
-    (state/orphan_functions.tsv). TcPrune: functions whose code runs into non-instructions are data seeded as code,
-    removed (state/pruned_functions.tsv lists them).
+    (state/orphan_functions.tsv). TcPrune: functions whose code runs into non-instructions, and literal-pool words that
+    decode as code, are data seeded as code, removed (state/pruned_functions.tsv lists them).
     TcSwitch: switch cases (and the slots of a jump into an unrolled sled) Ghidra left outside their function become
     part of it (state/switch_tables.tsv lists every table dispatch found). TcCont: the code a callee returns into after the function set PR to it before a tail jump
     (a PR continuation) is decoded, and its part in no function joins the function's body (state/pr_continuations.tsv
@@ -110,7 +116,7 @@ def setup(cfg, force=False):
         "-loader-baseAddr", cfg["load_address"], "-scriptPath", str(paths.sync_scripts()),
         "-preScript", "TcSetup.java", *cfg.get("image_gaps", []), *(["-postScript", "TcSeed.java"] if cfg.get("seed_functions") else []),
         *_fixups(), "-postScript", "TcCatalog.java", str(paths.CATALOG), str(paths.CODE_RANGES), str(paths.FUNCTION_BODIES),
-    ], "ghidra_setup.log")
+    ], "ghidra_setup.log", timeout=whole_timeout(cfg))
 
 
 def catalog(cfg):
@@ -119,7 +125,7 @@ def catalog(cfg):
     _headless(cfg, [
         "-process", cfg["binary_path"].name, "-noanalysis", "-scriptPath", str(paths.sync_scripts()),
         *_fixups(), "-postScript", "TcCatalog.java", str(paths.CATALOG), str(paths.CODE_RANGES), str(paths.FUNCTION_BODIES),
-    ], "ghidra_setup.log")
+    ], "ghidra_setup.log", timeout=whole_timeout(cfg))
 
 
 def seed(cfg):
@@ -128,7 +134,7 @@ def seed(cfg):
     _headless(cfg, [
         "-process", cfg["binary_path"].name, "-scriptPath", str(paths.sync_scripts()), "-postScript", "TcSeed.java",
         *_fixups(), "-postScript", "TcCatalog.java", str(paths.CATALOG), str(paths.CODE_RANGES), str(paths.FUNCTION_BODIES),
-    ], "ghidra_seed.log")
+    ], "ghidra_seed.log", timeout=whole_timeout(cfg))
 
 
 def graph(cfg):
@@ -136,7 +142,7 @@ def graph(cfg):
     _headless(cfg, [
         "-process", cfg["binary_path"].name, "-noanalysis", "-scriptPath", str(paths.sync_scripts()),
         "-postScript", "TcGraph.java", str(paths.STATE / "graph.tsv"),
-    ], "ghidra_graph.log")
+    ], "ghidra_graph.log", timeout=whole_timeout(cfg))
 
 
 def export(cfg, addrs, out):

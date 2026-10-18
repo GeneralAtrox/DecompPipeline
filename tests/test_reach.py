@@ -110,6 +110,26 @@ class AuditCheck(unittest.TestCase):
         self.assertIn("1 explained by the reach pass, 0 untried", text)
 
 
+class DoctorAnyWorkspace(unittest.TestCase):
+    """tools/doctor.py --project reads the figure from that workspace, with no current project (it crashed in
+    core.paths for every workspace but the one in DECOMP_PROJECT or the cwd)."""
+
+    def test_no_current_project(self):
+        import os
+        import subprocess
+        from test_retire import A, make_ws
+        ws = make_ws("doctor")
+        harness(ws / "harness", {A: OLD})
+        env = {k: v for k, v in os.environ.items() if k != "DECOMP_PROJECT"}
+        tool = pathlib.Path(__file__).resolve().parents[1] / "tools/doctor.py"
+        with tempfile.TemporaryDirectory(dir=TMP) as cwd:
+            p = subprocess.run([sys.executable, str(tool), "--project", str(ws), "--json"], cwd=cwd, env=env,
+                               capture_output=True, text=True, timeout=120)
+        self.assertNotIn("Traceback", p.stderr)
+        cov = json.loads(p.stdout)[str(ws.resolve())]["call_coverage"]
+        self.assertEqual((cov["sites"], cov["untried"]), (3, 2))
+
+
 class Verdict(unittest.TestCase):
     def finish(self, summary):
         res = {"stage": "compare", "failing": 0, "vectors": {"dev": {"total": 48}, "hidden": {"total": 48}},

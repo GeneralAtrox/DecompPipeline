@@ -28,7 +28,7 @@ GAME = {"name": "Fixture Game", "decomp": "../decomp", "entry": {"name": "Fx_Mai
 GUEST_CODE = re.compile(r"(?<![0-9a-fA-F])[08]c[0-9a-f]{6}(?![0-9a-fA-F])", re.I)
 ALLOWED_ADDRS = {"8c000000", "0c000000"}  # guest RAM and its P0 mirror
 GAME_WORDS = ("Toy Commander", "ToyCommander", "1GUTH", "Spawn", "Game_Main")
-CODE = {".c", ".h", ".py", ".txt"}
+CODE = {".c", ".h", ".cpp", ".hpp", ".hlsl", ".py", ".txt"}
 
 
 def kit_files(kit=KIT):
@@ -97,13 +97,38 @@ class GameConfig(unittest.TestCase):
         self.assertIn('  "W:/r/src/8c011000.c"', cm)
         self.assertIn(f'  "{(KIT / "sdk" / "sy_heap.c").as_posix()}"', cm)
         self.assertIn(f'  "{(self.dir / "src" / "own.c").resolve().as_posix()}"', cm)
+        cm = game_config.port_files_cmake(cfg, pathlib.Path("W:/r/src"), ["8c011000"], pathlib.Path("W:/r/include"),
+                                          pathlib.Path("W:/rt"), {"8c011000": ["Fx_Draw=Fx_DrawWrap"]})
+        self.assertIn('set_source_files_properties("W:/r/src/8c011000.c" PROPERTIES COMPILE_DEFINITIONS '
+                      '"Fx_Draw=Fx_DrawWrap")', cm)
+
+    def test_wrap(self):
+        self.assertEqual(self.load(wrap={"0x8C011800": "Fx_DrawWrap"})["wrap"], {"8c011800": "Fx_DrawWrap"})
+        for over in ({"wrap": {"8c011800": "1bad"}}, {"wrap": {"8c012000": "Fx_Hw2"}}):
+            with self.subTest(over=over), self.assertRaises(SystemExit):
+                self.load(**over)
+        src = self.dir / "rsrc"
+        src.mkdir()
+        (src / "8c011000.c").write_text("void Fx_Main(void) { Fx_Draw(); }\n", encoding="utf-8")
+        (src / "8c011800.c").write_text("void Fx_Draw(void) { Fx_Draw2(); }\n", encoding="utf-8")
+        (src / "8c011900.c").write_text("void Fx_Other(void) { Fx_Drawn(); }\n", encoding="utf-8")
+        names = {"8c011000": "Fx_Main", "8c011800": "Fx_Draw", "8c011900": "Fx_Other"}
+        files = sorted(names)
+        got = gen_port.wrap_defines(src, files, {"8c011800": "Fx_DrawWrap"}, names, {"Fx_DrawWrap"})
+        self.assertEqual(got, {"8c011000": ["Fx_Draw=Fx_DrawWrap"]})  # not its own file, not Fx_Drawn
+        with self.assertRaises(SystemExit):  # the game's sources must define the wrapper
+            gen_port.wrap_defines(src, files, {"8c011800": "Fx_DrawWrap"}, names, set())
+        self.assertEqual(gen_port.wrapper_proto("void Fx_Draw(void);", "Fx_Draw", "Fx_DrawWrap"),
+                         "void Fx_DrawWrap(void);")
 
     def test_defined_names(self):
         f = self.dir / "src" / "defs.c"
         f.write_text("s32 Fx_Open(const char *name)\n{\n    return 0;\n}\nstatic void helper(void) {}\n"
-                     "void *Fx_Alloc(u32 size) { return 0; }\n    s32 indented(void);\nu32 proto_only(void);\n",
-                     encoding="utf-8")
-        self.assertEqual(gen_port.defined_names([f]), {"Fx_Open", "Fx_Alloc"})  # not proto_only
+                     "void *Fx_Alloc(u32 size) { return 0; }\n    s32 indented(void);\nu32 proto_only(void);\n"
+                     "s32 Fx_Long(u32 a,\n            u32 b)\n{\n    return 0;\n}\nu32 long_proto(u32 a,\n"
+                     "               u32 b);\n", encoding="utf-8")
+        # not the prototypes; a parameter list may run over lines
+        self.assertEqual(gen_port.defined_names([f]), {"Fx_Open", "Fx_Alloc", "Fx_Long"})
 
 
 class KitIsGameFree(unittest.TestCase):
@@ -135,11 +160,29 @@ class RuntimeCompiles(unittest.TestCase):
         try:
             (d / "port_config.h").write_text(game_config.port_config_h(
                 {"name": "Fixture", "entry": {"name": "Fx_Main", "addr": "8c011000"}, "image_base": "8c010000",
-                 "boot_file": "", "console": None}), encoding="utf-8")
+                 "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}), encoding="utf-8")
             srcs = " ".join(f'"{p}"' for p in sorted((KIT / "runtime").glob("*.c")))
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
             cl = (f'cl /nologo /c /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
-                  f'/I"{rd}" {srcs}')
+                  f'/I"{KIT / "host"}" /I"{rd}" {srcs}')
+            vc = str(game_config.vcvars32()).replace("/", "\\")
+            r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
+                               errors="replace", timeout=300)
+            self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-1000:])
+            self.assertNotIn("warning", r.stdout.lower())
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_host_w4_wx(self):
+        """The C++ host files compile at the port's C++ flags with zero warnings. Those that include SDL3 need the
+        game build's vcpkg headers (manifest mode), so the build checks them, as it does runtime/gfx."""
+        d = pathlib.Path(tempfile.mkdtemp(dir=TOOL / "tests" / ".work" if (TOOL / "tests" / ".work").is_dir() else None))
+        try:
+            files = [p for p in sorted((KIT / "host").glob("*.cpp")) if "<SDL3/" not in p.read_text(encoding="utf-8")]
+            self.assertTrue(files)
+            srcs = " ".join(f'"{p}"' for p in files)
+            cl = (f'cl /nologo /c /std:c++20 /W4 /WX /permissive- /utf-8 /EHsc /arch:SSE2 /DNOMINMAX '
+                  f'/DWIN32_LEAN_AND_MEAN /O2 /I"{KIT / "host"}" {srcs}')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
                                errors="replace", timeout=300)

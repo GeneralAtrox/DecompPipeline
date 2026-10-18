@@ -58,6 +58,7 @@ static void log_call(u32 target, const u32 r[4], const u32 fr[8], const u32 st[8
         for (int i = 0; i < 4; i++) rec[25 + i] = rd_self_guest(lo[i]);
         rd_sh4_log(rec, fr);
     }
+    rd_sh4_live(target, g_ncalls); /* after the record: the callee saw the old rN */
     g_ncalls++;
 }
 

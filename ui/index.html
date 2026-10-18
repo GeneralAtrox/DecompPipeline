@@ -200,9 +200,12 @@ function renderKpis(o) {
   const k = [
     [o.matched + " / " + o.eligible, "functions matched"],
     [pct(o.bytes_matched, o.bytes_total), o.extra_functions ? "game + extra code bytes matched" : "game code bytes matched"],
+    [(o.verified ?? "?") + " / " + o.matched, "matched and verified (proof gates)"],
+    [o.matched_low_coverage ?? "?", "matched, low coverage (original's blocks under the gate: not verified)"],
     [o.failed, "failed"], [o.skipped, "skipped (unsupported / weak oracle)"],
     [o.remaining, "remaining eligible"], [fmtUsd(o.cost_usd) + (o.budget_usd ? " / " + fmtUsd(o.budget_usd) : ""), "API-equivalent usage (not billed on a subscription)" + (o.budget_usd ? " / cap" : "")],
   ];
+  if (o.weak_harness) k.push([o.weak_harness, "weak harness (mutation score below the minimum: not verified)"]);
   if (o.retire_pending) k.push([o.retire_pending, "removed functions with artefacts left: not complete until tools/retire.py runs"]);
   $("kpis").replaceChildren(...k.map(([v, l]) => el("div", { class: "kpi" }, el("b", {}, v), el("span", {}, l))));
   $("bar").style.width = o.eligible ? (100 * o.matched / o.eligible) + "%" : "0";

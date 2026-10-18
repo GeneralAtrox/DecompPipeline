@@ -11,6 +11,11 @@ A register counts when it is unwritten on some path from the entry to a call (a 
 unresolved jmp in its delay slot's flow) and the callee's names prototype takes it (a parameter not named unused*).
 After a call the argument registers count as written (caller-saved). Float registers are skipped in a function that
 switches FPU banks or modes.
+
+A float parameter can also reach a callee that does not take it: Xmtrx_Scale(f32 scale, ...) is a tail call to a
+helper that calls the loader it is given, and the loader reads fr4. On the console the register carries it; the port
+passes arguments in C only, so the readable function has to write the register (sh4_set_fr) before that call
+(scan(carry=True), context_lines).
 """
 from .readable import parse_proto  # first: core.readable imports readable_abi back
 from . import readable_abi, sh4_asm  # noqa: E402
@@ -33,9 +38,10 @@ def takes(reg, addr, reads_only=False):
     return {s for s, (_, n) in zip(st, params) if s in ARGS and not (reads_only and n.lower().startswith("unused"))}
 
 
-def scan(insns, reg, entry):
+def scan(insns, reg, entry, carry=False):
     """{register: ("read", None) | ("to", callee addr)}: argument registers some path from entry reads before writing,
-    or passes unwritten to a callee that takes them (the first finding per register)."""
+    or passes unwritten to a callee that takes them (the first finding per register). carry: also ("carry", callee
+    addr or None) for a float argument register unwritten at a call whose callee does not take it."""
     flow = sh4_asm.Flow(insns)
     floats = not any(x.mn in MODE for x in insns)
     found, seen = {}, {}
@@ -60,9 +66,12 @@ def scan(insns, reg, entry):
         br = insns[i - 1] if x.slot and i > 0 and insns[i - 1].mn in sh4_asm.DELAYED else None
         if br is not None and (br.mn in sh4_asm.CALLS or br.call_target() or (br.mn == "jmp" and succ is None)):
             tgt = br.call_target()
-            for r in cur & ((takes(reg, tgt, True) if tgt else None) or set()):
-                if floats or r.startswith("r"):
+            taken = (takes(reg, tgt, True) if tgt else None) or set()
+            for r in sorted(cur):
+                if r in taken and (floats or r.startswith("r")):
                     found.setdefault(r, ("to", tgt))
+                elif carry and floats and r.startswith("fr"):
+                    found.setdefault(r, ("carry", tgt))
             if br.mn in sh4_asm.CALLS:
                 cur = set()
         for j, _ in succ or ():
@@ -71,10 +80,10 @@ def scan(insns, reg, entry):
     return found
 
 
-def for_function(reg, addr, packets_dir):
+def for_function(reg, addr, packets_dir, carry=False):
     """scan() of addr's packet asm, or {} without one."""
     text = sh4_asm.read_packet(packets_dir / addr)
-    return scan(sh4_asm.parse(text), reg, int(addr, 16)) if text else {}
+    return scan(sh4_asm.parse(text), reg, int(addr, 16), carry) if text else {}
 
 
 def context_lines(reg, addr, params, storages, raw_regs, packets_dir):
@@ -86,8 +95,14 @@ def context_lines(reg, addr, params, storages, raw_regs, packets_dir):
         if s in raw_regs or s not in ARGS:
             continue
         if found is None:
-            found = for_function(reg, addr, packets_dir)
+            found = for_function(reg, addr, packets_dir, carry=True)
         how = found.get(s)
+        if how and how[0] == "carry" and not n.lower().startswith("unused"):
+            e = reg.functions.get(how[1]) if how[1] else None
+            callee = parse_proto(e["proto"])[1] if e else (f"0x{how[1]}" if how[1] else "the callee")
+            out.append(f"  NOTE: the original never writes {s} before calling {callee}, which does not take it as a "
+                       f"parameter: `{n}` reaches it (or a function it calls) in {s}. The port passes arguments in C "
+                       f"only, so write `sh4_set_fr({s[2:]}, {n});` before that call, never `(void){n}`.")
         if how and how[0] == "to":
             callee = parse_proto(reg.functions[how[1]]["proto"])[1]
             out.append(f"  NOTE: the original never writes {s} before calling {callee}: it passes `{n}` on unchanged "

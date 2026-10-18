@@ -10,6 +10,9 @@
 
 void Shc_BlockCopy(u32 size, void *dst, const void *src) { memmove(dst, src, size); }
 
+/* A second copy of the SHC library's memcpy, linked into Duck's movie library (FID memcpy, sh4nlfzz). */
+void *Sdk_MemCpyDuck(void *dst, const void *src, u32 n) { return memmove(dst, src, n); }
+
 /* SH-4 shld by a register: a count >= 0 shifts left by count & 31; a negative one shifts right (logical) by
  * 32 - (count & 31), or clears the word when count & 31 is 0. */
 static u32 shld(u32 value, s32 count)

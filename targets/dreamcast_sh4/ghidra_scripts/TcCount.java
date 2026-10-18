@@ -12,7 +12,11 @@
 // it moved away from (a counter that started at that value). Each such count becomes a small value (1..8), kept so
 // through the vector's later pointer repairs (Cuts), and the vector runs again. A count the code transforms before
 // comparing (scaled, shifted) is not found: the function is then refused as before, with the loop's compare
-// addresses in the reason.
+// addresses in the reason, with one exception (zeroCut): a `dt` counter the window saw coming down from near 2^32
+// was a count of 0 when its loop began, and wrapped (Toy Commander's Duck TM2X block handlers, 8c09d820: r5 = the
+// sum of two input bytes >> 1, then `dt r5` to zero). On real data such a count is never 0. Zero counts come from
+// zero bytes, so when nothing else was cut, the run's first byte and halfword input loads that read 0 or 1 get 2..9
+// (in RAM below the stack; bytes no patch holds get a patch of their own), kept as cuts.
 import ghidra.app.emulator.EmulatorHelper;
 import ghidra.program.model.listing.*;
 import java.math.BigInteger;
@@ -27,6 +31,7 @@ public class TcCount {
 
     // compare address -> register -> {first value, last value} over the window
     final Map<Long, Map<Integer, long[]>> ops = new TreeMap<>();
+    final Set<Long> dts = new TreeSet<>();  // the watched compares that are dt
 
     void observe(EmulatorHelper emu, List<Instruction> step) {
         for (Instruction in : step) {
@@ -34,6 +39,7 @@ public class TcCount {
             if (!m.matches() || m.group(3).contains("#")) continue;
             Matcher r = REG.matcher(m.group(3));
             Map<Integer, long[]> at = ops.computeIfAbsent(in.getAddress().getOffset(), k -> new TreeMap<>());
+            if (m.group(1).equals("dt")) dts.add(in.getAddress().getOffset());
             while (r.find()) {
                 int n = Integer.parseInt(r.group(1));
                 long v = new BigInteger(1, emu.readRegister("r" + n).toByteArray()).longValue() & 0xffffffffL;
@@ -132,6 +138,36 @@ public class TcCount {
             if (!isCount(v.r[i], 32, steps)) continue;
             v.r[i] = 1 + h.nextInt(SMALL);
             cuts.regs.put(i, v.r[i]);
+            any = true;
+        }
+        return any || (wrapped() && zeroCut(v, r, h, cuts));
+    }
+
+    // A dt counter the window saw coming down from near 2^32: its loop began at a count of 0 and wrapped.
+    boolean wrapped() {
+        for (long a : dts) {
+            for (long[] fl : ops.get(a).values()) if (fl[0] >= 0x80000000L && fl[1] < fl[0]) return true;
+        }
+        return false;
+    }
+
+    // The zero counts' bytes (class comment): the run's first byte and halfword input loads reading 0 or 1 get 2..9.
+    static boolean zeroCut(TcInputs.Vec v, TcOracle.Result r, Random h, Cuts cuts) {
+        boolean any = false;
+        for (long[] ld : r.firstLoads) {
+            long addr = ld[1];
+            int size = (int) ld[2];
+            if ((size != 1 && size != 2) || cuts.words.containsKey(addr) || addr < TcBase.RAM_LO
+                || addr + size > TcBase.STACK_LO) continue;
+            int[] p = patchAt(v, addr, size);
+            if ((ld[3] & (size == 1 ? 0xffL : 0xffffL)) > 1) continue;  // what the run read there
+            if (p == null) {  // not an input yet: give the bytes a patch of their own
+                v.patchAddr.add(addr);
+                v.patchData.add(new byte[size]);
+            }
+            long c = 2 + h.nextInt(SMALL);
+            put(v, addr, size, c);
+            cuts.words.put(addr, new long[] {c, size});
             any = true;
         }
         return any;

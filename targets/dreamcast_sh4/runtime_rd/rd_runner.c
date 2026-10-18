@@ -79,6 +79,13 @@ int main(int argc, char **argv)
     while (fgets(line, sizeof line, in)) {
         if (line[0] == 'P') { /* entry FPSCR, before the first vector (TcVectors.fpscrLine) */
             tcrt_set_fpscr((u32)strtoul(line + 1, NULL, 16));
+        } else if (line[0] == 'K') { /* a callee changing r8..r14, before the first vector (TcLive) */
+            char *p = line + 1;
+            u32 t = (u32)strtoul(p, &p, 16), reg = (u32)strtoul(p, &p, 10), n = (u32)strtoul(p, &p, 10), d[4] = {0};
+            for (u32 i = 0; i < n && i < 4; i++) d[i] = (u32)strtoul(p, &p, 16);
+            tcrt_add_live(t, reg, n, d);
+        } else if (line[0] == 'S') { /* a state pointer into the store-queue window, before the first vector (TcSq) */
+            tcrt_set_sq_window();
         } else if (line[0] == 'V') {
             char set[16] = {0};
             sscanf_s(line + 2, "%d %15s", &id, set, (unsigned)sizeof set);
@@ -115,6 +122,11 @@ int main(int argc, char **argv)
             char *p = line + 1;
             for (int i = 0; i < 7; i++) gs[i] = (u32)strtoul(p, &p, 16);
             has_gs = 1;
+        } else if (line[0] == 'A') { /* after V's reset: the draws for the K callees' deltas */
+            char *p = line + 1;
+            u32 dr[16];
+            for (int i = 0; i < 16; i++) dr[i] = (u32)strtoul(p, &p, 16);
+            tcrt_set_draws(dr);
         } else if (line[0] == 'Q') {
             char *p = line + 1;
             for (int i = 0; i < 16; i++) fq[i] = (u32)strtoul(p, &p, 16);

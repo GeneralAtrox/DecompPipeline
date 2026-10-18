@@ -6,6 +6,7 @@
 #include <string.h>
 #include <xmmintrin.h>
 #include "port.h"
+#include "platform.h"
 
 #define MODE_FR 0x00200000u
 #define MODE_SZ 0x00100000u
@@ -17,8 +18,23 @@ static u32 g_mode;  /* FPSCR.FR | SZ | PR in their FPSCR bit positions */
 static u32 g_gs[7]; /* r8..r14 */
 static u32 (*g_fsca)[2];
 
-static u32 f2u(f32 f) { u32 u; memcpy(&u, &f, 4); return u; }
-static f32 u2f(u32 u) { f32 f; memcpy(&f, &u, 4); return f; }
+/* Unions, not memcpy: the kit builds with the judge's /O1, which has no /Oi, so a memcpy here is a CRT call. */
+typedef union {
+    u32 u;
+    f32 f;
+} Bits;
+static u32 f2u(f32 f)
+{
+    Bits b;
+    b.f = f;
+    return b.u;
+}
+static f32 u2f(u32 u)
+{
+    Bits b;
+    b.u = u;
+    return b.f;
+}
 
 s32 sh4_ftrc(f32 x)
 {
@@ -121,6 +137,15 @@ u32 sh4_r(int i) { return (i >= 8 && i < 15) ? g_gs[i - 8] : 0; }
 void sh4_set_r(int i, u32 v)
 {
     if (i >= 8 && i < 15) g_gs[i - 8] = v;
+}
+
+/* The register state an in-between frame (frame_extra.c) must leave as it found it. */
+void sh4_rt_extra_state(void)
+{
+    port_extra_state(g_xf, sizeof g_xf);
+    port_extra_state(g_fr, sizeof g_fr);
+    port_extra_state(&g_mode, sizeof g_mode);
+    port_extra_state(g_gs, sizeof g_gs);
 }
 
 static f32 round_f32(double x) { return (f32)x; } /* to nearest: the table is built before the game's mode is set */

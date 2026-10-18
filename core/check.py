@@ -7,6 +7,8 @@ import json
 import pathlib
 import re
 import shutil
+import threading
+import time
 
 from . import paths, toolcfg
 from .compare import (IMAGE_BASE, REG_INDEX, SP, STACK_LO, Memory, _f, compare_vector, is_nan,  # noqa: F401
@@ -14,6 +16,50 @@ from .compare import (IMAGE_BASE, REG_INDEX, SP, STACK_LO, Memory, _f, compare_v
 from .lint import lint
 
 MINMAX = re.compile(r"^\s+v?(min|max)[sp][sd]\s", re.M)  # x64 listing: SSE/AVX float min and max
+OUTPUT_CAP_MIN = 16 << 20  # the runner's result file: at most max(16 MB, 8 x expected.txt) (run_runner)
+
+
+def output_cap(harness):
+    try:
+        return max(OUTPUT_CAP_MIN, 8 * (pathlib.Path(harness) / "expected.txt").stat().st_size)
+    except OSError:
+        return OUTPUT_CAP_MIN
+
+
+def run_runner(cmd, timeout, out, cap):
+    """Run a runner whose result file is out, bounded in time (timeout) and in output (cap bytes).
+
+    C that writes across the whole guest RAM in a loop keeps the runner bounded, but its result file grows to GBs,
+    and parsing that for the compare would take GBs of memory. Past the cap the runner is stopped (its tree killed)
+    and out emptied, so every vector fails. Returns run_bounded's (rc, log, reason)."""
+    out = pathlib.Path(out)
+    out.unlink(missing_ok=True)  # a stale result must not trip the cap (nor be compared)
+    over, done = threading.Event(), threading.Event()
+
+    def watch():
+        while not done.wait(0.1):
+            try:
+                if out.stat().st_size > cap:
+                    over.set()
+                    return
+            except OSError:
+                pass
+    t = threading.Thread(target=watch, daemon=True)
+    t.start()
+    try:
+        rc, log, reason = paths.run_bounded(cmd, timeout, stop_flag=over)
+    finally:
+        done.set()
+        t.join()
+    if over.is_set():
+        for _ in range(50):  # the killed runner may hold the file a moment longer
+            try:
+                out.write_text("", encoding="utf-8")
+                break
+            except OSError:
+                time.sleep(0.1)
+        reason = f"output over {cap >> 20} MB"
+    return rc, log, reason
 
 
 def gen_thunk(meta):
@@ -144,7 +190,7 @@ def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harn
     which = sets[0] if len(sets) == 1 else "all"
     cmd = [str(build_dir / "runner.exe"), str(cfg["binary_path"]), str(paths.CODE_RANGES), str(paths.FSCA_TABLE),
            str(harness / "vectors.txt"), which, str(out)]
-    rc, log, reason = paths.run_bounded(cmd, cfg["check_timeout_s"])
+    rc, log, reason = run_runner(cmd, cfg["check_timeout_s"], out, output_cap(harness))
     if reason:
         result["run_error"] = f"runner {reason} (an infinite loop in your code?)"
     elif rc != 0:

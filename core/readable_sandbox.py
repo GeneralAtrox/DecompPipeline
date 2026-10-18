@@ -9,7 +9,8 @@ import os
 import shutil
 import stat
 
-from . import agent_cli, global_extents, header_snapshot, paths, readable, readable_abi, readable_lean, readable_stack
+from . import agent_cli, asm_pool, check, global_extents, header_snapshot, paths, readable, readable_abi, readable_lean
+from . import readable_stack
 from . import readable_check as rcheck
 from .readable_context import context_md
 
@@ -143,7 +144,9 @@ def build_sandbox(cfg, reg, addr, meta, prev_work, previous_text):
     (box / "types.h").write_text(TYPES_STUB, encoding="utf-8")  # batch 25: the types are shown once, in context.md
     (box / "index.txt").write_text(lean["index.txt"], encoding="utf-8")
     shutil.copyfile(rcheck.RUNTIME_RD / "rd_rt.h", box / "rd_rt.h")
-    (box / "raw.c").write_text(readable_stack.annotate_raw(raw_text, reg, addr, meta), encoding="utf-8")
+    raw_box = readable_stack.annotate_raw(raw_text, reg, addr, meta)  # zero pool placeholders: the image's word
+    raw_box = asm_pool.fill_raw(raw_box, cfg["binary_path"].read_bytes(), check.IMAGE_BASE, int(addr, 16))
+    (box / "raw.c").write_text(raw_box, encoding="utf-8")
     (box / "context.md").write_text(context_md(reg, addr, meta, cfg, raw_text, lean["types_body"], sigs, ext),
                                     encoding="utf-8")
     proto = reg.proto(addr, meta)

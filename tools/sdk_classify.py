@@ -1,6 +1,6 @@
 """Classify a game's library functions as SDK, engine or unknown from FID results (tools/sdk_fid.py apply).
 
-usage: python tools/sdk_classify.py --project WS --fid DIR [--out DIR] [--watch RX]
+usage: python tools/sdk_classify.py --project WS --fid DIR [--out DIR] [--watch RX] [--from WS2 ...]
 
 DIR holds tc_fid.tsv and graph.tsv (both written by `sdk_fid.py apply`). Writes, into --out (default DIR):
   classify.tsv          one row per library function (addr >= project.json game_end): class, reason, evidence
@@ -14,6 +14,9 @@ Rules, in order (the reason column names the one that decided):
      (a linker places an object's functions together), or `library`: from two objects of the same SDK library.
   3. named: the SDK registry names it and it is not a Lib_* (designers' engine guess) name.
   4. callers: every function that calls it or takes its address is SDK (repeated until nothing changes).
+  5. project (--from WS2, repeatable): byte-identical (xproject.py's exact match) to a function WS2 does not
+     decompile (above its game_end, not in its extra_functions): a library the SDK release lacks (the NAOMI
+     LIBRARY, network and sound layers) that an earlier game already sorted.
   Then engine: reached from the game without passing an SDK function, and not hardware (catalog hw_refs/sys_ops);
   unknown: everything else (hardware ones reached from the game say so).
 --watch RX: registry names to report one by one (e.g. the Lib_* functions next to Kamui's code).
@@ -25,6 +28,7 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+sys.path.insert(1, str(pathlib.Path(__file__).resolve().parents[1]))
 import sdk_fid_lib as L  # noqa: E402
 from sdk_fid import project_names  # noqa: E402
 
@@ -112,18 +116,30 @@ def main(argv):
     ap.add_argument("--fid", required=True)
     ap.add_argument("--out")
     ap.add_argument("--watch")
+    ap.add_argument("--from", dest="others", action="append", default=[],
+                    help="an earlier workspace: its library functions, byte-identical here, are SDK (rule 5)")
     a = ap.parse_args(argv)
     ws, fdir = pathlib.Path(a.project), pathlib.Path(a.fid)
     out = pathlib.Path(a.out or fdir)
     game_end = int(json.loads((ws / "project.json").read_text(encoding="utf-8"))["game_end"], 16)
     cat = {f["addr"]: f for f in json.loads((ws / "state" / "catalog.json").read_text(encoding="utf-8"))["functions"]}
     names = project_names(ws)
-    sdk_reg = set(json.loads((ws / "readable" / "names" / "SDK.json").read_text(encoding="utf-8"))["functions"])
+    reg = ws / "readable" / "names" / "SDK.json"  # the design stage writes it: a new game has none yet
+    sdk_reg = set(json.loads(reg.read_text(encoding="utf-8"))["functions"]) if reg.exists() else set()
     fid = {r["addr"]: r for r in L.read_tsv(fdir / "tc_fid.tsv")}
     edges = read_graph(fdir / "graph.tsv")
     lib = sorted(x for x in cat if int(x, 16) >= game_end)
     game = [x for x in cat if int(x, 16) < game_end]
     cls = classify(lib, fid, names, sdk_reg, edges, game, game_end)
+    if a.others:
+        from core import xmatch
+        here = xmatch.Image(ws)
+        for other in a.others:
+            old = xmatch.Image(other)
+            for x, m in xmatch.match(old, here).items():
+                if x in cat and int(x, 16) >= game_end and x not in cls and m["kind"] == "exact" \
+                        and not old.in_scope(m["from"]):
+                    cls[x] = ("sdk", "project", f"byte-identical to {m['from']}, a library function of {other}")
     sdk = {x for x, c in cls.items() if c[0] == "sdk"}
     reached = reach(game, edges, sdk, game_end)
     named_sdk = {x for x in sdk_reg if not names.get(x, "").startswith("Lib_")}

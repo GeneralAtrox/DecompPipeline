@@ -45,8 +45,12 @@ public abstract class TcBase extends GhidraScript {
     // Main RAM is also visible at 0x0c... (P0); with the MMU off it is the same bytes. Some games are linked to run
     // there: every address is compared in its 0x8c... form. Only P0 folds: the other segments (0x2c..., 0xac...) are
     // what random input pointers look like, and must keep faulting as before (harnesses of other games unchanged).
+    // With sqWindow (TcFold, a TcSq function's runs), the store-queue window folds too: onto RAM, as in the port.
+    static boolean sqWindow;
+
     static long fold(long v) {
         v &= 0xffffffffL;
+        if (sqWindow && TcSq.in(v)) return TcSq.ram(v);
         return (v >= 0x0c000000L && v < 0x0d000000L) ? (v | 0x80000000L) : v;
     }
 
@@ -164,6 +168,8 @@ public abstract class TcBase extends GhidraScript {
     static final int PASS_DEPTH = TcSig.PASS_DEPTH;
     TcFacts facts = TcFacts.defaults(); // TcPrepare loads the target's (script arg 9)
     TcSig sig;
+    TcLive live; // TcPrepare: the callees' changes of r8..r14, applied at mocked calls (TcOracle), or null
+    TcSq sq;     // TcPrepare: the store queues, for a function sending a state pointer's queue (pref @rN), or null
 
     Proto prototypeOf(DecompInterface di, Function f) {
         return prototypeOf(di, f, PASS_DEPTH);

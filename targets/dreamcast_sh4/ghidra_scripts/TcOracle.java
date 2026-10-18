@@ -1,7 +1,7 @@
 // The emulator oracle: runs the ORIGINAL code in Ghidra's p-code emulator (patched SuperH4:LE:32:tcfix
 // language) on inputs from TcInputs. LOCKED: the watcher agent may not change this file. Extended by TcVectors.
 // Helpers: TcFold (the RAM mirror), TcLoads (the load log and rule R8), TcFpu and TcRound (FPSCR.DN and RM), TcPair
-// (64-bit fmov pairs, TcFacts.fpuState).
+// (64-bit fmov pairs, TcFacts.fpuState), TcLive and TcSq (the callees' changes of r8..r14, the store queues).
 
 import ghidra.app.emulator.EmulatorHelper;
 import ghidra.pcode.emulate.BreakCallBack;
@@ -37,10 +37,11 @@ public abstract class TcOracle extends TcInputs {
         long storeBase = -1;              // storeFaults: the base register's value at the store outside RAM
         List<long[]> loads = new ArrayList<>(); // last LOAD_LOG loads: {pc, effective address, size, value}
         long outside = -1;                // a non-call address outside the body that the run reached
-        List<long[]> firstLoads = new ArrayList<>(); // countRepair: the first LOAD_LOG loads too
+        List<long[]> firstLoads = new ArrayList<>(); // the first LOAD_LOG loads too (TcCount, TcSentinel)
         TcCount count;                    // countRepair: the compares of the steps before the limit (TcCount)
         boolean stepLimited;              // the run hit stepLimit
         boolean callFault;                // faultAddr is a call target from the inputs (TcCalls), not a memory access
+        boolean callCapped;               // the run stopped at CALL_LIMIT calls (TcSentinel)
         List<long[]> watched; int watchCalls; long[] watchRegs; // at watchPc's first arrival: loads, calls, r0..r15
     }
 
@@ -57,8 +58,7 @@ public abstract class TcOracle extends TcInputs {
     int[] entryFq = null;   // fr0..fr15 at entry for a Proto.fpuState function (then call records carry the FPU too)
     String entryRet = null; // the register read into Result.retx at exit (Proto.retReg, or r1 for a u64), or null
     boolean callWide = false; // call records also carry r0..r3 and r8..r14 (a callee takes them)
-    TcLoads loadView;
-    TcFpu fpu;
+    TcLoads loadView; TcFpu fpu;  // made at the first run
     int stepLimit = STEP_LIMIT;  // lowered only by TcVectors' overtime rescue
     boolean countRepair = false; // TcVectors' overtime rescue: runs record what TcCount needs
     // TcVectors' rescue pass (batch 29): a store outside RAM stops the run at the store (collect only sees it at the
@@ -239,7 +239,7 @@ public abstract class TcOracle extends TcInputs {
             final MemoryState ms = emu.getEmulator().getMemState();
             DefaultMemoryState dms = (DefaultMemoryState) ms;
             AddressSpace ramSpace = fn.getEntryPoint().getAddressSpace();
-            TcFold bank = new TcFold(dms.getMemoryBank(ramSpace));
+            TcFold bank = new TcFold(dms.getMemoryBank(ramSpace), sq, entryGi);
             dms.setMemoryBank(bank);
             fscaCallbacks(emu, ms, fault);
             emu.enableMemoryWriteTracking(true);
@@ -273,12 +273,13 @@ public abstract class TcOracle extends TcInputs {
                     }
                     if (calls >= CALL_LIMIT) {
                         res.reason = "more than " + CALL_LIMIT + " calls (a loop the mocked callees never end)";
+                        res.callCapped = true;
                         return res;
                     }
                     res.calls.add(callRecord(emu, pc));
                     if (prev >= 0) res.sites.add(prev);
                     long rv = calls < 16 ? v.rets[calls] : 0;
-                    calls++;
+                    TcLive.after(live, this, emu, pc, calls++); // the callee's own change of r8..r14 (TcLive)
                     emu.writeRegister("r0", u(rv));
                     emu.writeRegister("fr0", u(rv));
                     emu.writeRegister(emu.getPCRegister(), u(reg(emu, "PR")));
@@ -321,6 +322,7 @@ public abstract class TcOracle extends TcInputs {
                 long[][] pend = new long[specs.size()][];
                 for (int i = 0; i < pend.length; i++) pend[i] = loadView.loadBefore(emu, specs.get(i));
                 prev = pc;
+                if (sq != null) sq.step(this, emu, pca);  // a pref sending a store queue (TcSq)
                 List<Integer> drs = facts.fpuState ? TcPair.drOperands(emu, loadView.stepInstructions(pca)) : List.of();
                 TcPair.swap(emu, drs);
                 boolean stepped = emu.step(monitor);
@@ -338,7 +340,7 @@ public abstract class TcOracle extends TcInputs {
                     pend[i][3] = reg(emu, specs.get(i).dest);
                     pend[i][4] = calls;
                     res.loads.add(pend[i]);
-                    if (countRepair && res.firstLoads.size() < LOAD_LOG) res.firstLoads.add(pend[i]);
+                    if (res.firstLoads.size() < LOAD_LOG) res.firstLoads.add(pend[i]);
                     if (res.loads.size() > LOAD_LOG) res.loads.remove(0);
                 }
                 if (!stepped || fault[0] != null) {

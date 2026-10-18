@@ -17,7 +17,8 @@ Fails on:
   stale view of the callee, or the callee re-prepared since: core/callee_drift; refine.preflight blocks it):
   re-prepare it (a prepare takes the records from the callees' harnesses). Other functions' harnesses
   with such records are counted in a note.
-Reports, without failing: readable files whose readable.json status does not describe them (a file with no row or
+Reports, without failing: the proof gates' figure (core/proof.py: verified, matched_low_coverage, weak harnesses),
+readable files whose readable.json status does not describe them (a file with no row or
 with a status other than readable/stale/harness_stale/running, a "readable" row without a file), and the readable
 denominator: readable files of current functions next to the matched functions they rewrite.
 """
@@ -104,8 +105,12 @@ def check(ws):
                          for a, m in sorted(raw.items())[:12]))
     notes.append(raw_names.unnamed_line(raw_counts))
     from . import call_coverage  # the figure the final audit's calls check judges (tools/call_coverage.py)
-    cov = call_coverage.figure(call_coverage.site_rows(sorted(matched)))
+    cov = call_coverage.figure(call_coverage.site_rows(sorted(matched), ws / "harness"))
     notes.append(call_coverage.summary_line(cov))
+    from . import proof  # the proof gates' figure (tools/coverage_gate.py, tools/final_audit.py "proof")
+    pcfg = proof.project_cfg(ws)
+    prf = proof.figure(proof.scan(ws, matched, pcfg))
+    notes.append(proof.summary_line(prf, proof.coverage_settings(pcfg)))
     if mismatched:
         notes.append(f"{len(mismatched)} readable file(s) whose readable.json status does not describe them "
                      f"(re-judge them: refine.py verify @FILE): " + " ".join(
@@ -131,7 +136,7 @@ def check(ws):
              "extras_not_functions": len(no_extra), "raw_named_files": len(raw),
              "raw_unnamed_uses": raw_counts[0], "stale_callee_harnesses": len(drift_matched),
              "stale_callee_harnesses_unmatched": len(drifted) - len(drift_matched),
-             "stale_claims_cleared": len(stale_claims), "claimed": len(held), "call_coverage": cov}
+             "stale_claims_cleared": len(stale_claims), "claimed": len(held), "call_coverage": cov, "proof": prf}
     others = "".join(f", {n} {k}" for k, n in sorted(st.items()) if k != "readable")
     notes.insert(0, f"readable: {len(files)} file(s) in readable/src, {len(cur)} of current functions "
                     f"({len(files) - len(cur)} not functions); of those {readable_pass} readable{others}; "

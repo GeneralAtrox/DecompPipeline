@@ -89,4 +89,18 @@ s32 syRtcGetDate(SYS_RTC_DATE *date)
 
 void Sy_TimerStart(void) { g_timer_base = host_ticks(TIMER_HZ); }
 
-s32 Sy_TimerGetCount(void) { return (s32)(u32)(host_ticks(TIMER_HZ) - g_timer_base); }
+s32 Sy_TimerGetCount(void) { return session_timer((s32)(u32)(host_ticks(TIMER_HZ) - g_timer_base)); }
+
+/* The operand-cache invalidate and write-back over a range (ocbi / ocbwb loops in the library): the host's caches
+ * are coherent, so neither has anything to do. */
+void syCacheOCI(void *addr, u32 size)
+{
+    (void)addr;
+    (void)size;
+}
+
+void syCacheOCWB(void *addr, u32 size)
+{
+    (void)addr;
+    (void)size;
+}

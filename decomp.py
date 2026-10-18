@@ -96,6 +96,9 @@ def main():
         retire_removed(paths.ROOT, f"decomp.py {a.cmd}: no longer in the catalog")
     elif a.cmd == "serve":
         from core import orch, server
+        why = server.port_taken(cfg["port"], cfg.get("name"))
+        if why:
+            sys.exit(f"serve refused: {why}")
         server.serve(orch.Orchestrator(), cfg["port"])
     elif a.cmd == "prepare":
         meta, summary = ghidra.prepare(cfg, paths.norm_addr(a.addr), on_line=None)

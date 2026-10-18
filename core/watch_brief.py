@@ -1,6 +1,8 @@
 """WATCH.md: the task given to the watcher agent (Opus) for one function the oracle could not test."""
 import json
 
+from . import proof
+
 WATCH = """# WATCH: make the oracle able to test fn_{addr}
 
 You are the oracle watcher in an automated decompilation pipeline. A machine judges your work.
@@ -18,7 +20,7 @@ Last oracle summary (target/oracle_summary.json):
 
     dev valid {dev_valid} of {dev_tried} tried, hidden valid {hidden_valid} of {hidden_tried} tried
     pointer repairs used: {repaired}
-    blocks reached: {blocks_hit_all} of {blocks_total}
+    blocks reached: {blocks_hit_all} of {blocks_total}{unhit}
     invalid runs by reason: {invalid}
 
 Example failed runs (the loads just before the fault are listed; values that were used as pointers):
@@ -86,6 +88,12 @@ Run each of these exactly as written (use a Bash timeout of 600000 ms):
 """
 
 
+def _unhit(summary):
+    """' (not reached: 8c010020, ...)' from oracle_summary.json blocks_unhit, or ''."""
+    u = proof.unhit_blocks(summary)
+    return f" (not reached: {proof.unhit_text(u, 12)})" if u else ""
+
+
 def watch_md(cfg, addr, summary):
     s = summary or {}
     ex = s.get("examples") or []
@@ -93,7 +101,7 @@ def watch_md(cfg, addr, summary):
     return WATCH.format(
         addr=addr, mv=cfg["min_valid_vectors"], dev_valid=s.get("dev_valid"), dev_tried=s.get("dev_tried"),
         hidden_valid=s.get("hidden_valid"), hidden_tried=s.get("hidden_tried"), repaired=s.get("repaired", 0),
-        blocks_hit_all=s.get("blocks_hit_all"), blocks_total=s.get("blocks_total"),
+        blocks_hit_all=s.get("blocks_hit_all"), blocks_total=s.get("blocks_total"), unhit=_unhit(s),
         invalid=json.dumps(s.get("invalid") or {}), examples=examples,
         max_trials=cfg.get("watcher_max_trials", 12), max_gates=cfg.get("watcher_max_gates", 3),
         locked=", ".join(f"`{n}`" for n in cfg["locked_scripts"]))
@@ -106,7 +114,8 @@ def format_result(kind, res):
     if s:
         out.append(f"oracle: dev valid {s.get('dev_valid')}/{s.get('dev_tried')}, hidden valid "
                    f"{s.get('hidden_valid')}/{s.get('hidden_tried')}, blocks {s.get('blocks_hit_all')}/"
-                   f"{s.get('blocks_total')}, repairs {s.get('repaired', 0)}, hint lines {s.get('hints', 0)}")
+                   f"{s.get('blocks_total')}{_unhit(s)}, repairs {s.get('repaired', 0)}, "
+                   f"hint lines {s.get('hints', 0)}")
         out.append("invalid runs by reason: " + json.dumps(s.get("invalid") or {}))
         for e in (s.get("examples") or [])[:4]:
             out.append("example: " + str(e)[:1200])

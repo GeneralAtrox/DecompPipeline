@@ -149,11 +149,18 @@ int rd_sh4_init(const char *fsca_table)
     return n == 65536 && !extra;
 }
 
+/* TcLive, as tc_rt.c: the callees that change r8..r14 (header lines K) and the vector's draws (line A). */
+#define RD_MAX_LIVE 256
+static struct { u32 target, reg, n, d[4]; } g_live[RD_MAX_LIVE];
+static u32 g_nlive;
+static u32 g_draws[16];
+
 void rd_sh4_reset(void)
 {
     memset(g_xf, 0, sizeof g_xf);
     memset(g_fr, 0, sizeof g_fr);
     memset(g_gs, 0, sizeof g_gs);
+    memset(g_draws, 0, sizeof g_draws);
     g_mode = 0;
     g_fpu = 0;
 }
@@ -163,6 +170,28 @@ void tcrt_set_xf(const u32 bits[16]) { memcpy(g_xf, bits, sizeof g_xf); }
 void tcrt_set_fh(const u32 bits[4]) { memcpy(g_fr + 12, bits, 4 * sizeof(u32)); }
 
 void tcrt_set_gs(const u32 bits[7]) { memcpy(g_gs, bits, sizeof g_gs); }
+
+void tcrt_add_live(u32 target, u32 reg, u32 n, const u32 d[4])
+{
+    if (g_nlive >= RD_MAX_LIVE || reg < 8 || reg > 14 || n > 4) return;
+    g_live[g_nlive].target = tcrt_fold(target);
+    g_live[g_nlive].reg = reg;
+    g_live[g_nlive].n = n;
+    memcpy(g_live[g_nlive].d, d, sizeof g_live[0].d);
+    g_nlive++;
+}
+
+void tcrt_set_draws(const u32 draws[16]) { memcpy(g_draws, draws, sizeof g_draws); }
+
+void rd_sh4_live(u32 target, u32 k)
+{
+    u32 draw = g_draws[k % 16];
+    for (u32 i = 0; i < g_nlive; i++) {
+        if (g_live[i].target != target) continue;
+        u32 n = g_live[i].n;
+        g_gs[g_live[i].reg - 8] += n == 1 ? g_live[i].d[0] : n ? g_live[i].d[draw % n] : 0x20u * (1u + draw % 3u);
+    }
+}
 
 void tcrt_report_gs(FILE *out)
 {

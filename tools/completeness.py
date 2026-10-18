@@ -36,6 +36,8 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))  # also under p
 from common import use_project  # noqa: E402
 
 RTS, NOP = 0x000B, 0x0009
+# alignment fill: zeros, nop, and nop byte-swapped (0x0900, an invalid opcode some library objects pad with)
+PAD_WORDS = (0x0000, NOP, 0x0900)
 ORPHAN = 99  # the score of a run that is mostly disassembled instructions belonging to no function
 CLASSES = ("code", "pool", "table", "data", "dead", "padding", "orphan", "unknown")
 
@@ -141,7 +143,7 @@ def classify(img, base, game, bodies, insn, tables=None, known=()):
                 x += 1
             run = img[start - base:x - base]
             words = [struct.unpack_from("<H", run, i)[0] for i in range(0, len(run) - 1, 2)]
-            if all(w in (0, NOP) for w in words):
+            if all(w in PAD_WORDS for w in words):
                 totals["padding"] += len(run)
             elif sum(y in insn for y in range(start, x)) * 2 >= len(run):
                 totals["orphan"] += len(run)

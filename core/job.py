@@ -6,7 +6,7 @@ import shutil
 import time
 from pathlib import Path
 
-from . import agent, check, ghidra, paths
+from . import agent, check, ghidra, paths, proof
 
 HARNESS_FILES = ("vectors.txt", "expected.txt", "meta.json")
 BACKOFF_S = (60, 120, 240, 480, 600)
@@ -277,6 +277,12 @@ def finish(o, addr, status, detail):
         paths.MATCHED.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(r["attempts"][-1]["work_file"], paths.MATCHED / f"{addr}.c")
         r["matched_file"] = paths.show(paths.MATCHED / f"{addr}.c")
+        r["proof"] = prove(o, addr, r)
+        if r["proof"]["state"] != proof.VERIFIED:
+            detail += f"; {r['proof']['state']}: {proof.describe(r['proof'])}"
+            r["verdict_detail"] = detail
+    else:
+        r.pop("proof", None)  # a requeued match that ended otherwise: its proof went with it
         cov = r["attempts"][-1].get("coverage") or {}  # flagged, never silent: why each unreached call stays so
         if cov.get("calls_unreached"):
             r["unreached_calls"] = cov.get("calls_reasons") or {a: "" for a in cov["calls_unreached"]}
@@ -290,3 +296,31 @@ def finish(o, addr, status, detail):
     if status == "skipped" and detail.startswith("oracle could not produce") and getattr(o, "watcher", None):
         o.watcher.notify(addr)
     return status
+
+
+def prove(o, addr, r):
+    """The proof gates at a match (core/proof.py): the coverage gate on the harness summary, and with
+    mutation_check.on_pass the mutation check (core/mutation.py; record merged into state/mutation.json). A crash
+    of the mutation check is recorded, never loses the match."""
+    summary = r.get("oracle") or paths.read_json(paths.HARNESS / addr / "oracle_summary.json")
+    mset = proof.mutation_settings(o.cfg)
+    mut = None
+    if mset["mode"] != "off" and mset["on_pass"]:
+        from . import mutation
+        src = (paths.MATCHED / f"{addr}.c").read_text(encoding="utf-8", errors="replace")
+        build = paths.BUILD / addr / "mutation"
+        try:
+            mut = mutation.check_function(addr, src, mutation.judge_with(o.cfg, addr, build,
+                                                                         mset["mutant_timeout_s"]), mset)
+            mut["checked"] = now()
+            mutation.save(paths.STATE / proof.MUTATION_FILE, {addr: mut}, mset)
+        except Exception as e:  # noqa: BLE001
+            mut = {"addr": addr, "error": f"{type(e).__name__}: {e}"[:300], "tried": 0, "score": None}
+        finally:
+            shutil.rmtree(build, ignore_errors=True)
+        o.log(f"{addr}: mutation check: " + (mut.get("error") or f"score {mut['score']}, {mut['killed']} killed, "
+                                             f"{mut['survived']} survived, {mut['dropped']} dropped"))
+    rec = proof.record(o.cfg, addr, summary, mut)
+    if hasattr(o, "proof_states"):
+        o.proof_states[addr] = rec["state"]
+    return rec
