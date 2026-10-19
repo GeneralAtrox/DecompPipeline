@@ -7,6 +7,9 @@ applied by themselves:
   value: the function returns the callee's value (TC 8c075928 Lib_FileBrowserCompareNames).
 - f32_unread: the raw ret is f32, and no call site reads fr0 before writing it (the f32 is a leftover of the last
   FPU operation): `void`, or `u32` when a call site reads r0 instead (TC 8c07cbba, 8c07b738).
+- fr0_exit: the raw ret is void, u32 or s32, but the function's own listing returns in fr0 (core/ret_reg.py: fr0
+  written last and not read again on some path to `rts`, r0 on none) and its callers agree (fr0_confirmed): `f32`
+  (TC 8c0611c8). The judge compares fr0 for the ones listed in state/fr0_results.txt meanwhile.
 A call site is read on every path from the call's return to the next write of the register, call (a callee whose
 record compares that register reads it), return (the caller's own result register reads it) or tail call. A path
 the listing cannot follow (a computed jump) makes the site unknown; a function whose address is also loaded as a
@@ -15,7 +18,7 @@ value somewhere (a function pointer: callers this cannot see) or that has no cal
 import json
 import pathlib
 
-from core import sh4_asm
+from core import ret_reg, sh4_asm
 
 INT_RETS = ("u32", "s32", "u64")
 MAX_STEPS = 4000
@@ -26,6 +29,11 @@ def result_reg(meta):
     if meta.get("ret_reg"):
         return meta["ret_reg"]
     return "fr0" if meta.get("ret") == "f32" else "r0" if meta.get("ret") in INT_RETS else None
+
+
+def fr0_confirmed(ev):
+    """The callers agree that a function returns in fr0: some call site reads fr0 and none reads r0."""
+    return ev["fr0"] > 0 and ev["r0"] == 0
 
 
 def _read_json(p):
@@ -138,6 +146,13 @@ class Project:
         for f, m in sorted(self.meta.items()):
             if m.get("ret_override"):
                 continue
+            if m.get("ret") in ("void", "u32", "s32") and not m.get("ret_reg") and ret_reg.fr0_result(self.insns(f)):
+                ev = self.evidence(f)
+                if fr0_confirmed(ev):
+                    out.append({"addr": f, "case": "fr0_exit", "ret": m["ret"], "suggest": "f32",
+                                "why": f"the listing returns in fr0; {ev['fr0']} call site(s) read fr0",
+                                "evidence": ev})
+                    continue
             if m.get("ret") == "void" and not m.get("ret_reg"):
                 tails = [(c, (self.meta.get(c) or {}).get("ret")) for c in self.tail_callees(f)]
                 vals = [(c, r) for c, r in tails if r in INT_RETS + ("f32",)]

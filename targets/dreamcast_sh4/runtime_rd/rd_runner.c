@@ -21,6 +21,7 @@ static int hexval(int c)
 
 static int run_one(const u32 *r, const f32 *fr, u32 *r0, f32 *fr0)
 {
+    if (setjmp(tcrt_halt_jmp)) return 0; /* tc_halt: the original's endless loop (TcExit), reported as HALT */
     __try {
         tc_thunk(r, fr, r0, fr0);
     } __except (EXCEPTION_EXECUTE_HANDLER) {

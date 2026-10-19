@@ -288,8 +288,10 @@ public class TcRuns extends TcDead {
                     excluded.add(toAddr(Long.parseLong(p[1], 16)));
             }
         }
-        if (args.length > 2 && !args[2].isEmpty())
-            for (String r : args[2].split(",")) {
+        // the game ranges: cmd.exe (analyzeHeadless.bat) splits the comma-joined list into one argument each
+        for (int i = 2; i < args.length; i++)
+            for (String r : args[i].split(",")) {
+                if (r.isEmpty()) continue;
                 String[] p = r.split("-");
                 game.add(new long[] {Long.parseLong(p[0], 16), Long.parseLong(p[1], 16)});
             }
@@ -337,6 +339,6 @@ public class TcRuns extends TcDead {
                     if (pc.why != null) pw.println("# " + toAddr(pc.start) + " refused: " + pc.why);
             }
         }
-        println("TcRuns: " + total + " function(s) created for dead runs of code");
+        println("TcRuns: " + total + " function(s) created for dead runs of code in " + game.size() + " game range(s)");
     }
 }

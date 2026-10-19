@@ -143,6 +143,7 @@ public class TcPrepare extends TcVectors {
         StringBuilder callees = new StringBuilder();
         for (Function c : calledBy(fn, body)) {
             Proto cp = prototypeOf(di, c, PASS_DEPTH - 1);  // what fn's pass-through analysis assumed
+            if (cp.ret.equals("f32")) floatRet.add(c.getEntryPoint().getOffset());  // TcFret
             StringBuilder regs = new StringBuilder();
             for (String r : calleeRegs(cp, c)) {
                 if (regs.length() > 0) regs.append(',');

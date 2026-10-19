@@ -122,8 +122,10 @@ public class TcCont extends GhidraScript {
         listing = currentProgram.getListing();
         fm = currentProgram.getFunctionManager();
         String[] args = getScriptArgs();
-        if (args.length > 1 && !args[1].isEmpty())
-            for (String r : args[1].split(",")) {
+        // the game ranges: cmd.exe (analyzeHeadless.bat) splits the comma-joined list into one argument each
+        for (int i = 1; i < args.length; i++)
+            for (String r : args[i].split(",")) {
+                if (r.isEmpty()) continue;
                 String[] p = r.split("-");
                 game.add(new long[] {Long.parseLong(p[0], 16), Long.parseLong(p[1], 16)});
             }
@@ -169,6 +171,6 @@ public class TcCont extends GhidraScript {
                 pw.println(f.getEntryPoint() + "\t" + r[1] + "\t" + c + "\t" + r[3] + "\t" + status + "\t" + bytes);
             }
         }
-        println("TcCont: " + found.size() + " PR redirect(s), " + added + " continuation(s) added to a body");
+        println("TcCont: " + found.size() + " PR redirect(s), " + added + " continuation(s) added to a body; " + game.size() + " game range(s)");
     }
 }

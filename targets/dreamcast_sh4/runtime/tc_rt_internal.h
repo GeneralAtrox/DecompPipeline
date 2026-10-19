@@ -2,6 +2,7 @@
 #ifndef TC_RT_INTERNAL_H
 #define TC_RT_INTERNAL_H
 
+#include <setjmp.h>
 #include <stdio.h>
 #include "tc_rt.h"
 
@@ -43,6 +44,9 @@ void tcrt_set_call_returns(const u32 rets[16]);
 void tcrt_add_live(u32 target, u32 reg, u32 n, const u32 d[4]); /* header line K: a callee changing rN (TcLive) */
 void tcrt_set_draws(const u32 draws[16]); /* line A: the vector's draws for the K callees' deltas */
 void tcrt_report(FILE *out, u32 r0, u32 fr0_bits);
+/* tc_halt (TcExit): longjmps here; the runner sets it before each vector. tcrt_halted: the vector halted (HALT). */
+extern jmp_buf tcrt_halt_jmp;
+extern int tcrt_halted;
 
 /* tc_fpu.c: the FPU registers (fr0..fr15, xf0..xf15 = XMTRX, the FPSCR mode bits FR, SZ, PR). */
 void tcrt_fpu_reset(void);

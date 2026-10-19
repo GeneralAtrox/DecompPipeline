@@ -5,8 +5,8 @@
  * The library version matters (this is mid-1999's, 1.x): acDigiPlayWithParameters is R10's without directLevel, its
  * last two arguments the loop start and end in frames. A loop end of 0 loops the whole sample; any other end plays
  * the sample once up to it (how the games' one-shot sounds pass the sample's end). Loop flags are AC_LOOP_ON 0xff and
- * AC_LOOP_OFF 0. Volume is the AICA direct level (0..15) and pan its 0..31 (AM pan >> 2); the CD's volume and pan are
- * AM's 0..127 for each channel. The driver's port events (acDigiRequestEvent) have no callback here. */
+ * AC_LOOP_OFF 0. Volume is the AICA direct level (0..15) and pan Audio64's 0..31 (aica.h: 0 right, 31 left); the CD's
+ * volume and pan are AM's 0..127 for each channel, its pan 0 left and 127 right (cd_pan). The driver's port events (acDigiRequestEvent) have no callback here. */
 #include "game.h"
 #include "platform.h"
 #include "aica.h"
@@ -146,10 +146,13 @@ s32 acDigiMultiStop(u32 upperMask, u32 lowerMask)
     return 1;
 }
 
+/* AM's CD pan (0 left .. 127 right) as Audio64's (31 left .. 0 right). */
+static u32 cd_pan(u32 am) { return 31u - (am >> 2); }
+
 s32 acCdInit(void)
 {
     aica_cd_level(15, 15);
-    aica_cd_pan(0, 31);
+    aica_cd_pan(cd_pan(0), cd_pan(127));
     return 1;
 }
 
@@ -163,7 +166,7 @@ s32 acCdSetVolume(u32 left, u32 right)
 s32 acCdSetPan(u32 left, u32 right)
 {
     if (left > 127u || right > 127u) return 0;
-    aica_cd_pan(left >> 2, right >> 2);
+    aica_cd_pan(cd_pan(left), cd_pan(right));
     return 1;
 }
 

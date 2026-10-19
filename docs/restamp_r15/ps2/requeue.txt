@@ -1,0 +1,296 @@
+8c017160  # ptr_views: view: pool 0c304f24, C 8c304f24 x1; view: pool 0c304fa4, C 8c304fa4 x1
+8c017d92  # ptr_views: view: pool 0c304da0, C 8c304da0 x1
+8c0186cc  # ptr_views: view: pool 0c542a54, C 8c542a54 x1
+8c01882a  # ptr_views: view: pool 0c17a270, C 8c17a270 x2; view: pool 0c1a5fec, C 8c1a5fec x1; view: pool 0c1a5ff8, C 8c1a5ff8 x1; view: pool 0c20cb14, C 8c20cb14 x1; view: pool 0c20cb84, C 8c20cb84 x1; view: pool 0c20cbc4, C 8c20cbc4 x1
+8c01a024  # ptr_views: view: pool 0c20e17c, C 8c20e17c x1
+8c01a3a4  # ptr_views: view: pool 0c30a006, C 8c30a006 x3; view: pool 0c5428c4, C 8c5428c4 x3; offset: pool 0c5428c4, C 8c5428ec (+0x28) x3
+8c01c004  # ptr_views: view: pool 0c20e4b4, C 8c20e4b4 x1
+8c01c2e0  # ptr_views: view: pool 0c20e4b4, C 8c20e4b4 x1
+8c01d90a  # ptr_views: offset: pool 0c30f164, C 8c30f16c (+0x8) x1
+8c01f6ac  # ptr_views: view: pool 0c30560c, C 8c30560c x1
+8c020fe0  # ptr_views: view: pool 0c305622, C 8c305622 x1; view: pool 0c309a60, C 8c309a60 x1
+8c021b1a  # ptr_views: view: pool 0c309a60, C 8c309a60 x1
+8c0225de  # ptr_views: view: pool 0c1a8c24, C 8c1a8c24 x1; view: pool 0c1a8c3c, C 8c1a8c3c x1; view: pool 0c1a8c54, C 8c1a8c54 x1; view: pool 0c1a8c68, C 8c1a8c68 x1; view: pool 0c1a8c80, C 8c1a8c80 x1; view: pool 0c1a8c8c, C 8c1a8c8c x2; view: pool 0c3055b8, C 8c3055b8 x1; view: pool 0c309b9e, C 8c309b9e x1; view: pool 0c309bc6, C 8c309bc6 x3; view: pool 0c309c46, C 8c309c46 x2; view: pool 0c309cc6, C 8c309cc6 x2; view: pool 0c309d06, C 8c309d06 x2; view: pool 0c309d86, C 8c309d86 x2; view: pool 0c309dc6, C 8c309dc6 x1; view: pool 0c309dc8, C 8c309dc8 x1; view: pool 0c309dc9, C 8c309dc9 x1; view: pool 0c30a5f2, C 8c30a5f2 x1; view: pool 0c30ae5c, C 8c30ae5c x1
+8c022c30  # ptr_views: view: pool 0c1a8cb0, C 8c1a8cb0 x1; view: pool 0c1a8cc0, C 8c1a8cc0 x1; view: pool 0c1a8ce4, C 8c1a8ce4 x1; view: pool 0c1a8d08, C 8c1a8d08 x1; view: pool 0c1a8d30, C 8c1a8d30 x1; view: pool 0c1a8d5c, C 8c1a8d5c x1; view: pool 0c1a8d88, C 8c1a8d88 x1; view: pool 0c3055b8, C 8c3055b8 x7; view: pool 0c309b9e, C 8c309b9e x1; view: pool 0c309dd4, C 8c309dd4 x1; view: pool 0c309dd5, C 8c309dd5 x1; view: pool 0c309dd6, C 8c309dd6 x1; view: pool 0c309dd7, C 8c309dd7 x1; view: pool 0c309dd8, C 8c309dd8 x1; view: pool 0c309dd9, C 8c309dd9 x1; view: pool 0c309dda, C 8c309dda x1; view: pool 0c309ddb, C 8c309ddb x1; view: pool 0c309de0, C 8c309de0 x1; view: pool 0c309de1, C 8c309de1 x1; view: pool 0c309de2, C 8c309de2 x1; view: pool 0c309de3, C 8c309de3 x1; view: pool 0c309de4, C 8c309de4 x1; view: pool 0c309de8, C 8c309de8 x1; view: pool 0c309de9, C 8c309de9 x1; view: pool 0c309dea, C 8c309dea x1; view: pool 0c309deb, C 8c309deb x1; view: pool 0c309dec, C 8c309dec x1; view: pool 0c309e6c, C 8c309e6c x1; view: pool 0c309e6d, C 8c309e6d x1; view: pool 0c309e6e, C 8c309e6e x1; view: pool 0c309e6f, C 8c309e6f x1; view: pool 0c309e70, C 8c309e70 x1; view: pool 0c309e71, C 8c309e71 x1; view: pool 0c30ad2e, C 8c30ad2e x1; view: pool 0c30ae5c, C 8c30ae5c x1
+8c0235ac  # ptr_views: view: pool 0c30a71e, C 8c30a71e x1
+8c023b60  # ptr_views: view: pool 0c305614, C 8c305614 x1
+8c0240c4  # ptr_views: view: pool 0c1a8d9c, C 8c1a8d9c x1; view: pool 0c1a8dac, C 8c1a8dac x1; view: pool 0c3055b8, C 8c3055b8 x2
+8c02491e  # ptr_views: view: pool 0c1a8db8, C 8c1a8db8 x1; view: pool 0c3055b8, C 8c3055b8 x1
+8c024ab2  # ptr_views: view: pool 0c1a8dcc, C 8c1a8dcc x1; view: pool 0c3055b8, C 8c3055b8 x1; view: pool 0c309dc6, C 8c309dc6 x1; view: pool 0c309dc7, C 8c309dc7 x1; view: pool 0c30a548, C 8c30a548 x2; view: pool 0c30a5f4, C 8c30a5f4 x3; view: pool 0c30a5f5, C 8c30a5f5 x1
+8c024e78  # ptr_views: view: pool 0c309a5b, C 8c309a5b x3; view: pool 0c30a00a, C 8c30a00a x1; view: pool 0c30a547, C 8c30a547 x1; view: pool 0c30f16c, C 8c30f16c x1
+8c0253be  # ptr_views: view: pool 0c309dc8, C 8c309dc8 x1; view: pool 0c309dc9, C 8c309dc9 x1
+8c025778  # ptr_views: view: pool 0c309a5b, C 8c309a5b x1; view: pool 0c309a5c, C 8c309a5c x1; view: pool 0c309dc8, C 8c309dc8 x2; view: pool 0c309dc9, C 8c309dc9 x1; view: pool 0c309e74, C 8c309e74 x2; view: pool 0c309e86, C 8c309e86 x2; view: pool 0c30a00a, C 8c30a00a x1; view: pool 0c30a71c, C 8c30a71c x1; view: pool 0c30af5c, C 8c30af5c x2; view: pool 0c30f16c, C 8c30f16c x2
+8c025c46  # ptr_views: view: pool 0c1a8e2c, C 8c1a8e2c x1; view: pool 0c309e74, C 8c309e74 x2; view: pool 0c309e86, C 8c309e86 x2; view: pool 0c30af5c, C 8c30af5c x1
+8c025f5c  # ptr_views: view: pool 0c309e74, C 8c309e74 x2; view: pool 0c309e86, C 8c309e86 x2; view: pool 0c30af5c, C 8c30af5c x2
+8c026280  # ptr_views: view: pool 0c30a54c, C 8c30a54c x1; view: pool 0c30a554, C 8c30a554 x1; view: pool 0c30a5e6, C 8c30a5e6 x1; view: pool 0c30a5e8, C 8c30a5e8 x1; view: pool 0c30a5e9, C 8c30a5e9 x1; view: pool 0c30a5ea, C 8c30a5ea x1; view: pool 0c30a5eb, C 8c30a5eb x1; view: pool 0c30a5ec, C 8c30a5ec x1; view: pool 0c30a5ed, C 8c30a5ed x1
+8c026414  # ptr_views: view: pool 0c309a5a, C 8c309a5a x1
+8c0264d0  # ptr_views: view: pool 0c309b93, C 8c309b93 x1
+8c0265d4  # ptr_views: view: pool 0c309ae3, C 8c309ae3 x1; view: pool 0c309bb8, C 8c309bb8 x1; view: pool 0c309dc8, C 8c309dc8 x1; view: pool 0c309dc9, C 8c309dc9 x1; view: pool 0c30a007, C 8c30a007 x1; view: pool 0c30a60c, C 8c30a60c x1; view: pool 0c30ac34, C 8c30ac34 x1
+8c026888  # ptr_views: view: pool 0c309e74, C 8c309e74 x2; view: pool 0c309e86, C 8c309e86 x2; view: pool 0c30a00a, C 8c30a00a x1; view: pool 0c30af5c, C 8c30af5c x2
+8c0270f8  # ptr_views: view: pool 0c30a54c, C 8c30a54c x1
+8c027502  # ptr_views: view: pool 0c30a554, C 8c30a554 x1; view: pool 0c30a5e6, C 8c30a5e6 x1; view: pool 0c30a5e8, C 8c30a5e8 x1; view: pool 0c30a5e9, C 8c30a5e9 x1; view: pool 0c30a5ea, C 8c30a5ea x1; view: pool 0c30a5eb, C 8c30a5eb x1; view: pool 0c30a5ec, C 8c30a5ec x1; view: pool 0c30a5ed, C 8c30a5ed x1
+8c027720  # ptr_views: view: pool 0c309b93, C 8c309b93 x1
+8c0278a8  # ptr_views: view: pool 0c309ae3, C 8c309ae3 x1; view: pool 0c309bb8, C 8c309bb8 x1; view: pool 0c30a007, C 8c30a007 x1; view: pool 0c30ac34, C 8c30ac34 x1
+8c027d88  # ptr_views: view: pool 0c309b93, C 8c309b93 x1; view: pool 0c30a54c, C 8c30a54c x1; view: pool 0c30a554, C 8c30a554 x1; view: pool 0c30a5e6, C 8c30a5e6 x1; view: pool 0c30a5e8, C 8c30a5e8 x1; view: pool 0c30a5e9, C 8c30a5e9 x1; view: pool 0c30a5ea, C 8c30a5ea x1; view: pool 0c30a5eb, C 8c30a5eb x1; view: pool 0c30a5ec, C 8c30a5ec x1; view: pool 0c30a5ed, C 8c30a5ed x1
+8c027fc4  # ptr_views: view: pool 0c309ae3, C 8c309ae3 x1; view: pool 0c309bb8, C 8c309bb8 x1; view: pool 0c30a007, C 8c30a007 x1; view: pool 0c30ac34, C 8c30ac34 x1
+8c028494  # ptr_views: view: pool 0c30a710, C 8c30a710 x1; offset: pool 0c30a710, C 8c30a71a (+0xa) x1
+8c02879e  # ptr_views: view: pool 0c309b93, C 8c309b93 x1; view: pool 0c30a54c, C 8c30a54c x1; view: pool 0c30a554, C 8c30a554 x1; view: pool 0c30a5e6, C 8c30a5e6 x1; view: pool 0c30a5e8, C 8c30a5e8 x1; view: pool 0c30a5e9, C 8c30a5e9 x1; view: pool 0c30a5ea, C 8c30a5ea x1; view: pool 0c30a5eb, C 8c30a5eb x1; view: pool 0c30a5ec, C 8c30a5ec x1; view: pool 0c30a5ed, C 8c30a5ed x1
+8c0289e6  # ptr_views: view: pool 0c309ae3, C 8c309ae3 x1; view: pool 0c309bb8, C 8c309bb8 x1; view: pool 0c30a007, C 8c30a007 x1; view: pool 0c30ac34, C 8c30ac34 x1
+8c02917c  # ptr_views: view: pool 0c309b93, C 8c309b93 x1
+8c02932a  # ptr_views: view: pool 0c309ae3, C 8c309ae3 x1; view: pool 0c309bb8, C 8c309bb8 x1; view: pool 0c30a007, C 8c30a007 x1; view: pool 0c30ac34, C 8c30ac34 x1
+8c02a6b8  # ptr_views: view: pool 0c309dec, C 8c309dec x1
+8c02aca0  # ptr_views: view: pool 0c309a5a, C 8c309a5a x1; view: pool 0c309a5b, C 8c309a5b x1; view: pool 0c30b19c, C 8c30b19c x1
+8c02b092  # ptr_views: view: pool 0c20ea04, C 8c20ea04 x1
+8c02c7dc  # ptr_views: view: pool 0c5423f8, C 8c5423f8 x1; view: pool 0c542640, C 8c542640 x1
+8c02cb10  # ptr_views: view: pool 0c542640, C 8c542640 x1
+8c02e910  # xemu: # mirror review (state/mirror_ptrs/review_verdicts.txt): passes 0x8c532698-based player pointers as r4 to 8c07bbf4, whose cmp/eq at 8c07bc66 compares them with the 0x0c-view +0x377c pointer; write the pool RAM pointer words as 0x0c as the original; mirror review: # r4 to 8c07bbf4: 0x8c532698-based player pointers vs the 0x0c-view +0x377c pointer (cmp/eq 8c07bc66)
+8c02f022  # ptr_views: view: pool 0c3bb5dc, C 8c3bb5dc x1; view: pool 0c4b12cc, C 8c4b12cc x1
+8c03069e  # ptr_views: view: pool 0c3bd648, C 8c3bd648 x1
+8c031000  # ptr_views: view: pool 0c1a9276, C 8c1a9276 x1
+8c0339d4  # ptr_views: view: pool 0c1aa068, C 8c1aa068 x1
+8c03660a  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c0369f4  # ptr_views: view: pool 0c4b43fc, C 8c4b43fc x1
+8c036a08  # ptr_views: view: pool 0c4b4728, C 8c4b4728 x1
+8c036cb0  # ptr_views: view: pool 0c4b4324, C 8c4b4324 x1
+8c0385e4  # ptr_views: view: pool 0c1aad3c, C 8c1aad3c x1; view: pool 0c1ab13c, C 8c1ab13c x1
+8c039352  # ptr_views: view: pool 0c5412b8, C 8c5412b8 x1
+8c03a588  # ptr_views: view: pool 0c3c8010, C 8c3c8010 x1
+8c03aef0  # ptr_views: view: pool 0c3ca010, C 8c3ca010 x1
+8c03b05e  # ptr_views: view: pool 0c3ca010, C 8c3ca010 x1
+8c03b36a  # ptr_views: view: pool 0c3ca010, C 8c3ca010 x1
+8c03b6b0  # ptr_views: view: pool 0c3ca010, C 8c3ca010 x1; view: pool 0c3cca20, C 8c3cca20 x1
+8c03c01c  # ptr_views: view: pool 0c3ca010, C 8c3ca010 x1; view: pool 0c3cca20, C 8c3cca20 x1
+8c03c214  # ptr_views: view: pool 0c3cca20, C 8c3cca20 x1
+8c03c5c4  # ptr_views: view: pool 0c3ca010, C 8c3ca010 x1; view: pool 0c3cca20, C 8c3cca20 x1
+8c03c7f0  # ptr_views: view: pool 0c3ca010, C 8c3ca010 x1; view: pool 0c3cca20, C 8c3cca20 x1
+8c03cad0  # ptr_views: view: pool 0c3ca010, C 8c3ca010 x1
+8c03cbfe  # ptr_views: view: pool 0c3ca010, C 8c3ca010 x1
+8c03ceba  # ptr_views: view: pool 0c3ca010, C 8c3ca010 x1; view: pool 0c3cca20, C 8c3cca20 x1
+8c03d0c0  # ptr_views: view: pool 0c3ca010, C 8c3ca010 x1
+8c03dfe8  # ptr_views: view: pool 0c5423f8, C 8c5423f8 x1
+8c03f78e  # ptr_views: view: pool 0c3f8c78, C 8c3f8c78 x1
+8c03fbd0  # ptr_views: view: pool 0c40d8c4, C 8c40d8c4 x1
+8c04015c  # ptr_views: view: pool 0c541edc, C 8c541edc x1
+8c0403c0  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c040560  # ptr_views: view: pool 0c541edc, C 8c541edc x1
+8c04252c  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c042578  # ptr_views: view: pool 0c40de58, C 8c40de58 x1
+8c0430c4  # ptr_views: view: pool 0c541edc, C 8c541edc x1
+8c04387e  # ptr_views: view: pool 0c40dfb8, C 8c40dfb8 x1
+8c044038  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c045946  # ptr_views: view: pool 0c3bd646, C 8c3bd646 x1
+8c045a3c  # ptr_views: view: pool 0c40fa20, C 8c40fa20 x9
+8c045acc  # ptr_views: view: pool 0c541edc, C 8c541edc x1; view: pool 0c54213c, C 8c54213c x1
+8c0494a6  # ptr_views: view: pool 0c54213c, C 8c54213c x1; view: pool 0c542640, C 8c542640 x1
+8c049648  # ptr_views: view: pool 0c5423f8, C 8c5423f8 x1
+8c049a14  # ptr_views: view: pool 0c532698, C 8c532698 x1; view: pool 0c541edc, C 8c541edc x1
+8c049de8  # ptr_views: view: pool 0c541edc, C 8c541edc x1
+8c04a142  # ptr_views: view: pool 0c40fa20, C 8c40fa20 x1; view: pool 0c54213c, C 8c54213c x1; view: pool 0c542630, C 8c542630 x1
+8c04a69e  # ptr_views: view: pool 0c1b7eec, C 8c1b7eec x1
+8c04f2d6  # float_gaps: literal (matched): 8c04f388 = 0x3427c5ac (1.5625e-07)
+8c04f5dc  # float_gaps: literal (matched): 8c04f78c = 0x3427c5ac (1.5625e-07)
+8c050302  # ptr_views: view: pool 0c241634, C 8c241634 x1; view: pool 0c5423f8, C 8c5423f8 x1
+8c050720  # float_gaps: literal (matched): 8c0508bc = 0x3427c5ac (1.5625e-07)
+8c052876  # float_gaps: literal (matched): 8c052bd4 = 0x41200000 (1e+01), 8c052bd8 = 0x42c80000 (1e+02), 8c053600 = 0x43af0000 (3.5e+02), 8c053604 = 0x44e10000 (1.8e+03), 8c053608 = 0x44480000 (8e+02), 8c0537b8 = 0xc2480000 (-5e+01), 8c0537bc = 0x43480000 (2e+02), 8c0537c4 = 0x42c80000 (1e+02)
+8c053eea  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c055e28  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c057a98  # ptr_views: view: pool 0c242150, C 8c242150 x1
+8c059c26  # float_gaps: literal (matched): 8c059a64 = 0x47800000 (65536), 8c059a68 = 0x43b40000 (3.6e+02), 8c059a70 = 0x3f4ccccd (0.8), 8c059a74 = 0x3f000000 (0.5)
+8c05ac64  # ptr_views: view: pool 0c46e080, C 8c46e080 x1
+8c05b810  # ptr_views: view: pool 0c5423f8, C 8c5423f8 x1; view: pool 0c542640, C 8c542640 x1
+8c05bf92  # ptr_views: view: pool 0c542141, C 8c542141 x1
+8c05c9b0  # ptr_views: view: pool 0c54213c, C 8c54213c x1; view: pool 0c542640, C 8c542640 x1
+8c05d1c0  # ptr_views: view: pool 0c542a54, C 8c542a54 x2
+8c05d5ac  # float_gaps: literal (matched): 8c05d584 = 0x3fd55550 (1.666666), 8c05d90c = 0x43200000 (1.6e+02)
+8c05d87c  # ptr_views: view: pool 0c1c4274, C 8c1c4274 x1; view: pool 0c1c4288, C 8c1c4288 x1; view: pool 0c1c4290, C 8c1c4290 x1; view: pool 0c4b127c, C 8c4b127c x5
+8c05f3ae  # ptr_views: view: pool 0c541edc, C 8c541edc x2
+8c05faf0  # ptr_views: offset: pool 0c54213c, C 8c542144 (+0x8) x1
+8c063e26  # ptr_views: view: pool 0c4f6d2c, C 8c4f6d2c x1
+8c066c06  # ptr_views: view: pool 0c4f92bc, C 8c4f92bc x1; view: pool 0c4fb83c, C 8c4fb83c x1; view: pool 0c4fb84c, C 8c4fb84c x1; view: pool 0c4fddcc, C 8c4fddcc x1
+8c06c058  # ptr_views: view: pool 0c532798, C 8c532798 x1; view: pool 0c5327a4, C 8c5327a4 x1
+8c071b84  # ptr_views: view: pool 0c25a054, C 8c25a054 x1
+8c072c58  # float_gaps: literal (matched): 8c072898 = 0x420c0000 (35)
+8c07386c  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c073ba8  # ptr_views: view: pool 0c5326c0, C 8c5326c0 x1
+8c075268  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c07bb90  # ptr_views: view: pool 0c25af18, C 8c25af18 x1; view: pool 0c25af1c, C 8c25af1c x1
+8c07cd64  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c07cedc  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c07f8a4  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c0803e8  # ptr_views: view: pool 0c25a054, C 8c25a054 x1
+8c080dae  # ptr_views: view: pool 0c25a054, C 8c25a054 x8
+8c08cb34  # ptr_views: view: pool 0c2598c4, C 8c2598c4 x1
+8c08dd0c  # ptr_views: view: pool 0c25cd58, C 8c25cd58 x1; view: pool 0c25cd6c, C 8c25cd6c x1
+8c0901dc  # ptr_views: view: pool 0c1c6140, C 8c1c6140 x1; view: pool 0c1c614c, C 8c1c614c x1
+8c091630  # ptr_views: view: pool 0c1c6128, C 8c1c6128 x2; view: pool 0c1c6134, C 8c1c6134 x2; view: pool 0c1c6140, C 8c1c6140 x2; view: pool 0c1c614c, C 8c1c614c x2
+8c094b08  # ptr_views: view: pool 0c25cf3c, C 8c25cf3c x1; view: pool 0c25cf50, C 8c25cf50 x1
+8c097ea8  # ptr_views: view: pool 0c25d0a4, C 8c25d0a4 x1; view: pool 0c25d0b8, C 8c25d0b8 x1
+8c09a5fa  # ptr_views: view: pool 0c25d14c, C 8c25d14c x1; view: pool 0c25d160, C 8c25d160 x1
+8c0a28c0  # ptr_views: view: pool 0c25d3fc, C 8c25d3fc x1; view: pool 0c25d410, C 8c25d410 x1
+8c0a4908  # ptr_views: view: pool 0c25d548, C 8c25d548 x1
+8c0a5c82  # ptr_views: view: pool 0c25d55c, C 8c25d55c x1; view: pool 0c25d570, C 8c25d570 x1
+8c0aaa94  # ptr_views: view: pool 0c25d674, C 8c25d674 x1; view: pool 0c25d688, C 8c25d688 x1
+8c0adbc6  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c0add20  # ptr_views: view: pool 0c25d71c, C 8c25d71c x1; view: pool 0c25d730, C 8c25d730 x1
+8c0afe94  # float_gaps: literal (matched): 8c0aee54 = 0x43480000 (2e+02), 8c0af094 = 0x43480000 (2e+02)
+8c0b0178  # ptr_views: view: pool 0c1c673c, C 8c1c673c x1
+8c0b2a3c  # ptr_views: view: pool 0c1c6850, C 8c1c6850 x1
+8c0b2db4  # ptr_views: view: pool 0c1c6ce8, C 8c1c6ce8 x1; view: pool 0c1c6cec, C 8c1c6cec x1
+8c0b4a4c  # float_gaps: literal (matched): 8c0b4ba0 = 0x3dcccccd (0.1)
+8c0b8d08  # ptr_views: view: pool 0c25d8e0, C 8c25d8e0 x1; view: pool 0c25d8f4, C 8c25d8f4 x1
+8c0bacc0  # ptr_views: view: pool 0c25d9a0, C 8c25d9a0 x1; view: pool 0c25d9b4, C 8c25d9b4 x1
+8c0bb2c8  # ptr_views: view: pool 0c1c7030, C 8c1c7030 x1
+8c0bb7c2  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0bb9a6  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0bbb9a  # xemu: # mirror review (state/mirror_ptrs/review_verdicts.txt): self skip at 8c0bbbc8 compares a 0x8c532698-based slot with the argument, a 0x0c-view argument picks itself; write the pool RAM pointer words as 0x0c as the original; ptr_views: view: pool 0c532698, C 8c532698 x2; mirror review: # self skip at 8c0bbbc8: 0x8c532698-based slot vs the argument
+8c0bbcf6  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0bc344  # ptr_views: view: pool 0c25dbfc, C 8c25dbfc x1; view: pool 0c25dc7c, C 8c25dc7c x1; view: pool 0c25dcbc, C 8c25dcbc x1; view: pool 0c25dd3c, C 8c25dd3c x1
+8c0bc4a4  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0bdae8  # ptr_views: view: pool 0c471cee, C 8c471cee x1
+8c0bdb34  # ptr_views: view: pool 0c471cee, C 8c471cee x1
+8c0bddcc  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1; view: pool 0c47265c, C 8c47265c x1; view: pool 0c472662, C 8c472662 x1
+8c0bdfde  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1; view: pool 0c47265c, C 8c47265c x1; view: pool 0c472662, C 8c472662 x1
+8c0be06c  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1; view: pool 0c472662, C 8c472662 x1
+8c0be1e2  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1; view: pool 0c472662, C 8c472662 x1
+8c0be278  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0be508  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1; view: pool 0c472662, C 8c472662 x1
+8c0bee36  # ptr_views: view: pool 0c471d38, C 8c471d38 x1
+8c0bfc28  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1; view: pool 0c532698, C 8c532698 x2
+8c0bfdcc  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0c0274  # ptr_views: view: pool 0c472660, C 8c472660 x1
+8c0c03b8  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0c0568  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0c06ba  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0c083c  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0c0960  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0c0a54  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0c0bbe  # ptr_views: view: pool 0c472660, C 8c472660 x1
+8c0c0c74  # ptr_views: view: pool 0c472660, C 8c472660 x1
+8c0c0e06  # ptr_views: view: pool 0c472660, C 8c472660 x1
+8c0c1148  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0c12d4  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0c152a  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1; view: pool 0c472660, C 8c472660 x1
+8c0c1cb8  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0c1df0  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0c2106  # ptr_views: view: pool 0c471ccc, C 8c471ccc x1
+8c0c3ae4  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c0c3fa6  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c0c4248  # ptr_views: view: pool 0c532698, C 8c532698 x1; view: pool 0c5423f8, C 8c5423f8 x1
+8c0c4df2  # ptr_views: view: pool 0c532698, C 8c532698 x1; view: pool 0c542460, C 8c542460 x2
+8c0c7642  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c0c9fd4  # ptr_views: view: pool 0c532698, C 8c532698 x2
+8c0cab74  # ptr_views: view: pool 0c273ab8, C 8c273ab8 x1
+8c0cb1b2  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c0cbd34  # ptr_views: view: pool 0c5423f8, C 8c5423f8 x1
+8c0d0768  # ptr_views: view: pool 0c472a0c, C 8c472a0c x1
+8c0d09ac  # ptr_views: view: pool 0c472c68, C 8c472c68 x2
+8c0d0a70  # ptr_views: view: pool 0c532698, C 8c532698 x1; view: pool 0c540b78, C 8c540b78 x1
+8c0d0f46  # ptr_views: view: pool 0c1c76c4, C 8c1c76c4 x1; view: pool 0c532698, C 8c532698 x1
+8c0d2aa0  # ptr_views: view: pool 0c1c7fe0, C 8c1c7fe0 x1
+8c0d50b4  # ptr_views: view: pool 0c1c81d0, C 8c1c81d0 x1; view: pool 0c1c82c0, C 8c1c82c0 x1; view: pool 0c532698, C 8c532698 x1
+8c0d64a6  # float_gaps: literal (matched): 8c0d68b0 = 0x3fe00000 (1.75), 8c0d68b4 = 0x458ca000 (4.5e+03), 8c0d68b8 = 0x44160000 (6e+02), 8c0d68bc = 0x455ac000 (3.5e+03), 8c0d68c0 = 0xc55ac000 (-3.5e+03), 8c0d6a24 = 0x45066000 (2.15e+03), 8c0d6a28 = 0x450fc000 (2.3e+03), 8c0d6a2c = 0x458ca000 (4.5e+03), 8c0d6a30 = 0x458e3000 (4.55e+03), 8c0d6bf8 = 0xc3960000 (-3e+02), 8c0d6bfc = 0x43960000 (3e+02), 8c0d6d3c = 0xc4408000 (-7.7e+02), 8c0d6d40 = 0x43eb0000 (4.7e+02), 8c0d6e10 = 0x451c4000 (2.5e+03); ptr_views: view: pool 0c2870d0, C 8c2870d0 x1; view: pool 0c2870dc, C 8c2870dc x1; view: pool 0c2870e8, C 8c2870e8 x1; view: pool 0c287100, C 8c287100 x3; view: pool 0c28710c, C 8c28710c x2; view: pool 0c287124, C 8c287124 x1
+8c0d8302  # ptr_views: view: pool 0c2879d8, C 8c2879d8 x1
+8c0d9998  # ptr_views: view: pool 0c54243c, C 8c54243c x1
+8c0dca00  # ptr_views: view: pool 0c1c9b78, C 8c1c9b78 x1
+8c0df14e  # float_gaps: literal (matched): 8c0ded30 = 0x42c80000 (1e+02)
+8c0dfbec  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c0e1272  # ptr_views: view: pool 0c1ca6e4, C 8c1ca6e4 x1
+8c0e15a8  # ptr_views: view: pool 0c1ca6f0, C 8c1ca6f0 x1
+8c0e29d0  # ptr_views: view: pool 0c1cb1fc, C 8c1cb1fc x1
+8c0e2ee8  # ptr_views: view: pool 0c1cba5c, C 8c1cba5c x1
+8c0e941c  # ptr_views: view: pool 0c1ccd90, C 8c1ccd90 x16
+8c0eabd0  # ptr_views: view: pool 0c540b8d, C 8c540b8d x1
+8c0eb6b4  # ptr_views: view: pool 0c540b78, C 8c540b78 x1
+8c0ec268  # ptr_views: view: pool 0c540b8d, C 8c540b8d x1
+8c0ed810  # ptr_views: view: pool 0c1cd188, C 8c1cd188 x1
+8c0ee550  # ptr_views: view: pool 0c540b78, C 8c540b78 x1
+8c0f5b1a  # ptr_views: view: pool 0c1ce5e4, C 8c1ce5e4 x1
+8c0f9206  # ptr_views: view: pool 0c54213c, C 8c54213c x1
+8c0fc812  # ptr_views: view: pool 0c54213c, C 8c54213c x1
+8c0fce2c  # ptr_views: view: pool 0c28f010, C 8c28f010 x1
+8c0fe5cc  # ptr_views: view: pool 0c1fb8c8, C 8c1fb8c8 x1; view: pool 0c1fb8cc, C 8c1fb8cc x2; view: pool 0c472d24, C 8c472d24 x1; view: pool 0c472d28, C 8c472d28 x6; view: pool 0c472d2c, C 8c472d2c x1; view: pool 0c472d30, C 8c472d30 x3; view: pool 0c472d4c, C 8c472d4c x1; view: pool 0c472d64, C 8c472d64 x3; view: pool 0c472d68, C 8c472d68 x2; view: pool 0c472d70, C 8c472d70 x1; view: pool 0c472d7c, C 8c472d7c x1; view: pool 0c472d80, C 8c472d80 x1; view: pool 0c472d8c, C 8c472d8c x3; view: pool 0c472d98, C 8c472d98 x3; view: pool 0c472da0, C 8c472da0 x11; view: pool 0c83c8c4, C 8c83c8c4 x1
+8c10085e  # ptr_views: view: pool 0c542145, C 8c542145 x1
+8c100fc8  # ptr_views: view: pool 0c473f04, C 8c473f04 x1
+8c10114c  # ptr_views: view: pool 0c1fbe40, C 8c1fbe40 x1; view: pool 0c1fbe54, C 8c1fbe54 x1; view: pool 0c1fbe68, C 8c1fbe68 x1; view: pool 0c1fbe7c, C 8c1fbe7c x1; view: pool 0c1fbe90, C 8c1fbe90 x1; view: pool 0c1fbea4, C 8c1fbea4 x1; view: pool 0c1fbeb8, C 8c1fbeb8 x1; view: pool 0c1fbecc, C 8c1fbecc x1; view: pool 0c1fbee0, C 8c1fbee0 x1; view: pool 0c1fbef4, C 8c1fbef4 x1; view: pool 0c1fbf08, C 8c1fbf08 x1; view: pool 0c1fbf1c, C 8c1fbf1c x1; view: pool 0c1fbf30, C 8c1fbf30 x1; view: pool 0c1fbf44, C 8c1fbf44 x1; view: pool 0c1fbf58, C 8c1fbf58 x1; view: pool 0c1fbf6c, C 8c1fbf6c x1; view: pool 0c1fbf80, C 8c1fbf80 x1; view: pool 0c1fbf94, C 8c1fbf94 x1; view: pool 0c1fbfa8, C 8c1fbfa8 x2; view: pool 0c1fbfbc, C 8c1fbfbc x2; view: pool 0c1fbfd0, C 8c1fbfd0 x1; view: pool 0c1fbfe4, C 8c1fbfe4 x1; view: pool 0c1fbff8, C 8c1fbff8 x1; view: pool 0c1fc00c, C 8c1fc00c x4; view: pool 0c1fc010, C 8c1fc010 x1; view: pool 0c1fc028, C 8c1fc028 x1; view: pool 0c1fc040, C 8c1fc040 x1; view: pool 0c1fc058, C 8c1fc058 x1; view: pool 0c1fc070, C 8c1fc070 x1; view: pool 0c1fc088, C 8c1fc088 x1; view: pool 0c1fc0a0, C 8c1fc0a0 x1; view: pool 0c1fc0b8, C 8c1fc0b8 x1; view: pool 0c1fc0d0, C 8c1fc0d0 x1; view: pool 0c1fc0e8, C 8c1fc0e8 x1; view: pool 0c1fc100, C 8c1fc100 x1; view: pool 0c1fc118, C 8c1fc118 x1; view: pool 0c1fc130, C 8c1fc130 x4; view: pool 0c1fc148, C 8c1fc148 x1; view: pool 0c1fc160, C 8c1fc160 x1; view: pool 0c1fc178, C 8c1fc178 x1; view: pool 0c1fc194, C 8c1fc194 x3; view: pool 0c1fc1ac, C 8c1fc1ac x3; view: pool 0c1fc1c4, C 8c1fc1c4 x1; view: pool 0c1fc1e0, C 8c1fc1e0 x1; view: pool 0c1fc1f8, C 8c1fc1f8 x1; view: pool 0c1fc210, C 8c1fc210 x1; view: pool 0c473ec0, C 8c473ec0 x1; view: pool 0c473ecc, C 8c473ecc x1; view: pool 0c474610, C 8c474610 x1; view: pool 0c532698, C 8c532698 x1
+8c101834  # ptr_views: view: pool 0c290954, C 8c290954 x1; view: pool 0c29e6f0, C 8c29e6f0 x3; view: pool 0c472da4, C 8c472da4 x1; view: pool 0c472ea8, C 8c472ea8 x1; view: pool 0c473f04, C 8c473f04 x2; view: pool 0c474304, C 8c474304 x1
+8c101f98  # ptr_views: view: pool 0c472eec, C 8c472eec x1
+8c102050  # ptr_views: view: pool 0c1fc730, C 8c1fc730 x1; view: pool 0c472eec, C 8c472eec x1
+8c102234  # ptr_views: view: pool 0c1fc7f4, C 8c1fc7f4 x1; view: pool 0c472eec, C 8c472eec x1; view: pool 0c54213c, C 8c54213c x1; view: pool 0c542454, C 8c542454 x1
+8c102574  # ptr_views: view: pool 0c1fc730, C 8c1fc730 x1
+8c104398  # ptr_views: view: pool 0c54213c, C 8c54213c x1
+8c104ac4  # ptr_views: view: pool 0c290c24, C 8c290c24 x1; view: pool 0c472ff8, C 8c472ff8 x1; view: pool 0c473238, C 8c473238 x1
+8c106034  # ptr_views: view: pool 0c290c60, C 8c290c60 x1; view: pool 0c290c78, C 8c290c78 x1; view: pool 0c473ea8, C 8c473ea8 x1; view: pool 0c473eb4, C 8c473eb4 x1; view: pool 0c473f04, C 8c473f04 x1; view: pool 0c474d8c, C 8c474d8c x1; view: pool 0c532698, C 8c532698 x1
+8c106390  # ptr_views: view: pool 0c473f04, C 8c473f04 x1
+8c106716  # ptr_views: view: pool 0c474d8c, C 8c474d8c x1
+8c106ad0  # ptr_views: view: pool 0c290ce8, C 8c290ce8 x1; view: pool 0c473ec0, C 8c473ec0 x2; view: pool 0c474934, C 8c474934 x1; view: pool 0c474d8c, C 8c474d8c x1
+8c106f96  # ptr_views: view: pool 0c474d8c, C 8c474d8c x1
+8c1074ee  # ptr_views: offset: pool 0c474d8c, C 8c474d94 (+0x8) x1
+8c108710  # ptr_views: view: pool 0c473ec0, C 8c473ec0 x1; view: pool 0c474610, C 8c474610 x1
+8c1088e4  # ptr_views: view: pool 0c473858, C 8c473858 x1
+8c1089e0  # ptr_views: view: pool 0c29640e, C 8c29640e x1
+8c10a616  # ptr_views: view: pool 0c474610, C 8c474610 x1; view: pool 0c474e40, C 8c474e40 x2
+8c10a6ae  # ptr_views: view: pool 0c474d8c, C 8c474d8c x1; view: pool 0c474da4, C 8c474da4 x1; view: pool 0c474e40, C 8c474e40 x3; view: pool 0c532698, C 8c532698 x1
+8c10b0aa  # float_gaps: literal (matched): 8c10a01c = 0x41000000 (8)
+8c10b418  # ptr_views: view: pool 0c29d9d0, C 8c29d9d0 x1
+8c10c0a4  # ptr_views: view: pool 0c5423f8, C 8c5423f8 x1
+8c10c428  # ptr_views: view: pool 0c474604, C 8c474604 x1
+8c10c916  # ptr_views: view: pool 0c474d8c, C 8c474d8c x1
+8c10ddf0  # ptr_views: view: pool 0c474d8c, C 8c474d8c x1
+8c10df3a  # ptr_views: view: pool 0c29e2d0, C 8c29e2d0 x1; view: pool 0c473b58, C 8c473b58 x1; view: pool 0c473b84, C 8c473b84 x1
+8c10e26a  # ptr_views: view: pool 0c473b58, C 8c473b58 x1
+8c10e638  # ptr_views: view: pool 0c474d8c, C 8c474d8c x1
+8c10f098  # ptr_views: view: pool 0c29125c, C 8c29125c x1
+8c10f65a  # ptr_views: view: pool 0c54213c, C 8c54213c x1
+8c112886  # ptr_views: offset: pool 0c474d8c, C 8c474e18 (+0x8c) x2
+8c113034  # ptr_views: view: pool 0c474d8c, C 8c474d8c x1
+8c114ddc  # ptr_views: view: pool 0c27b788, C 8c27b788 x1; view: pool 0c473bac, C 8c473bac x1; view: pool 0c473c2c, C 8c473c2c x1; view: pool 0c473f04, C 8c473f04 x1; view: pool 0c474610, C 8c474610 x1
+8c116680  # ptr_views: view: pool 0c20182c, C 8c20182c x1
+8c1167f4  # ptr_views: view: pool 0c474d8c, C 8c474d8c x1
+8c11768c  # ptr_views: view: pool 0c291b40, C 8c291b40 x1
+8c11e478  # ptr_views: view: pool 0c29640e, C 8c29640e x1
+8c11ea28  # ptr_views: view: pool 0c29264c, C 8c29264c x1
+8c120d70  # ptr_views: view: pool 0c4752ac, C 8c4752ac x1
+8c1213a8  # ptr_views: view: pool 0c1c7030, C 8c1c7030 x1
+8c1215ba  # ptr_views: view: pool 0c542640, C 8c542640 x1
+8c127f30  # float_gaps: literal (matched): 8c1281c8 = 0x3e8e38e4 (0.2777778)
+8c129408  # ptr_views: view: pool 0c53275c, C 8c53275c x1
+8c12b6c4  # ptr_views: view: pool 0c2a1294, C 8c2a1294 x1; view: pool 0c2a12d4, C 8c2a12d4 x1
+8c12bfdc  # ptr_views: view: pool 0c4b42fc, C 8c4b42fc x1
+8c136efc  # ptr_views: view: pool 0c2a19d4, C 8c2a19d4 x2
+8c136f8c  # ptr_views: view: pool 0c2a19dc, C 8c2a19dc x1; view: pool 0c2a1a08, C 8c2a1a08 x1
+8c137400  # ptr_views: view: pool 0c2a1a3c, C 8c2a1a3c x1
+8c138c3c  # ptr_views: view: pool 0c532698, C 8c532698 x2
+8c1398c0  # ptr_views: view: pool 0c2a1e94, C 8c2a1e94 x1
+8c14060c  # ptr_views: view: pool 0c2a243c, C 8c2a243c x1
+8c144d36  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c1453cc  # xemu: # copies the ghmem artefact (odd r14: the misaligned mov.w); a staging hint harness with the fixed oracle fails it 96/98, xemu agrees with that harness 98/98; ghmem: C copies Ghidra's zeroing (FAIL 96/98 on the hint harness)
+8c1465b0  # ptr_views: view: pool 0c2a2688, C 8c2a2688 x2; view: pool 0c542460, C 8c542460 x2
+8c147182  # ptr_views: view: pool 0c2a281c, C 8c2a281c x1
+8c14cb12  # float_gaps: literal (matched): 8c14ca88 = 0x3e99999a (0.3)
+8c156fac  # float_gaps: literal (matched): 8c1570fc = 0x30d6bf95 (1.5625e-09)
+8c157120  # ptr_views: view: pool 0c475c04, C 8c475c04 x1; view: pool 0c475c14, C 8c475c14 x1
+8c157ddc  # ptr_views: view: pool 0c2a2ac4, C 8c2a2ac4 x2
+8c1580c8  # ptr_views: view: pool 0c2a2b4c, C 8c2a2b4c x2
+8c15aa64  # ptr_views: view: pool 0c2a2cf8, C 8c2a2cf8 x1
+8c15aea6  # ptr_views: view: pool 0c2a2ce4, C 8c2a2ce4 x1
+8c15d7c4  # ptr_views: view: pool 0c53275c, C 8c53275c x1
+8c15dad6  # ptr_views: view: pool 0c532698, C 8c532698 x1
+8c166418  # ptr_views: view: pool 0c274750, C 8c274750 x1
+8c166b70  # ptr_views: view: pool 0c2a3620, C 8c2a3620 x1; view: pool 0c2a3628, C 8c2a3628 x1
+8c16c8d8  # ptr_views: view: pool 0c203dc4, C 8c203dc4 x1
+8c170ee4  # ptr_views: view: pool 0c542630, C 8c542630 x1
+8c173524  # ptr_views: view: pool 0c5412fc, C 8c5412fc x1; view: pool 0c54213c, C 8c54213c x1
+8c1772b0  # ptr_views: view: pool 0c83cf88, C 8c83cf88 x1
+8c1776b0  # ptr_views: view: pool 0c205c8c, C 8c205c8c x1
+8c178b60  # ptr_views: view: pool 0c8a3090, C 8c8a3090 x1
+8c179f60  # float_gaps: literal (matched): 8c17a050 = 0x7f7fffff (3.40282347e+38)
+8c17a370  # ptr_views: view: pool 0c868768, C 8c868768 x1
+8c17b800  # ptr_views: view: pool 0c868990, C 8c868990 x1
+8c17cda0  # ptr_views: view: pool 0c2a6338, C 8c2a6338 x1
+8c17cfa0  # ptr_views: view: pool 0c2a630c, C 8c2a630c x1; view: pool 0c2a6310, C 8c2a6310 x1; view: pool 0c868c2c, C 8c868c2c x1
+8c17eec0  # ptr_views: view: pool 0c86cdd0, C 8c86cdd0 x1; view: pool 0c86cdd8, C 8c86cdd8 x2
+8c17fe20  # ptr_views: view: pool 0c86cdd8, C 8c86cdd8 x1
+8c1803be  # ptr_views: view: pool 0c86ce10, C 8c86ce10 x1
+8c18121a  # ptr_views: view: pool 0c86ce0c, C 8c86ce0c x1; view: pool 0c86ce40, C 8c86ce40 x1
+8c182850  # ptr_views: view: pool 0c86d07c, C 8c86d07c x1; view: pool 0c86d088, C 8c86d088 x1
+8c185b00  # ptr_views: view: pool 0c8a2e60, C 8c8a2e60 x1

@@ -1,19 +1,18 @@
 // Test vector generation: the dev and hidden sets, each vector's inputs (TcInputs, plus the entry registers the
 // locked side decides), the oracle run, pointer repair, and the vectors.txt / expected.txt text. LOCKED: the watcher
 // agent may not change this file. Extended by TcPrepare.
-//
 // vectors.txt, per vector: V id set, R r4..r7, F fr4..fr11, X xf0..xf15, H fr12..fr15 (runtime state), L r0..r3
 // (parameters there), G r8..r14 (runtime state), A the live callees' drawn deltas (TcLive; after header lines K),
 // Q fr0..fr15 (Proto.fpuState), C the scripted call results, M patches, E.
-// expected.txt: V, RET r0 fr0, RETX (a nonstandard result register, or a u64's high word in r1), W writes, CALL
-// records (TcOracle.callRecord), XF, FH fr12..fr15 and GH r8..r14 at exit, QH fr0..fr15 and the FPSCR mode word
-// (TcOracle.modeWord) at exit, COV blocks, E.
+// expected.txt: V, RET r0 fr0, RETX (a nonstandard result register, or a u64's high word in r1), HALT (the run ended
+// in an endless `bra .`: TcExit), W writes, CALL records (TcOracle.callRecord), XF, FH fr12..fr15 and GH r8..r14 at
+// exit, QH fr0..fr15 and the FPSCR mode word (TcOracle.modeWord) at exit, COV blocks, E.
 // Lines H, L, G, Q, RETX, FH, GH and QH appear only for functions that have them, so other harnesses are unchanged.
 // A first line "P fpscr" (fpscrLine) gives the entry FPSCR when the oracle models a rounding mode other than nearest
 // (TcFacts.fpscrModel): the C runner sets MXCSR.RC from its RM. Without it the runner rounds to nearest.
 // Call-site coverage (report only): siteHits counts, per call site (callSites), the valid vectors whose run reached
 // its mocked callee; TcPrepare reports them in oracle_summary.json "call_sites", the checker in the verdict detail.
-// With TcFacts.coverageInputs, vectors are constant-guided (TcGuide) before the function's hints are applied.
+// Vectors are float-guided (TcFguide) and, with TcFacts.coverageInputs, constant-guided (TcGuide) before the hints.
 // Reach pass (TcFacts.reachRuns, TcReach): TcPrepare then adds vectors that reach call sites no vector reached.
 // Deadline (TcFacts.oracleDeadlineS, from config "ghidra_timeout_s"): when most tries run to STEP_LIMIT (a loop whose
 // count comes from the inputs: a random count word), generation would outlast Ghidra's timeout and the preparation
@@ -33,6 +32,11 @@
 // rescue pass with a tenth of the step limit in which a run hitting it gets its loop counts cut (TcCount.repair). It
 // is kept when both sets reach the rescue threshold; otherwise the function is refused as before, the reason saying
 // what the overtime rescue made and where the loop compares. Functions the first pass finishes never see it.
+// Step-limit fail-fast (STEP_FAIL_FAST): after that many first-pass dev tries, at least a quarter of them at the step
+// limit (each such try costs seconds), a first pass that cannot finish in time ends: no valid vector and 3/4 of the
+// tries at the step limit, or a valid rate too low to fill both sets by the deadline (Spawn 8c01bde0: 27 of 64 valid
+// when its 750 s ran out). The overtime rescue starts at once and also gets the time the first pass would have spent
+// (TcRescue.overtime).
 import java.lang.management.ManagementFactory;
 import ghidra.program.model.address.*;
 import ghidra.program.model.listing.*;
@@ -43,6 +47,9 @@ public abstract class TcVectors extends TcOracle {
     static final int MAX_REPAIRS = 12; // pointer repairs per vector (TcInputs.repairVec, TcCalls.repair)
     static final int CAP_FAIL_FAST = 64; // tries per set before the call-cap fail-fast may end a pass
     String capNote = null;  // the call-cap fail-fast ended a pass; TcPrepare refuses with it when no vector is left
+    static final int STEP_FAIL_FAST = 16; // first-pass dev tries before the step-limit fail-fast may end it
+    boolean earlyOvertime = false;  // the step-limit fail-fast ended the first pass (TcRescue.overtime)
+    String earlyNote = "";
 
     StringBuilder vout = new StringBuilder(), eout = new StringBuilder();
     Map<String, Integer> invalid = new TreeMap<>();
@@ -60,15 +67,14 @@ public abstract class TcVectors extends TcOracle {
     long outside = -1;
     boolean outOfTime = false, rescued = false;
     long deadlineAt = 0;     // the overtime rescue's own deadline (System.currentTimeMillis), else 0
-    String overtimeNote = ""; // the overtime rescue's outcome, for TcPrepare's refusal reason
-    String countSites = "";   // the compares of the last loop TcCount could not cut
+    String overtimeNote = "", countSites = ""; // the overtime rescue's outcome (TcPrepare); TcCount's uncut loop compares
     boolean[] lowWhich = new boolean[4], giWhich = new boolean[7]; // the entry registers entryLow/entryGi really set
 
     // The dev and hidden sets. Each set has its own generator (rnd), so the hidden set does not depend on ndev.
     void makeVectors(Proto proto, List<Long> globals, List<String> hints, long seed, int ndev, int nhidden) {
         makeSets(proto, globals, hints, seed, ndev, nhidden, false);
         if (outside < 0 && outOfTime) {
-            overtimeRescue(proto, globals, hints, seed, ndev, nhidden);
+            TcRescue.overtime(this, proto, globals, hints, seed, ndev, nhidden);
             return;
         }
         if (outside >= 0 || outOfTime
@@ -80,31 +86,6 @@ public abstract class TcVectors extends TcOracle {
         } else {
             rescued = true;
         }
-    }
-
-    void overtimeRescue(Proto proto, List<Long> globals, List<String> hints, long seed, int ndev, int nhidden) {
-        if (facts.oracleRescueS <= 0 || facts.minValid <= 0) return;
-        TcRescue first = TcRescue.take(this);
-        long started = System.currentTimeMillis();
-        deadlineAt = started + facts.oracleRescueS * 1000;
-        stepLimit = STEP_LIMIT / 10;
-        countRepair = true;
-        makeSets(proto, globals, hints, seed, ndev, nhidden, true);
-        stepLimit = STEP_LIMIT;
-        countRepair = false;
-        deadlineAt = 0;
-        if (outside < 0 && valid[0] >= Math.min(facts.minValid, ndev) && valid[1] >= Math.min(facts.minValid, nhidden)) {
-            outOfTime = false;
-            rescued = true;
-            return;
-        }
-        overtimeNote = String.format("; an overtime rescue cutting loop counts (step limit %d) made dev %d of %d, hidden"
-            + " %d of %d valid in %d s%s%s", STEP_LIMIT / 10, valid[0], tried[0], valid[1], tried[1],
-            (System.currentTimeMillis() - started) / 1000, outside >= 0 ? ", then reached code outside the body at "
-            + hex(outside) : "", countSites.isEmpty() ? "" : "; no count found for the loop comparing at " + countSites);
-        outside = -1;
-        first.restore(this);
-        outOfTime = true;
     }
 
     void makeSets(Proto proto, List<Long> globals, List<String> hints, long seed, int ndev, int nhidden,
@@ -127,9 +108,11 @@ public abstract class TcVectors extends TcOracle {
         entryRet = proto.retReg != null ? proto.retReg : proto.ret.equals("u64") ? facts.retInt64Hi : null;
         for (long site : callSites()) siteHits.put(site, 0);
         List<Long> consts = facts.coverageInputs || rescue ? TcGuide.constants(listing, body, this::poolValue) : List.of();
+        long passStart = System.currentTimeMillis();
         long deadline = deadlineAt > 0 ? deadlineAt : facts.oracleDeadlineS <= 0 ? 0
             : ManagementFactory.getRuntimeMXBean().getStartTime() + facts.oracleDeadlineS * 1000;
         int[] capped = new int[2];  // tries ending at CALL_LIMIT, per set (the call-cap fail-fast)
+        int[] limited = new int[2]; // tries ending at the step limit, per set (the step-limit fail-fast)
         vectors:
         for (int s = 0; s < 2; s++) {
             rnd = new Random(seed * 31 + s * 0x5bd1e995L);
@@ -145,6 +128,15 @@ public abstract class TcVectors extends TcOracle {
                         valid[s], capped[s]);
                     break vectors;
                 }
+                long now = System.currentTimeMillis(), left = want[0] - valid[0] + want[1];
+                if (!rescue && s == 0 && facts.oracleRescueS > 0 && tried[s] >= STEP_FAIL_FAST
+                    && limited[s] * 4 >= tried[s] && (valid[s] == 0 ? limited[s] * 4 >= tried[s] * 3
+                    : deadline > 0 && now + (now - passStart) * left / valid[s] > deadline)) {  // the rescue now
+                    earlyNote = String.format("%d of %d dev tries at the step limit, %d valid", limited[s], tried[s],
+                        valid[s]);
+                    earlyOvertime = outOfTime = true;
+                    break vectors;
+                }
                 tried[s]++;
                 Vec v = makeVec(id % 4, proto, new ArrayList<>(globals));
                 entryFh = state ? stateValues(seed, id, idTry) : null;
@@ -154,6 +146,7 @@ public abstract class TcVectors extends TcOracle {
                 if (sq != null) sq.draw(entryGi, seed, id, idTry);  // TcSq: rN in the store-queue window (header line S)
                 Random h = new Random(seed * 0x2545f4914f6cdd1dL + id * 0x632be59bd9b4e019L + idTry * 0x85ebca6bL);
                 if (facts.coverageInputs || rescue) TcGuide.guide(v, proto, consts, globals, h, facts.scrLo, rescue);
+                TcFguide.guide(v, proto, listing, body, mem, seed, id, idTry, rescue);
                 idTry++;
                 applyHints(v, hints);
                 entryFq = proto.fpuState ? fpuValues(seed, id, idTry, v.fr) : null;
@@ -164,6 +157,7 @@ public abstract class TcVectors extends TcOracle {
                 int repairs = nrep[0];
                 if (!r.ok) {
                     if (r.reason.startsWith("more than " + CALL_LIMIT + " calls")) capped[s]++;
+                    if (r.stepLimited) limited[s]++;
                     invalid.merge(r.reason.replaceAll("[0-9a-f]{8}", "X").replaceAll("ram:\\w+", "X"), 1, Integer::sum);
                     if (examples.size() < 6) examples.add(describeFailure(r, repairs));
                     if (r.outside >= 0) {  // TcOracle.entersCallee
@@ -195,11 +189,14 @@ public abstract class TcVectors extends TcOracle {
         TcCount.Cuts cuts = new TcCount.Cuts();
         TcSentinel ends = new TcSentinel();
         while (!r.ok && (r.faultAddr >= 0 || (countRepair && r.stepLimited) || r.callCapped) && repairs < MAX_REPAIRS) {
-            if (r.callCapped) {  // a table walk past its end: plant the end marker (TcSentinel)
-                if (!ends.repair(this, v, r, h)) break;
-                repairs++;
-                r = runOracle(v);
-                continue;
+            // a table walk past its end: plant the end marker (TcSentinel); a rescue run falls back to a count cut
+            if (r.callCapped || r.stepLimited && ends.walksToMarker(this, r, h)) {
+                if (ends.repair(this, v, r, h)) {
+                    repairs++;
+                    r = runOracle(v);
+                    continue;
+                }
+                if (r.callCapped) break;
             }
             if (r.stepLimited) {  // overtime rescue: cut the loop's counts (TcCount)
                 if (!r.count.repair(v, r, stepLimit, h, cuts)) {
@@ -225,7 +222,8 @@ public abstract class TcVectors extends TcOracle {
             if (nv != null) cuts.restore(nv);
             if (nv != null) ends.restore(nv);
             if (nv == null && (r.callFault || !TcRepair.entry(this, v, r.faultAddr)
-                && !(rescue && TcRepair.ret(this, v, r.faultAddr, r.calls.size(), consts, h)))) break;
+                && !(rescue && TcRepair.ret(this, v, r.faultAddr, r.calls.size(), consts, h))
+                && !TcRepair.index(this, v, r.faultAddr, loads))) break;
             if (nv != null) v = nv;
             repairs++;
             r = runOracle(v);
@@ -274,6 +272,7 @@ public abstract class TcVectors extends TcOracle {
         eout.append("V ").append(id).append(' ').append(set).append('\n');
         eout.append("RET ").append(hex(r.r0)).append(' ').append(hex(r.fr0)).append('\n');
         if (entryRet != null) eout.append("RETX ").append(hex(r.retx)).append('\n');
+        if (r.halted) eout.append("HALT\n");
         for (String w : r.writes) eout.append("W ").append(w).append('\n');
         for (String c : r.calls) eout.append("CALL ").append(c).append('\n');
         eout.append("XF");

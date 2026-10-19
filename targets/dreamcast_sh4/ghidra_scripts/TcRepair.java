@@ -41,4 +41,43 @@ final class TcRepair {
         }
         return false;
     }
+
+    // The last fallback: a scaled index or a self-relative offset. No input is near the fault, but a loaded word n,
+    // shifted left 0..5, plus another recent load's value (a table base) or plus n's own address (p + *p) lands within
+    // GEN_MAX_OFFSET below it. Spawn 8c055180 and 8c056970 read a table pointer at 8c3227b4 plus (the base index at
+    // 8c36200c + i) * 8, both inputs: 706 of 750 invalid runs there. n gets a small value (its low 4 bits, so the
+    // random stream is untouched); a base that is still no pointer is then near the next fault and repaired as usual.
+    static boolean index(TcVectors g, TcInputs.Vec v, long faultAddr, List<long[]> loads) {
+        int from = Math.max(0, loads.size() - 16);
+        for (int i = loads.size() - 1; i >= from; i--) {
+            long[] ix = loads.get(i);
+            long n = ix[3] & 0xffffffffL;
+            if (ix[2] != 4 || !g.genInRam(ix[1]) || v.genPoked.containsKey(ix[1])) continue;
+            for (int sh = 0; sh <= 5; sh++) {
+                long off = (n << sh) & 0xffffffffL;
+                if (off < TcInputs.GEN_MAX_OFFSET || off > 0xffffff00L) continue; // already a small offset
+                boolean hit = ((faultAddr - ix[1] - off) & 0xffffffffL) < TcInputs.GEN_MAX_OFFSET;
+                for (int j = from; j < loads.size() && !hit; j++) {
+                    hit = j != i && ((faultAddr - loads.get(j)[3] - off) & 0xffffffffL) < TcInputs.GEN_MAX_OFFSET;
+                }
+                if (!hit) continue;
+                g.genPoke(v, ix[1], n & 0xf);
+                return true;
+            }
+        }
+        // An entry register as the index into a table the body names: Spawn 8c011f98 reads @(r5 * 4 + 0x0c08f068).
+        for (int i = 0; i < 4; i++) {
+            long n = v.r[i] & 0xffffffffL;
+            for (int sh = 0; sh <= 5; sh++) {
+                long off = (n << sh) & 0xffffffffL;
+                if (off < TcInputs.GEN_MAX_OFFSET || off > 0xffffff00L) continue;
+                for (long c : g.bodyConsts()) {
+                    if (((faultAddr - c - off) & 0xffffffffL) >= TcInputs.GEN_MAX_OFFSET) continue;
+                    v.r[i] = n & 0xf;
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 }

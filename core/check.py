@@ -169,6 +169,8 @@ def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harn
     harness_dir: test vectors from somewhere else (the watcher gate checks staged oracle output)."""
     harness = harness_dir or paths.HARNESS / addr
     meta = paths.read_json(harness / "meta.json")
+    from . import ret_reg  # the original returns in fr0 whatever the signature says: compare fr0 too
+    meta = ret_reg.judged(meta, ret_reg.listed(paths.STATE), addr)
     summary = paths.read_json(harness / "oracle_summary.json") or {}
     result = {"addr": addr, "sets": list(sets), "verdict": "FAIL", "stage": "lint", "lint": [], "build": [],
               "vectors": {}, "first_diffs": [], "failing": 0, "total": 0}

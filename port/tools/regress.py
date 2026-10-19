@@ -1,6 +1,6 @@
 """The regression run: every <game>/tests/*.script, one at a time, bounded, headless, with the fixed clock and tick
 presenting, so each run repeats exactly. A script fails on
-- an exit other than the watchdog's (a crash, a run-time check, the entry function returning);
+- an exit other than the watchdog's (a crash, a halt (tc_halt), a run-time check, the entry function returning);
 - a log class missing from its baseline: a TODO line, a stub reached (STUB), or a new TA polygon class (ta: list);
 - a frame it asks for that was not reached, or that differs from its golden (frames.py).
 Log classes in the baseline that a run no longer reaches are reported, not failed.

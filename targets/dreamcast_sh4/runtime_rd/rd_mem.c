@@ -124,6 +124,15 @@ static void disarm(void)
 
 static u32 g_mxcsr_rc; /* FPSCR.RM from vectors.txt line P (tc_rt.c): 0 nearest, 0x6000 toward zero */
 
+jmp_buf tcrt_halt_jmp;
+int tcrt_halted;
+
+void tc_halt(void)
+{
+    tcrt_halted = 1;
+    longjmp(tcrt_halt_jmp, 1);
+}
+
 void tcrt_set_fpscr(u32 fpscr)
 {
     g_mxcsr_rc = (fpscr & 3u) == 1u ? 0x6000u : 0u;
@@ -139,6 +148,7 @@ void tcrt_reset(void)
     rd_calls_reset(zero);
     rd_abi_reset();
     rd_p4_reset();
+    tcrt_halted = 0;
     _mm_setcsr((_mm_getcsr() & ~0x6000u) | 0x8040u | g_mxcsr_rc); /* FPSCR.DN=1: DAZ|FTZ; RM: RC (tc_rt.c) */
     /* The x87 too (this build is 32-bit): it converts integers to f32 (fild, then a rounding fstp, where the 64-bit
      * build's cvtsi2ss rounds by MXCSR.RC), so it rounds as FPSCR.RM says. It does no other float arithmetic here:
@@ -175,6 +185,7 @@ void tcrt_report(FILE *out, u32 r0, u32 fr0_bits)
     disarm();
     fprintf(out, "RET %08x %08x\n", rd_self_guest(r0), fr0_bits);
     rd_report_retx(out);
+    if (tcrt_halted) fprintf(out, "HALT\n");
     u32 lo = TCRT_VALID_LO - TCRT_RAM_BASE, hi = TCRT_STACK_LO - TCRT_RAM_BASE;
     for (u32 o = lo; o + 4 <= hi; o += 4) { /* a stored host address of the function under test: its guest one */
         u32 w, s;

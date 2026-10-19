@@ -5,6 +5,7 @@
 #include <string.h>
 #include "pvr_int.h"
 #include "platform.h"
+#include "lockstep.h"
 
 PvrState g_pvr = {
     .fog_color = 0xff000000u,
@@ -19,6 +20,7 @@ u8 *pvr_vram(void) { return g_vram; }
 
 void pvr_vram_written(u32 offset, u32 size)
 {
+    hw_check_vram(offset, size);
     if (offset < PVRX_VRAM_SIZE)
         pvr_tex_invalidate(offset, size > PVRX_VRAM_SIZE - offset ? PVRX_VRAM_SIZE - offset : size);
 }

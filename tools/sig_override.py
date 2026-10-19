@@ -125,9 +125,9 @@ def main():
         report["candidates"] = rp.candidates()
     for k, v in report.items():
         if k == "candidates":
-            by = {c: sum(x["case"] == c for x in v) for c in ("tail", "tail_unknown", "f32_unread")}
+            by = {c: sum(x["case"] == c for x in v) for c in ("tail", "tail_unknown", "f32_unread", "fr0_exit")}
             print(f"candidates: {len(v)} (tail: {by['tail']}, tail_unknown: {by['tail_unknown']}, "
-                  f"f32_unread: {by['f32_unread']})")
+                  f"f32_unread: {by['f32_unread']}, fr0_exit: {by['fr0_exit']})")
             for x in v:
                 ev = x["evidence"]
                 print(f"  {x['addr']} {x['case']}: {x['ret']} -> {x['suggest']} ({x['why']}; sites {ev['sites']}, "

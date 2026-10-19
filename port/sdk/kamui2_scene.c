@@ -14,6 +14,7 @@
 #include "game.h"
 #include "platform.h"
 #include "kamui2.h"
+#include "lockstep.h"
 
 #define K2_DRIVER_VSYNC_WAIT 0x754u /* frames - 1 between flips (Kamui 2 16.x; the SDK's kmSetWaitVsyncCount) */
 #define K2_QUEUE_IDLE 0x101          /* the queue status with nothing queued */
@@ -52,6 +53,7 @@ s32 kmBeginScene(KMSYSTEMCONFIGSTRUCT *config)
     g_bank = (g_bank + 1u) % (c->vertex_banks ? c->vertex_banks : 1u);
     g_pass_count = 0;
     c->buffer_desc->pass = &c->pass[0];
+    lockstep_scene();
     return K2_OK;
 }
 
@@ -119,7 +121,9 @@ s32 kmRender(u32 flip)
 {
     int extra;
     (void)flip;
+    hw_check_scene(g_passes, g_pass_count);
     pvr_render(g_passes, g_pass_count);
+    hw_check_rendered(g_passes, g_pass_count);
     g_pass_count = 0;
     if (port_extra_drawing()) {
         gfx_capture_extra();

@@ -214,6 +214,10 @@ public abstract class TcBase extends GhidraScript {
             }
             if (q.storage.matches("dr([468]|10)")) {
                 p.pairs = true;
+            } else if (p.pairs && q.kind.equals("UNSUPPORTED") && q.storage.equals("stack")) {
+                // a pair artifact too: Spawn 8c054c60 takes four floats in fr4..fr7, read as dr4, dr6 and two stack
+                // doubles, and reads no stack. TcStack below adds the stack words the code does read.
+                continue;
             } else if (q.kind.equals("UNSUPPORTED")) {
                 p.unsupported = "64-bit parameter " + q.name;
             }

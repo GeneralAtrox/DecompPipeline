@@ -21,6 +21,10 @@
  *            [--thunks on|off]    (calls through guest pointers jump straight to the host function, dispatch.c)
  *            [--replay FILE.ptrec] [--record off]   (the session recording from boot, session.c)
  *            [--scene-dump-at V] [--scene-dir DIR] [--stop-at V]   (Copy game context, scene_dump.c)
+ *            [--lockstep-spec FILE] [--lockstep-trace FILE] [--lockstep FILE] [--lockstep-watch W@N]
+ *                                  (the lockstep check, lockstep.c)
+ *            [--hw-out FILE] [--hw-tex FILE] [--hw-strip L:S:V@F] [--hw-watch-ram A@F] [--hw-watch-vram A:N@F]
+ *                                  (the hardware check, with --lockstep; hw_check.c)
  *            [--ssaa 2|4] [--aniso N]   (look-review prototypes, off by default: supersampling, anisotropic
  *                                  filtering; runtime/gfx/gfx_present.c, pvr/pvr_states.c)
  */
@@ -33,6 +37,7 @@
 #include "host.h"
 #include "scene_dump.h"
 #include "session.h"
+#include "lockstep.h"
 
 #ifdef PORT_CHECKED
 #include <rtcapi.h>
@@ -90,6 +95,7 @@ void port_exit(const char *why, int code)
     dispatch_report();
     port_stub_report();
     port_extra_report();
+    lockstep_close();
     port_log_flush();
     ExitProcess((UINT)code);
 }
@@ -185,7 +191,8 @@ int port_main(int argc, char **argv)
         else if (!strcmp(a, "--thunks") && v) g_thunks = strcmp(v, "off") != 0;
         else if ((used = input_option(a, v)) == 0 && (used = audio_option(a, v)) == 0 && (used = gfx_option(a, v)) == 0
                  && (used = extra_option(a, v)) == 0 && (used = session_option(a, v)) == 0 &&
-                 (used = scene_dump_option(a, v)) == 0)
+                 (used = scene_dump_option(a, v)) == 0 &&
+                 (used = lockstep_option(a, v)) == 0)
             used = 1; /* unknown: skipped */
     }
     port_log_open(log);

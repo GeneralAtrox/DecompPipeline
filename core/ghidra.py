@@ -72,7 +72,8 @@ def _fixups():
     (whole spans between two functions that decode as routines ending in rts, plus their tail-jump stubs) become
     functions (state/run_functions.tsv). TcOrphans:
     functions for instructions in no function that are referenced from outside or start a prologue
-    (state/orphan_functions.tsv). TcPrune: functions whose code runs into non-instructions, and literal-pool words that
+    (state/orphan_functions.tsv). TcJumpIn: a function reached only by `jmp` from one function whose frame it pops
+    (a jump-in continuation) joins that function (state/jumpin_functions.tsv). TcPrune: functions whose code runs into non-instructions, and literal-pool words that
     decode as code, are data seeded as code, removed (state/pruned_functions.tsv lists them).
     TcSwitch: switch cases (and the slots of a jump into an unrolled sled) Ghidra left outside their function become
     part of it (state/switch_tables.tsv lists every table dispatch found). TcCont: the code a callee returns into after the function set PR to it before a tail jump
@@ -92,6 +93,7 @@ def _fixups():
             "-postScript", "TcRuns.java", str(paths.STATE / "run_functions.tsv"), str(over),
             games,
             "-postScript", "TcOrphans.java", str(paths.STATE / "orphan_functions.tsv"), str(over),
+            "-postScript", "TcJumpIn.java", str(paths.STATE / "jumpin_functions.tsv"), games, str(over),
             "-postScript", "TcPrune.java", "fix", str(paths.STATE / "pruned_functions.tsv"),
             "-postScript", "TcSwitch.java", "fix", str(paths.STATE / "switch_tables.tsv"),
             "-postScript", "TcCont.java", str(paths.STATE / "pr_continuations.tsv"), games]

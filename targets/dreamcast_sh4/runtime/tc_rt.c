@@ -173,6 +173,15 @@ static void log_call(u32 target, const TcArgs *args)
     }
 }
 
+jmp_buf tcrt_halt_jmp;
+int tcrt_halted;
+
+void tc_halt(void)
+{
+    tcrt_halted = 1;
+    longjmp(tcrt_halt_jmp, 1);
+}
+
 u32 tc_call(u32 target, const TcArgs *args)
 {
     u32 rv = next_return();
@@ -185,14 +194,15 @@ u32 tc_call(u32 target, const TcArgs *args)
 
 f32 tc_callf(u32 target, const TcArgs *args) { return u2f(tc_call(target, args)); }
 
-/* Matches Ghidra's p-code float truncation: a saturating 64-bit cast, then the low 32 bits. */
+/* The SH-4's ftrc: truncation toward zero, saturating at 0x7fffffff above the int range and 0x80000000 below it;
+ * a NaN gives 0x80000000. The oracle's FPUL is the same (TcFpu: Ghidra's p-code trunc wraps a 64-bit cast). */
 s32 sh4_ftrc(f32 x)
 {
-    if (x != x) return 0;
+    if (x != x) return (s32)0x80000000u;
     double d = x;
-    if (d >= 9223372036854775807.0) return (s32)0xffffffffu;
-    if (d <= -9223372036854775808.0) return 0;
-    return (s32)(u32)(unsigned long long)(long long)d;
+    if (d >= 2147483648.0) return 0x7fffffff;
+    if (d <= -2147483648.0) return (s32)0x80000000u;
+    return (s32)d;
 }
 
 f32 sh4_fsrra(f32 x)
@@ -298,6 +308,7 @@ void tcrt_reset(void)
     memset(g_draws, 0, sizeof g_draws);
     g_retx = 0;
     g_has_retx = 0;
+    tcrt_halted = 0;
     /* FPSCR.DN=1, as the game runs (TcOracle sets FPSCR 0x00040001; TcFpu models it): denormal operands count as
      * zero (DAZ) and denormal results are flushed to zero (FTZ). FPSCR.RM=1 (line P, only when the oracle models
      * it: TcRound) rounds toward zero (RC=11). Here, not in the runner: main's frame is unchanged. */
@@ -347,6 +358,7 @@ void tcrt_report(FILE *out, u32 r0, u32 fr0_bits)
 {
     fprintf(out, "RET %08x %08x\n", r0, fr0_bits);
     if (g_has_retx) fprintf(out, "RETX %08x\n", g_retx);
+    if (tcrt_halted) fprintf(out, "HALT\n");
     if (g_woverflow) fprintf(out, "FAULT too-many-writes\n");
     qsort(g_wlist, g_wcount, sizeof(u32), cmp_u32);
     u32 i = 0;

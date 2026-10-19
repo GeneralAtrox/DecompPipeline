@@ -1,0 +1,12 @@
+8c010080  # interrupt counter poll: can't be fixed
+8c0123a4  # interrupt counter poll: can't be fixed
+8c012b90  # TcJumpIn: joins 8c0129c6
+8c012be0  # TcJumpIn: joins 8c0129c6
+8c012bf0  # TcJumpIn: joins 8c0129c6
+8c021536  # TcJumpIn: joins 8c021282
+8c024cbe  # P2 uncached entry: excluded (TcCatalog)
+8c024cf8  # mid-entry stack switch: excluded
+8c058300  # real MMIO: can't be fixed
+8c059630  # AICA mailbox: port-replaced
+8c059740  # AICA mailbox: port-replaced
+8c05a490  # AICA wave RAM: port-replaced

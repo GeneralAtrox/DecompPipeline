@@ -98,6 +98,19 @@ class Identity(unittest.TestCase):
             self.assertFalse(sr.sample_clean(dict(rec, drift_only=[])))  # one not done
             self.assertFalse(sr.sample_clean({"sample": []}))
 
+    def test_callee_back_in_line_with_ghidra(self):  # Spawn main 8c01f1a0: callee 8c056700 re-matched to Ghidra's view
+        with tempfile.TemporaryDirectory() as t:
+            h, before, after = self.harnesses(t)
+            sig = "void fn_8c000200(s32 param_1, f32 param_fr10)"
+            (h / "8c000200" / "meta.json").write_text(json.dumps({"addr": "8c000200", "signature": sig}),
+                                                      encoding="utf-8")
+            (before / "meta.json").write_text(json.dumps({"addr": "8c000100", "callees": [  # adopted earlier
+                {"addr": "8c000200", "signature": "void fn_8c000200(s32 param_1)", "ghidra_signature": sig}]}),
+                encoding="utf-8")
+            (after / "meta.json").write_text(json.dumps({"addr": "8c000100", "callees": [  # adopt changed nothing
+                {"addr": "8c000200", "signature": sig}]}), encoding="utf-8")
+            self.assertEqual(sr.compare(before, after, sr.callee_drift.Signatures(h)), "drift")
+
     def test_script_difference_still_refuses(self):
         with tempfile.TemporaryDirectory() as t:
             h, before, after = self.harnesses(t)

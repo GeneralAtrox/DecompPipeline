@@ -44,8 +44,8 @@ static float atten(u32 steps) { return steps >= 15u ? 0.0f : powf(10.0f, -0.15f 
 static void pan_gains(u32 level, u32 pan, float *l, float *r)
 {
     float g = level ? atten(15u - level) : 0.0f;
-    *l = pan < 16u ? g : g * atten(pan - 16u);
-    *r = pan < 16u ? g * atten(15u - pan) : g;
+    *l = pan < 16u ? g * atten(15u - pan) : g;
+    *r = pan < 16u ? g : g * atten(pan - 16u);
 }
 
 static s32 pcm(const Voice *v, u32 i)

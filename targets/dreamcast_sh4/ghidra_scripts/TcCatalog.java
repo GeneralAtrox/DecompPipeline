@@ -13,6 +13,7 @@ import java.util.*;
 
 public class TcCatalog extends GhidraScript {
     static final Set<String> FPU_SPECIAL = new HashSet<>(Arrays.asList("fsca", "fsrra", "ftrv", "fipr"));
+    static final long TABLE_SPAN = 0x100;
     static final Set<String> FP_MODE = new HashSet<>(Arrays.asList("frchg", "fschg", "fpchg"));
     // pref (cache prefetch hint) and movca.l (a plain store of r0 when emulated) are not excluded.
     static final Set<String> SYS = new HashSet<>(Arrays.asList(
@@ -98,7 +99,21 @@ public class TcCatalog extends GhidraScript {
         Listing listing = currentProgram.getListing();
         FunctionManager fm = currentProgram.getFunctionManager();
         BasicBlockModel bbm = new BasicBlockModel(currentProgram);
+        // Code entered through the uncached P2 mirror (a pool word 0xa... naming a function entry) runs uncached to
+        // change the cache control register: Spawn 8c024c90 jumps to 0xac024cbe, which stores r3 at @r2 (CCR) and
+        // jumps back through r4; 0xac024cf8 ors r2 into @r1. Its registers come from the hardware routine that jumps
+        // there, not the C ABI, so it counts as a system operation: excluded (intent only) like that routine.
+        Set<Address> uncached = new HashSet<>();
         long imgStart = 0x8c010000L, ramEnd = 0x8d000000L;
+        TreeSet<Long> tables = new TreeSet<>();  // pool-named addresses holding no instruction: data
+        for (Instruction in : listing.getInstructions(true)) {
+            if (!in.getMnemonicString().toLowerCase().replaceFirst("^_", "").equals("mov.l")) continue;
+            Long pv = poolValue(mem, listing, in);
+            if (pv != null && pv >= imgStart && pv < ramEnd && listing.getInstructionAt(toAddr(pv)) == null) tables.add(pv);
+            if (pv == null || pv < 0xA0000000L || pv >= 0xC0000000L) continue;
+            Address e = toAddr((pv & 0x1fffffffL) | 0x80000000L);
+            if (fm.getFunctionAt(e) != null) uncached.add(e);
+        }
         List<String> fpscrLoads = new ArrayList<>();
 
         try (PrintWriter pw = new PrintWriter(new OutputStreamWriter(new FileOutputStream(out), "UTF-8"))) {
@@ -107,7 +122,8 @@ public class TcCatalog extends GhidraScript {
             for (Function f : fm.getFunctions(true)) {
                 if (monitor.isCancelled()) break;
                 AddressSetView body = f.getBody();
-                int insns = 0, fpu = 0, fpuS = 0, fpM = 0, hw = 0, sys = 0, glob = 0, fptr = 0, ind = 0, jt = 0;
+                int insns = 0, fpu = 0, fpuS = 0, fpM = 0, hw = 0, glob = 0, fptr = 0, ind = 0, jt = 0;
+                int sys = uncached.contains(f.getEntryPoint()) ? 1 : 0;
                 Set<String> strs = new LinkedHashSet<>();
                 Map<Integer, Long> lastPool = new HashMap<>();
                 for (Instruction in : listing.getInstructions(body, true)) {
@@ -198,10 +214,31 @@ public class TcCatalog extends GhidraScript {
             }
             pw.println("\"fpscr_loads\": [" + fl + "]}");
         }
-        // Instruction byte ranges: decompiled C must never read these (no machine-code interpreters).
+        // Instruction byte ranges: decompiled C must never read these (no machine-code interpreters). A function never
+        // called or jumped to, whose entry is read through a register (every reference), starting within TABLE_SPAN bytes
+        // after a pool-named address that holds no instruction, is that table's data disassembled: TC's Duck ADPCM
+        // decoder (8c09ae88) reads its nibble and step tables at 0x8c0b0240, named by a pool word, where "functions"
+        // 8c0b0242 and 8c0b0280 have no caller; their only references are the decoder's table reads. A function with no
+        // reference at all stays code (TC 8c0550dc, 8c061e54: real functions reached through runtime pointers).
+        AddressSet tableData = new AddressSet();
+        ReferenceManager rm = currentProgram.getReferenceManager();
+        for (Function f : fm.getFunctions(true)) {
+            Address e = f.getEntryPoint();
+            Long t = tables.floor(e.getOffset());
+            if (t == null || e.getOffset() - t >= TABLE_SPAN) continue;
+            boolean data = !currentProgram.getSymbolTable().isExternalEntryPoint(e) && rm.getReferenceCountTo(e) > 0;
+            for (Reference x : rm.getReferencesTo(e)) {  // a load through a register (not a mova: TC 8c0c43a4)
+                Instruction by = listing.getInstructionAt(x.getFromAddress());
+                data &= !x.getReferenceType().isFlow() && by != null && by.toString().matches("_?mov\\.[bwl] @\\(?r.*");
+            }
+            if (!data) continue;
+            tableData.add(f.getBody());
+            println("TcCatalog: table data, not code: " + f.getBody() + " read at " + rm.getReferenceCountTo(e) + " loads");
+        }
         try (PrintWriter pw = new PrintWriter(new FileWriter(getScriptArgs()[1]))) {
             long lo = -1, hi = -1;
             for (Instruction in : listing.getInstructions(true)) {
+                if (tableData.contains(in.getAddress())) continue;
                 long a = in.getAddress().getOffset();
                 long e = a + in.getLength();
                 if (a == hi) {

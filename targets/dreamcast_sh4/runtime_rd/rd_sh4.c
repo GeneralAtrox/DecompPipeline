@@ -18,14 +18,15 @@ static u32 (*g_fsca)[2]; /* 65536 entries of {sin bits, cos bits} */
 static u32 f2u(f32 f) { u32 u; memcpy(&u, &f, 4); return u; }
 static f32 u2f(u32 u) { f32 f; memcpy(&f, &u, 4); return f; }
 
-/* Matches Ghidra's p-code float truncation: a saturating 64-bit cast, then the low 32 bits. */
+/* The SH-4's ftrc: truncation toward zero, saturating at 0x7fffffff above the int range and 0x80000000 below it;
+ * a NaN gives 0x80000000. The oracle's FPUL is the same (TcFpu: Ghidra's p-code trunc wraps a 64-bit cast). */
 s32 sh4_ftrc(f32 x)
 {
-    if (x != x) return 0;
+    if (x != x) return (s32)0x80000000u;
     double d = x;
-    if (d >= 9223372036854775807.0) return (s32)0xffffffffu;
-    if (d <= -9223372036854775808.0) return 0;
-    return (s32)(u32)(unsigned long long)(long long)d;
+    if (d >= 2147483648.0) return 0x7fffffff;
+    if (d <= -2147483648.0) return (s32)0x80000000u;
+    return (s32)d;
 }
 
 /* The float helpers compute in SSE registers by intrinsics: a 32-bit build would otherwise compute on the x87 stack

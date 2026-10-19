@@ -53,6 +53,7 @@ void sh4_rt_extra_state(void);            /* registers the register file with fr
 
 /* port_libm.c */
 void port_libm_extra_state(void); /* registers rand's state with frame_extra.c */
+u32 port_rand_state(void);         /* rand's state (lockstep.c) */
 
 /* frame_extra.c: --present tick|interp, --interp-frames N, --interp-verify 1; 0 if not ours */
 int extra_option(const char *arg, const char *value);

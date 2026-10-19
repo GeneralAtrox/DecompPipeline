@@ -1,6 +1,7 @@
 /* The SH-4 instructions readable C uses through rd_rt.h, for the port: the same arithmetic as the pipeline's
  * readable-C runtime (single-precision SSE operations in the SH-4's order), with the FPU state as plain globals. */
 #include <float.h>
+#include <intrin.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,13 +37,15 @@ static f32 u2f(u32 u)
     return b.f;
 }
 
+/* The SH-4's ftrc: truncation toward zero, saturating at 0x7fffffff above the int range and 0x80000000 below it;
+ * a NaN gives 0x80000000 (as the judge's runtime, tc_rt.c, does since r15). */
 s32 sh4_ftrc(f32 x)
 {
-    if (x != x) return 0;
+    if (x != x) return (s32)0x80000000u;
     double d = x;
-    if (d >= 9223372036854775807.0) return (s32)0xffffffffu;
-    if (d <= -9223372036854775808.0) return 0;
-    return (s32)(u32)(unsigned long long)(long long)d;
+    if (d >= 2147483648.0) return 0x7fffffff;
+    if (d <= -2147483648.0) return (s32)0x80000000u;
+    return (s32)d;
 }
 
 f32 sh4_fsrra(f32 x) { return _mm_cvtss_f32(_mm_div_ss(_mm_set_ss(1.0f), _mm_sqrt_ss(_mm_set_ss(x)))); }
@@ -181,4 +184,18 @@ void sh4_rt_set_fpu_mode(void)
     unsigned int x87 = 0;
     _mm_setcsr((_mm_getcsr() & ~0x6000u) | 0x8040u | 0x6000u);
     __control87_2(_RC_CHOP, _MCW_RC, &x87, NULL);
+}
+
+/* tc_halt (rd_rt.h): the original's endless loop (`bra .`, an error halt). The port ends the run there instead of
+ * hanging: exit code 1 (a failure) and an EXIT line starting "HALT" that names the caller, which tools/lockstep.py,
+ * tools/hw_check.py and tools/regress.py report. */
+extern const char __ImageBase;
+void tc_halt(void)
+{
+    char why[96];
+    snprintf(why, sizeof why, "HALT: the original's endless loop (tc_halt), called from port.exe+%08x",
+             (u32)((uintptr_t)_ReturnAddress() - (uintptr_t)&__ImageBase));
+    port_exit(why, 1);
+    for (;;) {
+    } /* port_exit returns only while another thread is already ending the process */
 }
