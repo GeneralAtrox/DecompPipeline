@@ -148,6 +148,163 @@ python tools/bounded.py 1800 python tools/mutation_check.py --project WS --refer
 
 Without `--report` the records are merged into `state/mutation.json`, which the proof state reads.
 
+## 3. Float gaps: fr0 results and float constants (2026-10-18)
+
+Phase D found two ways a wrong readable function passed in Toy Commander.
+
+**The float result was not compared.** The oracle records r0 and fr0, but `compare_return` compared only the
+register the signature names. TC 8c01becc is `rts; fldi0 fr0` (it returns 0.0f), and Ghidra typed it
+`u32 fn_8c01becc(void)`.
+- `core/ret_reg.py` follows every path of the packet listing to each `rts` (delay slot included). It notes
+  whether fr0 was written after r0 and not read again. "Returns in fr0" means some exit is like that and no exit
+  writes r0 last. A write to fr0 while `frchg` has swapped the banks is XF0, not the result (TC 8c0613cc and
+  8c061780 load XMTRX; the first gate run flagged their fixtures).
+- The listing alone over-reports. TC 8c04ea84 sets r0 first, then loads fr0 for a loop its early exit skips, so
+  that exit has fr0 "written last"; its 12 callers all read r0. A function counts only when its callers agree
+  (`ret_use.fr0_confirmed`: a call site reads fr0, none reads r0). `tools/float_gaps.py --write` puts those in the
+  workspace's `state/fr0_results.txt`: TC 8c05dd10, 8c0611c8, 8c061ba4, 8c061c88; none in Spawn main/ovl or PS2.
+- `check.run_check` and `readable_check.compare` set meta `fr0_result` for a listed function whose signature is
+  void, u32 or s32 (regress copies the list into its private state). `compare_return` then compares fr0 too, and
+  the message asks for a raw_ret f32 override.
+- The runner leaves fr0 at 0.0 for a non-f32 thunk, so a 0.0f return like 8c01becc still passes the compare.
+  The signature is the real fix: `tools/sig_override.py --candidates` lists these functions as `fr0_exit`.
+
+**Float callee results and pool floats were not tested.** TcInputs draws small integers and pointers as mocked
+callee results (0..3 for the first calls). As f32 bits these are denormals, so an f32 callee always "returned"
+about 0.0. TC 8c035a0c compares 8c0612e4's f32 result with the pool word at 0x8c035b10 (1e-06). The readable C
+wrote 1.0f there and passed every vector.
+- **TcFret** (oracle, locked). For a callee whose prototype returns f32 (TcPrepare collects them), a result that
+  is not a plain number becomes one of 16 plain floats, picked by its bits. TcOracle writes the value back into
+  the vector, so vectors.txt and the runner agree. Plain numbers, 0, the denormal 1 and scratch pointers (tiny
+  negatives) are kept, so the paths for a tiny result stay tested (the first gate run lost two fail fixtures,
+  tc-fpscr-dn-8c033f22 and tc-fr-through-call-8c03a2f6, while every result was mapped).
+- Re-stamp: `tools/selective_restamp.py --change fret`. Its candidates are the harnesses with an f32 callee
+  record: TC 281, Spawn main 154, Spawn ovl 44, PS2 720.
+- **`core/float_lits.py`** (host only) reads the f32 constants the original takes from its literal pool:
+  - the words a pool `mova` hands to `fmov.s @rN` / `@rN+`;
+  - `mov.l` loads the listing notes as an f32.
+  It checks whether a C text writes each one as a literal, a readable header name, a folded quotient, an integer
+  of the same value in f32 arithmetic (a `*` or `/` operand, or under an `(f32)` cast, with header names put in
+  place), or a read of the pool address. The agent sandbox already notes `mova` words (batch 29), and `mov.l` words
+  are noted in the packet. The packet stays unchanged, since it is an oracle input.
+  - Until 2026-10-19 an integer of the same value anywhere in the text counted. TC 8c078f94's C has KC = 0.5f for
+    the pool's -6.0f at 0x8c079348, and its `6u` offsets hid that. The function was still listed, because its
+    readable C lacks -6 too, but it was listed as `readable_lost` (matched C right). PS2's TC staging proof found it
+    on the fixed ftrc runtime: 8/102.
+  - The narrower rule leaves the listed functions as they were on every game: TC 16, Spawn main 1, ovl 12 and PS2
+    16 literal rows.
+  - It corrects two TC cases from `readable_lost` to `matched` (8c078f94, 8c0495b0's 7.0f).
+  - It adds constants that were hidden this way to listed functions: ovl 8c59f960 399.0f; PS2 8c072c58 9.0f,
+    8c0afe94 nine and 8c0d64a6 three.
+
+**The scan.** `tools/float_gaps.py --project WS --write` writes `state/float_gaps/` in each workspace:
+- `requeue.txt`: the confirmed fr0_result functions, plus pool-literal suspects. A readable C can lose a constant its
+  matched C had (`readable_lost`), or the matched C can lack it too (`matched`).
+- `rejudge.txt`: functions that read fr0 after an f32 call. Re-judge them after their TcFret re-prepare.
+- `summary.json`.
+
+It requeues nothing, because each game's session runs its own list. The literal suspects are for review: a
+constant the C computes some other way is a false suspect.
+
+**Float arguments were drawn too coarsely (r15).** TcInputs draws an f32 parameter with niceFloat (0, +-1, 0.5,
+integers, spreads), so a value next to a pool constant the code compares against almost never comes up. TC
+8c023148 sets a rectangle's translucent flag with `fcmp/gt fr8,fr3` against the pool's 0.999; its matched C wrote
+`1.0f > a`, which differs only for a in [0.999, 1.0), and passed.
+- **TcFguide** (oracle, locked; TcFret's counterpart for arguments). The locked side harvests the f32 constants
+  an `fcmp/gt` or `fcmp/eq` tests (a pool word loaded through `mova` + `fmov.s @rN` / `@rN+`, or copied with
+  `fmov`). In about a third of the vectors (every vector of a rescue pass) each f32 parameter (fr4..fr11, or
+  r4..r7 typed f32) gets, with even odds, one of them or its neighbour one ulp down or up.
+- Its generator is its own, seeded from the vector's (seed, id, try): TcInputs' and TcGuide's sequences are
+  unchanged, and a function with no such constant or no f32 parameter keeps its vectors. It does not wait for
+  `coverage_inputs`. TcVectors calls it after TcGuide and before the hints.
+- Re-stamp: a script change, so every harness looks stale; only functions with an f32 parameter and a harvested
+  constant get different vectors. `tools/selective_restamp.py --change fargs` (or `fret+fargs`) lists a superset:
+  an f32 parameter, and a `mova` and an `fcmp/` in the packet (TC 35, Spawn main 21, ovl 31, PS2 27).
+- Measured (2026-10-18, regress private copies, before/after on the same 50 matched functions: all 34 TC
+  candidates, 16 seeded ovl ones): vectors per harness unchanged (4852 in all), 824 vectors (17%) different in 29
+  functions, prepare time 756 s before and 732 s after (noise). Every matched C still passes; 8c023148's
+  `1.0f > a` fails (1/96, hidden set) and the form with the pool's 0.999 passes.
+
+## 4. RAM views: the mirror rule (r15, 2026-10-18)
+
+**Where it came from.** A coverage sample (r15 item 3) drew 100 functions below the coverage gate, then raised
+their vectors: `coverage_inputs`, then 4x, then 16x the default count.
+- It cost 3.02 prepare hours, and 37 of the 100 reached the gate.
+- Three previously passing PS2 functions failed: 8c106034, 8c182850 and 8c073ba8. All three are one class. The
+  pool holds a RAM address as 0x0c...... (P0/U0), the matched C writes it as 0x8c...... (P1), and the value goes
+  to a callee as an argument.
+- The runtime and the port fold the two views onto the same 16 MB (`tc_rt_internal.h`), so memory access through
+  either view is identical.
+- The full backlog run (about 61 prepare hours for about 60 failures of this one class) was dropped: the gain isn't
+  worth the cost.
+
+**The rule.** `core/compare.same_word` treats 0x0c000000..0x0cffffff and 0x8c000000..0x8cffffff as equal views
+of one word. The judge applies it wherever it compares a value that can be a RAM pointer:
+- a call's integer argument (r0..r14 and the stack words);
+- the result in r0 (u32/s32), or in a nonstandard result register;
+- r8..r14 at exit;
+- a stored word, but only when both sides store all four bytes. A byte stored alone stays a value.
+
+A wrong address still fails (0x8c86d08c for 0x0c86d088), and so does another area (0x0d, 0xac).
+
+Proof (2026-10-18), on the sample's own harnesses (judge only):
+
+| | master judge | with the rule |
+|---|---|---|
+| 8c106034 | FAIL 1/1544 | PASS |
+| 8c182850 | FAIL 1/96 | PASS |
+| 8c073ba8 | FAIL 2/1538 | PASS |
+| 8c182850 with 0x8c86d08c | FAIL | FAIL |
+
+**Review list.** The two views differ only where code compares the pointer itself, and the judge no longer sees
+that. `tools/mirror_ptrs.py --project WS --write` writes `state/mirror_ptrs/` in each workspace:
+- For every matched function that loads a 0x0c...... data word from its pool, the pointer is followed through the
+  function's own asm and into the callees that get it in r4..r7, two calls deep. This is a may-flow over the
+  listing (core/sh4_asm.Flow).
+- A function is listed when it, or such a callee, compares the pointer with a register that doesn't hold it, using
+  `cmp/eq`, `/hs`, `/hi`, `/ge` or `/gt`. A list walk's `p == head` is an example.
+- Two such pointers compared (a `p < end` over one table) aren't listed.
+- Neither is a function whose C writes every word as 0x0c.
+- `review.txt` holds `addr reason`; `summary.json` holds the rows and the callees with no packet to read.
+- Nothing is requeued.
+
+As of 2026-10-18, the functions writing the other view and the review rows are:
+
+| workspace | functions writing the other view | review rows |
+|---|---|---|
+| TC | 0 | 0 |
+| Spawn main | 552 | 2 |
+| Spawn ovl | 573 | 1 |
+| PS2 | 1,860 | 8 |
+
+**Mixed views in the C (`tools/ptr_views.py`, 2026-10-18).** PS2's review found two real differences:
+- 8c02e910 → 8c07bbf4's `cmp/eq` on +0x377c;
+- 8c0bbb9a's self-skip.
+
+The cause is matched C that mixes the views: PS2 has 297 files that write 0x0c532698 as 0x0c, and 105 that write it as 0x8c.
+- 8c07cedc stores a player pointer at +0x377c. The original computes it from the pool's 0x0c532698, but the C computes
+  it from `0x8c532698u`. 8c07bbf4 then compares it with the 0x0c pointer that 8c02e910 reads from its own pool, and
+  the self-skip never matches.
+- `tools/ptr_views.py --project WS --write` writes `state/ptr_views/` (`requeue.txt`, `summary.json`). For every
+  matched function, it compares the pool's RAM data words with the hex literals in its C (comments taken out). A
+  literal is listed when it is the other view of a pool word, or the other view of an address up to 64 KB above one.
+- Only value sites requeue: the pointer is kept as a call argument, a stored word, a return or a compare, directly or
+  through the locals it is assigned to, up to their next assignment.
+- An access address (`rd32(T + 4u)`) reaches the same RAM in either view, as does a `(u8)` store. Those functions
+  are `access_only`.
+- Nothing is requeued automatically. It's static only: no Ghidra, no runner.
+
+| workspace | other view in the C | access only | requeue (value sites) |
+|---|---|---|---|
+| TC | 0 | 0 | 0 |
+| Spawn main | 565 | 502 | 63 (218) |
+| Spawn ovl | 598 | 521 | 77 (245) |
+| PS2 | 1,894 | 1,615 | 279 (730) |
+
+- It lists 8c07cedc (the +0x377c writer) and 8c0bbb9a.
+- 20 random requeue rows read by hand: 18 keep the pointer as a value. The other 2 are a helper that returns the
+  address, and a `q < lim` over one table in one view.
+
 ## Read-only results (2026-10-17, harnesses as they were; PS2 mid re-stamp)
 
 Full reports are in the monitor's notes folder (`proof-gates/coverage_gate.*`, `proof-gates/mutation_*.*`).

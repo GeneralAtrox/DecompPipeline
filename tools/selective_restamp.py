@@ -9,6 +9,11 @@ store queues) acts only on
   wanted, and the sample is the check of it);
 - functions with their own `pref @rN`, rN one of r8..r14 (header line S);
 - harnesses a rescue pass made (oracle_summary "rescued": TcCount.zeroCut acts in the overtime rescue only).
+--change fret is the TcFret change (float callee results) instead: it acts only on functions with a callee whose
+prototype returns f32 (harness meta.json callee records; Ghidra's signature where callee_drift adopted another).
+--change fargs is the TcFguide change (float-guided arguments): a function with an f32 parameter whose packet asm
+has a `mova` and an `fcmp/` (a superset of the functions TcFguide harvests a constant for). Changes join with +
+(--change fret+fargs: either alters the harness).
 Only harnesses current under the scripts before the change (--old-scripts: that commit's ghidra_scripts folder) are
 refreshable; any other is stale for its own reasons and left to tools/reprepare_stale.py --stamps.
 
@@ -25,7 +30,7 @@ Phases (each resumable; run under tools/bounded.py, servers stopped):
                   records differ: they stay stale, listed in state/stamp_refresh_stale.txt for reprepare_stale.py
   --phase must    re-prepare the refreshable candidates (at most --max per run) and judge each one's matched raw C
 usage: python tools/selective_restamp.py --project DIR --old-scripts DIR --phase sample|refresh|must [--sample 100]
-       [--seed 14] [--max 100] [--slots N] [--dry]
+       [--seed 14] [--max 100] [--slots N] [--change r14|fret|fargs|fret+fargs] [--dry]
 Exit 0 when the phase finished clean (all identical; nothing left; every judged raw C passes), 1 otherwise.
 """
 import argparse
@@ -108,10 +113,36 @@ def rescued(harness):
     return out
 
 
+def fret_candidates(harness):
+    """The functions whose harness TcFret can alter: a callee record whose (Ghidra) prototype returns f32."""
+    out = set()
+    for d in pathlib.Path(harness).iterdir():
+        m = (d / "meta.json").is_file() and json.loads((d / "meta.json").read_text(encoding="utf-8") or "{}")
+        if m and any((c.get("ghidra_signature") or c.get("signature") or "").startswith("f32 ")
+                     for c in m.get("callees") or [] if isinstance(c, dict)):
+            out.add(d.name)
+    return out
+
+
+def fargs_candidates(harness, packets):
+    """The functions whose harness TcFguide can alter: an f32 parameter, and a `mova` and an `fcmp/` in the asm."""
+    out = set()
+    for d in pathlib.Path(harness).iterdir():
+        m = (d / "meta.json").is_file() and json.loads((d / "meta.json").read_text(encoding="utf-8") or "{}")
+        asm = pathlib.Path(packets) / d.name / "asm.txt"
+        if (m and any(isinstance(q, dict) and q.get("kind") == "f32" for q in m.get("params") or [])
+                and asm.is_file()):
+            text = asm.read_text(encoding="utf-8", errors="replace")
+            if re.search(r"\bmova\b", text) and "fcmp/" in text:
+                out.add(d.name)
+    return out
+
+
 def harness_bytes(d, sig_of=None):
     """What must stay identical: vectors.txt, expected.txt, and meta.json without its stamp keys. With sig_of
     (callee_drift.Signatures), meta.json's callee records first take the callees' own harness signatures, as
-    ghidra.prepare's callee_drift.adopt does."""
+    ghidra.prepare's callee_drift.adopt does, and drop a "ghidra_signature" equal to the signature (adopt keeps an
+    earlier one; a fresh prepare records none where Ghidra's view already agrees)."""
     out = {}
     for n in ("vectors.txt", "expected.txt"):
         p = d / n
@@ -124,6 +155,9 @@ def harness_bytes(d, sig_of=None):
         if sig_of:
             m.setdefault("addr", d.name)
             callee_drift.adopt(m, sig_of)
+            for c in m.get("callees") or []:  # Ghidra's view now agrees with the callee: a fresh prepare has no key
+                if c.get("ghidra_signature") == c.get("signature"):
+                    c.pop("ghidra_signature")
         out["meta.json"] = json.dumps(m, sort_keys=True).encode()
     return out
 
@@ -135,7 +169,7 @@ def compare(before, after, sig_of):
     b, n = harness_bytes(before), harness_bytes(after)
     if b == n:
         return "same"
-    b = harness_bytes(before, sig_of)
+    b, n = harness_bytes(before, sig_of), harness_bytes(after, sig_of)
     return "drift" if b == n else sorted(k for k in b if b[k] != n.get(k))
 
 
@@ -162,6 +196,8 @@ def main():
     ap.add_argument("--seed", type=int, default=14)
     ap.add_argument("--max", type=int, default=100)
     ap.add_argument("--slots", type=int)
+    ap.add_argument("--change", choices=("r14", "fret", "fargs", "fret+fargs"), default="r14",
+                    help="which oracle change (docstring)")
     ap.add_argument("--dry", action="store_true")
     a = ap.parse_args()
     ws = use_project(a.project)
@@ -177,7 +213,9 @@ def main():
     old.scripts["TcInputs.java"] = paths.INPUTS
     if not old.scripts.keys() - {"TcInputs.java"}:
         sys.exit(f"no *.java in {a.old_scripts}")
-    cand = candidates(paths.PACKETS) | rescued(paths.HARNESS)
+    cand = (candidates(paths.PACKETS) | rescued(paths.HARNESS) if a.change == "r14" else
+            (fret_candidates(paths.HARNESS) if "fret" in a.change else set())
+            | (fargs_candidates(paths.HARNESS, paths.PACKETS) if "fargs" in a.change else set()))
     current, refreshable, other = [], [], []
     for x in oracle_fresh.matched_functions():
         st = (paths.read_json(paths.HARNESS / x / "meta.json") or {}).get("oracle_stamp")

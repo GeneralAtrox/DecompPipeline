@@ -1,4 +1,5 @@
 /* The Windows side of the scene dump (scene_dump.c): the clipboard, reading a file whole, the stamp, the folder. */
+#include <share.h>
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
@@ -33,7 +34,8 @@ char *scene_read_file(const char *path, u32 max, u32 *size)
     char *buf = NULL;
     long len;
     *size = 0;
-    if (!path || fopen_s(&f, path, "rb") || !f) return NULL;
+    /* Shared: the port's log is open for writing, and fopen_s would refuse to read it. */
+    if (!path || (f = _fsopen(path, "rb", _SH_DENYNO)) == NULL) return NULL;
     if (fseek(f, 0, SEEK_END) == 0 && (len = ftell(f)) >= 0) {
         u32 n = (u32)len > max ? max : (u32)len;
         if (fseek(f, (long)((u32)len - n), SEEK_SET) == 0 && (buf = (char *)malloc(n + 1u)) != NULL) {

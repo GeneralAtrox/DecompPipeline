@@ -16,6 +16,7 @@
 #include "port.h"
 #include "platform.h"
 #include "session.h"
+#include "lockstep.h"
 
 #define MAX_BYTES (256u << 20) /* recording stops past this much (hours of play) */
 #define SAVE_NAME 32u
@@ -102,6 +103,8 @@ void session_pad(HostPad *pad)
             g_play_pad.y = pe.y;
         }
         *pad = g_play_pad;
+    } else if (lockstep_pad(pad)) {
+        /* the paired emulator frame's pad (lockstep.c) */
     } else if (g_replay && !g_ended++) {
         port_log("session: the recording ends at pad read %u (vertical blank %u); live input from here\n", read,
                  port_vblank_count());
@@ -115,7 +118,7 @@ void session_pad(HostPad *pad)
 
 s32 session_timer(s32 live)
 {
-    s32 v = live;
+    s32 v = lockstep_timer(live);
     if (g_replay && !port_extra_drawing() && g_play[TIMER].at < g_play[TIMER].n) {
         u32 z = 0, shift = 0;
         const u8 *c;
@@ -143,6 +146,7 @@ s32 session_timer(s32 live)
 
 void session_time(HostTime *t)
 {
+    lockstep_time(t);
     const u8 *p = take(RTC, sizeof *t);
     if (p) memcpy(t, p, sizeof *t);
     put(&g_rec[RTC], t, sizeof *t);

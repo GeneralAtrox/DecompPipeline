@@ -189,6 +189,8 @@ def compare(cfg, meta, harness, out_file, sets, variadic=None, reads=None):
     from .readable_stack import pair_stores
     from .readable_varargs import judged_meta, mask_calls
     meta = judged_meta(callee_reads(meta, reads), variadic)
+    from . import ret_reg  # the original returns in fr0 whatever the signature says: compare fr0 too
+    meta = ret_reg.judged(meta, ret_reg.listed(paths.STATE))
     vecs = check.parse_vectors(harness / "vectors.txt")
     exp = check.parse_results(harness / "expected.txt")
     act = check.parse_results(out_file)

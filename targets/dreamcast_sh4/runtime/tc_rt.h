@@ -48,6 +48,13 @@ typedef struct {
 u32 tc_call(u32 target, const TcArgs *args);  /* returns the callee's r0 */
 f32 tc_callf(u32 target, const TcArgs *args); /* returns the callee's fr0 */
 
+/* The original's endless loop (`bra .`, e.g. an error halt): call tc_halt() where the original reaches it, after the
+ * tc_call when it is a callee that never returns. It does not return; the test run reports HALT there. */
+#if defined(_MSC_VER)
+__declspec(noreturn)
+#endif
+void tc_halt(void);
+
 /* SH-4 instruction helpers, bit-exact with the reference model. */
 s32 sh4_ftrc(f32 x);                                  /* ftrc FRm,FPUL (float -> int conversion) */
 f32 sh4_fsrra(f32 x);                                 /* fsrra: 1.0f / sqrt(x) */

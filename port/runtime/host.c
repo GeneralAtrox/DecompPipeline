@@ -7,6 +7,7 @@
 #include "platform.h"
 #include "gfx/gfx.h"
 #include "session.h"
+#include "lockstep.h"
 
 /* --fixed-clock: a virtual clock in units of 1/46,875,000 s (both 60 Hz and the 781,250 Hz TMU divide it). It only
  * moves when the game looks at it (a microsecond per look, so polling loops end) and at each vertical blank (to the
@@ -118,6 +119,7 @@ static void wait_vblank(int extra)
         g_fixed_clock = 0;
         port_log("host: real time from vertical blank %u (--fast-until)\n", g_vblanks);
     }
+    lockstep_vblank(); /* the state as the emulator samples it, before the game's handler */
     if (g_vblank_fn) g_vblank_fn(g_vblank_arg);
     for (u32 i = 0; i < VBLANK_TASKS && g_vblank_tasks[i].fn; i++) g_vblank_tasks[i].fn(g_vblank_tasks[i].arg);
 }

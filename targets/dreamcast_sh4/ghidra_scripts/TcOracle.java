@@ -1,7 +1,8 @@
 // The emulator oracle: runs the ORIGINAL code in Ghidra's p-code emulator (patched SuperH4:LE:32:tcfix
 // language) on inputs from TcInputs. LOCKED: the watcher agent may not change this file. Extended by TcVectors.
 // Helpers: TcFold (the RAM mirror), TcLoads (the load log and rule R8), TcFpu and TcRound (FPSCR.DN and RM), TcPair
-// (64-bit fmov pairs, TcFacts.fpuState), TcLive and TcSq (the callees' changes of r8..r14, the store queues).
+// (64-bit fmov pairs, TcFacts.fpuState), TcLive and TcSq (the callees' changes of r8..r14, the store queues), TcExit
+// (a run's results at its end, and the halt of an endless `bra .`).
 
 import ghidra.app.emulator.EmulatorHelper;
 import ghidra.pcode.emulate.BreakCallBack;
@@ -42,6 +43,7 @@ public abstract class TcOracle extends TcInputs {
         boolean stepLimited;              // the run hit stepLimit
         boolean callFault;                // faultAddr is a call target from the inputs (TcCalls), not a memory access
         boolean callCapped;               // the run stopped at CALL_LIMIT calls (TcSentinel)
+        boolean halted;                   // the run ended in an endless `bra .` (TcExit.halts)
         List<long[]> watched; int watchCalls; long[] watchRegs; // at watchPc's first arrival: loads, calls, r0..r15
     }
 
@@ -57,7 +59,7 @@ public abstract class TcOracle extends TcInputs {
     long[] entryGi = null, entryLow = null;
     int[] entryFq = null;   // fr0..fr15 at entry for a Proto.fpuState function (then call records carry the FPU too)
     String entryRet = null; // the register read into Result.retx at exit (Proto.retReg, or r1 for a u64), or null
-    boolean callWide = false; // call records also carry r0..r3 and r8..r14 (a callee takes them)
+    boolean callWide = false; Set<Long> floatRet = new HashSet<>(); // call records also carry r0..r3, r8..r14; f32 callees (TcFret)
     TcLoads loadView; TcFpu fpu;  // made at the first run
     int stepLimit = STEP_LIMIT;  // lowered only by TcVectors' overtime rescue
     boolean countRepair = false; // TcVectors' overtime rescue: runs record what TcCount needs
@@ -222,7 +224,9 @@ public abstract class TcOracle extends TcInputs {
                         fault[0] = "read " + address + where(off);
                         faultAt[0] = off;
                     }
-                    for (int i = 0; i < size; i++) buf[bufOffset + i] = 0;
+                    // No zeroing: Ghidra hands over every byte from the first uninitialized one to the end of the
+                    // read in its page, initialized ones too (a vector's memory patches), and the page keeps what this
+                    // returns. Fresh pages are zero-filled, so the bytes no input set still read 0 (r15: xemu ghmem).
                     return true;
                 }
 
@@ -278,7 +282,11 @@ public abstract class TcOracle extends TcInputs {
                     }
                     res.calls.add(callRecord(emu, pc));
                     if (prev >= 0) res.sites.add(prev);
-                    long rv = calls < 16 ? v.rets[calls] : 0;
+                    if (TcExit.halts(listing, pca)) {  // a callee that never returns: the run ends with it
+                        res.halted = true;
+                        break;
+                    }
+                    long rv = calls < 16 ? (v.rets[calls] = TcFret.at(floatRet, pc, v.rets[calls])) : 0;
                     TcLive.after(live, this, emu, pc, calls++); // the callee's own change of r8..r14 (TcLive)
                     emu.writeRegister("r0", u(rv));
                     emu.writeRegister("fr0", u(rv));
@@ -288,6 +296,10 @@ public abstract class TcOracle extends TcInputs {
                 }
                 Map.Entry<Long, Integer> b = blockIndex.floorEntry(pc);
                 if (b != null) res.cov.add(b.getValue());
+                if (TcExit.halts(listing, pca)) {  // an endless `bra .`: the run ends here (TcExit)
+                    res.halted = true;
+                    break;
+                }
                 if (pc == watchPc && res.watched == null) TcReach.snap(res, calls, emu);
                 if (++steps > stepLimit) {
                     res.reason = "step limit (possible infinite loop)";
@@ -350,7 +362,7 @@ public abstract class TcOracle extends TcInputs {
                     return res;
                 }
             }
-            collect(emu, res);
+            TcExit.collect(this, emu, res);
             return res;
         } catch (Exception e) {
             res.reason = "exception: " + e;
@@ -358,43 +370,5 @@ public abstract class TcOracle extends TcInputs {
         } finally {
             emu.dispose();
         }
-    }
-
-    // The observable results of a run that reached the sentinel; res.ok unless it wrote outside RAM.
-    void collect(EmulatorHelper emu, Result res) {
-        res.r0 = reg(emu, "r0");
-        res.fr0 = (int) reg(emu, "fr0");
-        if (entryRet != null) res.retx = reg(emu, entryRet);
-        for (int i = 0; i < 16; i++) res.xf[i] = (int) reg(emu, "xf" + i);
-        for (int i = 0; i < 4; i++) res.fh[i] = (int) reg(emu, "fr" + (12 + i));
-        for (int i = 0; i < 7; i++) res.gi[i] = reg(emu, "r" + (8 + i));
-        for (int i = 0; i < 16; i++) res.fq[i] = (int) reg(emu, "fr" + i);
-        res.mode = modeWord(emu);
-        AddressSet ws = new AddressSet();
-        for (AddressRange rg : emu.getTrackedMemoryWriteSet()) {
-            if (rg.getMinAddress().getAddressSpace() != fn.getEntryPoint().getAddressSpace()) continue;
-            long flo = fold(rg.getMinAddress().getOffset());
-            ws.add(toAddr(flo), toAddr(flo + rg.getLength() - 1));
-        }
-        for (AddressRange rg : ws) {
-            long lo = rg.getMinAddress().getOffset(), hi = rg.getMaxAddress().getOffset() + 1;
-            if (rg.getMinAddress().getAddressSpace() != fn.getEntryPoint().getAddressSpace()) continue;
-            if (lo >= P4_OCA_LO && hi <= P4_OCA_HI) { // cache address array stores: logged, compared (tc_p4.c)
-                res.writes.add(hex(lo) + " " + bytesHex(emu.readMemory(toAddr(lo), (int) (hi - lo))));
-                continue;
-            }
-            if (lo < RAM_LO || hi > RAM_HI) {
-                res.reason = "write outside RAM";
-                res.faultAddr = lo;
-                res.faultWrite = true;
-                return;
-            }
-            long cutHi = Math.min(hi, STACK_LO);
-            if (lo < cutHi) {
-                byte[] data = emu.readMemory(toAddr(lo), (int) (cutHi - lo));
-                res.writes.add(hex(lo) + " " + bytesHex(data));
-            }
-        }
-        res.ok = true;
     }
 }

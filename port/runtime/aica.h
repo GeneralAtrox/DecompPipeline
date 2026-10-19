@@ -2,8 +2,9 @@
  * voices and the CD input, mixed to 44,100 Hz stereo by gfx/gfx_audio.c at each vertical blank. Voices play 16-bit or
  * 8-bit PCM or Yamaha 4-bit ADPCM from the sound RAM, at a rate quantised as the chip's octave and 10-bit fraction,
  * with linear interpolation, once or looped between two points. Levels are the chip's direct send level (0..15, 3 dB
- * steps, 0 off); pans are Audio64's (0..31: 0 left, 15 and 16 centre, 31 right; 3 dB steps, the far end off), which
- * its driver turns into the chip's DIPAN. Voices sum at full scale and the mix clamps, as the chip's does. */
+ * steps, 0 off); pans are Audio64's (0..31: 0 right, 15 and 16 centre, 31 left, ac.h's AC_PAN_*; 3 dB steps, the far
+ * end off), which its driver turns into the chip's DIPAN (0..15 to 15 - pan, the left side down; 16..31 as they are,
+ * the right side down). Voices sum at full scale and the mix clamps, as the chip's does. */
 #ifndef AICA_H
 #define AICA_H
 

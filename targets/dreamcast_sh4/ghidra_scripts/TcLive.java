@@ -14,6 +14,15 @@
 // call: a stale copy writes the strip end elsewhere (W), passes another rN to the next callee (CALL) or leaves another
 // rN at exit (GH). A constant is the real delta, so C that adds it itself is as right as the port's own emitter.
 //
+// A context switch (Power Stone 2 8c2b99a0: saves r0..r15, PR and SR at r5, loads them from r4 and returns on the new
+// stack) returns with r15 loaded from memory (base MEM): control comes back to its caller only when another switch
+// restores the caller's own registers, so such a return counts as delta 0, and a callee with only delta 0 has no
+// effect (KEPT). Before, its r8..r14 were unknown: PS2 8c1831e4 calls it through r14 twice per loop, and the oracle
+// moved r14. Only a loaded r15 is a switch: an r15 merely not followed (TOP) keeps the rule below. A large frame
+// (`mov.w 0x..,r1; add r1,r15`) is followed exactly, its literal-pool constant read (literal): when any untracked
+// r15 counted as a switch, every such function's r14 was kept, and TC's display-list callers (8c052c78, 8c02872c,
+// ...: the TA pointer advanced in a loop) lost their r14 entry.
+//
 // delta: forward over the function's p-code (TcTail.extent: body and shared tails), each integer register valued as
 // (r8..r14 or r15 at entry, or a constant) + offset or unknown, with the 4-byte stack slots at r15 + c (a push and its
 // pop restore). A call clobbers r0..r7 and applies its callee's own delta (bottom-up, a cycle is unknown); a branch to
@@ -30,7 +39,7 @@ final class TcLive {
     static final long STEP = 0x20;  // an unknown delta: STEP * (1 + draw % 3)
     static final int MAX_SET = 4;   // more distinct constants than this: unknown
     static final int MAX_VISITS = 64; // per instruction; then the function's deltas are unknown
-    static final long[] NONE = null, UNKNOWN = new long[0];
+    static final long[] NONE = null, UNKNOWN = new long[0], KEPT = {0};
 
     final Map<Long, long[][]> table = new LinkedHashMap<>(); // callee -> per r8..r14: null kept, {d..} or {} unknown
     long[] draws = new long[16];                            // per call index (line A), set per vector try
@@ -44,7 +53,7 @@ final class TcLive {
             long[][] e = d.of(g).clone(); // the memo stays whole
             boolean any = false;
             for (int i = 0; i < 7; i++) {
-                if ((s.sig.summary(g).writes & (1 << (24 + i))) == 0) e[i] = NONE;
+                if ((s.sig.summary(g).writes & (1 << (24 + i))) == 0 || Arrays.equals(e[i], KEPT)) e[i] = NONE;
                 any |= e[i] != NONE;
             }
             if (any) out.table.put(g.getEntryPoint().getOffset(), e);
@@ -119,7 +128,8 @@ final class TcLive {
 
     // Per function: the change of r8..r14 from entry to every return ({d..}, {} unknown), bottom-up with a memo.
     static final class Deltas {
-        static final int TOP = -1, CONST = 16; // a value's base: register 0..15 at entry, CONST, or TOP (unknown)
+        static final int TOP = -1, CONST = 16, MEM = 17; // a value's base: register 0..15 at entry, CONST, a 4-byte
+                                                         // load from non-stack memory (MEM), or TOP (unknown)
         final Program prog;
         final Map<Address, long[][]> memo = new HashMap<>();
         final Set<Address> open = new HashSet<>();
@@ -193,7 +203,12 @@ final class TcLive {
                 St s = in.get(a).copy();
                 Map<Long, long[]> uniq = new HashMap<>();
                 boolean ends = false;
-                for (PcodeOp op : ins.getPcode()) {
+                long[] lit = literal(ins);
+                if (lit != null) {
+                    s.base[(int) lit[0]] = CONST;
+                    s.off[(int) lit[0]] = lit[1];
+                }
+                for (PcodeOp op : lit != null ? new PcodeOp[0] : ins.getPcode()) {
                     int oc = op.getOpcode();
                     if (oc == PcodeOp.CALL || oc == PcodeOp.CALLIND) {
                         call(s, callee(ins, op));
@@ -208,7 +223,8 @@ final class TcLive {
                 }
                 if (ends) {
                     for (int i = 0; i < 7; i++) {
-                        if (s.base[8 + i] == 8 + i) exits.get(i).add(s.off[8 + i]);
+                        if (s.base[15] == MEM) exits.get(i).add(0L);  // a stack switch: the caller resumes as it was
+                        else if (s.base[8 + i] == 8 + i) exits.get(i).add(s.off[8 + i]);
                         else unknown[i] = true;
                     }
                     continue;
@@ -322,8 +338,30 @@ final class TcLive {
             } else if (oc == PcodeOp.LOAD && out != null && out.getSize() == 4) {
                 long[] a = val(s, uniq, op.getInput(1));
                 if (a[0] == 15 && s.stack.containsKey(a[1])) x = s.stack.get(a[1]);
+                else if (a[0] != 15) x = new long[] {MEM, 0};
             }
             set(s, uniq, out, x);
         }
+
+        // A literal-pool load `mov.w|mov.l <pool>,rN` (PC-relative, read-only): {N, value}, the word sign-extended;
+        // else null. Read from the instruction's own read reference, as TcTail.prValue reads one.
+        long[] literal(Instruction ins) {
+            String t = ins.toString().toLowerCase();
+            java.util.regex.Matcher m = LITERAL.matcher(t);
+            if (!m.matches()) return null;
+            for (Reference r : ins.getReferencesFrom()) {
+                if (!r.getReferenceType().isRead() || !r.getToAddress().isMemoryAddress()) continue;
+                try {
+                    long v = m.group(1).equals("w") ? prog.getMemory().getShort(r.getToAddress())
+                        : prog.getMemory().getInt(r.getToAddress());
+                    return new long[] {Integer.parseInt(m.group(2)), v & 0xffffffffL};
+                } catch (Exception e) {
+                    return null;
+                }
+            }
+            return null;
+        }
+
+        static final java.util.regex.Pattern LITERAL = java.util.regex.Pattern.compile("^mov\\.([wl])\\s+0x[0-9a-f]+,r(\\d+)$");
     }
 }

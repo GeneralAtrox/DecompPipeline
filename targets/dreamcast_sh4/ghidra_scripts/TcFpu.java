@@ -12,6 +12,9 @@
 // is first done round-to-nearest and must equal Ghidra's result (else the vector is rejected: the model and the
 // p-code disagree), then with the live FPSCR.RM, whose result replaces Ghidra's. A step running with RM or DN other
 // than the entry mode is rejected (the C runner runs every vector in the entry mode: tc_rt.c sets MXCSR.RC once).
+// ftrc (always): Ghidra's SLEIGH ftrc is trunc(), a 64-bit conversion of which FPUL keeps the low 32 bits; the SH-4
+// saturates (0x7fffffff above the int range, 0x80000000 below it and for a NaN), as tc_rt.c's sh4_ftrc does. The
+// oracle sets FPUL from the source operand after the step (r15: xemu found it in 225 functions).
 // Not a script itself; used by TcOracle.
 import ghidra.app.emulator.EmulatorHelper;
 import ghidra.program.model.address.Address;
@@ -22,7 +25,7 @@ import java.util.regex.*;
 
 public class TcFpu {
     static final Pattern OP_RE = Pattern.compile(
-        "^(fadd|fsub|fmul|fdiv|fmac|fsqrt|fcmp/eq|fcmp/gt|fipr|ftrv|fsrra|float|fcnvds|fcnvsd)\\s+(\\S+)$");
+        "^(fadd|fsub|fmul|fdiv|fmac|fsqrt|fcmp/eq|fcmp/gt|fipr|ftrv|fsrra|float|fcnvds|fcnvsd|ftrc)\\s+(\\S+)$");
     static final Set<String> MODEL_ONLY = Set.of("float", "fcnvds", "fcnvsd"); // no denormal source: DN-only ignores them
     static final Set<String> PAIRED = Set.of("fadd", "fsub", "fmul", "fdiv", "fsqrt", "fcmp/eq", "fcmp/gt");
 
@@ -38,6 +41,7 @@ public class TcFpu {
     static class State {
         Map<String, Long> zeroed = new LinkedHashMap<>();
         Map<String, Long> snap; // model: every operand register's bits after zeroing
+        Map<String, Long> ftrc = new LinkedHashMap<>(); // ftrc: its source register's bits
         List<Op> ops;
         int rm;
         boolean pr;
@@ -99,6 +103,8 @@ public class TcFpu {
                 case "fcmp/eq":
                 case "fcmp/gt":
                     op.src.addAll(Arrays.asList(a));
+                    break;
+                case "ftrc": // ftrc frm,FPUL: before() reads frm (drm under PR=1), after() sets FPUL; nothing to flush
                     break;
                 case "float": // float FPUL,frn: an integer source
                     op.dst.add(a[1]);
@@ -179,7 +185,8 @@ public class TcFpu {
             st.pr = emu.readRegister("FPSCR_PR").longValue() != 0;
             long dn = emu.readRegister("FPSCR_DN").longValue();
             long want = facts.fpscrEntry;
-            if (st.rm != (want & 3) || dn != ((want >> 18) & 1) || st.rm > 1) { // RM 2, 3: reserved
+            boolean modal = list.stream().anyMatch(o -> !o.kind.equals("ftrc")); // ftrc ignores RM and DN
+            if (modal && (st.rm != (want & 3) || dn != ((want >> 18) & 1) || st.rm > 1)) { // RM 2, 3: reserved
                 reject[0] = "FPSCR mode RM=" + st.rm + " DN=" + dn + " at " + list.get(0).text
                     + " differs from the entry mode " + TcBase.hex(want) + " (the C runs every vector in the entry mode)";
                 return st;
@@ -192,6 +199,10 @@ public class TcFpu {
                 if (!denormal(r, b) || st.zeroed.containsKey(r)) continue;
                 st.zeroed.put(r, b);
                 set(emu, r, signOf(r, b));
+            }
+            if (op.kind.equals("ftrc")) {
+                String r = emu.readRegister("FPSCR_PR").longValue() != 0 ? dr(op.a[0]) : op.a[0];
+                st.ftrc.put(r, bits(emu, r));
             }
             String why = st.pr ? null : intermediate(emu, op, st.rm);
             if (why != null) reject[0] = "denormal intermediate value (" + op.text + ": " + why + ")";
@@ -274,6 +285,13 @@ public class TcFpu {
             long b = bits(emu, r);
             if (denormal(r, b)) set(emu, r, signOf(r, b));
         }
+        for (Map.Entry<String, Long> e : st.ftrc.entrySet()) set(emu, "FPUL", ftrc(e.getKey(), e.getValue()));
         return null;
+    }
+
+    // The SH-4's ftrc of a source register's bits: truncation toward zero, saturating; a NaN gives 0x80000000.
+    static long ftrc(String r, long bits) {
+        double d = wide(r) ? Double.longBitsToDouble(bits) : Float.intBitsToFloat((int) bits);
+        return Double.isNaN(d) ? 0x80000000L : (long) (int) d & 0xffffffffL; // Java's (int) truncates and saturates
     }
 }

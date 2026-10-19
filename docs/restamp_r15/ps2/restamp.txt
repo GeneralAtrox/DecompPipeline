@@ -1,0 +1,981 @@
+8c010220  # TcExit halts
+8c011b04  # fret
+8c011c08  # fret
+8c011ce8  # fret
+8c011e66  # fret
+8c011f6c  # fret
+8c01206c  # fret
+8c012202  # fret
+8c012c34  # fret
+8c013746  # fret; xemu ftrc
+8c0140e0  # fret
+8c014204  # fret
+8c01436c  # fret
+8c014500  # fret
+8c0147d4  # fret
+8c0163c4  # TcLive large-frame packets
+8c017dc8  # fret
+8c017f20  # fret
+8c018368  # fret
+8c018ccc  # fret
+8c018fd8  # fret; TcLive large-frame packets
+8c01966e  # fret
+8c019820  # fret
+8c019c66  # fret
+8c01a186  # fret
+8c01a502  # fret
+8c01aa02  # fret
+8c01b16a  # fret
+8c01b248  # fret
+8c01bba8  # fret
+8c01bd78  # fret
+8c01c004  # fret
+8c01c62a  # fret
+8c01cda2  # xemu ftrc
+8c01fd4c  # TcLive large-frame packets
+8c020edc  # TcLive large-frame packets
+8c021cbe  # fret; xemu ftrc
+8c0220c4  # TcLive large-frame packets
+8c022370  # TcLive large-frame packets
+8c0225de  # TcLive large-frame packets
+8c02297c  # TcLive large-frame packets
+8c022c30  # TcLive large-frame packets
+8c023b60  # TcLive large-frame packets
+8c023e9c  # TcLive large-frame packets
+8c0240c4  # TcLive large-frame packets
+8c024208  # TcLive large-frame packets
+8c024688  # TcLive large-frame packets
+8c0247a0  # TcLive large-frame packets
+8c02491e  # TcLive large-frame packets
+8c024ab2  # TcLive large-frame packets
+8c024bf0  # TcLive large-frame packets
+8c024cd4  # TcLive large-frame packets
+8c024e78  # TcLive large-frame packets
+8c0253be  # TcLive large-frame packets
+8c025564  # TcLive large-frame packets
+8c025778  # TcLive large-frame packets
+8c025c46  # TcLive large-frame packets
+8c025e28  # TcLive large-frame packets
+8c025f5c  # TcLive large-frame packets
+8c02610c  # TcLive large-frame packets
+8c026280  # TcLive large-frame packets
+8c026414  # TcLive large-frame packets
+8c0264d0  # TcLive large-frame packets
+8c02654c  # TcLive large-frame packets
+8c0265d4  # TcLive large-frame packets
+8c026888  # TcLive large-frame packets
+8c026b8c  # TcLive large-frame packets
+8c026df0  # TcLive large-frame packets
+8c026f8a  # TcLive large-frame packets
+8c027048  # TcLive large-frame packets
+8c0270f8  # TcLive large-frame packets
+8c027238  # TcLive large-frame packets
+8c027502  # TcLive large-frame packets
+8c027668  # TcLive large-frame packets
+8c027720  # TcLive large-frame packets
+8c0277a0  # TcLive large-frame packets
+8c0278a8  # TcLive large-frame packets
+8c027ad0  # TcLive large-frame packets
+8c027b94  # TcLive large-frame packets
+8c027c84  # TcLive large-frame packets
+8c027d88  # TcLive large-frame packets
+8c027fc4  # TcLive large-frame packets
+8c0281bc  # TcLive large-frame packets
+8c028370  # TcLive large-frame packets
+8c028494  # TcLive large-frame packets
+8c028558  # TcLive large-frame packets
+8c028600  # TcLive large-frame packets
+8c028698  # TcLive large-frame packets
+8c02879e  # TcLive large-frame packets
+8c0289e6  # TcLive large-frame packets
+8c028bd8  # TcLive large-frame packets
+8c028d60  # TcLive large-frame packets
+8c028eb4  # TcLive large-frame packets
+8c0290a2  # TcLive large-frame packets
+8c02917c  # TcLive large-frame packets
+8c029220  # TcLive large-frame packets
+8c02932a  # TcLive large-frame packets
+8c029508  # TcLive large-frame packets
+8c02968a  # TcLive large-frame packets
+8c0298c8  # TcLive large-frame packets
+8c029caa  # TcLive large-frame packets
+8c029d84  # TcLive large-frame packets
+8c029e80  # TcLive large-frame packets
+8c02a4b6  # fret
+8c02a95c  # TcLive large-frame packets
+8c02ac0a  # TcLive large-frame packets
+8c02b7fc  # TcLive large-frame packets
+8c02bdbc  # fret
+8c02be9c  # fret
+8c02c184  # fret
+8c02c25c  # fret
+8c02c36e  # fret
+8c02c5f8  # fret
+8c02da7c  # TcLive large-frame packets
+8c02dc20  # fret
+8c02dca8  # fret
+8c02de44  # fret
+8c02e07c  # fret
+8c02e97c  # fret
+8c02e9d8  # fret
+8c02f878  # fret
+8c02fb28  # fret
+8c030114  # fret; xemu ftrc
+8c035ba0  # TcExit halts
+8c035bca  # TcExit halts
+8c035bf4  # TcExit halts
+8c035c1e  # TcExit halts
+8c037bfa  # xemu ftrc
+8c037ec4  # xemu ftrc
+8c037fc4  # xemu ftrc
+8c038366  # fret
+8c0389e0  # fret
+8c038a3e  # fret
+8c038b46  # fret
+8c038c20  # fret
+8c038d8e  # fret
+8c038f74  # fret
+8c039014  # fret
+8c039352  # fret
+8c03984a  # fret
+8c039a16  # fret
+8c03a17c  # fret; xemu ftrc
+8c03a2d2  # fret
+8c03a53a  # fret
+8c03e09a  # TcLive large-frame packets
+8c03e118  # TcLive large-frame packets
+8c03e23c  # TcLive large-frame packets
+8c03e2a8  # TcLive large-frame packets
+8c03e2d6  # TcLive large-frame packets
+8c03e368  # TcLive large-frame packets
+8c03e3d2  # TcLive large-frame packets
+8c03e43c  # TcLive large-frame packets
+8c03e46e  # TcLive large-frame packets
+8c03e4d0  # TcLive large-frame packets
+8c03e646  # fret
+8c03e7ba  # fret
+8c03e878  # fret
+8c03ea08  # fret; xemu ftrc
+8c03ec18  # fret
+8c04387e  # fret; xemu ftrc
+8c043ae8  # fret
+8c043d98  # fret
+8c044038  # fret; xemu ftrc
+8c045cf8  # fret
+8c04b560  # xemu ftrc
+8c04b6b2  # fret
+8c04b840  # fret
+8c04bfd4  # fret; xemu ftrc
+8c04c156  # fret; xemu ftrc
+8c04c2a8  # fret; xemu ftrc
+8c04c4e2  # fret
+8c04cb5c  # xemu ftrc
+8c04ccd8  # fret
+8c04d15e  # fret; xemu ftrc
+8c04d54c  # fret; xemu ftrc
+8c04d7a4  # xemu ftrc
+8c04e08a  # xemu ftrc
+8c04e0e8  # xemu ftrc
+8c04fe54  # xemu ftrc
+8c050720  # xemu ftrc
+8c0523b0  # fret
+8c05243c  # fret
+8c052d30  # fret; TcLive large-frame packets
+8c053356  # fret
+8c0533dc  # fret; xemu ftrc
+8c054090  # fret
+8c0545b2  # fret
+8c055a64  # fret
+8c055ab4  # fret
+8c055b28  # TcLive large-frame packets
+8c055c98  # TcLive large-frame packets
+8c056d18  # TcLive large-frame packets
+8c056d4a  # fret; TcLive large-frame packets
+8c056dfe  # TcLive large-frame packets
+8c057d4a  # xemu ftrc
+8c057e30  # TcLive large-frame packets
+8c057f84  # TcLive large-frame packets
+8c05826c  # fret; fargs
+8c058378  # fret
+8c0584bc  # xemu ftrc
+8c058592  # fret
+8c0585f8  # fret; fargs
+8c058766  # fret
+8c0587ec  # fargs
+8c058b56  # fret
+8c059a78  # fret; xemu ftrc
+8c059c26  # fret; xemu ftrc
+8c059e6e  # xemu ftrc
+8c059f28  # xemu ftrc
+8c05a48c  # xemu ftrc
+8c05a624  # xemu ftrc
+8c05a6da  # xemu ftrc
+8c05acf8  # xemu ftrc
+8c05af18  # xemu ftrc
+8c05b03c  # xemu ftrc
+8c05b126  # xemu ftrc
+8c05b54e  # TcExit halts
+8c05d5ac  # xemu ftrc
+8c0600ac  # fret
+8c0600f8  # fret
+8c060144  # fret
+8c060314  # fret
+8c060810  # fret
+8c060896  # fret
+8c06095c  # fret
+8c060a24  # fret
+8c061688  # fret
+8c061a94  # fret
+8c062372  # fret
+8c0626ec  # fret
+8c062964  # fret
+8c062cd4  # fret
+8c063150  # fret
+8c0634cc  # fret
+8c0636d4  # fret
+8c063852  # fret
+8c063bc4  # fret
+8c063d28  # fret
+8c064c5c  # fret
+8c064cce  # fret
+8c064e68  # fret
+8c064eac  # fret
+8c064ef4  # fret
+8c064f38  # fret
+8c065134  # fret
+8c065348  # fret
+8c06541a  # fret
+8c0654b8  # fret
+8c06559e  # fret
+8c06580c  # fret
+8c06588a  # fret
+8c06590e  # fret
+8c065b60  # fret
+8c065c1a  # fret
+8c065ea2  # fret
+8c065f04  # fret
+8c06618c  # fret
+8c066250  # fret
+8c0662dc  # fret
+8c066368  # fret
+8c0664d4  # fret
+8c06655c  # fret
+8c06661c  # fret
+8c066704  # fret
+8c066be0  # fret
+8c068b50  # fret
+8c069e26  # fret
+8c06af9e  # fret
+8c06b356  # fret
+8c06b508  # fret
+8c06b644  # fret
+8c06ba00  # fret
+8c06bb90  # fret; xemu ftrc
+8c06c1b8  # fret
+8c06c47c  # fret
+8c06d008  # fret
+8c06d810  # fret
+8c06d904  # fret
+8c06da04  # fret
+8c06dcac  # fret
+8c06e70c  # fret
+8c06e8f6  # fret
+8c06f6e8  # fret; xemu ftrc
+8c06fa82  # fret
+8c0702c4  # fret
+8c0703de  # fret; fargs
+8c0704c0  # fret; fargs
+8c0705be  # fret
+8c07092a  # fret
+8c0714d4  # fret
+8c071b84  # fret
+8c071ec4  # fret
+8c073122  # fret
+8c073a4c  # fret
+8c07431e  # xemu ftrc
+8c0743d0  # fret
+8c074608  # fret
+8c074686  # fret; xemu ftrc
+8c074ece  # xemu ftrc
+8c075584  # xemu ftrc
+8c075738  # fret; xemu ftrc
+8c076602  # fret
+8c0770cc  # fret
+8c07728a  # fret
+8c078260  # fret; xemu ftrc
+8c078546  # fret
+8c078868  # fret
+8c078980  # fret
+8c078aa0  # fret
+8c07910e  # fret
+8c079228  # fret
+8c079570  # fret
+8c079afc  # xemu ftrc
+8c07a110  # fret
+8c07a40c  # fret
+8c07a4ac  # fret
+8c07bb4c  # fret
+8c07bb90  # fret
+8c07c660  # xemu ftrc
+8c07ca44  # fret
+8c07cb54  # fret
+8c07cc80  # fret
+8c07cd64  # fret
+8c07ce08  # fret
+8c07cedc  # fret
+8c07d10a  # fret
+8c07d376  # xemu ftrc
+8c07d40e  # fret
+8c07e4d0  # fret
+8c07e784  # xemu ftrc
+8c07ed1e  # fret
+8c07ed4a  # fret
+8c07ee14  # fret
+8c07f7a4  # fret
+8c07fa26  # fret
+8c0803e8  # fret
+8c0807ee  # fret
+8c080c92  # fret
+8c080dae  # fret
+8c08108a  # fret
+8c0813fc  # fret
+8c081620  # fret
+8c0820b6  # fret
+8c082394  # fret; xemu ftrc
+8c0828f8  # fret
+8c082d36  # fret
+8c0834c4  # fret; xemu ftrc
+8c0836a4  # fret
+8c083e84  # fret
+8c084abe  # fret
+8c084c40  # fret; xemu ftrc
+8c084d98  # fret; xemu ftrc
+8c084ef4  # fret; xemu ftrc
+8c085288  # fret
+8c08541c  # fret
+8c08554c  # fret
+8c0856d4  # fret
+8c085a1c  # fret
+8c0860ba  # fret
+8c0863a6  # fret
+8c0865bc  # fret
+8c08727e  # fret
+8c08757a  # fret
+8c087694  # fret
+8c08783e  # fret
+8c087c28  # fret
+8c08a092  # fret
+8c08a59c  # fret
+8c08bb10  # fret
+8c08c78e  # fret
+8c08d0e0  # xemu ftrc
+8c08d1f4  # fret
+8c08dd42  # fret
+8c08de94  # xemu ftrc
+8c09151c  # fret
+8c09196e  # fret
+8c092004  # fret
+8c0936ac  # fret
+8c093960  # fret
+8c093ac0  # fret
+8c093d12  # fret
+8c093f72  # fret
+8c0941dc  # fret
+8c0942b4  # fret
+8c094426  # fret
+8c09564e  # fret
+8c0967e8  # fret
+8c096b38  # fret
+8c096c54  # fret
+8c09706c  # fret
+8c0977a4  # xemu ftrc
+8c0978e4  # xemu ftrc
+8c097ef6  # fret
+8c098062  # xemu ftrc
+8c0985dc  # fargs
+8c098c50  # fret
+8c09943a  # fret
+8c0994bc  # fret
+8c09a630  # fret
+8c09ab98  # fret
+8c09c700  # fret
+8c09e214  # fret
+8c09e480  # fret
+8c09ef1c  # fret; xemu ftrc
+8c09f7f6  # fret
+8c0a039c  # fret
+8c0a0786  # fret
+8c0a08be  # xemu ftrc
+8c0a0a74  # fret
+8c0a0b8e  # xemu ftrc
+8c0a0f9c  # xemu ftrc
+8c0a11d0  # fret
+8c0a2534  # fret
+8c0a28f6  # fret
+8c0a3104  # fret
+8c0a3580  # fret; xemu ftrc
+8c0a3a3e  # fret
+8c0a4630  # fret; xemu ftrc
+8c0a46cc  # fret
+8c0a4758  # fret; xemu ftrc
+8c0a4908  # fret; xemu ftrc
+8c0a4bbc  # fret
+8c0a4fbe  # fret
+8c0a5090  # xemu ftrc
+8c0a521c  # xemu ftrc
+8c0a532a  # xemu ftrc
+8c0a54d8  # xemu ftrc
+8c0a560c  # xemu ftrc
+8c0a5cd4  # fret
+8c0a5f66  # fret
+8c0a6204  # fret
+8c0a6b22  # xemu ftrc
+8c0a6e54  # xemu ftrc
+8c0a74b4  # xemu ftrc
+8c0a77f4  # fret
+8c0a78e6  # fret
+8c0a7b06  # fret; xemu ftrc
+8c0a8086  # xemu ftrc
+8c0a8ac6  # fret
+8c0a9252  # fret
+8c0aaaca  # fret
+8c0aac22  # xemu ftrc
+8c0ab372  # fret
+8c0ab88c  # fret
+8c0abc64  # fret
+8c0acd10  # fret
+8c0adbc6  # fret; xemu ftrc
+8c0adc1c  # fret
+8c0add56  # fret
+8c0adeca  # fret
+8c0ae084  # fret
+8c0ae334  # xemu ftrc
+8c0ae794  # fret
+8c0aea36  # fret
+8c0af4d0  # fret
+8c0b0960  # fret
+8c0b14d6  # fret
+8c0b1620  # fret
+8c0b195c  # fret
+8c0b1de8  # fret
+8c0b1f60  # fret; xemu ftrc
+8c0b20e8  # fret
+8c0b22e8  # fargs
+8c0b24fc  # fret
+8c0b2a3c  # xemu ftrc
+8c0b2b46  # fret
+8c0b2db4  # fret; xemu ftrc
+8c0b3b30  # fret
+8c0b40f8  # fret; xemu ftrc
+8c0b4e7a  # fret
+8c0b4f8a  # fret
+8c0b52ec  # fret
+8c0b56ae  # xemu ftrc
+8c0b6bdc  # xemu ftrc
+8c0b75e6  # fret
+8c0b7c02  # fret
+8c0b7fb8  # fret
+8c0b8d3e  # fret
+8c0b8eb2  # fret
+8c0b9068  # fret
+8c0b9f24  # fret
+8c0ba494  # fret
+8c0ba814  # fret
+8c0bacf6  # fret
+8c0bae24  # xemu ftrc
+8c0bb364  # fargs
+8c0bb7c2  # fret
+8c0bba18  # fret; xemu ftrc
+8c0bba76  # fret; xemu ftrc
+8c0bbb9a  # fret; xemu ftrc
+8c0bbc5c  # fret; xemu ftrc
+8c0bbcf6  # fret; xemu ftrc
+8c0bbd7a  # fret
+8c0be0d4  # fret; xemu ftrc
+8c0be278  # fret; xemu ftrc
+8c0be2f4  # xemu ftrc
+8c0be33a  # xemu ftrc
+8c0be54a  # fret; TcLive large-frame packets
+8c0be7bc  # fret; TcLive large-frame packets
+8c0be9e8  # fret
+8c0bec1c  # fret; TcLive large-frame packets
+8c0bfdcc  # xemu ftrc
+8c0c0568  # xemu ftrc
+8c0c0eb8  # xemu ftrc
+8c0c297a  # fret
+8c0c3370  # fret
+8c0c47f4  # fret; xemu ftrc
+8c0c4bfa  # fret; xemu ftrc
+8c0c4c50  # fret
+8c0c4df2  # fret
+8c0c5348  # fret
+8c0c5864  # fret
+8c0c5f10  # fret
+8c0c5fc8  # fret
+8c0c688e  # fret
+8c0c6b18  # fret
+8c0c720c  # fret; xemu ftrc
+8c0c76e8  # fret
+8c0c7924  # fret
+8c0c7dde  # fret
+8c0c80b4  # fret
+8c0c8f10  # fret; xemu ftrc
+8c0c9058  # fret
+8c0cbd34  # fret; xemu ftrc
+8c0cbff2  # fret
+8c0cd5d8  # fret; xemu ftrc
+8c0ceec8  # fret
+8c0cf0be  # xemu ftrc
+8c0d1c32  # fret
+8c0d2554  # xemu ftrc
+8c0d2aa0  # fret
+8c0d31e6  # fret; xemu ftrc
+8c0d3938  # fret; xemu ftrc
+8c0d43c8  # xemu ftrc
+8c0d46f6  # fret
+8c0d50b4  # fret; xemu ftrc
+8c0d5638  # xemu ftrc; TcLive large-frame packets
+8c0d58bc  # fret
+8c0d7188  # xemu ftrc
+8c0d750c  # xemu ftrc
+8c0d761c  # xemu ftrc
+8c0d7798  # xemu ftrc
+8c0d79d4  # xemu ftrc
+8c0d7d90  # xemu ftrc
+8c0d7ea8  # xemu ftrc
+8c0d7f54  # xemu ftrc
+8c0d8620  # xemu ftrc
+8c0d8e28  # xemu ftrc
+8c0d8f9c  # xemu ftrc
+8c0d95c4  # xemu ftrc
+8c0d9d1a  # fret; xemu ftrc
+8c0d9f40  # fret; xemu ftrc; TcLive large-frame packets
+8c0da61c  # xemu ftrc
+8c0da724  # xemu ftrc
+8c0dab18  # xemu ftrc
+8c0db478  # xemu ftrc
+8c0db92e  # xemu ftrc
+8c0dbbbc  # TcLive large-frame packets
+8c0dbd10  # xemu ftrc; TcLive large-frame packets
+8c0dc240  # xemu ftrc
+8c0dd4ac  # fret; TcLive large-frame packets
+8c0dd892  # fret
+8c0ddea4  # xemu ftrc
+8c0de8f8  # fret; xemu ftrc
+8c0ded80  # fret
+8c0df0d4  # xemu ftrc
+8c0df14e  # fret; xemu ftrc
+8c0df38e  # fret
+8c0df490  # xemu ftrc
+8c0dfe70  # xemu ftrc
+8c0e024a  # xemu ftrc
+8c0e0860  # xemu ftrc
+8c0e0964  # xemu ftrc
+8c0e0a70  # xemu ftrc
+8c0e118c  # fret
+8c0e132e  # fret
+8c0e15a8  # TcLive large-frame packets
+8c0e1ba4  # fret
+8c0e2028  # fret
+8c0e2784  # xemu ftrc
+8c0e29d0  # fret; xemu ftrc
+8c0e2bb4  # fret
+8c0e3ab4  # fret
+8c0e45e2  # fret
+8c0e4e30  # fret
+8c0e52d2  # fret
+8c0e53f6  # fret; xemu ftrc
+8c0e5be4  # fret
+8c0e6134  # fret
+8c0e61ec  # fret
+8c0e6ce4  # xemu ftrc
+8c0e7820  # xemu ftrc
+8c0e7bd8  # fret
+8c0e7ddc  # fret
+8c0e8074  # xemu ftrc
+8c0e8b68  # xemu ftrc
+8c0ea890  # TcLive large-frame packets
+8c0ec5d4  # xemu ftrc
+8c0ecfc0  # xemu ftrc
+8c0ed0e0  # xemu ftrc
+8c0ed33c  # fret; xemu ftrc
+8c0ed3c0  # fret
+8c0edee8  # fret; xemu ftrc
+8c0ef996  # xemu ftrc
+8c0efc88  # fret
+8c0f03f4  # fret
+8c0f276c  # xemu ftrc
+8c0f2c30  # fret; xemu ftrc
+8c0f3078  # fret
+8c0f3172  # fret
+8c0f341c  # fret
+8c0f3e4c  # fret
+8c0f3eea  # fret
+8c0f4bec  # fret; xemu ftrc
+8c0f5b1a  # xemu ftrc
+8c0f6dac  # fret; xemu ftrc
+8c0f7d3c  # xemu ftrc
+8c0f855c  # xemu ftrc
+8c0f8f44  # fret
+8c0f9568  # fret; xemu ftrc
+8c0fd780  # fret; xemu ftrc
+8c10114c  # fret
+8c103be6  # fret
+8c103fc0  # fret
+8c1046c8  # fret
+8c1059c0  # xemu ftrc
+8c108b68  # TcLive large-frame packets
+8c108c74  # TcLive large-frame packets
+8c108da0  # TcLive large-frame packets
+8c10ad24  # xemu ftrc
+8c10ccb6  # xemu ftrc
+8c10d110  # xemu ftrc
+8c10d308  # xemu ftrc
+8c10e98c  # xemu ftrc
+8c10f81c  # TcLive large-frame packets
+8c11130c  # fret
+8c11247e  # xemu ftrc
+8c115564  # xemu ftrc
+8c1156b6  # xemu ftrc
+8c115778  # xemu ftrc
+8c1157e4  # fret
+8c115828  # fret
+8c115b4c  # fret; xemu ftrc
+8c116c78  # xemu ftrc
+8c117aec  # xemu ftrc
+8c117c16  # xemu ftrc
+8c119e6e  # fret; xemu ftrc; TcLive large-frame packets
+8c11a138  # fret
+8c11a450  # fret; xemu ftrc
+8c11a6c0  # fret; xemu ftrc
+8c11aa42  # fret; xemu ftrc
+8c11acd8  # fret; xemu ftrc
+8c11b0c0  # fret; xemu ftrc
+8c11b556  # fret; xemu ftrc
+8c11b8b0  # fret; xemu ftrc
+8c11bd06  # fret; xemu ftrc
+8c11c258  # xemu ftrc
+8c11d1da  # fret; xemu ftrc
+8c11ea28  # TcLive large-frame packets
+8c120132  # fret; xemu ftrc
+8c1215ba  # TcExit halts
+8c121d50  # fret
+8c12200c  # fret
+8c1222d4  # fret
+8c122694  # fret
+8c1228bc  # fret; xemu ftrc
+8c123194  # fret
+8c1231b8  # fret; xemu ftrc
+8c123ea4  # fret; xemu ftrc
+8c1240c8  # fret; xemu ftrc
+8c124244  # fret
+8c12452e  # fret; xemu ftrc
+8c12493c  # fret; xemu ftrc
+8c124dac  # fret; xemu ftrc
+8c1250b4  # fret; xemu ftrc
+8c12598e  # fret
+8c125e78  # fret
+8c1265ae  # fret
+8c126e84  # fret; xemu ftrc
+8c127450  # fret
+8c12796c  # fret
+8c127afc  # fret
+8c127da4  # fret
+8c127f30  # fret
+8c128402  # fret
+8c129a1a  # fret; xemu ftrc
+8c129e18  # fret
+8c12a14a  # fret
+8c12a560  # fret; xemu ftrc
+8c12b01c  # fret; xemu ftrc
+8c12b1dc  # fret; xemu ftrc
+8c12b6c4  # fret; xemu ftrc
+8c12b884  # fret; xemu ftrc
+8c12c08e  # fret; xemu ftrc
+8c12c8d0  # fret
+8c12ca78  # fret
+8c12cd34  # fret; xemu ftrc
+8c12d674  # fret; xemu ftrc
+8c12da04  # fret; xemu ftrc
+8c12e978  # fret
+8c12f9d0  # fret
+8c12fbec  # fret
+8c12fcb2  # fret; xemu ftrc
+8c12fe9c  # fret
+8c1300c4  # fret
+8c130242  # fret
+8c13050c  # fret
+8c1306d4  # fret
+8c130a38  # fret
+8c130bf4  # fret; xemu ftrc
+8c130c74  # xemu ftrc
+8c130daa  # xemu ftrc
+8c130ef8  # xemu ftrc
+8c131afc  # fret; xemu ftrc
+8c131dec  # fret; xemu ftrc
+8c132154  # fret; xemu ftrc
+8c1328cc  # xemu ftrc
+8c132f18  # fret
+8c1338f0  # fret
+8c134028  # fret
+8c134118  # fret
+8c134460  # fret
+8c134928  # fret; xemu ftrc
+8c134f28  # fret
+8c135102  # fret
+8c1351cc  # fret
+8c135372  # fret
+8c1356a0  # fret; xemu ftrc
+8c135f20  # fret
+8c13654c  # fret
+8c136636  # fret
+8c137400  # fret; xemu ftrc
+8c1375bc  # xemu ftrc
+8c1379a6  # fret
+8c138136  # fret; xemu ftrc
+8c138c3c  # fret
+8c138e2c  # fret; xemu ftrc
+8c139310  # fret
+8c139480  # fret
+8c1396f4  # fret
+8c1398c0  # fret; xemu ftrc
+8c13a1ec  # xemu ftrc
+8c13baae  # fret; xemu ftrc
+8c13be4e  # fret; xemu ftrc
+8c13cad8  # fret
+8c13cea6  # fret
+8c13d308  # fret
+8c13d654  # fret
+8c13d8f0  # fret
+8c13d9dc  # fret
+8c13df60  # fret
+8c13e580  # fret
+8c13ec74  # fret
+8c13ef96  # fret
+8c13f540  # fret
+8c13fcb4  # xemu ftrc
+8c140cc0  # fret
+8c140e68  # fret
+8c141238  # fret
+8c1415e2  # fret; xemu ftrc
+8c141a34  # fret
+8c141d2e  # fret
+8c1425d8  # fret
+8c142a10  # fret
+8c142c00  # fret
+8c142d84  # fret
+8c143018  # fret
+8c14321c  # fret
+8c1432c0  # fret
+8c143644  # fret
+8c1437b0  # fret
+8c1439bc  # fret; xemu ftrc
+8c143d0e  # fret
+8c1443dc  # fret
+8c1448b8  # fret
+8c144d36  # fret
+8c145096  # fret
+8c1453cc  # xemu ghmem (uninitializedRead)
+8c14574e  # fret
+8c145b60  # fret
+8c145e1c  # fret
+8c14605a  # fret
+8c146274  # fret; xemu ftrc
+8c146676  # fret; xemu ftrc
+8c146ad2  # xemu ftrc
+8c146d20  # fret; xemu ftrc
+8c147484  # fret; xemu ftrc
+8c147e08  # fret; xemu ftrc
+8c14833e  # fret
+8c1490b0  # fret
+8c149626  # fret
+8c149e4c  # fret; xemu ftrc
+8c149f28  # fret
+8c149f66  # fret; xemu ftrc
+8c14aa20  # fret
+8c14b544  # fret
+8c14b65c  # fret
+8c14b9f2  # fret
+8c14bbdc  # fret
+8c14bf84  # xemu ftrc
+8c14c35c  # fret
+8c14c51c  # fret
+8c14cc28  # fret; xemu ftrc
+8c14d1a0  # fret
+8c14d9d8  # fret
+8c14dbcc  # fret
+8c14dfc0  # fret; xemu ftrc
+8c14e3cc  # fret; xemu ftrc
+8c14ed2c  # fret
+8c14fce4  # TcLive large-frame packets
+8c14fe18  # fret
+8c150080  # fret
+8c1511a8  # fret
+8c15163c  # fret
+8c151b5a  # xemu ftrc
+8c152c7c  # fret
+8c153320  # fret
+8c157ae0  # fret; xemu ftrc
+8c157ddc  # fret; xemu ftrc
+8c1580c8  # fret; xemu ftrc
+8c1581bc  # fret
+8c1584e8  # fret
+8c1589cc  # fret
+8c158e48  # fret
+8c15aa64  # fret
+8c15aea6  # fret
+8c15b1b4  # fret
+8c15b900  # fret; xemu ftrc
+8c15be10  # fret; xemu ftrc
+8c15c064  # xemu ftrc
+8c15c368  # fret; xemu ftrc
+8c15c4ec  # fret
+8c15d1ec  # fret; xemu ftrc
+8c15d7c4  # fret; xemu ftrc
+8c15dbcc  # fret; xemu ftrc
+8c15dd2e  # fret; xemu ftrc
+8c15e3ee  # fret
+8c15e98c  # fret
+8c15eccc  # fret; xemu ftrc
+8c15f118  # fret; xemu ftrc
+8c15f468  # fret
+8c15f574  # fret
+8c15f894  # xemu ftrc
+8c160bea  # fret; xemu ftrc
+8c1619d8  # fret
+8c1624f0  # fret; xemu ftrc
+8c162918  # fret
+8c162b58  # fret
+8c162f54  # fret
+8c163178  # fret
+8c163500  # fret; xemu ftrc
+8c1644a4  # fret
+8c1647ec  # fret
+8c164ec8  # fret
+8c165150  # fret; xemu ftrc
+8c16553a  # fret; xemu ftrc
+8c16596a  # fret
+8c166348  # fret; xemu ftrc
+8c166534  # xemu ftrc
+8c166b70  # fret; xemu ftrc
+8c166cb0  # fret
+8c16779e  # xemu ftrc
+8c16790c  # xemu ftrc
+8c167bd0  # fret
+8c167cde  # fret
+8c168346  # fret
+8c168872  # fret
+8c168b94  # fret
+8c168dc8  # fret
+8c169214  # fret
+8c16a72a  # fret; xemu ftrc
+8c16a888  # fret
+8c16ac30  # fret
+8c16aeca  # fret; xemu ftrc
+8c16b15e  # fret
+8c16bccc  # fret
+8c16bee0  # fret
+8c16bfb2  # fret
+8c16d0ea  # fret; xemu ftrc
+8c16d394  # fret
+8c16d4d8  # fret
+8c16d52c  # fret
+8c16d7ae  # fret
+8c16e0a2  # xemu ftrc
+8c16e324  # fret
+8c16ecd4  # fret
+8c16edc8  # fret; xemu ftrc
+8c16f3b8  # fret
+8c16f5fc  # fret; xemu ftrc
+8c171584  # fret
+8c1715f2  # fret
+8c171650  # fret
+8c1725fe  # xemu ftrc
+8c176b4a  # xemu ftrc
+8c1787b0  # TcExit halts
+8c178860  # TcExit halts
+8c178940  # xemu ftrc
+8c1796b0  # fargs; xemu ftrc
+8c179800  # fret
+8c179820  # fret
+8c179840  # fret
+8c179870  # fret
+8c1798c0  # fret
+8c179920  # fret; fargs; xemu ftrc
+8c1799a0  # fargs; xemu ftrc
+8c1799f0  # fargs; xemu ftrc
+8c179a30  # fret; fargs
+8c179a50  # fargs
+8c179b20  # fargs
+8c179ba0  # fret
+8c179bb0  # fret
+8c179bc0  # fret; xemu ftrc
+8c179cc0  # fargs; xemu ftrc
+8c179d20  # fargs; xemu ftrc
+8c179da0  # xemu ftrc
+8c179ea0  # fret
+8c179f00  # fargs; xemu ftrc
+8c179f60  # fret; fargs
+8c179fd0  # fargs; xemu ftrc
+8c17a060  # xemu ftrc
+8c17a670  # xemu ftrc
+8c17a790  # TcLive large-frame packets
+8c17aae0  # fret
+8c17ab00  # fret
+8c17ab50  # fret
+8c17ad10  # fret
+8c17aeb0  # fret
+8c17b100  # fret
+8c17b1a0  # fret
+8c17b270  # fret
+8c17b3f0  # fret
+8c17b570  # fret
+8c17b660  # fret
+8c17b7d0  # fret
+8c17b7e0  # fret
+8c17b810  # fret
+8c17b8e0  # fret
+8c17bc50  # fret
+8c17bcf0  # fret
+8c17bfc0  # fret
+8c17bfe0  # fret
+8c17c000  # fret
+8c17c020  # fret
+8c17c040  # fret
+8c17c060  # fret
+8c17c080  # fret
+8c17c3f0  # fret
+8c17c4c0  # fret
+8c17c560  # fret
+8c17c6a0  # fret
+8c17c760  # fret
+8c17c830  # fret
+8c17c8a0  # fret; fargs; xemu ftrc
+8c17cda0  # fret; fargs
+8c17cfa0  # fret; fargs
+8c17d3f0  # xemu ftrc
+8c17d440  # xemu ftrc
+8c17d6d0  # fret
+8c17d750  # fret
+8c17d850  # fret
+8c17d8f0  # fret
+8c17e6f0  # fret
+8c17e720  # fret
+8c17e780  # fret
+8c17ea70  # fret
+8c17eb40  # fret
+8c17ec70  # fret
+8c17ecb0  # fret
+8c17ee70  # fret
+8c17ee80  # fret
+8c17fcb0  # fargs; xemu ftrc
+8c17fef0  # fargs; xemu ftrc
+8c181e70  # fret
+8c181fe0  # fret
+8c1824e0  # fret
+8c182850  # xemu ftrc
+8c1831e4  # r15-oracle class 8 TcLive context switch
+8c1833e4  # TcLive large-frame packets
+8c18340a  # TcLive large-frame packets
+8c1846a0  # r15-oracle class 8 TcLive context switch
+8c185f80  # TcLive large-frame packets

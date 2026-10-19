@@ -28,7 +28,11 @@ the wiring of the rescue pass's store-fault repair. From tests/test_batch30.py, 
 comment, frame addresses in a callee's own argument registers, designer renames ("was"), `(void)` dropped for a
 void callee and lint RR7 (a void callee's result used). From tests/test_batch31.py, `serve` refusing a
 port that is already taken. From tests/test_batch32.py, the proof gates (the coverage gate's states and audit check,
-mutant generation, the kill and survive logic, the runner output cap, the backlog tool, the unreached blocks). From tests/test_reach.py, call-site coverage
+mutant generation, the kill and survive logic, the runner output cap, the backlog tool, the unreached blocks); from
+tests/test_float_gaps.py, the float gaps (fr0 results, the original's pool floats, TcFret's wiring); from
+tests/test_mirror.py, the mirror rule (one RAM word through its 0x0c and 0x8c views, the raw pointer compares);
+from tests/test_ptr_views.py, matched C that keeps a pool pointer in the other view.
+From tests/test_reach.py, call-site coverage
 (the figure, the final audit's calls check, the verdict's reasons) and the reach pass's wiring. From tests/test_port_kit.py, the
 Dreamcast port kit (game.json, the generated per-game files, no game material in port/, the runtime at /W4 /WX
 where Visual Studio's 32-bit tools are found, skipped elsewhere).
@@ -82,6 +86,9 @@ from test_batch31 import PortTaken  # noqa: E402,F401  (serve refuses a taken po
 from test_batch32 import (Allowance, AuditProof, Backlog, Candidates, Check, Classes, CoverageVerdict,  # noqa: E402,F401
                           DoctorFigure, Generate, LedgerRow, OutputCap, Scan, Settings, Sizes as ProofSizes, UnhitBlocks,
                           Tokens)  # (proof gates)
+from test_float_gaps import FloatLits, RetReg, Wiring as FloatWiring  # noqa: E402,F401  (float gaps)
+from test_mirror import Follow, Judge as MirrorJudge, SameWord  # noqa: E402,F401  (mirror rule)
+from test_ptr_views import Check as ViewCheck, Literals as ViewLiterals  # noqa: E402,F401  (pointer views)
 from test_port_c import FrameArgs, FrameSpans  # noqa: E402,F401  (port phase C)
 from test_port_kit import GameConfig, KitIsGameFree, RuntimeCompiles  # noqa: E402,F401  (port kit)
 from test_reach import AuditCheck, DoctorAnyWorkspace, Figure, Seed, Verdict, Wiring as ReachWiring  # noqa: E402,F401  (call-site coverage)

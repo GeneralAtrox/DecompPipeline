@@ -39,4 +39,12 @@ void sh4_fipr_fv(int m, int n);                       /* fipr FVm,FVn: fr n+3 = 
 u32 sh4_r(int index);                                 /* read r8..r14 as runtime state (hand-written code keeps a */
 void sh4_set_r(int index, u32 value);                 /* pointer in r14 across calls); write it */
 
+/* The original's endless loop (`bra .`, e.g. an error halt): call tc_halt() where the original reaches it, after the
+ * call when it is a callee that never returns (TcExit). It does not return: the test run reports HALT there (as
+ * tc_rt.h), and the port ends the run with a HALT line in its log. */
+#if defined(_MSC_VER)
+__declspec(noreturn)
+#endif
+void tc_halt(void);
+
 #endif

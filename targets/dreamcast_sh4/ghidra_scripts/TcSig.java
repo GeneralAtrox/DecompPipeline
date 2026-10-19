@@ -7,8 +7,8 @@
 // whatever Ghidra's prototype says (it misses float inputs it cannot type, r0..r3 inputs of SHC runtime helpers, and
 // arguments only forwarded to a callee). The callee-saved registers are never parameters: fr12..fr15 and r8..r14 read
 // at entry or left changed are runtime state (Proto.frIn/frState, giIn/giState), set at entry and compared at exit,
-// and compared at calls to a callee that reads them. Any other register read at entry (fr0..fr3) cannot be passed:
-// the function under test is refused.
+// and compared at calls to a callee that reads them. Any other register read at entry cannot be passed: the function
+// under test is refused, except fr0..fr3 alone with TcFacts.fpuState, which makes the whole FPU state (fpuProto).
 // Results: Ghidra's return storage is checked against what the code leaves changed: a callee-saved or restored
 // register is not a result (Ghidra's "return in r11" of `mov r11,r0; ... mov.l @r15+,r11`): the ABI register r0 is;
 // a 64-bit result is r0:r1 only when r1 is left changed; another changed caller-saved register is a nonstandard
@@ -126,14 +126,18 @@ public class TcSig {
         int giIn = read & TcFlow.ISTATE;
         int giState = giIn | (flow[5] & TcFlow.ISTATE);
         TcBase.Proto p;
-        if (depth == PASS_DEPTH && foreign != 0) {
+        // Only fr0..fr3 read at entry, with TcFacts.fpuState: the whole FPU is state (fpuProto), as for a mode switch.
+        // Spawn 8c021748 jumps into its own loop at 8c0217b6 when the first record is not -1, storing the fr0..fr2 and
+        // fr4..fr6 its caller left (the previous transform).
+        boolean floatEntry = facts.fpuState && foreign != 0 && (foreign & ~0xffff) == 0;
+        if (depth == PASS_DEPTH && foreign != 0 && !floatEntry) {
             p = TcBase.copyOf(base);
             p.unsupported = "reads " + names(foreign) + " at entry (not argument registers)";
             return p;
         }
         int regs = read & facts.args();
-        if (modes && facts.fpuState && depth == PASS_DEPTH) {
-            p = fpuProto(f, base, regs, flow[5]);
+        if ((modes || floatEntry) && facts.fpuState && depth == PASS_DEPTH) {
+            p = fpuProto(f, base, regs & ~0xffff, flow[5]);
             if (p.unsupported != null) return p;
             p.giIn = giIn;
             p.giState = giState;
@@ -247,10 +251,10 @@ public class TcSig {
         return withRegisters(q, regs);
     }
 
-    // The function under test switches FPU modes (TcFacts.fpuState): every float register, XMTRX and the FPSCR mode
-    // bits are state (TcVectors line Q, compared at exit and at every call), so its float parameters and float result
-    // are dropped; integer and stack parameters stay as Ghidra's prototype and the dataflow give them (regs has no
-    // float bits: modes masks them). Callees keep their own prototypes: only depth PASS_DEPTH gets here.
+    // The function under test switches FPU modes, or reads fr0..fr3 at entry (TcFacts.fpuState): every float register,
+    // XMTRX and the FPSCR mode bits are state (TcVectors line Q, compared at exit and at every call), so its float
+    // parameters and float result are dropped; integer and stack parameters stay as Ghidra's prototype and the dataflow
+    // give them (regs has no float bits). Callees keep their own prototypes: only depth PASS_DEPTH gets here.
     TcBase.Proto fpuProto(Function f, TcBase.Proto base, int regs, int changed) {
         TcBase.Proto q;
         if (noDecompile(base)) {

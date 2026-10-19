@@ -1,0 +1,311 @@
+8c011c2a  # TcExit halts
+8c011c84  # TcExit halts
+8c011d00  # TcExit halts
+8c011e24  # TcExit halts
+8c011f98  # r15-oracle class 1
+8c0129c6  # r15-oracle class 1; r15-oracle class 5 TcJumpIn join
+8c012c22  # r15-oracle class 1
+8c0160a0  # TcLive large-frame packets
+8c016498  # fret
+8c0164e0  # fret
+8c0165b6  # fret
+8c01669c  # fret
+8c0169b0  # fret
+8c016c4c  # fret
+8c016ec0  # fret
+8c017158  # fret
+8c0173a0  # TcLive large-frame packets
+8c017460  # fret; xemu ftrc
+8c0174e2  # r15-oracle class 2
+8c01773c  # fret
+8c017770  # fret
+8c0179b0  # fret; xemu ftrc
+8c017cda  # fret; xemu ftrc
+8c017f60  # fret
+8c018034  # fret
+8c018050  # fret
+8c018058  # fret
+8c0182b0  # xemu ftrc
+8c018720  # xemu ftrc; TcLive large-frame packets
+8c018980  # TcLive large-frame packets
+8c0197e0  # fret
+8c019920  # fret; TcLive large-frame packets
+8c019ac0  # fret; fargs
+8c019bfa  # fret
+8c019c32  # fret
+8c019e50  # xemu ftrc
+8c01a3a0  # fret
+8c01a860  # fret
+8c01ab90  # xemu ftrc
+8c01ae40  # fret
+8c01bde0  # r15-oracle class 3
+8c01be32  # r15-oracle class 3
+8c01be78  # r15-oracle class 3
+8c01bee0  # r15-oracle class 3
+8c01bf28  # r15-oracle class 3
+8c01c260  # fret; TcLive large-frame packets
+8c01ce20  # xemu ftrc; TcLive large-frame packets
+8c01d52c  # xemu ftrc; TcLive large-frame packets
+8c01dc86  # fret; fargs; xemu ftrc
+8c01de10  # fargs
+8c01e140  # fret; TcLive large-frame packets
+8c01e380  # r15-oracle class 3
+8c01e478  # xemu ftrc
+8c01e9c0  # xemu ftrc; TcLive large-frame packets
+8c01f43e  # TcExit halts
+8c01f48a  # TcExit halts
+8c01f6a0  # fret
+8c01f706  # fret
+8c01f9da  # fret
+8c01fa80  # fret; TcLive large-frame packets
+8c020160  # xemu ftrc
+8c020bb4  # xemu ftrc
+8c0210cc  # fret
+8c021160  # fret
+8c021282  # fret; r15-oracle class 5 TcJumpIn join
+8c021748  # r15-oracle class 5
+8c0217e0  # r15-oracle class 3
+8c021ac6  # r15-oracle class 3
+8c021da2  # r15-oracle class 3
+8c022880  # fret
+8c022b8a  # fret
+8c0232b4  # fret; xemu ftrc
+8c023b90  # r15-oracle class 3
+8c024ea6  # fret
+8c025f6e  # xemu ftrc
+8c02898a  # fret
+8c028ae0  # fret
+8c028bd0  # fret
+8c028db0  # fret
+8c028f00  # fret
+8c029060  # fret
+8c02923c  # fret
+8c029f26  # fret
+8c02bf60  # fret
+8c02c0c0  # fret
+8c02c260  # fret
+8c02c460  # fret
+8c02c800  # r15-oracle class 5
+8c02eccc  # TcLive large-frame packets
+8c030eb4  # fret
+8c03102a  # fret
+8c031500  # fret
+8c031cae  # fret
+8c031eda  # r15-oracle class 1
+8c032028  # r15-oracle class 1
+8c032076  # fret; TcLive large-frame packets
+8c03281a  # fret
+8c032a50  # fret
+8c032bb4  # fret
+8c032d60  # r15-oracle class 1
+8c032dda  # r15-oracle class 1
+8c0330c2  # fret
+8c033840  # fret
+8c033bc8  # fret
+8c0340d0  # fret
+8c03451e  # xemu ftrc
+8c034900  # r15-oracle class 1
+8c034a04  # fret
+8c034ace  # fret
+8c034d28  # xemu ftrc
+8c035380  # r15-oracle class 1
+8c035510  # fret
+8c03572e  # fret
+8c0359d2  # fret
+8c036e80  # xemu ftrc; TcLive large-frame packets
+8c038ee0  # TcLive large-frame packets
+8c039b60  # TcLive large-frame packets
+8c03b4a0  # TcLive large-frame packets
+8c03b7c0  # TcLive large-frame packets
+8c03bae0  # TcLive large-frame packets
+8c03bfa4  # TcLive large-frame packets
+8c03c340  # TcLive large-frame packets
+8c03d720  # TcLive large-frame packets
+8c03d8a0  # TcLive large-frame packets
+8c03df80  # TcLive large-frame packets
+8c03e0a0  # TcLive large-frame packets
+8c03e2c0  # TcLive large-frame packets
+8c03e4e0  # TcLive large-frame packets
+8c03e600  # TcLive large-frame packets
+8c03e6e0  # TcLive large-frame packets
+8c03e9a4  # r15-oracle class 4
+8c03f018  # TcLive large-frame packets
+8c03f364  # TcLive large-frame packets
+8c03f440  # TcLive large-frame packets
+8c03f5b2  # TcLive large-frame packets
+8c03fc20  # TcLive large-frame packets
+8c040062  # TcLive large-frame packets
+8c0401e0  # TcLive large-frame packets
+8c040422  # TcLive large-frame packets
+8c0405c2  # TcLive large-frame packets
+8c0407c4  # TcLive large-frame packets
+8c040880  # TcLive large-frame packets
+8c040940  # TcLive large-frame packets
+8c0409c0  # TcLive large-frame packets
+8c040d60  # TcLive large-frame packets
+8c041100  # TcLive large-frame packets
+8c041342  # TcLive large-frame packets
+8c041580  # TcLive large-frame packets
+8c041640  # TcLive large-frame packets
+8c041740  # TcLive large-frame packets
+8c041880  # TcLive large-frame packets
+8c041c60  # TcLive large-frame packets
+8c041e00  # TcLive large-frame packets
+8c041ec0  # TcLive large-frame packets
+8c041f80  # TcLive large-frame packets
+8c0420c0  # TcLive large-frame packets
+8c0423e0  # TcLive large-frame packets
+8c042520  # TcLive large-frame packets
+8c042600  # TcLive large-frame packets
+8c042740  # TcLive large-frame packets
+8c0429a4  # TcLive large-frame packets
+8c042c80  # TcLive large-frame packets
+8c042ea0  # TcLive large-frame packets
+8c043000  # TcLive large-frame packets
+8c043140  # TcLive large-frame packets
+8c043184  # TcLive large-frame packets
+8c043250  # TcLive large-frame packets
+8c04339a  # TcLive large-frame packets
+8c043604  # TcLive large-frame packets
+8c0438e0  # TcLive large-frame packets
+8c043ab6  # TcLive large-frame packets
+8c043c72  # TcLive large-frame packets
+8c043e80  # TcLive large-frame packets
+8c043f60  # TcLive large-frame packets
+8c044078  # TcLive large-frame packets
+8c0441c0  # TcLive large-frame packets
+8c0444c0  # TcLive large-frame packets
+8c044700  # TcLive large-frame packets
+8c044b88  # TcLive large-frame packets
+8c044ca0  # TcLive large-frame packets
+8c044dce  # TcLive large-frame packets
+8c045632  # fret
+8c045ba0  # TcLive large-frame packets
+8c045f02  # TcLive large-frame packets
+8c0465c0  # fret
+8c0466c0  # fret
+8c046a24  # fret
+8c046b06  # fret
+8c046df4  # fret
+8c0470b2  # fret
+8c0492be  # xemu ftrc
+8c049a40  # fret
+8c049ae0  # fret
+8c049d60  # fret
+8c04bd40  # fret
+8c04bd9e  # fret
+8c04bec0  # fret
+8c04bfa0  # fret
+8c04c140  # fret
+8c04cc40  # TcLive large-frame packets
+8c04ff50  # xemu ftrc
+8c04ff70  # xemu ftrc
+8c050010  # TcExit halts
+8c0500b0  # TcExit halts
+8c050180  # xemu ftrc
+8c050250  # r15-oracle class 1
+8c0502d0  # r15-oracle class 1
+8c050730  # fargs; xemu ftrc
+8c050880  # fret
+8c0508a0  # fret
+8c0508c0  # fret
+8c0508f0  # fret
+8c050940  # fret
+8c0509a0  # fret; fargs; xemu ftrc
+8c050a20  # fargs; xemu ftrc
+8c050a70  # fargs; xemu ftrc
+8c050ab0  # fret; fargs
+8c050ad0  # fargs
+8c050ba0  # fargs
+8c050c20  # fret
+8c050c30  # fret
+8c050c40  # fret; xemu ftrc
+8c050d40  # fargs; xemu ftrc
+8c050da0  # fargs; xemu ftrc
+8c050e20  # xemu ftrc
+8c050f20  # fret
+8c050f80  # fargs; xemu ftrc
+8c050fe0  # fret; fargs
+8c051050  # fargs; xemu ftrc
+8c0510e0  # xemu ftrc
+8c051720  # xemu ftrc
+8c051840  # TcLive large-frame packets
+8c051eb0  # fret
+8c051fb0  # fret
+8c051fe0  # fret
+8c0520d0  # fret
+8c052320  # r15-oracle class 2
+8c052470  # fret
+8c052490  # fret
+8c0524e0  # fret
+8c0526a0  # fret
+8c052840  # fret
+8c052a90  # fret
+8c052b30  # fret
+8c052c00  # fret
+8c052ce0  # r15-oracle class 2
+8c052d80  # fret
+8c052f00  # fret
+8c052ff0  # fret
+8c053120  # r15-oracle class 2
+8c053160  # fret
+8c0531a0  # fret
+8c053270  # fret
+8c053580  # r15-oracle class 2
+8c0535a0  # r15-oracle class 2
+8c0535b0  # r15-oracle class 2
+8c0535e0  # fret
+8c053680  # fret
+8c053950  # fret
+8c053970  # fret
+8c053990  # fret
+8c0539b0  # fret
+8c0539d0  # fret
+8c0539f0  # fret
+8c053a10  # fret
+8c053ac0  # r15-oracle class 2
+8c053af0  # r15-oracle class 2
+8c053b30  # r15-oracle class 2
+8c053c30  # r15-oracle class 2
+8c053d80  # fret
+8c053e50  # fret
+8c053ef0  # fret
+8c054030  # fret
+8c0540f0  # fret
+8c0541c0  # fret
+8c054230  # fret; fargs; xemu ftrc
+8c0544b0  # fret; fargs; xemu ftrc
+8c054730  # fret; fargs
+8c054930  # fret; fargs
+8c054c60  # r15-oracle class 5
+8c054ec0  # fret
+8c054f40  # fret
+8c055070  # fret
+8c055110  # fret
+8c055180  # r15-oracle class 1
+8c055e10  # r15-oracle class 1
+8c055ea0  # fret
+8c055ed0  # fret
+8c055f30  # fret
+8c056220  # fret
+8c0562f0  # fret
+8c056420  # fret
+8c056460  # fret
+8c056500  # r15-oracle class 2
+8c056620  # fret
+8c056630  # fret
+8c056660  # fret
+8c056700  # fret
+8c056750  # fret
+8c056970  # r15-oracle class 1
+8c057690  # fargs; xemu ftrc
+8c0578e0  # fargs; xemu ftrc
+8c0579e0  # TcExit halts
+8c058760  # r15-oracle class 1
+8c0588d0  # fret
+8c058a40  # fret
+8c058f40  # fret
+8c0592b0  # xemu ftrc
+8c05bb74  # TcLive large-frame packets
+8c05bb9a  # TcLive large-frame packets
+8c05e700  # TcLive large-frame packets

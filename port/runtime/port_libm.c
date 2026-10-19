@@ -1,8 +1,9 @@
 /* The float math functions the game calls (the SHC C library's) that the 32-bit host C runtime only has as inline
  * wrappers in <math.h>, so there is no symbol to link: defined here on the double functions. <math.h> is not
  * included (its inline sinf etc. would clash with these definitions). sqrtf is the SSE root, as fsqrt.
- * Also rand and srand: the host C runtime's generator, the same sequence, but with its state here, so an in-between
- * frame (frame_extra.c) can put it back. <stdlib.h> is not included either. */
+ * Also rand and srand: the SHC library's generator (state * 1103515245 + 12345, bits 16..30; the Shinobi SDK's rand),
+ * with its state here, so an in-between frame (frame_extra.c) can put it back and the lockstep check
+ * (lockstep.c) can read it. <stdlib.h> is not included either. */
 #include <xmmintrin.h>
 #include "platform.h"
 
@@ -42,14 +43,16 @@ s32 rand(void);
 void srand(u32 seed);
 void port_libm_extra_state(void);
 
-static u32 g_rand_state = 1u; /* the C runtime's seed until srand */
+static u32 g_rand_state = 1u; /* the library's seed until srand */
 
 s32 rand(void)
 {
-    g_rand_state = g_rand_state * 214013u + 2531011u;
+    g_rand_state = g_rand_state * 1103515245u + 12345u;
     return (s32)((g_rand_state >> 16) & 0x7fffu);
 }
 
 void srand(u32 seed) { g_rand_state = seed; }
 
 void port_libm_extra_state(void) { port_extra_state(&g_rand_state, sizeof g_rand_state); }
+
+u32 port_rand_state(void) { return g_rand_state; }

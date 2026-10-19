@@ -2,7 +2,7 @@
 
 vectors.txt (TcVectors): V id set, R r4..r7, F, X, H fr12..fr15, L r0..r3, G r8..r14, Q fr0..fr15, C, M addr bytes,
 E.
-expected.txt / runner output: V, RET r0 fr0, RETX (the extra result word), W, CALL (25, 36 or 57 fields), XF, FH, GH,
+expected.txt / runner output: V, RET r0 fr0, RETX (the extra result word), HALT (an endless `bra .`), W, CALL (25, 36 or 57 fields), XF, FH, GH,
 QH (fr0..fr15 and the FPSCR mode word), COV, FAULT, CODEREAD, CRASH, E.
 """
 import os
@@ -66,6 +66,8 @@ def parse_results(path):
             cur["r0"], cur["fr0"] = int(t[1], 16), int(t[2], 16)
         elif k == "RETX":
             cur["retx"] = int(t[1], 16)
+        elif k == "HALT":  # the run ended in an endless `bra .` (TcExit; tc_halt in C): it never returns
+            cur["halt"] = True
         elif k == "W":
             a, data = int(t[1], 16), bytes.fromhex(t[2]) if len(t) > 2 else b""
             for i, b in enumerate(data):
@@ -101,6 +103,15 @@ def is_nan(bits):
 
 def same_f32(a, b):
     return a == b or (is_nan(a) and is_nan(b))
+
+
+def same_word(a, b):
+    """Equal, or one main-RAM address through its two views: 0x0c000000..0x0cffffff (P0/U0) and 0x8c...... (P1), which
+    the runtime and the port fold together (tc_rt_internal.h). Matched C writes a pool's 0x0c...... address as
+    0x8c......, and the judge compares it as a value only where it leaves the function: a call argument, the result,
+    a stored word, r8..r14 at exit (the mirror rule, docs/PROOF_GATES.md). tools/mirror_ptrs.py lists the functions
+    and callees that compare such a pointer raw, for review."""
+    return a == b or ((a ^ b) == 0x80000000 and (a >> 24) & 0x7F == 0x0C)
 
 
 REG_INDEX = {f"r{i}": i - 3 for i in range(4, 8)} | {f"fr{i}": i + 1 for i in range(4, 12)} | {
@@ -152,18 +163,22 @@ def _f(bits):
 def compare_return(meta, exp, act):
     ret, reg = meta["ret"], meta.get("ret_reg")
     if reg:  # a nonstandard result register (meta ret_reg): the runner reports it as RETX
-        if exp.get("retx") != act.get("retx"):
+        ex, ax = exp.get("retx"), act.get("retx")
+        if ex != ax and (ex is None or ax is None or not same_word(ex, ax)):
             return [f"return value {reg}: expected 0x{exp.get('retx', 0):08x}, got 0x{act.get('retx', 0):08x}"]
         return []
     out = []
-    if ret in ("u32", "s32", "u64") and exp["r0"] != act.get("r0"):
+    r0_same = exp["r0"] == act.get("r0") or (ret != "u64" and same_word(exp["r0"], act.get("r0", 0)))
+    if ret in ("u32", "s32", "u64") and not r0_same:
         out.append(f"return value r0{' (low word)' if ret == 'u64' else ''}: expected 0x{exp['r0']:08x}, "
                    f"got 0x{act.get('r0', 0):08x}")
     if ret == "u64" and exp.get("retx") != act.get("retx"):
         out.append(f"return value r1 (high word): expected 0x{exp.get('retx', 0):08x}, got 0x{act.get('retx', 0):08x}")
-    if ret == "f32" and not same_f32(exp["fr0"], act.get("fr0", 0)):
+    if (ret == "f32" or meta.get("fr0_result")) and not same_f32(exp["fr0"], act.get("fr0", 0)):
         out.append(f"return value fr0: expected 0x{exp['fr0']:08x} ({_f(exp['fr0'])}), "
-                   f"got 0x{act.get('fr0', 0):08x} ({_f(act.get('fr0', 0))})")
+                   f"got 0x{act.get('fr0', 0):08x} ({_f(act.get('fr0', 0))})"
+                   + ("" if ret == "f32" else f"; the original returns in fr0 but the signature returns {ret}: the "
+                      "function needs a raw_ret f32 override (core/ret_reg.py, core/sig_override.py)"))
     return out
 
 
@@ -192,7 +207,7 @@ def compare_state(exp, act):
     if "gs" in exp:
         got = act.get("gs")
         for i in range(7):
-            if got is None or exp["gs"][i] != got[i]:
+            if got is None or not same_word(exp["gs"][i], got[i]):
                 diffs.append(f"r{8 + i} (runtime state, sh4_r({8 + i})) at exit: expected 0x{exp['gs'][i]:08x}, "
                              + ("got nothing" if got is None else f"got 0x{got[i]:08x}"))
     return diffs
@@ -208,7 +223,13 @@ def compare_vector(meta, image, vec, exp, act):
         diffs.append(f"R8: read machine code at {act['coderead']}")
     for f in act["faults"]:
         diffs.append(f"invalid guest memory access: {f}")
-    diffs += compare_return(meta, exp, act)
+    if exp.get("halt") and not act.get("halt"):
+        diffs.append("the original never returns here: it ends in an endless loop (`bra .`, or a callee that is one); "
+                     "call tc_halt() at that point (after the tc_call when the callee is the loop)")
+    elif act.get("halt") and not exp.get("halt"):
+        diffs.append("your code called tc_halt(), but the original does not halt on this input")
+    if not exp.get("halt"):  # a halted run has no return value
+        diffs += compare_return(meta, exp, act)
     mem = Memory(image, vec)
     words = sorted({a & ~3 for a in set(exp["writes"]) | set(act["writes"])
                     if a < STACK_LO or P4_OCA[0] <= a < P4_OCA[1]})
@@ -221,6 +242,8 @@ def compare_vector(meta, image, vec, exp, act):
         eb, ab = struct.unpack("<I", bytes(ev))[0], struct.unpack("<I", bytes(av))[0]
         if is_nan(eb) and is_nan(ab):
             continue
+        if same_word(eb, ab) and all(w + i in exp["writes"] and w + i in act["writes"] for i in range(4)):
+            continue  # a whole stored word on both sides: a pointer through the other RAM view
         bad.append(f"memory 0x{w:08x}: expected {bytes(ev).hex()}, got {bytes(av).hex()}"
                    + ("" if any(w + i in act["writes"] for i in range(4)) else " (your code did not write here)")
                    + ("" if any(w + i in exp["writes"] for i in range(4)) else " (the original does not write here)"))
@@ -246,6 +269,8 @@ def compare_vector(meta, image, vec, exp, act):
         for reg in regs:
             i = REG_INDEX[reg]
             if reg.startswith(("fr", "xf")) and same_f32(ec[k][i], ac[k][i]):
+                continue
+            if reg[0] in "rs" and same_word(ec[k][i], ac[k][i]):
                 continue
             if ec[k][i] != ac[k][i]:
                 diffs.append(f"call #{k + 1} to 0x{ec[k][0]:08x}: argument {arg_name(reg)} expected 0x{ec[k][i]:08x}, "

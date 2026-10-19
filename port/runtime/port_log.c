@@ -1,4 +1,6 @@
-/* The port's log: every line goes to stdout and to port.log. */
+/* The port's log: every line goes to stdout and to port.log. Other processes may read port.log while the port
+ * writes it (Phangrade sends new lines to co-op partners), so it is shared for reading and flushed each line. */
+#include <share.h>
 #include <stdarg.h>
 #include <string.h>
 #include "port.h"
@@ -11,7 +13,7 @@ const char *port_log_path(void) { return g_path; }
 void port_log_open(const char *path)
 {
     strncpy_s(g_path, sizeof g_path, path, _TRUNCATE);
-    if (fopen_s(&g_port_log, path, "w") != 0) g_port_log = NULL;
+    g_port_log = _fsopen(path, "w", _SH_DENYWR); /* fopen_s would open it exclusively */
 }
 
 void port_log(const char *fmt, ...)
@@ -24,6 +26,7 @@ void port_log(const char *fmt, ...)
         va_start(ap, fmt);
         vfprintf(g_port_log, fmt, ap);
         va_end(ap);
+        fflush(g_port_log);
     }
 }
 

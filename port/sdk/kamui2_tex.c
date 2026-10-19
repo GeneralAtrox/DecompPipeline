@@ -3,7 +3,9 @@
  * kmCreateTextureSurface allocates first fit in the texture area (after the frame buffers, as large as the system
  * configuration's texture memory) and fills the surface as Kamui does: the byte address in texture memory, the TCW
  * pixel format bits and the TCW's mip-map / VQ / scan-order / stride bits. The game builds its TCWs from those, so
- * pvr/ finds the data by address. kmLoadTexture copies the data as stored (the game converts or twiddles it).
+ * pvr/ finds the data by address. kmLoadTexture copies the data as stored (the game converts or twiddles it), where
+ * Kamui puts it: a 16-bit twiddled mip chain 4 bytes in, a small VQ texture's short codebook at the start and its
+ * index bytes 2 KB in.
  *
  * Needs from the game's headers: the function names below as the game's registry has them. */
 #include "game.h"
@@ -23,6 +25,9 @@
 #define TCW_STRIDE 0x02000000u
 #define TCW_FORMAT_SHIFT 27
 #define K2_NOT_ENOUGH_MEMORY 3
+#define VQ_CODEBOOK 2048u
+#define MIP16_LEAD 4u        /* the data's 2 lead bytes, then the 1x1 level at 6, where the texture unit reads it */
+#define SMALL_VQ_MIP_TAIL 10u /* Kamui copies a small VQ mip chain's index bytes with 10 more */
 
 typedef struct Block {
     u32 at, size;
@@ -97,6 +102,18 @@ static u32 mip_bytes(u32 edge, u32 bits)
     return total + (bits == 16u ? 6u : 3u);
 }
 
+/* Where kmLoadTexture starts a 16-bit twiddled mip chain (flags as kmCreateTextureSurface sets them). */
+static u32 mip16_lead(u32 flags, u32 format) { return flags == TCW_MIPMAP && format < 5u ? MIP16_LEAD : 0u; }
+
+/* A small VQ texture's codebook bytes, from Kamui's tables by edge (8 to 64); 0 for other edges (a full codebook). */
+static u32 small_vq_codebook(u32 width, u32 flags)
+{
+    static const u16 bytes[2][4] = {{128u, 128u, 256u, 1024u}, {128u, 128u, 512u, 2048u}};
+    u32 i = 0;
+    while (i < 4u && (8u << i) < width) i++;
+    return i < 4u && (8u << i) == width ? bytes[(flags & TCW_MIPMAP) != 0u][i] : 0u;
+}
+
 s32 kmCreateTextureSurface(KMSURFACEDESC *surface, u32 width, u32 height, u32 type)
 {
     K2Surface *s = (K2Surface *)surface;
@@ -122,12 +139,13 @@ s32 kmCreateTextureSurface(KMSURFACEDESC *surface, u32 width, u32 height, u32 ty
         bytes = mip_bytes(width, bits);
     else
         bytes = ((flags & TCW_STRIDE) && g_stride_width ? g_stride_width : width) * height * bits / 8u;
-    u32 at = alloc(bytes);
+    u32 small = kind == 0x1000u || kind == 0x1100u, tail = small && (flags & TCW_MIPMAP) ? SMALL_VQ_MIP_TAIL : 0u;
+    u32 at = alloc(mip16_lead(flags, format) + bytes + tail);
     if (!at) {
         pvr_todo("kamui2: texture memory full (%u bytes asked)", bytes);
         return K2_NOT_ENOUGH_MEMORY;
     }
-    s->surface_type = kind == 0x1000u || kind == 0x1100u ? SURFACE_SMALL_VQ : SURFACE_TEXTURE;
+    s->surface_type = small ? SURFACE_SMALL_VQ : SURFACE_TEXTURE;
     s->bit_depth = BITDEPTH_16;
     s->pixel_format = format << TCW_FORMAT_SHIFT;
     s->width = width;
@@ -138,13 +156,27 @@ s32 kmCreateTextureSurface(KMSURFACEDESC *surface, u32 width, u32 height, u32 ty
     return K2_OK;
 }
 
+static void load(u32 at, const void *data, u32 size)
+{
+    port_extra_undo(pvr_vram() + at, size, vram_undone);
+    memmove(pvr_vram() + at, data, size);
+    pvr_vram_written(at, size);
+}
+
 s32 kmLoadTexture(KMSURFACEDESC *surface, const void *texture)
 {
     const K2Surface *s = (const K2Surface *)surface;
-    if (!texture || !s->size || s->address + s->size > PVRX_VRAM_SIZE) return K2_ERROR;
-    port_extra_undo(pvr_vram() + s->address, s->size, vram_undone);
-    memmove(pvr_vram() + s->address, texture, s->size);
-    pvr_vram_written(s->address, s->size);
+    u32 codebook = s->surface_type == SURFACE_SMALL_VQ ? small_vq_codebook(s->width, s->flags) : 0u;
+    u32 lead = mip16_lead(s->flags, s->pixel_format >> TCW_FORMAT_SHIFT);
+    u32 tail = codebook && (s->flags & TCW_MIPMAP) ? SMALL_VQ_MIP_TAIL : 0u;
+    if (!texture || !s->size || (codebook && s->size < VQ_CODEBOOK)) return K2_ERROR;
+    if (s->address + lead + s->size + tail > PVRX_VRAM_SIZE) return K2_ERROR;
+    if (codebook) {
+        load(s->address, texture, codebook);
+        load(s->address + VQ_CODEBOOK, (const u8 *)texture + codebook, s->size - VQ_CODEBOOK + tail);
+    } else {
+        load(s->address + lead, texture, s->size);
+    }
     return K2_OK;
 }
 
