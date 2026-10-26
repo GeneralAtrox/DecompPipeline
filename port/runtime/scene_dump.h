@@ -1,7 +1,8 @@
-/* scene_dump.c: "Copy game context" (the menu bar's copy icon, F9): writes <stamp>.json, <stamp>.bmp (the frame as
+/* scene_dump.c: "Copy agent prompt" (the copy icon, Help menu, F9): writes <stamp>.json, <stamp>.bmp (the frame as
  * drawn) and <stamp>.ptrec (the session recording, runtime/session.c) to the data folder's scene_dumps, and puts
- * the JSON on the clipboard, for an agent: what the game is doing, what the user did, and the command that replays
- * the session to that frame. Failures are logged and never stop the game.
+ * the JSON on the clipboard as an agent prompt (an instruction line, the JSON, Phangrade's context): what the game is
+ * doing, what the user did, and the command that replays the session to that frame. Failures are logged and never
+ * stop the game.
  *   --scene-dump-at N   also dumps at the first frame presented at or after vertical blank N (scripted checks)
  *   --scene-dir DIR     the folder instead of the data folder's scene_dumps
  * The game's part is its scene_dump.json, which tools/gen_port.py turns into the tables below (build/gen/scene_map.c):

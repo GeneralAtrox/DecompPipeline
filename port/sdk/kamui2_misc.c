@@ -15,8 +15,15 @@
 #define SLOT_LINES 11
 #define FOG_ENTRIES 128u
 #define VTX_TYPE_PACKED 0 /* the background plane's vertex type: x, y, 1/w at 4..12, packed ARGB at 0x18 */
+#define LINES_NTSC 480u
+#define LINES_PAL_BASE 496u /* PAL line mode 0; each mode up to 4 adds 16 lines */
+#define LINES_PAL_STEP 16u
+#define LINE_MODES 5u
 
 static KmCallbackFunc g_lines_fn;
+static u32 g_frame_lines = LINES_NTSC;
+
+u32 k2_frame_lines(void) { return g_frame_lines; }
 
 s32 Km_InitDevice(u32 flags)
 {
@@ -40,6 +47,8 @@ s32 kmSetDisplayMode(u32 mode, u32 bpp, u32 dither, u32 antiAlias)
         lines_arg[0] = 0;
         lines_arg[1] = 0;
         g_lines_fn(lines_arg);
+        if (lines_arg[1] < LINE_MODES) g_frame_lines = LINES_PAL_BASE + LINES_PAL_STEP * lines_arg[1];
+        port_log("kamui2: line mode %u: a frame buffer of %u lines\n", lines_arg[1], g_frame_lines);
     }
     return K2_OK;
 }

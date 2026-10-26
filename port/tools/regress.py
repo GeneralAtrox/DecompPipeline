@@ -134,6 +134,7 @@ def main(argv=None):
     ap.add_argument("--build-dir", default=None, help="test build/NAME/port.exe (build.py --build-dir)")
     a = ap.parse_args(argv)
     cfg = game_config.load(game_config.find_game(a.game))
+    game_config.oplog().begin("port regress.py", [cfg["dir"]])
     if not cfg["disc"]:
         raise SystemExit("regress needs game.json disc")
     scripts = sorted((cfg["dir"] / "tests").glob("*.script"))
@@ -148,4 +149,4 @@ def main(argv=None):
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(game_config.oplog().main(main))

@@ -23,6 +23,7 @@ import re
 import struct
 
 from core import asm_pool, sh4_asm
+from core.compare import WORD
 
 F32_NOTE = re.compile(r"=\s*0x([0-9a-f]{8})\s*\(.*\bf32\b")
 POOL_OP = re.compile(r"@?\(?\s*0x([0-9a-f]{8})")
@@ -52,7 +53,7 @@ def _f32_of(bits):
 
 def _word(image, base, a):
     off = a - base
-    return struct.unpack_from("<I", image, off)[0] if 0 <= off <= len(image) - 4 else None
+    return struct.unpack_from(WORD, image, off)[0] if 0 <= off <= len(image) - 4 else None
 
 
 def pool_floats(insns, image, base, ranges, fpu=None):

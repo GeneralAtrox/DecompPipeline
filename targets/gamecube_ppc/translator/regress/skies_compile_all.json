@@ -1,0 +1,25 @@
+{
+ "functions": 6751,
+ "status": {
+  "built": 6748,
+  "lint": 3
+ },
+ "instructions": {
+  "built": 679927,
+  "lint": 9214
+ },
+ "seconds": {
+  "translate": 128,
+  "compile": 48
+ },
+ "causes": {
+  "lint: work.c is larger than 60 KB": {
+   "count": 3,
+   "examples": [
+    "8013ad9c",
+    "801a6bdc",
+    "801ad1d4"
+   ]
+  }
+ }
+}

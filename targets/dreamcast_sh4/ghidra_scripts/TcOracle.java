@@ -2,7 +2,8 @@
 // language) on inputs from TcInputs. LOCKED: the watcher agent may not change this file. Extended by TcVectors.
 // Helpers: TcFold (the RAM mirror), TcLoads (the load log and rule R8), TcFpu and TcRound (FPSCR.DN and RM), TcPair
 // (64-bit fmov pairs, TcFacts.fpuState), TcLive and TcSq (the callees' changes of r8..r14, the store queues), TcExit
-// (a run's results at its end, and the halt of an endless `bra .`).
+// (a run's results at its end, and the halt of an endless `bra .`), TcSpin (the halt of a wait loop nothing in it
+// ends), TcFpscr (FPSCR as state, for a body that reads or writes it), TcTrack (pointer-call arguments, float NaN words).
 
 import ghidra.app.emulator.EmulatorHelper;
 import ghidra.pcode.emulate.BreakCallBack;
@@ -28,10 +29,10 @@ public abstract class TcOracle extends TcInputs {
         int[] fh = new int[4];            // fr12..fr15 at exit
         long[] gi = new long[7];          // r8..r14 at exit
         int[] fq = new int[16];           // fr0..fr15 at exit (Proto.fpuState)
-        long mode;                        // the FPSCR mode bits at exit (modeWord)
+        long mode; TcFpscr.Run fs; TcTrack.Run tr;  // FPSCR mode bits at exit (modeWord); FPSCR as state; TcTrack's
         List<String> writes = new ArrayList<>();
         List<String> calls = new ArrayList<>();
-        Set<Integer> cov = new TreeSet<>();
+        Set<Integer> cov = new TreeSet<>(), dirs = new TreeSet<>();  // blocks; branch directions (TcDirs)
         Set<Long> sites = new TreeSet<>();  // the call sites (call or tail-jump instructions) whose mocked callee ran
         long faultAddr = -1;              // first address outside RAM that was read or written (or code read: R8)
         boolean faultWrite;
@@ -43,7 +44,9 @@ public abstract class TcOracle extends TcInputs {
         boolean stepLimited;              // the run hit stepLimit
         boolean callFault;                // faultAddr is a call target from the inputs (TcCalls), not a memory access
         boolean callCapped;               // the run stopped at CALL_LIMIT calls (TcSentinel)
-        boolean halted;                   // the run ended in an endless `bra .` (TcExit.halts)
+        boolean halted;                   // the run ended in an endless `bra .` (TcExit.halts), or spun (TcSpin)
+        boolean spun; TcStrict strict; long misaligned = -1; boolean misWrite;  // TcSpin's wait loop; TcStrict's records; the first SH-4 address error, or -1 (TcAlign)
+        int imask = -1; long gbr = -1;    // SR.IMASK at exit for an SR access (TcSr); GBR, listed (TcHw); else -1
         List<long[]> watched; int watchCalls; long[] watchRegs; // at watchPc's first arrival: loads, calls, r0..r15
     }
 
@@ -51,17 +54,20 @@ public abstract class TcOracle extends TcInputs {
     // A vector making more calls is rejected like one hitting STEP_LIMIT: its loop waits on a callee result the
     // mocks never give, and logging every call ran Ghidra out of heap. tc_rt.c's MAX_CALLS must equal it.
     static final int CALL_LIMIT = 4096;
+    // Scripted call results per vector (line C: Vec.rets, then entryLate); a later call returns 0.
+    static final int RETS = 64;  // tc_rt_internal.h's TCRT_RETS must equal it
 
-    TreeMap<Long, Integer> blockIndex = new TreeMap<>();
+    TreeMap<Long, Integer> blockIndex = new TreeMap<>(); TcDirs dirs;  // null unless branch_coverage (TcDirs)
     // Entry values the next runOracle sets beyond TcInputs' Vec (TcVectors decides them; null: left as the emulator
     // starts them, zero): fr12..fr15 and r8..r14 for runtime state (Proto.frState, giState), r0..r3 for parameters there.
     int[] entryFh = null;
     long[] entryGi = null, entryLow = null;
+    long[] entryLate = null; // the results of the calls after Vec.rets' (TcLate), up to RETS in all
     int[] entryFq = null;   // fr0..fr15 at entry for a Proto.fpuState function (then call records carry the FPU too)
     String entryRet = null; // the register read into Result.retx at exit (Proto.retReg, or r1 for a u64), or null
     boolean callWide = false; Set<Long> floatRet = new HashSet<>(); // call records also carry r0..r3, r8..r14; f32 callees (TcFret)
     TcLoads loadView; TcFpu fpu;  // made at the first run
-    int stepLimit = STEP_LIMIT;  // lowered only by TcVectors' overtime rescue
+    int stepLimit = STEP_LIMIT; long workSteps, workRuns; // the overtime rescue lowers it; the work so far (TcBudget)
     boolean countRepair = false; // TcVectors' overtime rescue: runs record what TcCount needs
     // TcVectors' rescue pass (batch 29): a store outside RAM stops the run at the store (collect only sees it at the
     // end, after the epilogue's loads have filled the load log), with the store's base register value (TcProvenance).
@@ -157,12 +163,15 @@ public abstract class TcOracle extends TcInputs {
         return (reg(emu, "FPSCR_FR") & 1) << 21 | (reg(emu, "FPSCR_SZ") & 1) << 20 | (reg(emu, "FPSCR_PR") & 1) << 19;
     }
 
-    void fscaCallbacks(EmulatorHelper emu, MemoryState ms, String[] fault) {
+    // fsca's table is the one of the rounding the FPU runs in (TcFpu.fscaTable); reject: an RM other than the entry's.
+    void fscaCallbacks(EmulatorHelper emu, MemoryState ms, String[] fault, String[] reject) {
         for (String name : new String[] {"sin", "cos"}) {
-            final int[] table = name.equals("sin") ? fscaSin : fscaCos;
+            final int[][] tables = name.equals("sin") ? fscaSin : fscaCos;
             emu.registerCallOtherCallback(name, new BreakCallBack() {
                 @Override
                 public boolean pcodeCallback(PcodeOpRaw op) {
+                    long rm = facts.fpscrModel ? emu.readRegister("FPSCR_RM").longValue() : 0;
+                    int[] table = tables[TcFpu.fscaTable(facts.fpscrModel, rm, facts.fpscrEntry, reject)];
                     int bits = (int) ms.getValue(op.getInput(1));
                     Integer frac = angleToFraction.get(bits);
                     if (frac == null && fault[0] == null) fault[0] = "fsca angle not from table";
@@ -190,9 +199,9 @@ public abstract class TcOracle extends TcInputs {
         for (int i = 0; entryFq != null && i < 16; i++) emu.writeRegister("fr" + i, u(entryFq[i]));
         emu.writeRegister("r15", u(SP));
         emu.writeRegister("PR", u(SENTINEL));
-        long fp = facts.fpscrEntry;
+        long fp = TcFpscr.entry(facts.fpscrEntry, v);  // FLAG and CAUSE per vector when FPSCR is state
         emu.writeRegister("FPSCR", u(fp));
-        if (facts.fpscrModel) {  // the SLEIGH reads (and sts rebuilds FPSCR from) the field registers, not FPSCR
+        if (facts.fpscrModel || TcFpscr.on != null) {  // the SLEIGH reads (and sts rebuilds FPSCR from) the fields
             String[] field = {"FPSCR_RM", "FPSCR_FLAG", "FPSCR_ENABLE", "FPSCR_CAUSE", "FPSCR_DN", "FPSCR_PR", "FPSCR_SZ", "FPSCR_FR"};
             int[] shift = {0, 2, 7, 12, 18, 19, 20, 21}, width = {2, 5, 5, 6, 1, 1, 1, 1};
             for (int i = 0; i < field.length; i++) emu.writeRegister(field[i], u((fp >> shift[i]) & ((1L << width[i]) - 1)));
@@ -201,20 +210,20 @@ public abstract class TcOracle extends TcInputs {
             emu.writeRegister("FPSCR_SZ", BigInteger.ZERO);
             emu.writeRegister("FPSCR_FR", BigInteger.ZERO);
         }
+        if (sr != null) sr.enter(emu, v);  // MD=1, RB=0, BL=0, the vector's IMASK (TcSr)
         emu.writeRegister(emu.getPCRegister(), u(fn.getEntryPoint().getOffset()));
     }
 
     Result runOracle(Vec v) {
         Result res = new Result();
-        res.count = countRepair ? new TcCount() : null;
+        workRuns++;
+        res.count = countRepair ? new TcCount() : null; res.fs = TcFpscr.start(); res.tr = TcTrack.start();
         if (loadView == null) {
             loadView = new TcLoads(listing, facts);
             fpu = new TcFpu(loadView, facts);
         }
         EmulatorHelper emu = new EmulatorHelper(currentProgram);
-        final String[] fault = {null};
-        final long[] faultAt = {-1};
-        final boolean[] faultW = {false};
+        final String[] fault = {null}, fscaRm = {null}; final long[] faultAt = {-1}; final boolean[] faultW = {false};
         try {
             emu.setMemoryFaultHandler(new MemoryFaultHandler() {
                 @Override
@@ -245,11 +254,12 @@ public abstract class TcOracle extends TcInputs {
             AddressSpace ramSpace = fn.getEntryPoint().getAddressSpace();
             TcFold bank = new TcFold(dms.getMemoryBank(ramSpace), sq, entryGi);
             dms.setMemoryBank(bank);
-            fscaCallbacks(emu, ms, fault);
+            fscaCallbacks(emu, ms, fault, fscaRm); TcHw.callbacks(emu);  // listed cache ops: no-ops (TcHw)
             emu.enableMemoryWriteTracking(true);
-            setEntry(emu, v);
+            setEntry(emu, v); res.strict = TcStrict.of(this, emu);  // null with every strict flag off (TcStrict)
 
             int steps = 0, calls = 0;
+            TcSpin spin = spinWait ? new TcSpin(this) : null;  // opt-in: project.json "spin_waits"
             long prev = -1;
             while (true) {
                 long pc = emu.getExecutionAddress().getOffset();
@@ -257,6 +267,7 @@ public abstract class TcOracle extends TcInputs {
                     pc = fold(pc);
                     emu.writeRegister(emu.getPCRegister(), u(pc));
                 }
+                if (dirs != null) dirs.hit(res.dirs, prev, pc);  // the direction the branch at prev took
                 if (pc == SENTINEL) break;
                 Address pca = toAddr(pc);
                 if (!body.contains(pca)) {
@@ -280,14 +291,19 @@ public abstract class TcOracle extends TcInputs {
                         res.callCapped = true;
                         return res;
                     }
-                    res.calls.add(callRecord(emu, pc));
+                    res.calls.add(callRecord(emu, pc) + TcTrack.call(pc)); TcFpscr.call(emu);
+                    TcStrict.call(res, emu, calls);  // snapshots, junk, writes (after the records)
                     if (prev >= 0) res.sites.add(prev);
                     if (TcExit.halts(listing, pca)) {  // a callee that never returns: the run ends with it
                         res.halted = true;
                         break;
                     }
-                    long rv = calls < 16 ? (v.rets[calls] = TcFret.at(floatRet, pc, v.rets[calls])) : 0;
+                    int k = calls - v.rets.length;
+                    long rv = k < 0 ? (v.rets[calls] = TcFret.at(floatRet, pc, v.rets[calls]))
+                        : entryLate != null && k < entryLate.length ? (entryLate[k] = TcFret.at(floatRet, pc, entryLate[k]))
+                        : 0;
                     TcLive.after(live, this, emu, pc, calls++); // the callee's own change of r8..r14 (TcLive)
+                    if (spin != null) spin.call();
                     emu.writeRegister("r0", u(rv));
                     emu.writeRegister("fr0", u(rv));
                     emu.writeRegister(emu.getPCRegister(), u(reg(emu, "PR")));
@@ -300,7 +316,12 @@ public abstract class TcOracle extends TcInputs {
                     res.halted = true;
                     break;
                 }
+                if (spin != null && spin.spins(emu, prev, pca, steps)) {  // a listed wait loop it never leaves
+                    res.halted = res.spun = true;
+                    break;
+                }
                 if (pc == watchPc && res.watched == null) TcReach.snap(res, calls, emu);
+                workSteps++;
                 if (++steps > stepLimit) {
                     res.reason = "step limit (possible infinite loop)";
                     res.stepLimited = true;
@@ -325,7 +346,7 @@ public abstract class TcOracle extends TcInputs {
                     }
                 }
                 String[] reject = {null};
-                TcFpu.State zeroed = fpu.before(emu, pca, reject);
+                TcFpu.State zeroed = fpu.before(emu, pca, reject); TcFpscr.before(emu, loadView, pca, reject);
                 if (reject[0] != null) {
                     res.reason = reject[0];
                     return res;
@@ -334,18 +355,18 @@ public abstract class TcOracle extends TcInputs {
                 long[][] pend = new long[specs.size()][];
                 for (int i = 0; i < pend.length; i++) pend[i] = loadView.loadBefore(emu, specs.get(i));
                 prev = pc;
-                if (sq != null) sq.step(this, emu, pca);  // a pref sending a store queue (TcSq)
+                if (sq != null) sq.step(this, emu, pca, fault, faultAt);  // a pref sending a store queue (TcSq)
                 List<Integer> drs = facts.fpuState ? TcPair.drOperands(emu, loadView.stepInstructions(pca)) : List.of();
                 TcPair.swap(emu, drs);
-                boolean stepped = emu.step(monitor);
+                bank.stepping = true; boolean stepped = emu.step(monitor); bank.stepping = false;  // its own accesses only (TcFold.align)
                 TcPair.swap(emu, drs);
                 if (bank.p4Read >= 0 && fault[0] == null) {  // cache state, not the bytes stored (TcFold.p4Read)
                     fault[0] = "read " + toAddr(bank.p4Read) + " (cache address array)";
                     faultAt[0] = bank.p4Read;
                 }
-                String fpuWhy = fpu.after(emu, pca, zeroed);
-                if (fpuWhy != null && stepped && fault[0] == null) {
-                    res.reason = fpuWhy;
+                String fpuWhy = fpu.after(emu, pca, zeroed); TcTrack.step(emu, loadView, pca, specs, pend);
+                if ((fpuWhy != null || fscaRm[0] != null) && stepped && fault[0] == null) {
+                    res.reason = fpuWhy != null ? fpuWhy : fscaRm[0];
                     return res;
                 }
                 for (int i = 0; i < pend.length; i++) {
@@ -361,8 +382,13 @@ public abstract class TcOracle extends TcInputs {
                     res.faultWrite = faultW[0];
                     return res;
                 }
+                String srWhy = sr == null ? null : sr.after(emu, pc);  // an ldc setting RB or BL (TcSr)
+                if (srWhy != null) {
+                    res.reason = srWhy;
+                    return res;
+                }
             }
-            TcExit.collect(this, emu, res);
+            TcExit.collect(this, emu, res); TcStrict.exit(res, emu); res.misaligned = bank.misaligned; res.misWrite = bank.misWrite;  // exit_frame (TcStrict); TcAlign
             return res;
         } catch (Exception e) {
             res.reason = "exception: " + e;

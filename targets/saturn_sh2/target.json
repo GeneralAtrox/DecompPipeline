@@ -1,0 +1,345 @@
+{
+  "cpu": "SH-2",
+  "platform": "Sega Saturn",
+  "ghidra_language": "SuperH:BE:32:SH-2",
+  "ghidra_loader": "BinaryLoader",
+  "load_address": "0x06000000",
+  "fsca_table": true,
+  "param_summaries": true,
+  "coverage_inputs": false,
+  "branch_coverage": true, "targeted_vectors": true,
+  "mock_junk": true, "mock_writes": true, "call_snapshots": true, "exit_frame": true,
+  "reach_calls": {
+    "runs": 800,
+    "seconds": 150
+  },
+  "oracle_work_per_s": 65000,
+  "fpu_state": false,
+  "hw_read_sizes": [
+    1,
+    2,
+    4
+  ],
+  "address_mirrors": {
+    "26": "06",
+    "20": "00"
+  },
+  "agent_cpu": "SH-2",
+  "agent_reminders": "agent_reminders.md",
+  "judge_memory": {
+    "image_base": "0x06000000",
+    "entry_sp": "0x060fe000",
+    "stack_lo": "0x060f0000",
+    "endian": "big",
+    "word_mirror": false,
+    "stack_hi": "0x06100000",
+    "ram": [
+      "0x06000000",
+      "0x06100000"
+    ],
+    "float_regs": false,
+    "unmapped": [
+      [
+        "0x00200000",
+        "0x00300000"
+      ]
+    ]
+  },
+  "abi": {
+    "int_args": [
+      "r4",
+      "r5",
+      "r6",
+      "r7"
+    ],
+    "float_args": [],
+    "extra_inputs_allowed": [
+      "r0",
+      "r1",
+      "r2",
+      "r3"
+    ],
+    "returns": {
+      "int": "r0",
+      "float": "fr0",
+      "int64": [
+        "r0",
+        "r1"
+      ]
+    },
+    "callee_saved": [
+      "r8",
+      "r9",
+      "r10",
+      "r11",
+      "r12",
+      "r13",
+      "r14"
+    ],
+    "stack_args": {
+      "base": "r15",
+      "words": 8
+    },
+    "entry_sp": "0x060fe000",
+    "return_sentinel": "0x060ff000"
+  },
+  "memory": {
+    "ram": [
+      "0x06000000",
+      "0x06100000"
+    ],
+    "ram_low": [
+      "0x00200000",
+      "0x00300000"
+    ],
+    "stack": [
+      "0x060f0000",
+      "0x06100000"
+    ],
+    "scratch": [
+      "0x060e0000",
+      "0x060e1000"
+    ],
+    "mmio": [
+      [
+        "0x00100000",
+        "0x00200000"
+      ],
+      [
+        "0x02000000",
+        "0x06000000"
+      ],
+      [
+        "0x20100000",
+        "0x20200000"
+      ],
+      [
+        "0x22000000",
+        "0x26000000"
+      ],
+      [
+        "0xfffffe00",
+        "0x100000000"
+      ]
+    ]
+  },
+  "locked_scripts": [
+    "TcBalance.java",
+    "TcBase.java",
+    "TcBound.java",
+    "TcBoundPass.java",
+    "TcBudget.java",
+    "TcCalls.java",
+    "TcCatalog.java",
+    "TcCfg.java",
+    "TcCount.java",
+    "TcDirs.java",
+    "TcEmu.java",
+    "TcExit.java",
+    "TcFacts.java",
+    "TcFguide.java",
+    "TcFlow.java",
+    "TcFold.java",
+    "TcFpu.java",
+    "TcFret.java",
+    "TcGuide.java",
+    "TcHw.java",
+    "TcJunk.java",
+    "TcLate.java",
+    "TcLive.java",
+    "TcLoads.java",
+    "TcOracle.java",
+    "TcPair.java",
+    "TcPrepare.java",
+    "TcProvenance.java",
+    "TcReach.java",
+    "TcRepair.java",
+    "TcRescue.java",
+    "TcRound.java",
+    "TcSaves.java",
+    "TcSentinel.java",
+    "TcSig.java",
+    "TcSpin.java",
+    "TcSq.java",
+    "TcSr.java",
+    "TcStack.java",
+    "TcStrict.java",
+    "TcSum.java",
+    "TcTail.java",
+    "TcText.java",
+    "TcTrack.java",
+    "TcVectors.java"
+  ],
+  "known_blockers": [
+    {
+      "name": "R8 code read (input generator lets random pointers reach code; fix the generator, not R8)",
+      "rx": "^R8: read machine code at ",
+      "after": 2
+    }
+  ],
+  "blocker_kinds": [
+    {
+      "id": "ghidra_timeout",
+      "status": [
+        "error"
+      ],
+      "detail": "^Ghidra (timeout|stopped)",
+      "fix": "infrastructure: re-run the preparation alone on an idle machine with a longer ghidra_timeout_s; if it still times out, read the slot log for the hanging script"
+    },
+    {
+      "id": "fpu_bank_mode",
+      "status": [
+        "skipped"
+      ],
+      "detail": "^unsupported: float pair/bank mode switch",
+      "fix": "checker (batch 7, fpu_state): the whole FPU (fr0..15, XMTRX, FPSCR.FR/SZ/PR) is state for mode-switching functions; re-prepare these"
+    },
+    {
+      "id": "xmtrx",
+      "status": [
+        "failed"
+      ],
+      "detail": "^blocked: XMTRX",
+      "diff": "^xf\\d+ \\(XMTRX\\): ",
+      "fix": "checker (batch 7, fpu_state): XMTRX is compared at exit and at every call (sh4_frchg, sh4_fschg, sh4_ftrv_fv); re-prepare these"
+    },
+    {
+      "id": "entry_regs",
+      "status": [
+        "skipped"
+      ],
+      "detail": "^unsupported: reads (f?r\\d+(, )?)+ at entry",
+      "fix": "checker: parameter storage r0..r3 and fr4..fr11 read before written (signature inputs from dataflow); entry fr0..fr3 alone as FPU state (8f96131)",
+      "fixed_at": "2026-10-18T18:59:38"
+    },
+    {
+      "id": "odd_return",
+      "status": [
+        "skipped"
+      ],
+      "detail": "^unsupported: (return in r\\d+|\\d+-bit return value)",
+      "fix": "checker: any return register, and a u64 return in r0:r1, in the harness and runtime"
+    },
+    {
+      "id": "decompile_failed",
+      "status": [
+        "skipped"
+      ],
+      "detail": "^unsupported: decompile failed",
+      "fix": "packet: asm-only packet with a signature from dataflow; Haiku translates from the asm"
+    },
+    {
+      "id": "outside_body",
+      "status": [
+        "skipped"
+      ],
+      "detail": "^unsupported: executes code outside its body",
+      "fix": "checker: cross-module calls (an overlay jumping into another overlay or the main binary)"
+    },
+    {
+      "id": "oracle_bad_pointers",
+      "status": [
+        "skipped"
+      ],
+      "detail": "^oracle could not produce .*(write outside RAM|fault: read)",
+      "fix": "oracle: seed pointer-like parameters (and pointers loaded through them) into a scratch RAM window"
+    },
+    {
+      "id": "oracle_call_loop",
+      "status": [
+        "skipped"
+      ],
+      "detail": "^oracle could not produce .*more than \\d+ calls",
+      "fix": "oracle: model PR-redirected tail calls (lds rN,PR then bra: the callee returns to the loaded PR); check for data seeded as code"
+    },
+    {
+      "id": "oracle_underflow",
+      "status": [
+        "skipped"
+      ],
+      "detail": "^oracle could not produce .*float underflow",
+      "fix": "oracle: model FPSCR.DN denormal flush instead of rejecting the run"
+    },
+    {
+      "id": "oracle_step_limit",
+      "status": [
+        "skipped"
+      ],
+      "detail": "^oracle could not produce .*step limit",
+      "fix": "oracle: an input-dependent loop the random inputs never end, or data seeded as code; read the function first"
+    },
+    {
+      "id": "oracle_emulation_error",
+      "status": [
+        "skipped"
+      ],
+      "detail": "^oracle could not produce .*emulation error",
+      "fix": "oracle/SLEIGH: an instruction the emulator cannot decode; usually data seeded as code (prune it)"
+    },
+    {
+      "id": "r8_code_read",
+      "status": [
+        "failed"
+      ],
+      "detail": "^blocked: R8",
+      "diff": "^R8: read machine code at ",
+      "fix": "oracle: keep pointer inputs out of the code range in the input generator; do not loosen R8"
+    },
+    {
+      "id": "invalid_access",
+      "status": [
+        "failed"
+      ],
+      "diff": "^invalid guest memory access",
+      "fix": "oracle: random pointers reach unmapped memory on the C side; seed pointers into RAM (same fix as oracle_bad_pointers)"
+    },
+    {
+      "id": "float_inputs_missing",
+      "status": [
+        "failed"
+      ],
+      "diff_all": true,
+      "diff": "^(fr1[2-5] \\(vector register, sh4_fr\\(\\d+\\)\\) at exit|call #\\d+ to 0x[0-9a-f]+: argument fr\\d+ )",
+      "fix": "checker: TcPrepare adds fr4..fr11 read before written as parameters (entry float registers the C cannot see)"
+    },
+    {
+      "id": "hidden_only",
+      "status": [
+        "failed"
+      ],
+      "diff": "only in the hidden set",
+      "fix": "retry: more dev vectors (e.g. 96) so the edge case shows in dev; the hidden check is unchanged"
+    },
+    {
+      "id": "crash_or_hang",
+      "status": [
+        "failed"
+      ],
+      "diff": "^(no result for this vector|C code raised exception)",
+      "fix": "retry: the C crashes or loops on some vectors; one more Haiku run from its best work.c"
+    },
+    {
+      "id": "translation_mismatch",
+      "status": [
+        "failed"
+      ],
+      "diff_all": true,
+      "diff": "^(memory 0x|return value |call #\\d+|\\.\\.\\. and \\d+ more differing)",
+      "fix": "retry: a real translation mistake (memory, return value, call target or argument); one more Haiku run from its best work.c"
+    },
+    {
+      "id": "no_build",
+      "status": [
+        "failed"
+      ],
+      "stage": "^(build|lint)$",
+      "fix": "retry: the last attempt does not build or breaks a rule; one more Haiku run from its best work.c"
+    }
+  ],
+  "translator": {
+    "name": "sh2-translate",
+    "command": ["{python}", "{target}/translate.py", "--repo", "{repo}", "--binary", "{binary}", "--addr", "{addr}",
+                "--meta", "{meta}", "--target-json", "{target_json}", "--bodies", "{bodies}", "--out", "{out}"],
+    "timeout_s": 120
+  }
+}

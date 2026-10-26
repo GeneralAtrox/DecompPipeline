@@ -23,7 +23,8 @@ extras (`project.json` `extra_functions`) are compiled with `--engine`; without 
 | `pvr/` | The PowerVR side the SDK modules hand work to: texture memory, fog, background plane, clip, and the TA-list renderer (`pvr_render`); `pvr_todo` logs each unhandled case once. No game names |
 | `sdk/` | SDK replacements a game opts into (game.json `sdk`). Each compiles against the game's generated `game.h`, so the names it defines must be the game's registry names; the header comment of each module lists what it needs |
 | `tools/gen_port.py` | Writes `<game>/build/gen`: `game.h` (globals as lvalues on their guest addresses), logging stubs, the dispatch table, and `port_config.h`, `port_entry.c`, `port_files.cmake` from game.json, and `scene_map.c` from the game's `scene_dump.json` (`tools/scene_map.py`). Each file is written only when it changed, so an unchanged build is seconds |
-| `runtime/scene_*.c`, `runtime/session.c`, `host/host_copy_button.cpp` | Copy game context: the scene dump's JSON, BMP and clipboard, the session recording and replay, and the menu bar's copy icon (see below) |
+| `tools/gen_overlays.py` (`runtime/overlay.c`) | Overlays, for a game with `overlays.json` (units: `id`, `decomp` workspace, optional `ranges`): writes `<game>/build/gen/overlays`, one static library per workspace with its functions renamed `<workspace>__<name>` (a forced-include `prefix.h`), stubs, and trampolines for calls out of its range, plus each unit's identity windows (16-byte code windows where it differs from every unit loaded over the same RAM). A call into overlay RAM runs the unit whose windows match guest RAM now; with none, `OVERLAY MISS` is logged once per group, the call returns 0, and a checked build stops. A game without overlays links an empty table. build.py runs it after gen_port.py |
+| `runtime/scene_*.c`, `runtime/session.c`, `host/host_copy_button.cpp` | Copy agent prompt: the scene dump's JSON, BMP and clipboard prompt, the session recording and replay, and the menu bar's copy icon (see below) |
 | `tools/build.py` | gen_port, CMake + Ninja under the 32-bit MSVC environment, build, and with `--run` the run and a symbolized log. Every step is bounded; a timeout kills the process tree |
 | `tools/regress.py`, `tools/frames.py` | The regression run (`build.py --regress`): each `<game>/tests/*.script` bounded, headless, fixed clock, tick presenting; fails on an exit other than the watchdog's, a log class (TODO, STUB, `ta: list`) not in `tests/baseline/`, or a frame unlike its golden in `tests/goldens/` (per-pixel error and SSIM, with a side-by-side sheet). `--accept-log` / `--accept-frames` update them |
 | `tools/rate_compare.py` | The frame-rate comparison: one regression script's run shown at the game's tick (`--present tick`), then with in-between frames at the display's rate (`--present interp`); both go through the script's start on the fixed clock and turn to real time at a chosen vertical blank (`port.exe --fast-until N`) |
@@ -33,7 +34,7 @@ extras (`project.json` `extra_functions`) are compiled with `--engine`; without 
 
 | SDK module | Replaces | Needs from the game's headers |
 |------|------|------|
-| `sy_heap` | `syMallocInit`, `syMalloc`, `syFree`, `syMallocFinish` | only those names |
+| `sy_heap` | `syMallocInit`, `syMalloc`, `syFree`, `syMallocFinish`; the guest C library's `malloc`, `free` (Shinobi's, on the same allocator) as `sy_guest_malloc`, `sy_guest_free` | only those names |
 | `sy_sys` | Shinobi system services: cable (VGA), config, RTC (host time), TMU timer | `SYE_CBL_VGA`, `SYS_RTC_DATE`; game.json `console` |
 | `gdfs` | gdFs over the disc image, synchronous; CD-DA status only | `GDFS`, `GDFS_DIRREC`, `GDD_DRVSTAT_*`, `GDD_SEEK_*`, `SdkProc` |
 | `am_heap` | `amHeapAlloc`, `amHeapFree` in a host-backed sound RAM | `SdkProc` |
@@ -41,6 +42,10 @@ extras (`project.json` `extra_functions`) are compiled with `--engine`; without 
 | `kamui2_scene` | Kamui 2 (game-written vertex buffer): `kmSetSystemConfiguration`, scenes and passes, `kmRender` (renders `pvr/`, flips at the configured vsync interval), queue/texture status, VSync, clip | `KMSYSTEMCONFIGSTRUCT`, `KMVERTEXBUFFDESC`; layouts in `sdk/kamui2.h` |
 | `kamui2_tex` | Texture surfaces in texture memory: create (all Kamui 2 types), load, free, frame-buffer read-back | `KMSURFACEDESC` |
 | `kamui2_misc` | Device, display mode and its callbacks, border, version, fog, background plane | `KmCallbackFunc`, `KmVersionInfo` |
+
+Registry names in gen_port.py `GUEST_CRT` (`malloc`, `free`, `calloc`, `realloc`) are the guest's own C library over
+guest RAM, never the host CRT's: game.h maps each onto its kit name (`#define malloc sy_guest_malloc`), so readable
+calls, dispatch rows and a logging stub (where no module defines it) all use the kit's name.
 
 Names the SDK does not give (the `Sy_*`, `Gd_*` and `Shc_*` ones) are registry names. A new game gets them for
 byte-identical library functions with `python xproject.py --project NEW --from OLD names`. A module whose names
@@ -67,6 +72,7 @@ In the game's port folder; paths are relative to it.
 | `console` | `{"country", "language", "broadcast"}`: the console `sy_sys` reports (numbers, as the game compares them) |
 | `id` | Optional: the game's id in `--version` and `installation.json` (default: the name of the folder above the port folder) |
 | `arrows` | Optional: `"both"` (default), the arrow keys press the d-pad and move the stick; `"stick"`, they only move the stick (for a game whose d-pad does something else than steering, such as cameras). I/K/J/L press the d-pad either way |
+| `widescreen` | Optional: `true` when the game widens its horizontal culling by `port_widescreen()` (platform.h; a wrap of its projection function). Play runs then draw Hor+: the frame is as wide as the output up to 16:9, the 640x480 screen is its middle (2D stays 4:3; an untextured full-screen triangle, a fade, covers the frame). Off in checks (headless or fixed-clock runs) and with `--widescreen off`; `--widescreen on` forces it |
 | `boot_sha256` | Optional: the SHA-256 of each boot file the port accepts (the right game and region); setup and verify refuse any other with exit code 5. Without it, any disc whose boot file loads is accepted |
 
 A non-static function defined at column 0 in an `sdk` module or a `sources` file replaces the stub of the
@@ -82,11 +88,18 @@ Needs Visual Studio's 32-bit tools (`VCVARS32`, or `vcvars32.bat` beside `config
 Ninja (`NINJA` or on PATH). `--checked` builds unoptimised with `/RTC1` in `build/x86chk`. Always run with
 `--seconds`: the watchdog ends the run and logs where the game thread was. The log is `build/run/port.log`,
 symbolized in `build/run/port_sym.log`; a fault logs the registers and the return addresses on the stack.
+`--jobs N` sets the compile jobs (default: every logical processor). A game's `Start Game.bat` builds with
+`--progress`: one line counting the files as they compile, rewritten in place, diagnostics in full as they come, and
+"Game is up to date." when nothing changed; the full output goes to `build/build.log`. Its `Play.bat` starts the last
+build with no build step. Any change to the registry rewrites the generated `game.h`, which every readable file
+includes, so a new name or readable function rebuilds them all.
 
 ## Controls
 
-The port reads every SDL3 gamepad and joystick and the keyboard together, as the controller on Maple port A
-(`runtime/gfx/gfx_input.c`, `sdk/maple_pad.c`). The gamepad is read even while the window is not focused.
+The port has a controller for each of players 1 to 4 on Maple ports A to D (`runtime/gfx/gfx_input.c`,
+`sdk/maple_pad.c`), each with a vibration pack. A gamepad or joystick becomes the next free player the first time it
+is used; the keyboard is always player 1, and player 1's controller is always connected. `--pads N` caps the players
+(`--pads 1`: every device together is player 1). Gamepads are read even while the window is not focused.
 
 | Dreamcast | Gamepad (Xbox layout) | Keyboard |
 |---|---|---|
@@ -99,17 +112,21 @@ The port reads every SDL3 gamepad and joystick and the keyboard together, as the
 
 The triggers are analog, 0 to 255; past half travel they also set the pad's digital trigger bits, which some games
 bind actions to. Driving games usually accelerate on R and brake on L; each game's README gives its own controls.
-Scripted runs press buttons with `--input NAME@VBLANK[+N],...` (`L=V`/`R=V` press a trigger part of the way, V 1 to
-255).
+Scripted runs press buttons with `--input [Pn.]NAME@VBLANK[+N],...` (`L=V`/`R=V` press a trigger part of the way, V 1
+to 255; `P2.` to `P4.` press another player's, and connect that player from the start). Only player 1 is recorded and
+replayed.
 
-## Copy game context
+## Copy agent prompt
 
-The menu bar's copy icon (two sheets, tooltip "Copy game context") and F9, which also works in full screen, take a
-scene dump after the next frame. Nothing pops up. The dump goes to `scene_dumps/` in the data folder (`--scene-dir
-DIR` puts it elsewhere), as `<YYYYMMDD-HHMMSS>.json`, `.bmp` (the frame as drawn) and `.ptrec` (the session
-recording), with an empty `_replay/` folder for the replay's output. The JSON is also copied to the clipboard, with
-Phangrade's agent context (`PHANGRADE_AGENT_CONTEXT`) after it when Phangrade launched the game. A failure is logged
-and the game carries on. `--scene-dump-at V` takes a dump at vertical blank V (scripted runs).
+The menu bar's copy icon (two sheets, tooltip "Copy agent prompt (F9)"), the Help menu's "Copy agent prompt" entry and
+F9, which also works in full screen, take a scene dump after the next frame. Nothing pops up. The dump goes to
+`scene_dumps/` in the data folder (`--scene-dir DIR` puts it elsewhere), as `<YYYYMMDD-HHMMSS>.json`, `.bmp` (the frame
+as drawn) and `.ptrec` (the session recording), with an empty `_replay/` folder for the replay's output. The clipboard
+gets a prompt an agent can act on: one instruction line (naming the game, as Phangrade's crash prompt leads), the JSON,
+then Phangrade's agent context (`PHANGRADE_AGENT_CONTEXT`) when Phangrade launched the game. The user pastes it and says
+what is wrong. It is a kit feature (`host/`, `runtime/scene_*.c`): every game built on the kit (Toy Commander, Spawn,
+Power Stone 2) has it with no game code; a game's map only adds the scene fields it names. A failure is logged and the
+game carries on. `--scene-dump-at V` takes a dump at vertical blank V (scripted runs).
 
 The JSON (`dcport_scene_dump_v1`, `runtime/scene_dump.c`) is what an agent needs to pick the problem up:
 
@@ -125,7 +142,7 @@ The JSON (`dcport_scene_dump_v1`, `runtime/scene_dump.c`) is what an agent needs
 | `host` | Input devices by name and VID:PID, output and frame size, window state, presenting mode, frames a second, the log's last warnings and last lines |
 
 **The session recording** (`runtime/session.c`) runs from boot in memory, up to 256 MB, so a dump at any moment can
-replay it. It keeps everything a real-time run reads that a fixed-clock run would not: the pad (`host_pad_read`,
+replay it. It keeps everything a real-time run reads that a fixed-clock run would not: player 1's pad (`host_pads_read`,
 kept on change), the timer counts (`Sy_TimerGetCount`, as deltas), the clock offset for the RTC and the saves read.
 `--replay FILE` plays it back: the pad reads come from the file until it ends, then the live pad takes over. A pad
 read at a different vertical blank than recorded is logged once as `session: replay out of step`. `--record off`

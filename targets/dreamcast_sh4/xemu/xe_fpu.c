@@ -7,8 +7,9 @@
  * range, 0x80000000 below it and for a NaN.
  *
  * Where the hardware's rounding is not IEEE, xemu takes the oracle's documented model, so these are not cross-checked
- * (only the registers and order they use are): fmac rounds the product, then the sum (TcFpu); fipr and ftrv sum
- * in element order 0..3, each step rounded; fsrra is 1/sqrt in single precision; fsca reads the runtime's table. */
+ * (only the registers and order they use are): fipr and ftrv sum in element order 0..3, each step rounded;
+ * fsrra is 1/sqrt in single precision; fsca reads the runtime's table. fmac is tc_rt.c's sh4_fmac (rounded once,
+ * as the manual says). */
 #include <math.h>
 #include <string.h>
 #include <xmmintrin.h>
@@ -232,8 +233,7 @@ void xe_exec_fpu(Xe *x, u16 op)
     case 13: group_d(x, op, pr); return;
     case 14: { /* fmac FR0,FRm,FRn */
         need(x, !pr, op);
-        f32 p = F(x->fr[0]) * F(x->fr[m]);
-        x->fr[n] = U(p + F(x->fr[n]));
+        x->fr[n] = U(sh4_fmac(F(x->fr[0]), F(x->fr[m]), F(x->fr[n]))); /* rounded once (the manual; tc_rt.c) */
         return;
     }
     }

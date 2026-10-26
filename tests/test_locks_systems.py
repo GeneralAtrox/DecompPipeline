@@ -119,7 +119,7 @@ class Locks(unittest.TestCase):
                 pass
 
     def test_update_json(self):
-        target = TMP / "u.json"
+        target = pathlib.Path(tempfile.mkdtemp(prefix="update", dir=TMP)) / "u.json"  # Locks runs twice (test_tooling)
         filelock.update_json(target, lambda d: d.update(a=1), {})
         data, ret = filelock.update_json(target, lambda d: d.setdefault("b", []).append(2) or "done", {})
         self.assertEqual((data, ret), ({"a": 1, "b": [2]}, "done"))
@@ -275,6 +275,45 @@ class Assign(unittest.TestCase):
         ok, lines, _ = doctor.check(ws)
         self.assertTrue(ok, lines)
         self.assertTrue(any("no state/systems.json" in x for x in lines))
+
+    def test_override_moves_a_member(self):  # project.json system_overrides: the one move (PS2's VMU drive masks)
+        ws = make_sys_ws("ovr")
+        put(ws, "project.json", {"target": "dreamcast_sh4", "game_end": "8c068000",
+                                 "system_overrides": {A[0]: "S02", A[7]: "S03"}})
+        out = []
+        p = assign_systems.run(ws, log=out.append)
+        self.assertEqual(p["move"], {A[0]: {"system": "S02", "from": "S01"}, A[7]: {"system": "S03", "from": None}})
+        self.assertTrue(any(f"{A[0]} S01->S02" in x and f"{A[7]} none->S03" in x for x in out), out)
+        after = {s["id"]: s["functions"] for s in
+                 json.loads((ws / "state/systems.json").read_text(encoding="utf-8"))["systems"]}
+        self.assertEqual(after["S01"], [A[1], A[4]])  # out of its old system, ids unchanged
+        self.assertEqual(after["S02"][:2], [A[0], A[2]])  # a2 calls a0: it follows a0 to its new system
+        self.assertIn(A[7], after["S03"])
+        rec = json.loads((ws / sysassign.ASSIGNED).read_text(encoding="utf-8"))
+        self.assertEqual((rec[A[0]]["how"], rec[A[0]]["from"]), ("override", "S01"))
+        again = sysassign.apply(ws)
+        self.assertEqual((again["move"], again["assign"]), ({}, {}))  # idempotent
+
+    def test_override_refuses_an_unknown_system_or_function(self):
+        for want, err in (({A[0]: "S99"}, "S99 is not a system"), ({"8c0aaaa0": "S02"}, "not a function")):
+            ws = make_sys_ws("ovrx")
+            put(ws, "project.json", {"target": "dreamcast_sh4", "game_end": "8c068000", "system_overrides": want})
+            before = (ws / "state/systems.json").read_bytes()
+            with self.assertRaisesRegex(ValueError, err):
+                sysassign.apply(ws)
+            self.assertEqual((ws / "state/systems.json").read_bytes(), before)  # nothing written
+            self.assertFalse((ws / sysassign.ASSIGNED).exists())
+
+    def test_no_override_moves_nothing(self):  # control: no key, or an empty one, is the plain assignment
+        plain = sysassign.plan(make_sys_ws("ovr0"))
+        ws = make_sys_ws("ovr1")
+        put(ws, "project.json", {"target": "dreamcast_sh4", "game_end": "8c068000", "system_overrides": {}})
+        self.assertEqual(plain["move"], {})
+        self.assertEqual(sysassign.plan(ws), plain)
+        sysassign.apply(ws)
+        after = {s["id"]: s["functions"] for s in
+                 json.loads((ws / "state/systems.json").read_text(encoding="utf-8"))["systems"]}
+        self.assertEqual(after["S01"][:2], [A[0], A[1]])
 
 
 if __name__ == "__main__":

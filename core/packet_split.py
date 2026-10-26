@@ -33,6 +33,27 @@ def split_packet(packet):
     _split(packet / "ghidra.c", lambda line: not line.strip())
 
 
+# The status plate comment (core/ghidra.queue_mark, written into the Ghidra project by TcPrepare) and the blank line
+# after it. Whether a prepare's decompiler output carries it depends on when the marks reached that slot's project,
+# not on the function: so no packet keeps it, and a packet is the same whenever it was made (harness reuse).
+STATUS_PLATE = re.compile(rb"^/\* TC decomp: .*?\*/\r?\n(?:\r?\n)?", re.M | re.S)
+
+
+def strip_status(packet, write=True):
+    """Remove the status plate from packet/ghidra.c (before split_packet). True: the packet is free of it (it had
+    none or it was removed); False: a split part (ghidra_N.c) carries it, so it cannot be removed as a fresh
+    prepare would (the split was cut with it in). write=False only answers: nothing is written."""
+    if any(STATUS_PLATE.search(p.read_bytes()) for p in packet.glob("ghidra_*.c")):
+        return False
+    f = packet / "ghidra.c"
+    if write and f.is_file():
+        data = f.read_bytes()
+        new = STATUS_PLATE.sub(b"", data, count=1)
+        if new != data:
+            f.write_bytes(new)
+    return True
+
+
 def packet_files(packet):
     """The agent-facing source files of a packet, in reading order (asm first)."""
     if not packet.exists():

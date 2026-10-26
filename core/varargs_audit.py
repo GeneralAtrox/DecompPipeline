@@ -15,7 +15,7 @@ A format built at run time (in the stack, or written by the function) cannot be 
 a mismatch. Findings are grouped per (caller, callee) with how many calls show each.
 """
 from . import paths, readable, readable_abi
-from .compare import IMAGE_BASE, STACK_LO, Memory, parse_results, parse_vectors
+from .compare import FRAME_LO, IMAGE_BASE, Memory, parse_results, parse_vectors
 from .readable_varargs import PRINTF_SPEC, STACK_WORD, _read_cstr, variadic_info
 
 RAM = (0x8C000000, 0x8D000000)
@@ -70,7 +70,7 @@ def check_call(info, mem, exp, rec, image_mem=None):
         return [f"format word s{fmt_word} is 0x{ptr:08x}, not an address"], 0, 0, 0
     fmt = read_format([m for m in (image_mem, mem) if m is not None], exp, ptr)
     if fmt is None:
-        if ptr >= STACK_LO or any(ptr <= a < ptr + 512 for a in exp["writes"]):
+        if ptr >= FRAME_LO or any(ptr <= a < ptr + 512 for a in exp["writes"]):
             return [], 1, 0, 0  # built at run time: not readable from the initial memory
         return [f"format word s{fmt_word} 0x{ptr:08x} is not a NUL-terminated string"], 0, 0, 0
     if not is_text(fmt):

@@ -12,6 +12,11 @@
  * helper), whatever the callee takes; those reads are no use of the bytes (TC 8c035af0, 8c04b724, 8c0117f4: a
  * scalar out-local at r15 + 4 would read as 28 bytes). So reads wait in a window of the last eight: at a call, eight
  * word reads of exactly r15 .. r15 + 28 holding the record's s0..s7 are dropped, and any other read counts.
+ *
+ * A B line (the painted raw runs) watches the writes alone (rd_writes): rd_written tells out_copy which bytes of the
+ * out-buffer the original stored to before the call. A stored value can still equal the paint in both runs when it
+ * is computed from the painted bytes themselves (TC 8c0117f4: yaw = the first call's output + a small lag keeps the
+ * paint's upper bytes), so the paints alone cannot tell it.
  */
 #include <string.h>
 #include "rd_internal.h"
@@ -21,6 +26,7 @@
 #define WINDOW 8
 
 int rd_tracing;
+int rd_writes;
 static struct { u32 call, target, field, guest, span, end; int armed; } g_tr[RD_MAX_TRACES];
 static int g_ntr;
 static u8 g_written[STACK_SPAN]; /* 1: the original wrote this guest stack byte in this run */
@@ -31,7 +37,7 @@ void rd_trace_add(u32 call, u32 target, u32 field, u32 guest, u32 span)
 {
     if (g_ntr >= RD_MAX_TRACES || field >= RD_LOG_FIELDS || guest < TCRT_STACK_LO || span > 0x2000u
         || guest + span > TCRT_RAM_BASE + TCRT_RAM_SIZE) return;
-    if (!rd_tracing) {
+    if (!rd_tracing && !rd_writes) {
         memset(g_written, 0, sizeof g_written);
         g_npend = 0;
     }
@@ -111,6 +117,21 @@ void rd_trace_write(u32 a, u32 n)
         if (a + k >= TCRT_STACK_LO && a + k - TCRT_STACK_LO < STACK_SPAN) g_written[a + k - TCRT_STACK_LO] = 1;
 }
 
+void rd_writes_on(void)
+{
+    if (!rd_tracing && !rd_writes) {
+        memset(g_written, 0, sizeof g_written);
+        g_npend = 0;
+    }
+    rd_writes = 1;
+}
+
+int rd_written(u32 a)
+{
+    return (rd_tracing || rd_writes) && a >= TCRT_STACK_LO && a - TCRT_STACK_LO < STACK_SPAN
+           && g_written[a - TCRT_STACK_LO];
+}
+
 void rd_trace_report(FILE *out)
 {
     flush();
@@ -123,4 +144,5 @@ void rd_trace_reset(void)
     g_ntr = 0;
     g_npend = 0;
     rd_tracing = 0;
+    rd_writes = 0;
 }

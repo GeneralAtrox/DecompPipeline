@@ -5,6 +5,7 @@
 //            frame-rate cap, frame-rate counter
 //   Audio:   volume, mute when unfocused
 //   Input:   rumble, pause when unfocused
+//   Help:    copy agent prompt (F9; the bar's copy icon is the same command: host_copy_button.cpp)
 #include <string>
 #include <windows.h>
 #include <commctrl.h>
@@ -84,6 +85,13 @@ HMENU input_menu()
     HMENU m = CreatePopupMenu();
     AppendMenuW(m, MF_STRING, kRumble, L"&Rumble");
     AppendMenuW(m, MF_STRING, kPauseUnfocused, L"&Pause when unfocused");
+    return m;
+}
+
+HMENU help_menu()
+{
+    HMENU m = CreatePopupMenu();
+    AppendMenuW(m, MF_STRING, host::kCopyAgentPrompt, L"&Copy agent prompt\tF9");
     return m;
 }
 
@@ -170,6 +178,7 @@ void menu_attach(void *hwnd)
     AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(display_menu()), L"&Display");
     AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(audio_menu()), L"&Audio");
     AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(input_menu()), L"&Input");
+    AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(help_menu()), L"&Help");
     host::copy_button_attach(g_hwnd, g_menu);
     if (!SetWindowSubclass(g_hwnd, subclass, 1, 0)) port_log("host: no menu (the window subclass failed)\n");
 }

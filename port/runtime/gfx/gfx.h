@@ -16,7 +16,7 @@
 typedef struct GfxState {
     int headless, warp, fullscreen;
     u32 out_w, out_h;       /* the output: the window's client area in pixels, or --size when headless */
-    u32 frame_w, frame_h;   /* the frame target: the 4:3 picture inside the output */
+    u32 frame_w, frame_h;   /* the frame target: the 4:3 picture inside the output (widescreen: up to 16:9) */
     u32 frame_x, frame_y;   /* where the frame sits in the back buffer */
     u32 frames;             /* frames presented */
     ID3D11Device *dev;
@@ -31,10 +31,12 @@ typedef struct GfxState {
     u32 ssaa;               /* --ssaa 2|4: supersampling factor per axis (0: off) */
     u32 aniso;              /* --aniso 2..16: anisotropic filtering for filtered textures (0: off) */
     int tearing;            /* the swap chain allows tearing (variable refresh) */
-    int vsync;              /* --vsync on|off (default on); the host's menu changes it */
+    int vsync;              /* --vsync on|off (default off); the host's menu changes it */
     UINT swap_flags;        /* the swap chain's flags, again for ResizeBuffers */
     HANDLE latency;         /* signalled when the swap chain can take a frame without blocking; NULL if none */
     u32 dropped;            /* frames not presented because the swap chain was still full */
+    int wide;               /* --widescreen on|off: 1, 0; -1 (default): on in play runs (port_widescreen) */
+    f32 wide_k;             /* the frame's width over a 4:3 frame's (1: 4:3), set with the frame target */
 } GfxState;
 
 extern GfxState g_gfx;

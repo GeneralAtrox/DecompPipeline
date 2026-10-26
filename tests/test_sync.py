@@ -19,6 +19,7 @@ TOOL = pathlib.Path(__file__).resolve().parents[1]
 _TMP = tempfile.TemporaryDirectory(prefix="sync_", dir=TOOL / "tests" / ".work")
 TMP = pathlib.Path(_TMP.name)
 PROJECT = {"target": "dreamcast_sh4", "ghidra_name": "fixture", "binary": "game.bin"}
+os.environ["DP_BROKER_DIR"] = str(TMP / "ghidra_broker")  # never the machine's folder (tests/conftest.py)
 if not (pathlib.Path(os.environ.get("DECOMP_PROJECT", "")) / "project.json").exists():  # alone: a project for paths
     (TMP / "project.json").write_text(json.dumps(PROJECT), encoding="utf-8")
     os.environ["DECOMP_PROJECT"] = str(TMP)
@@ -110,7 +111,7 @@ class SyncCase(unittest.TestCase):
                         mock.patch.object(paths, "MATCHED", self.ws / "matched"),
                         mock.patch.object(paths, "BUILD", self.ws / "build"),
                         mock.patch.object(refine, "LEDGER", self.ws / "state/readable.json"),
-                        mock.patch.object(refine, "harness_stale", lambda cfg, a: None),
+                        mock.patch.object(refine, "harness_stale", lambda cfg, a, **k: None),
                         mock.patch.object(header_snapshot, "ACTIVE", None),
                         mock.patch.object(rcheck, "check_readable", self.judge)]
         for p in self.patches:

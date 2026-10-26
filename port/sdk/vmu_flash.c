@@ -10,6 +10,8 @@
 #define FAT_FREE 0xfffcu
 #define FAT_END 0xfffau
 #define TYPE_DATA 0x33u
+#define ROOT_X52 31u    /* root words 0x52 and 0x56 as the BIOS formats a card (their meaning is not known) */
+#define ROOT_X56 0x80u
 
 u32 vmfs_rd16(const u8 *p) { return (u32)p[0] | (u32)p[1] << 8; }
 
@@ -68,17 +70,30 @@ void vmfs_format(u8 *img)
     fill(root, 0x55, 16);
     bcd_time(root + 0x30, NULL);
     vmfs_wr16(root + 0x40, VMFS_BLOCKS - 1u);
-    vmfs_wr16(root + 0x42, ROOT_BLOCK);
+    vmfs_wr16(root + 0x44, ROOT_BLOCK);
     vmfs_wr16(root + 0x46, FAT_BLOCK);
     vmfs_wr16(root + 0x48, 1);
     vmfs_wr16(root + 0x4a, DIR_BLOCK);
     vmfs_wr16(root + 0x4c, DIR_BLOCKS);
     vmfs_wr16(root + 0x50, VMFS_USER_BLOCKS);
+    vmfs_wr16(root + 0x52, ROOT_X52);
+    vmfs_wr16(root + 0x56, ROOT_X56);
     for (u32 b = 0; b < VMFS_BLOCKS; b++) fat_set(img, b, FAT_FREE);
     fat_set(img, ROOT_BLOCK, FAT_END);
     fat_set(img, FAT_BLOCK, FAT_END);
     for (u32 b = DIR_BLOCK; b > DIR_BLOCK - DIR_BLOCKS + 1u; b--) fat_set(img, b, b - 1u);
     fat_set(img, DIR_BLOCK - DIR_BLOCKS + 1u, FAT_END);
+}
+
+int vmfs_fix_root(u8 *img)
+{
+    u8 *root = img + ROOT_BLOCK * VMFS_BLOCK;
+    if (vmfs_rd16(root + 0x42) != ROOT_BLOCK || vmfs_rd16(root + 0x44) != 0) return 0;
+    vmfs_wr16(root + 0x42, 0);
+    vmfs_wr16(root + 0x44, ROOT_BLOCK);
+    vmfs_wr16(root + 0x52, ROOT_X52);
+    vmfs_wr16(root + 0x56, ROOT_X56);
+    return 1;
 }
 
 int vmfs_formatted(const u8 *img)

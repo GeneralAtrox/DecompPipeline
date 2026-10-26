@@ -8,6 +8,7 @@
 #include <windows.h>
 #include "port.h"
 #include "port_dispatch.h"
+#include "overlay.h"
 
 #define DISPATCH_TOP 40u
 
@@ -63,6 +64,7 @@ void dispatch_report(void)
 {
     u32 shown[DISPATCH_TOP], nshown = 0;
     port_log("dispatched guest calls: %u\n", g_dispatched);
+    overlay_report();
     while (nshown < DISPATCH_TOP) {
         u32 best = HITS;
         for (u32 i = 0; i < HITS; i++) {
@@ -188,7 +190,8 @@ void dispatch_thunks(u32 lo, u32 hi)
 static LONG call_guest(CONTEXT *c)
 {
     u32 target = (u32)c->Eip;
-    const PortDispatch *d = port_dispatch_find(guest_fold(target));
+    const PortDispatch *d = overlay_find(target); /* overlay RAM runs the unit loaded there (overlay.c) */
+    if (!d) d = port_dispatch_find(guest_fold(target));
     g_dispatched++;
     if (d && d->fn) {
         hit(d);

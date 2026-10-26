@@ -7,7 +7,8 @@ the registers outside the C convention, and the definitions of the types and con
 import re
 import struct
 
-from . import check, raw_consts, readable, readable_stack
+from . import check, lean_cap, raw_consts, readable, readable_stack
+from .compare import RAM, WORD
 from .readable_lean import own_pool
 
 PART_NOTE = ("A big struct shows only the members raw.c reaches; `u8 _pad_0xOFF[0xLEN];` stands for the members not "
@@ -22,32 +23,59 @@ def f32_literal(bits):
         return f"(not a finite float: bits 0x{bits:08x})"
     for digits in range(1, 18):
         text = repr(float(f"{v:.{digits}g}"))
-        if struct.unpack("<I", struct.pack("<f", float(text)))[0] == bits:
+        try:  # FLT_MAX at 8 digits (3.4028235e+38) is above FLT_MAX: struct refuses it, MSVC would round it
+            back = struct.unpack("<I", struct.pack("<f", float(text)))[0]
+        except OverflowError:
+            continue
+        if back == bits:
             return text + "f"
     return repr(v) + "f"
 
 
-def pool_constants(cfg, meta, raw_text):
+def mirror_map(mirror=None):
+    """target.json address_mirrors of the workspace ({"0c": "8c"}), unless given."""
+    if mirror is not None:
+        return mirror
+    from . import paths
+    from .retire import mirrors
+    return mirrors(paths.ROOT)
+
+
+def pool_constants(cfg, meta, raw_text, mirror=None):
     """Addresses raw.c reads that are the function's literal pool (constants the compiler placed next to the code):
     not globals or callees, or a "global" between the function's start and the next function. Returns
-    [(addr, u32 bits)]."""
+    [(addr, u32 bits)]. A mirror-form address (address_mirrors: PS2 raw.c writes 0x0c206130) is its 0x8c address:
+    before, only 0x8c words were read, so a mirror-form pointer got no name and agents wrote it as a number."""
+    from .retire import canonical
+    mirror = mirror_map(mirror)
     image = cfg["binary_path"].read_bytes()
-    known = (set(meta["globals"]) - own_pool(meta)) | {c["addr"] for c in meta["callees"]} | {meta["addr"]}
+    known = {canonical(a, mirror) for a in (set(meta["globals"]) - own_pool(meta))
+             | {c["addr"] for c in meta["callees"]} | {meta["addr"]}}
     found = []
-    for m in sorted(set(re.findall(r"0x(8c[0-9a-fA-F]{6})u?", raw_text))):
-        a = m.lower()
+    for a in sorted({canonical(m.lower(), mirror) for m in re.findall(r"0x([0-9a-fA-F]{8})u?", raw_text)}):
+        if not RAM[0] <= int(a, 16) < RAM[1]:
+            continue
         off = int(a, 16) - check.IMAGE_BASE
         if a in known or not 0 <= off <= len(image) - 4:
             continue
-        found.append((a, struct.unpack_from("<I", image, off)[0]))
+        found.append((a, struct.unpack_from(WORD, image, off)[0]))
     return found
 
 
-def global_hint(reg, addr):
+def global_hint(reg, addr, ext=None):
+    """How context.md names an address raw.c uses. ext (core/global_extents): a named global's declared extent holds
+    an address however far into it (PS2 8c16d9da: 0x8c535ea4 is g_fighters + 0x380c, inside the Fighter array);
+    without ext, the nearest global below within 0x1000."""
+    if addr in reg.functions:  # a function the oracle lists as data (PS2 8c17e960 stores 8c189540, an SDK entry)
+        return raw_consts.describe(("function", addr, reg.functions[addr]["proto"]))
     a = int(addr, 16)
     for ga, e in sorted(reg.globals.items()):
         if int(ga, 16) == a:
             return f"`{e['decl']}`"
+    from .global_extents import containing
+    hit = containing(ext, a) if ext else None
+    if hit and f"{hit[0]:08x}" in reg.globals:
+        return f"inside `{reg.globals[f'{hit[0]:08x}']['decl']}` (at 0x{hit[0]:08x}, offset 0x{a - hit[0]:x})"
     near = [(int(ga, 16), e) for ga, e in reg.globals.items() if 0 < a - int(ga, 16) < 0x1000]
     if near:
         base, e = max(near, key=lambda x: x[0])
@@ -55,21 +83,22 @@ def global_hint(reg, addr):
     return "no name yet: say so in your final message (MISSING GLOBAL 0x" + addr + ")"
 
 
-def split_pointers(reg, cfg, raw_text, consts, ext):
+def split_pointers(reg, cfg, raw_text, consts, ext, mirror=None):
     """([(addr, how to name it)], the remaining pool constants). An address raw.c uses as a value (core/raw_consts:
     passed, stored, compared) is a pointer, not a literal-pool word to copy: before batch 20 context.md listed the
     bytes at a string's or a function's address as a constant to write (TC 8c0539bc stores Render_BeginFrame's
     address, 8c041146 passes World_GetSoundSample's). It names the function or global it resolves to; an unnamed
     data address is a missing name; an unnamed code-region address stays a constant (a pool word raw.c reads through
-    a register)."""
+    a register). mirror: target.json address_mirrors, a mirror-form value or pool word is its canonical address."""
+    mirror = mirror_map(mirror)
     size = len(cfg["binary_path"].read_bytes())
-    use = raw_consts.uses(raw_text, size)
+    use = raw_consts.uses(raw_text, size, mirror)
     bodies = None
     pointers, rest = [], []
     for a, bits in consts:
-        v = int(a, 16)
+        v, b = int(a, 16), raw_consts.fold(bits, mirror)
         if "value" not in use.get(v, ()):
-            res = check.IMAGE_BASE <= bits < check.IMAGE_BASE + size and raw_consts.resolve(reg, ext, bits)
+            res = check.IMAGE_BASE <= b < check.IMAGE_BASE + size and raw_consts.resolve(reg, ext, b)
             if res:  # batch 26: a pool word holding a named address (a machine-named string): its name
                 pointers.append((a, "a literal-pool word holding the address of " + raw_consts.describe(res)[4:]))
                 continue
@@ -89,8 +118,9 @@ def split_pointers(reg, cfg, raw_text, consts, ext):
     return pointers, rest
 
 
-def context_md(reg, addr, meta, cfg=None, raw_text="", types_body=None, decls=None, ext=None):
+def context_md(reg, addr, meta, cfg=None, raw_text="", types_body=None, decls=None, ext=None, views=None):
     """types_body: the lean types.h text (readable_lean.headers_for), shown as the section "Types and constants";
+    views: its core/lean_select.Views (what the cap cut: core/lean_cap);
     decls: {callee addr: the signature game.h declares it with} (raw-named callees: parameters named by storage);
     ext: the named globals' extents (core/global_extents.cached) that name pointer constants (split_pointers)."""
     proto = reg.proto(addr, meta)
@@ -116,6 +146,9 @@ def context_md(reg, addr, meta, cfg=None, raw_text="", types_body=None, decls=No
             lines.append(variadic_note(reg, a, cproto))
     if not sigs:
         lines.append("No direct calls (a call through a pointer is a call through a typed function pointer).")
+    if re.search(r"\btc_callf?\s*\(\s*(?!0x)", raw_text or ""):  # a call through a pointer (core/readable_check)
+        lines.append("A call through a function pointer is judged on the argument registers raw.c fills: give its "
+                     "type those parameters, the integer ones (r4..r7) first, then the float ones (fr4..fr11).")
     lines += state_notes(meta)
     from . import sh4_asm
     lines += readable_stack.context_lines(reg, addr, meta, raw_text,  # guest stack addresses are no globals
@@ -124,14 +157,18 @@ def context_md(reg, addr, meta, cfg=None, raw_text="", types_body=None, decls=No
     pool = own_pool(meta)
     data = [g for g in meta["globals"] if g not in pool]
     for g in data:
-        lines.append(f"- 0x{g}: {global_hint(reg, g)}")
+        lines.append(f"- 0x{g}: {global_hint(reg, g, ext)}")
     if not data:
         lines.append("None.")
-    consts = pool_constants(cfg, meta, raw_text) if cfg else []
-    pointers, consts = split_pointers(reg, cfg, raw_text, consts, ext) if consts else ([], [])
+    mirror = mirror_map()
+    consts = pool_constants(cfg, meta, raw_text, mirror) if cfg else []
+    pointers, consts = split_pointers(reg, cfg, raw_text, consts, ext, mirror) if consts else ([], [])
     if pointers:
+        forms = {raw_consts.fold(int(m, 16), mirror): m.lower() for m in re.findall(r"0x([0-9a-fA-F]{8})", raw_text)
+                 if m[:2].lower() in mirror}  # raw.c's mirror form of an address (0x0c206130): named the same
         lines += ["", "## Addresses raw.c passes or stores as values (pointers: use the name, never the number)", ""]
-        lines += [f"- 0x{a}: {text}" for a, text in pointers]
+        lines += [f"- 0x{a}" + (f" (raw.c: 0x{forms[int(a, 16)]})" if int(a, 16) in forms else "") + f": {text}"
+                  for a, text in pointers]
     if consts:
         lines += ["", "## Constants (the original's literal pool: write them as literals, never as addresses)", ""]
         for a, bits in consts:
@@ -142,6 +179,8 @@ def context_md(reg, addr, meta, cfg=None, raw_text="", types_body=None, decls=No
         if "u8 _pad_0x" in types_body or "members not shown" in types_body:  # batch 25: core/lean_select
             lines += [PART_NOTE, ""]
         lines += ["```c", types_body, "```"] if types_body.strip() else ["None beyond rd_rt.h's basic types."]
+        cut = lean_cap.summary(getattr(views, "cut", None) or {}, lean_cap.budget())
+        lines += ["", cut] if cut else []
     return "\n".join(lines) + "\n"
 
 
@@ -164,6 +203,18 @@ def variadic_note(reg, addr, proto):
     nxt = max((int(s[6:]) // 4 for s in st if s.startswith("stack+")), default=-1) + 1
     return (f"  - variadic: {named}; then the variable arguments are args.s[{nxt}], args.s[{nxt + 1}], ... in order. "
             "raw.c's other args.r / args.fr words at this call are leftovers, not arguments.")
+
+
+def low_regs():
+    """The registers before the C convention's arguments a callee may read (target.json abi extra_inputs_allowed: the
+    SH's r0..r3; none on the PowerPC, whose r3 is the first argument)."""
+    import json
+    from . import paths
+    try:
+        abi = json.loads((paths.TARGET / "target.json").read_text(encoding="utf-8")).get("abi") or {}
+    except (OSError, ValueError):
+        abi = {}
+    return set(abi.get("extra_inputs_allowed", ("r0", "r1", "r2", "r3")))
 
 
 def state_notes(meta):
@@ -192,7 +243,7 @@ def state_notes(meta):
                   "every call. Keep its sh4_fr/sh4_set_fr/sh4_xf/sh4_set_xf, sh4_frchg/sh4_fschg/sh4_fpchg and",
                   "sh4_ftrv_fv/sh4_fipr_fv calls, in the same order relative to the calls."]
     regs = {r for c in meta["callees"] for r in c["regs"]}
-    low = sorted(regs & {"r0", "r1", "r2", "r3"})
+    low = sorted(regs & low_regs())
     if low:
         lines += ["", f"A callee reads {', '.join(low)} (raw.c's args.rlo): call it by name with its arguments",
                   "in the order of its prototype above (param_r0 is args.rlo[0], ...): the check puts each in the",

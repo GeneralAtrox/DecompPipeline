@@ -300,6 +300,43 @@ class CrossProject(unittest.TestCase):
         put(a, "readable/names/S01.json", {"functions": {"8c010000": {"name": "A_Main2"}}, "globals": {}})
         self.assertEqual(names(a), {"8c010000": "A_Main2", "8c010080": "B_Free"})
 
+    def test_one_name_from_two_projects(self):
+        """Two sources give one name to two addresses (Power Stone 2's Anim_Start from Spawn and Toy Commander): the
+        clearly stronger match (the address is the old function's own exact match, not only a pool pair) keeps it;
+        two equal ones, or one a name the workspace's own files define, are all skipped, one note per clash."""
+        a, b = image_ws("ya", None), image_ws("yb", None)
+        put(a, "readable/names/S01.json", {"functions": {"8c010000": {"proto": "u32 Anim_Start(u32 t)"}}})
+        put(b, "readable/names/S01.json", {"functions": {"8c010080": {"proto": "u32 Anim_Start(u32 t)"},
+                                                         "8c0100c0": {"name": "B_Free"}}})
+        amap = {"8c010000": "8c010000", "8c010080": "8c010080", "8c0100c0": "8c0100c0"}
+
+        def names(new, src, matches, own=None):
+            put(new, "state/import.json", {"matches": matches, "address_map": amap})
+            if own:
+                put(new, "readable/names/S01.json", own)
+            p = subprocess.run([sys.executable, str(TOOL / "xproject.py"), "--project", str(new), "--from", str(src),
+                                "names"], capture_output=True, text=True, timeout=120)
+            self.assertEqual(p.returncode, 0, p.stderr)
+            got = json.loads((new / "readable/names/imported.json").read_text(encoding="utf-8"))["functions"]
+            return sorted(got), p.stdout
+        exact = {"8c010080": {"from": "8c010080", "kind": "exact", "ratio": 1.0, "pairs": {}}}
+        new = image_ws("yab", None)
+        names(new, a, {})  # a pool pair only
+        got, out = names(new, b, exact)
+        self.assertEqual(got, ["8c010080", "8c0100c0"])
+        self.assertIn("name clash: Anim_Start at 8c010000 (from 8c010000, pair), 8c010080 (from 8c010080, exact): "
+                      "kept 8c010080, the stronger match", out)
+        new = image_ws("yab2", None)
+        names(new, a, {})
+        got, out = names(new, b, {})
+        self.assertEqual(got, ["8c0100c0"])
+        self.assertEqual(out.count("name clash: "), 1)
+        self.assertIn("no clearly stronger match: skipped all", out)
+        new = image_ws("yab3", None)
+        got, out = names(new, b, exact, own={"functions": {"8c010000": {"proto": "void Anim_Start(void)"}}})
+        self.assertEqual(got, ["8c0100c0"])
+        self.assertIn("the workspace's own names define it", out)
+
 
 if __name__ == "__main__":
     unittest.main(warnings="error")

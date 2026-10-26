@@ -1,0 +1,2338 @@
+{
+ "8c010350": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0103c4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 100,
+  "verdict": "PASS"
+ },
+ "8c010a58": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c010ece": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0111b0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01160c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c012664": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0133c2": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c013400": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c013740": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Mat3_Invert",
+   "Mat3_MulVec3"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c013850": {
+  "failing": 5,
+  "first_diffs": [
+   {
+    "diffs": [
+     "memory 0x8cc01e9c: expected ffff7fbf, got 000080bf (your code did not write here)"
+    ],
+    "set": "dev",
+    "vector": 20
+   },
+   {
+    "diffs": [
+     "memory 0x8cc00610: expected 4b02c08c, got 4c02c08c (your code did not write here)"
+    ],
+    "set": "dev",
+    "vector": 35
+   },
+   {
+    "diffs": [
+     "memory 0x8cc00e10: expected 2306c08c, got 2406c08c (your code did not write here)"
+    ],
+    "set": "hidden",
+    "vector": 64
+   }
+  ],
+  "out_pointers": [
+   "Entity_LimitBodyMotion",
+   "K10Math_AddScaled",
+   "K10Math_Cross",
+   "K10Math_Scale",
+   "K10Math_SubFrom",
+   "Mat3_FromAxisAngle",
+   "Mat3_Mul",
+   "Mat3_MulVec3",
+   "Mat3_Transpose",
+   "Ramp_Reset",
+   "RigidDynamics_ClearMotion",
+   "Unit_UpdateK10PoseWeights",
+   "Vec3_Normalize"
+  ],
+  "stage": "compare",
+  "total": 100,
+  "verdict": "FAIL"
+ },
+ "8c01484a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0148d8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c014984": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c014a46": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c014bd8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c014d20": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c014d56": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c014dc4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c014e28": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0150b4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01575a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c015abc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c015df6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0163e6": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "vsprintf"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0164e4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0168d8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c016dc0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c017f18": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Grid_CellOfPoint",
+   "Mat3_SetScale",
+   "RigidBody_CastRay",
+   "Shape_RayHit",
+   "Sound_Play"
+  ],
+  "stage": "compare",
+  "total": 106,
+  "verdict": "PASS"
+ },
+ "8c01910c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01b460": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "AimNode_SetTarget",
+   "Body_UseK11Step",
+   "Body_UseStabilizeStep",
+   "Player_ReadPedals",
+   "Ramp_SetTarget",
+   "Unit_FirstTwoWheelsOnGround",
+   "Unit_PlayActionSound",
+   "Unit_RumbleTap"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01bee6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01c0e8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01c188": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01c4ec": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 97,
+  "verdict": "PASS"
+ },
+ "8c01c584": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01c58a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01c688": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01c75e": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01c99c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01c9ce": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01cae6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c01d156": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01d394": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01d4b0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01d62c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01d6fe": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01d834": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01d9a6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01dbdc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01dc26": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01dcc8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01e074": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01e0d6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01e338": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01e5f0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01e88c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01e8b4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01ebe6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01ee14": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01f5d8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01f846": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01f950": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01f9cc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c020c48": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c020dd8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0223fc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c022568": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0226b2": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c022716": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c022d44": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0230ae": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0230c0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c023108": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c023148": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0233f0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02343e": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c023454": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02362c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c025c42": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c026c18": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c027b56": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c027d60": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c028528": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0285c2": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c029034": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02bbc2": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02bc74": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02c156": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02c1e0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03054c": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Light_AddToList",
+   "Light_Init",
+   "Mat3_FromEuler",
+   "MeshNode_DrawShared",
+   "Vec3_SetAll"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03064c": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Font_Select",
+   "Font_SetColor",
+   "Menu_DrawSprite",
+   "OverlayAnim_Step",
+   "Shc_StrCpyUnaligned"
+  ],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c032dd4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c033238": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Mem_Copy",
+   "buGetFileInfo"
+  ],
+  "stage": "compare",
+  "total": 114,
+  "verdict": "PASS"
+ },
+ "8c033aa4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c033c2e": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03445c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c034758": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03482c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c035558": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0355de": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03583c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c036226": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0363fc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0366cc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c036790": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c036a18": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c036ca6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c036e58": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c037068": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c037244": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c038b7e": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0396c8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c039976": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c039b5c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c039dbc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c039eb0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03af80": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Mat3_Mul",
+   "Mat3_MulVec3",
+   "Mat3_SetRotX",
+   "Mat3_SetRotY",
+   "Mat3_SetRotZ",
+   "Vec3_Transform"
+  ],
+  "stage": "compare",
+  "total": 102,
+  "verdict": "PASS"
+ },
+ "8c03c960": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03c9da": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03d0e0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03d2e6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03d3ec": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03e886": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c040f16": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c040f38": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c041156": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0421ba": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0422dc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c042324": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c042c30": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0430d6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c043144": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c043490": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Mat3_ScaleRows",
+   "VecAcc_Store"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04365a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0447de": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c044f38": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c045faa": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c046b2a": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Grid_CellOfPoint",
+   "RigidBody_CastRay"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c047062": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04916a": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Entity_SyncTrackBodyFlag",
+   "Spline_Rebuild",
+   "Track_NextLocator",
+   "Xmtrx_StoreTranslation"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0499b0": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Shape_RayHit"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c049bfc": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Gd_GetToc"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c049d0a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c049fba": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04a700": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04aa6c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04ab46": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04ab72": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04b162": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04b17a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04b2d8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04be42": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c04bebe": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04bf0c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04bfd4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04bfdc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04c048": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04c7da": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04ca6e": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04d6de": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c04dc3c": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Shc_StrCpyUnaligned",
+   "strcat"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04ded0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04e55a": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "File_Read",
+   "Hqr_Expand",
+   "Mem_FreeAligned"
+  ],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c04f190": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04f50c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04f60c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04f65a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04f6f0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04f748": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04ff32": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c050476": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c050984": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c050ab4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c051084": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0510ce": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c051134": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c051556": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c052110": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0531a0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c053948": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0539bc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c053efc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0550dc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c055176": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0552a0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c056346": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c056462": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c056a0a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c056a50": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c056b30": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0579a2": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c057fc4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c058012": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0580b8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c058e4c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c0592c0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05b3fc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05b406": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05bee8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05c2f8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05c62a": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Mem_Zero"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05cc08": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05d1c6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05d42c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05d4ae": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05d566": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05ed5c": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "CollVec_Add",
+   "CollVec_Scale",
+   "Shape_ContactBoxSphere",
+   "Shape_ContactSphereBox"
+  ],
+  "stage": "compare",
+  "total": 97,
+  "verdict": "PASS"
+ },
+ "8c05f6d6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05f904": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "CollVec_Add",
+   "Hull_OffsetCorners"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c061208": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c061238": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0613cc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06141c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0615c0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c061630": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c061664": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c061714": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c061abc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c061ac8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c061af8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c061c18": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c061c68": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c061d88": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c061f60": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0622f6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0624b6": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Mat3_Mul",
+   "Mat3_SetRotX",
+   "Mat3_SetRotY",
+   "Mat3_SetRotZ"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0625e2": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0626fa": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06276c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06295c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c062b70": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c062c48": {
+  "failing": 93,
+  "first_diffs": [
+   {
+    "diffs": [
+     "memory 0x8cc01110: expected fc7e523f, got fb7e523f",
+     "memory 0x8cc01114: expected 42b2113f, got 45b2113f",
+     "memory 0x8cc0111c: expected 42b211bf, got 45b211bf",
+     "memory 0x8cc01120: expected fc7e523f, got fb7e523f"
+    ],
+    "set": "dev",
+    "vector": 1
+   },
+   {
+    "diffs": [
+     "memory 0x8cc00ab4: expected 0000803f, got ffff7f3f",
+     "memory 0x8cc00ac4: expected 0000803f, got ffff7f3f"
+    ],
+    "set": "dev",
+    "vector": 2
+   },
+   {
+    "diffs": [
+     "memory 0x8cc00d84: expected 0000803f, got ffff7f3f",
+     "memory 0x8cc00d88: expected db0f49b9, got 001049b9",
+     "memory 0x8cc00d90: expected db0f4939, got 00104939",
+     "memory 0x8cc00d94: expected 0000803f, got ffff7f3f"
+    ],
+    "set": "dev",
+    "vector": 3
+   }
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "FAIL"
+ },
+ "8c062dc4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0631ba": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c063368": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0635c2": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06364a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0636fa": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c063b52": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c064116": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06419c": {
+  "failing": 20,
+  "first_diffs": [
+   {
+    "diffs": [
+     "memory 0x8cc01d30: expected 27a8a987, got 88a7a987",
+     "memory 0x8cc01d34: expected f6813c87, got 99803c87",
+     "memory 0x8cc01d38: expected 2103c08c, got 2003c08c",
+     "memory 0x8cc01d8c: expected 91f48387, got e9f38387",
+     "memory 0x8cc01d90: expected f6813c87, got 99803c87",
+     "memory 0x8cc01de8: expected 91f48387, got e9f38387",
+     "... and 1 more differing memory words"
+    ],
+    "set": "dev",
+    "vector": 5
+   },
+   {
+    "diffs": [
+     "memory 0x8cc01d30: expected 6566cf87, got cd65cf87",
+     "memory 0x8cc01d34: expected 1dd61686, got 38d61686",
+     "memory 0x8cc01d38: expected fd0cc08c, got fb0cc08c"
+    ],
+    "set": "dev",
+    "vector": 13
+   },
+   {
+    "diffs": [
+     "memory 0x8cc01d30: expected 2c993496, got de973496",
+     "memory 0x8cc01d34: expected 2361d61a, got 2b61d61a"
+    ],
+    "set": "dev",
+    "vector": 17
+   }
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "FAIL"
+ },
+ "8c0669e4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c066c10": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06756a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c067576": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0677bc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0678c6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0679e8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c067f90": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06d424": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "acDigiGetCurrentReadPosition"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06d476": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06d500": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06d604": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Lib_MovieAudioUpdate",
+   "Sdk_MovieGetStreamInfo",
+   "Sdk_MovieSndDecoderOpen",
+   "Sdk_MovieSndRingSetup",
+   "Sdk_MovieSndSourceFeed",
+   "Shc_BitfieldStore",
+   "amHeapFree"
+  ],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c06dd5e": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06ddfe": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06e2e4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06e9b0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06ebc4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06fc8e": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06fe52": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0703f4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0708d8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c072ae8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c072fa8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c07301c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c07382c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c073aee": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c0749aa": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Lib_FontGlyphRelease",
+   "Lib_FontNextChar"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c074a0c": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "PvrHeader_InitTextured",
+   "PvrHeader_InitTexturedAlpha",
+   "SpriteUv_Set"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c074e84": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0755aa": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c07612c": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Lib_ListBoxSetSelected",
+   "Shc_StrCpyUnaligned"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c076818": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c076daa": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c076f04": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Lib_WindowItemGetRect"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c077098": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c077446": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c07a5e4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c07a718": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 100,
+  "verdict": "PASS"
+ },
+ "8c07c768": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c07cc22": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 104,
+  "verdict": "PASS"
+ },
+ "8c07d68c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c07e448": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c07f4b8": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "VecAcc_Store"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c07f5c0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0805a0": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Lib_Vec3AddScaledB",
+   "Lib_Vec3ScaleB",
+   "Lib_Vec3SubB",
+   "Mat3_FromForward",
+   "Xmtrx_TransformDir"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c08e1c4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c08e22c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c08e4ba": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c08f1c4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c08ff2c": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Lib_TaPosSet"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c08ffca": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c097114": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c098fac": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c09b2ce": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c09b756": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c09b8e8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c09c114": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c09c4e4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ }
+}

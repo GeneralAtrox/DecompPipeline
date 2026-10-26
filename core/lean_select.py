@@ -5,7 +5,8 @@ Batch 24's selection (readable_lean.select) took whole items, and the code closu
 over views of the items:
 - a struct with more than SMALL members is projected (core/lean_layout): it shows the members raw.c's integer
   literals reach (a member whose bytes hold a literal's offset; offset 0 always; for a struct embedded at offset B,
-  the literals minus B too), and the members the function's readable file names; padding keeps every shown offset;
+  the literals minus B too; for one a header macro lays over other bytes at +K, core/lean_overlay, minus K too), and
+  the members the function's readable file names; padding keeps every shown offset;
 - a struct reached only through pointers more than DEPTH hops away from the declarations (game.h's prototypes and
   globals) is only declared (`typedef struct X X;`), unless the readable file names one of its members;
 - what a shown member uses by value is shown (its layout is needed); what it uses through a pointer is one hop
@@ -17,7 +18,7 @@ Without raw.c's literals (evidence None) nothing is projected or cut: batch 24's
 """
 import re
 
-from . import lean_groups, lean_hidden, lean_layout, readable_headers
+from . import lean_cap, lean_groups, lean_hidden, lean_layout, lean_overlay, readable_headers
 from .readable_headers import comment_names, refs_of
 
 SMALL = 8  # a struct with at most this many members is shown whole
@@ -38,12 +39,16 @@ def member_names(code):
 GLOBAL_SPAN = 0x10000  # how far past a declared global's address a literal address counts as inside it
 
 
-def global_offsets(global_addrs, literals):
+def global_offsets(global_addrs, literals, mirrors=None):
     """Offsets inside the declared globals of the addresses raw.c writes (`wr32(0x8c0c7588u, ...)` is
-    g_levelWorld + 0x1b0): evidence for the members of a global's struct, as an offset raw.c adds is."""
+    g_levelWorld + 0x1b0): evidence for the members of a global's struct, as an offset raw.c adds is. mirrors:
+    target.json "address_mirrors" ({top byte: canonical top byte}); an address in a mirror (`rd8(0x0c3623cau)`, the
+    P0 form of 8c3623ca) counts as its canonical form."""
+    fold = {int(k, 16): int(c, 16) for k, c in (mirrors or {}).items()}
     bases = sorted(int(g, 16) for g in global_addrs)
     out = set()
     for v in literals:
+        v = fold.get(v >> 24, v >> 24) << 24 | v & 0xFFFFFF
         below = [b for b in bases if 0 <= v - b < GLOBAL_SPAN]
         if below:
             out.add(v - below[-1])
@@ -58,6 +63,7 @@ class Views:
         self.base = None if evidence is None else set(evidence) | set(offsets) | {0}
         self.items, self.depth, self.offs = set(), {}, {}
         self.lines = {}  # an accessor group shown in part: {item: the macro names shown} (core/lean_groups)
+        self.capped, self.cut = set(), {}  # structs only declared to fit the cap, and what it cut (core/lean_cap)
 
     # -- the walk --------------------------------------------------------------------------------------------
     def need(self, refs, depth):
@@ -104,8 +110,15 @@ class Views:
             return frozenset()
         inner = self.layout(self.hs.by_name.get(ref))
         step = inner.size if inner is not None and inner.size else m.size
-        evid = self.base | self.offs.get(it, frozenset())
+        evid = self.evidence(it)
         return frozenset((e - m.offset) % step for e in evid if m.offset <= e < m.offset + m.size)
+
+    def evidence(self, it):
+        """The offsets raw.c reaches in an item: the literals, the offsets inside it as an embedded member, and for an
+        overlay at +K (core/lean_overlay: `(MenuFighterWork *)((u8 *)(f) + 0x3714)`) those less K."""
+        evid = self.base | self.offs.get(it, frozenset())
+        ks = lean_overlay.bases(self.hs).get(it.order, ())
+        return evid | {e - k for k in ks for e in evid if e >= k}
 
     # -- what is shown ---------------------------------------------------------------------------------------
     def layout(self, it):
@@ -116,7 +129,9 @@ class Views:
 
     def declared_only(self, it, lay):
         """A struct only declared: further than DEPTH pointer hops, with a tag to declare, and no member the readable
-        file names."""
+        file names; or one the cap cut (core/lean_cap)."""
+        if it in self.capped:
+            return True
         if lay is None or self.base is None or self.depth.get(it, 0) <= DEPTH or not _tag(it):
             return False
         return not any(n in self.fields for m in lay.members for n in m.names)
@@ -124,7 +139,7 @@ class Views:
     def keep(self, it, lay):
         if not self.projected(lay):
             return set(range(len(lay.members)))
-        evid = self.base | self.offs.get(it, frozenset())
+        evid = self.evidence(it)
         return lean_layout.kept(lay, {i for i, m in enumerate(lay.members)
                                       if any(m.offset <= e < m.offset + m.size for e in evid)
                                       or self.fields & set(m.names)})
@@ -181,6 +196,8 @@ def select(hs, decl_text, extra_names=(), evidence=None, uses=(), fields=(), off
             if names is not None:
                 v.lines[g] = set(names)
             v.need(set(v.lines[g]) if g in v.lines else {next(iter(g.names))} | g.code_refs, ROUND_DEPTH)
+        notes = lean_cap.notes_size(rl.notes_for(hs, decl_text, extra_names))  # shown first: they count too
+        lean_cap.cap(v, evidence, lean_cap.budget(), notes)  # batch 33: cut what the function reaches least directly
     return v, v.items
 
 

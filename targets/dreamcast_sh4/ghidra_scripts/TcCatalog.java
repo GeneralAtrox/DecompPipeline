@@ -19,35 +19,101 @@ public class TcCatalog extends GhidraScript {
     static final Set<String> SYS = new HashSet<>(Arrays.asList(
         "ocbwb", "ocbi", "ocbp", "ldc", "ldc.l", "stc", "stc.l", "trapa", "sleep", "rte", "ldtlb"));
 
+    // The store-queue window and QACR0/1: the oracle models them (TcSq, TcFold, TcBase.P4), so a function that only
+    // uses them counts sq_refs, not hw_refs. `stc sr` / `ldc sr` (and .l): the oracle models SR (TcSr), sr_ops.
+    static boolean isSq(long v) {
+        return (v >= 0xE0000000L && v < 0xE4000000L) || v == 0xFF000038L || v == 0xFF00003CL;
+    }
+
+    static boolean isSrOp(String m, String text) {
+        String t = text.replace("_", "");
+        String[] ops = t.contains(" ") ? t.substring(t.indexOf(' ') + 1).split(",") : new String[0];
+        return ops.length == 2 && (m.matches("ldc(\\.l)?") && ops[1].trim().equals("sr")
+            || m.matches("stc(\\.l)?") && ops[0].trim().equals("sr"));
+    }
+
     static boolean isHw(long v) {
         return (v >= 0xA0000000L && v < 0xC0000000L) || v >= 0xE0000000L || (v >= 0x005F0000L && v < 0x00800000L);
     }
 
     // A hardware-looking constant only counts when its register is used as a memory address before being
-    // overwritten (in address order, up to 64 instructions; copies followed). Colours (0xff11429e), masks (0xff000000)
-    // and negative floats (0xbf800000) are hardware-looking values too.
+    // overwritten, on some path through the function from the load (copies followed). Colours (0xff11429e), masks
+    // (0xff000000) and negative floats (0xbf800000) are hardware-looking values too.
+    // The walk follows the flow, not address order: both arms of bt/bf (bt/s, bf/s after their delay slot), the target
+    // of bra, and a call's return. It ends after the delay slot of rts, rte, jmp and braf, and outside the body. What
+    // follows a bra in address order is another block or case: Spawn 8c0e7818 returns 0xffff0000 (-65536) through
+    // `bra` to its epilogue, and the next case reads @(r0,r14) with another r0. A path stops after 64 instructions,
+    // the walk after 256. A call (jsr, bsr, bsrf) clobbers r0-r7 after its delay slot, which runs first (Spawn
+    // 8c03c964: `jsr; _mov r12,r4` passes the colour 0xff000000 to Fade_Out, and r4 is gone after the call). Real
+    // uses reached only through a branch stay ones: Spawn 8c059b80 stores to the AICA's 0xa08000b0 in a loop entered
+    // by bra, and 8c059c10 reads 0xa08000b4 on one arm of its switch.
+    static final Set<String> DELAYED = new HashSet<>(Arrays.asList(
+        "rts", "rte", "jmp", "braf", "bra", "bsr", "bsrf", "jsr", "bt/s", "bf/s"));
+    static final Set<String> ENDS = new HashSet<>(Arrays.asList("rts", "rte", "jmp", "braf"));
+    static final Set<String> CALLS = new HashSet<>(Arrays.asList("jsr", "bsr", "bsrf"));
+
+    static String text(Instruction in) {
+        return in.toString().toLowerCase().replace("_", "");
+    }
+
+    // One instruction on the walk: true if it uses a register of regs as an address; else applies its write to regs.
+    static boolean step(String t, Set<String> regs) {
+        for (String r : regs) {
+            if (t.matches(".*@-?" + r + "\\b.*") || t.matches(".*@\\([^)]*," + r + "\\).*")
+                || (r.equals("r0") && t.matches(".*@\\(r0,r\\d+\\).*"))) return true;
+        }
+        String[] ops = t.contains(" ") ? t.substring(t.indexOf(' ') + 1).split(",") : new String[0];
+        if (ops.length == 0) return false;
+        String mn = t.split(" ")[0], d = ops[ops.length - 1].trim();
+        if (mn.equals("mov") && ops.length == 2 && regs.contains(ops[0].trim())) {
+            regs.add(d);  // a copy
+        } else if ((mn.startsWith("add") || mn.equals("or")) && regs.contains(d)) {
+            // base + offset, base | offset (batch 29: TC 8c0923e0 reads VRAM at 0xa5000000 | offset): an address
+        } else {
+            regs.remove(d);  // overwritten
+        }
+        return false;
+    }
+
     static boolean usedAsAddress(Listing listing, Instruction start, String reg, AddressSetView body) {
-        Set<String> regs = new HashSet<>(Collections.singleton(reg));
-        Instruction in = start.getNext();
-        for (int n = 0; n < 64 && in != null && body.contains(in.getAddress()) && !regs.isEmpty(); n++, in = in.getNext()) {
-            String t = in.toString().toLowerCase().replace("_", "");
-            String[] ops = t.contains(" ") ? t.substring(t.indexOf(' ') + 1).split(",") : new String[0];
-            for (String r : regs) {
-                if (t.matches(".*@-?" + r + "\\b.*") || t.matches(".*@\\([^)]*," + r + "\\).*")
-                    || (r.equals("r0") && t.matches(".*@\\(r0,r\\d+\\).*"))) return true;
-            }
-            if (ops.length == 0) continue;
-            String d = ops[ops.length - 1].trim();
+        Map<Address, Set<String>> seen = new HashMap<>();
+        Deque<Object[]> work = new ArrayDeque<>();
+        work.push(new Object[] {start.getNext(), new HashSet<>(Collections.singleton(reg)), 0});
+        for (int budget = 256; !work.isEmpty() && budget > 0; ) {
+            Object[] w = work.pop();
+            Instruction in = (Instruction) w[0];
+            @SuppressWarnings("unchecked")
+            Set<String> regs = (Set<String>) w[1];
+            int depth = (Integer) w[2];
+            if (in == null || depth >= 64 || regs.isEmpty() || !body.contains(in.getAddress())) continue;
+            Set<String> had = seen.computeIfAbsent(in.getAddress(), k -> new HashSet<>());
+            if (had.containsAll(regs)) continue;  // this point was walked with these registers already
+            had.addAll(regs);
+            budget--;
+            String t = text(in);
+            if (step(t, regs)) return true;
             String mn = t.split(" ")[0];
-            if (mn.equals("mov") && ops.length == 2 && regs.contains(ops[0].trim())) {
-                regs.add(d);  // a copy
-            } else if ((mn.startsWith("add") || mn.equals("or")) && regs.contains(d)) {
-                // base + offset, base | offset (batch 29: TC 8c0923e0 reads VRAM at 0xa5000000 | offset): an address
-            } else if (regs.contains(d)) {
-                regs.remove(d);  // overwritten
+            Instruction after = in.getNext();
+            if (DELAYED.contains(mn)) {  // the delay slot runs before the transfer
+                if (after == null || !body.contains(after.getAddress())) continue;
+                if (step(text(after), regs)) return true;
+                after = after.getNext();
+                depth++;
             }
-            if (mn.equals("rts")) break;
-            if (mn.equals("jsr") || mn.startsWith("bsr")) regs.removeIf(r -> r.matches("r[0-7]"));  // clobbered by a call
+            if (ENDS.contains(mn)) continue;
+            if (CALLS.contains(mn)) {
+                regs.removeIf(r -> r.matches("r[0-7]"));  // clobbered by the call, after its delay slot
+                work.push(new Object[] {after, regs, depth + 1});
+                continue;
+            }
+            Instruction target = null;
+            if (mn.equals("bra") || mn.equals("bt") || mn.equals("bf") || mn.equals("bt/s") || mn.equals("bf/s")) {
+                java.util.regex.Matcher m = java.util.regex.Pattern.compile("0x([0-9a-f]+)").matcher(t);
+                if (m.find()) target = listing.getInstructionAt(in.getAddress().getNewAddress(Long.parseLong(m.group(1), 16)));
+                if (target != null) work.push(new Object[] {target, new HashSet<>(regs), depth + 1});
+                if (mn.equals("bra")) continue;
+            }
+            work.push(new Object[] {after, regs, depth + 1});
         }
         return false;
     }
@@ -123,6 +189,7 @@ public class TcCatalog extends GhidraScript {
                 if (monitor.isCancelled()) break;
                 AddressSetView body = f.getBody();
                 int insns = 0, fpu = 0, fpuS = 0, fpM = 0, hw = 0, glob = 0, fptr = 0, ind = 0, jt = 0;
+                int srOps = 0, sq = 0;  // isSrOp, isSq
                 int sys = uncached.contains(f.getEntryPoint()) ? 1 : 0;
                 Set<String> strs = new LinkedHashSet<>();
                 Map<Integer, Long> lastPool = new HashMap<>();
@@ -135,7 +202,8 @@ public class TcCatalog extends GhidraScript {
                     if (FPU_SPECIAL.contains(m)) fpuS++;
                     if (FP_MODE.contains(m)) fpM++;
                     if ((m.startsWith("lds") || m.startsWith("sts")) && text.contains("fpscr")) fpM++;
-                    if (SYS.contains(m)) sys++;
+                    if (isSrOp(m, text)) srOps++;
+                    else if (SYS.contains(m)) sys++;
                     FlowType ft = in.getFlowType();
                     if (ft.isCall() && ft.isComputed()) {
                         boolean resolved = false;
@@ -164,7 +232,10 @@ public class TcCatalog extends GhidraScript {
                     }
                     long v = (pv >= 0x0c000000L && pv < 0x0d000000L) ? (pv | 0x80000000L) : pv; // P0 mirror of RAM
                     if (isHw(v)) {
-                        if (dst.startsWith("r") && usedAsAddress(listing, in, dst, body)) hw++;
+                        if (dst.startsWith("r") && usedAsAddress(listing, in, dst, body)) {
+                            if (isSq(v)) sq++;
+                            else hw++;
+                        }
                     } else if (v >= imgStart && v < ramEnd) {
                         Address va = toAddr(v);
                         if (fm.getFunctionAt(va) != null) {
@@ -201,10 +272,11 @@ public class TcCatalog extends GhidraScript {
                 pw.print(String.format(
                     "{\"addr\":\"%s\",\"bytes\":%d,\"insns\":%d,\"blocks\":%d,\"cyclo\":%d,\"loops\":%d,\"callees\":%d,"
                         + "\"callers\":%d,\"indirect_calls\":%d,\"jump_tables\":%d,\"fpu\":%d,\"fpu_special\":%d,\"fp_mode\":%d,"
-                        + "\"hw_refs\":%d,\"sys_ops\":%d,\"globals\":%d,\"func_ptrs\":%d,\"strings\":[%s]}",
+                        + "\"hw_refs\":%d,\"sys_ops\":%d,\"sr_ops\":%d,\"sq_refs\":%d,\"globals\":%d,"
+                        + "\"func_ptrs\":%d,\"strings\":[%s]}",
                     f.getEntryPoint().toString(), body.getNumAddresses(), insns, blocks, edges - blocks + 2, loops,
                     f.getCalledFunctions(monitor).size(), f.getCallingFunctions(monitor).size(), ind, jt, fpu, fpuS, fpM,
-                    hw, sys, glob, fptr, sl));
+                    hw, sys, srOps, sq, glob, fptr, sl));
             }
             pw.println("],");
             StringBuilder fl = new StringBuilder();

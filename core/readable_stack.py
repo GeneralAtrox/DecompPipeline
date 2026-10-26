@@ -11,13 +11,17 @@ as an unnamed global, and 8c049bfc's TOC buffer 0x8cffde58 likewise. So:
   g_pvrHeaders[2].texture) pairs with the host stack address the readable code stores, one to one with the pointer
   arguments (readable_check.map_stack_args), so the store compares equal exactly when it points at the local the
   original's address stands for.
+
+The own frame is bounded: compare's window [STACK_LO, SP) is 0xe000 bytes, and Spawn keeps globals in it
+(its save data at 0x8cff9000), which context.md called "a local of yours" and lean projection left out. A constant
+is a frame address only from frame_lo() (entry r15 less "readable_frame_max", default FRAME_MAX) up, and never when
+the oracle's globals or the registry name it.
 """
 import re
 
 from . import lint
-from .compare import SP, STACK_LO
+from .compare import FRAME_LO, FRAME_MAX, SP, STACK_HI, STACK_LO  # noqa: F401  (FRAME_MAX: also readable_stack's)
 
-STACK_HI = 0x8D000000
 CONST = re.compile(r"\b0[xX]([0-9a-fA-F]{8})[uU]?\b")
 READ = re.compile(r"\brd(?:8|16|32|f32)\s*\(\s*0[xX]([0-9a-fA-F]{8})[uU]?\s*\)")
 
@@ -52,10 +56,28 @@ def code_spans(line, in_comment):
     return spans, False
 
 
-def constants(raw_text):
-    """The guest stack addresses raw.c writes as numbers (outside comments), sorted."""
-    return sorted({int(m.group(1), 16) for m in CONST.finditer(lint.strip_comments(raw_text))
-                   if STACK_LO <= int(m.group(1), 16) < STACK_HI})
+def frame_lo():
+    """The lowest guest address an own frame reaches: the entry r15 less the target's (or project's)
+    "readable_frame_max" (default FRAME_MAX). Below it, compare's stack window is ordinary memory."""
+    from . import paths
+    try:
+        v = paths.config().get("readable_frame_max", FRAME_MAX)
+    except (OSError, KeyError, TypeError, ValueError):
+        v = FRAME_MAX
+    return max(STACK_LO, SP - (int(v, 0) if isinstance(v, str) else v))
+
+
+def known(reg, meta):
+    """The addresses the oracle's globals (meta) and the registry name: globals wherever they are."""
+    return {int(a, 16) for a in (*(meta or {}).get("globals", ()), *getattr(reg, "globals", ()))}
+
+
+def constants(raw_text, named=(), lo=None):
+    """The guest stack addresses raw.c writes as numbers (outside comments), sorted: from lo (frame_lo()) up to the
+    stack's top, less the named globals."""
+    lo = frame_lo() if lo is None else lo
+    return sorted({v for v in (int(m.group(1), 16) for m in CONST.finditer(lint.strip_comments(raw_text)))
+                   if lo <= v < STACK_HI and v not in named})
 
 
 def stack_params(reg, addr, meta):
@@ -97,7 +119,8 @@ def describe(a, params, short=False):
 def annotate_raw(raw_text, reg, addr, meta):
     """raw.c with a comment after each line that writes a guest stack address as a number, saying what it is (a line
     ending inside a block comment or with a backslash is left alone; context.md lists every address)."""
-    if not constants(raw_text):
+    found_all = set(constants(raw_text, known(reg, meta)))
+    if not found_all:
         return raw_text
     params = stack_params(reg, addr, meta)
     out, in_comment = [], False
@@ -108,7 +131,7 @@ def annotate_raw(raw_text, reg, addr, meta):
         for s, e in spans:
             for m in CONST.finditer(body[s:e]):
                 v = int(m.group(1), 16)
-                if STACK_LO <= v < STACK_HI and v not in found:
+                if v in found_all and v not in found:
                     found.append(v)
         if found and not in_comment and not body.endswith("\\"):
             note = "; ".join(describe(v, params, short=True) for v in found)
@@ -147,14 +170,14 @@ def frame_spans(found, pushes):
 
 def context_lines(reg, addr, meta, raw_text, limit=24, asm_text=None):
     """context.md's section on the guest stack addresses raw.c writes as numbers (none: no section)."""
-    found = constants(raw_text)
+    found = constants(raw_text, known(reg, meta))
     if not found:
         return []
     params = stack_params(reg, addr, meta)
     spans = frame_spans(found, prologue_pushes(asm_text))
     lines = ["", "## Stack addresses in raw.c (never globals)", "",
              f"raw.c runs the original on its guest stack: r15 is 0x{SP:08x} at entry. An address at or above it is a "
-             "stack argument (0x8cffe000 + 4N: stack argument N, a parameter); one below it is this function's own "
+             f"stack argument (0x{SP:08x} + 4N: stack argument N, a parameter); one below it is this function's own "
              "frame (a local). Readable C uses the parameter or the local; it never names these numbers.", ""]
     lines += [f"- 0x{a:08x}: {describe(a, params)}" + (
               f". The original's frame has 0x{spans[a]:x} bytes from here up to the next stack address raw.c names "
@@ -197,22 +220,23 @@ def stack_arg_lint(src, raw_text, reg, addr, meta, name):
     return errors
 
 
-def pair_stores(exp, act, stack, g2h, h2g, initial):
+def pair_stores(exp, act, stack, g2h, h2g, initial, frame_lo=FRAME_LO):
     """Memory words outside the guest stack where the original stores a guest stack address and the readable code a
     host stack address: when the two pair one to one with every pointer argument paired so far (map_stack_args'
     g2h/h2g, extended here), the readable word reads as the original's. A pointer to another local (paired with
     another guest slot), or a value that is no host stack address, keeps its bytes and differs. initial(address):
-    the byte there before the run (a written byte equal to it is not in the writes)."""
+    the byte there before the run (a written byte equal to it is not in the writes). frame_lo: the original's own
+    frame bottom (frame_lo()); a word below it is memory, and an address below it is no local (a global)."""
     if not act or not stack:
         return
     lo, hi = stack[0], stack[1]
     ew, aw = exp["writes"], act["writes"]
-    for w in sorted({a & ~3 for a in ew if a < STACK_LO}):
+    for w in sorted({a & ~3 for a in ew if a < frame_lo}):
         if not any(w + i in aw for i in range(4)):
             continue
         g = int.from_bytes(bytes(ew.get(w + i, initial(w + i)) for i in range(4)), "little")
         h = int.from_bytes(bytes(aw.get(w + i, initial(w + i)) for i in range(4)), "little")
-        if not (STACK_LO <= g < STACK_HI and lo <= h < hi) or g2h.get(g, h) != h or h2g.get(h, g) != g:
+        if not (frame_lo <= g < STACK_HI and lo <= h < hi) or g2h.get(g, h) != h or h2g.get(h, g) != g:
             continue
         g2h[g], h2g[h] = h, g
         for i in range(4):

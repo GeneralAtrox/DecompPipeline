@@ -9,8 +9,12 @@
   "fpscr_model": false,
   "param_summaries": true,
   "coverage_inputs": false,
+  "branch_coverage": true, "targeted_vectors": true,
+  "mock_junk": true, "mock_writes": true, "call_snapshots": true, "exit_frame": true,
   "reach_calls": {"runs": 800, "seconds": 150},
+  "oracle_work_per_s": 65000,
   "fpu_state": true,
+  "hw_reads": {"a05f689c": ["0000000b", "SB_SBREV, the system bus revision (Flycast core/hw/holly/sb.cpp: 0xB)"]},
   "readable_image_base": "0x5a000000",
   "address_mirrors": {"0c": "8c"},
   "abi": {
@@ -31,19 +35,28 @@
              ["0xff000000", "0x100000000"]]
   },
   "locked_scripts": [
+    "TcAlign.java",
     "TcBalance.java",
     "TcBase.java",
+    "TcBound.java",
+    "TcBoundPass.java",
+    "TcBudget.java",
     "TcCalls.java",
+    "TcCatalog.java",
     "TcCfg.java",
     "TcCount.java",
+    "TcDirs.java",
     "TcExit.java",
     "TcFacts.java",
     "TcFguide.java",
     "TcFlow.java",
     "TcFold.java",
+    "TcFpscr.java",
     "TcFpu.java",
     "TcFret.java",
     "TcGuide.java",
+    "TcHw.java",
+    "TcJunk.java",
     "TcLoads.java",
     "TcOracle.java",
     "TcPair.java",
@@ -56,12 +69,17 @@
     "TcSaves.java",
     "TcSentinel.java",
     "TcLive.java",
+    "TcLate.java",
     "TcSq.java",
+    "TcSpin.java",
+    "TcSr.java",
     "TcSig.java",
     "TcStack.java",
+    "TcStrict.java",
     "TcSum.java",
     "TcTail.java",
     "TcText.java",
+    "TcTrack.java",
     "TcVectors.java"
   ],
   "known_blockers": [
@@ -76,7 +94,8 @@
     {"id": "xmtrx", "status": ["failed"], "detail": "^blocked: XMTRX", "diff": "^xf\\d+ \\(XMTRX\\): ",
      "fix": "checker (batch 7, fpu_state): XMTRX is compared at exit and at every call (sh4_frchg, sh4_fschg, sh4_ftrv_fv); re-prepare these"},
     {"id": "entry_regs", "status": ["skipped"], "detail": "^unsupported: reads (f?r\\d+(, )?)+ at entry",
-     "fix": "checker: parameter storage r0..r3 and fr4..fr11 read before written (signature inputs from dataflow)"},
+     "fix": "checker: parameter storage r0..r3 and fr4..fr11 read before written (signature inputs from dataflow); entry fr0..fr3 alone as FPU state (8f96131)",
+     "fixed_at": "2026-10-18T18:59:38"},
     {"id": "odd_return", "status": ["skipped"], "detail": "^unsupported: (return in r\\d+|\\d+-bit return value)",
      "fix": "checker: any return register, and a u64 return in r0:r1, in the harness and runtime"},
     {"id": "decompile_failed", "status": ["skipped"], "detail": "^unsupported: decompile failed",
@@ -109,5 +128,12 @@
      "fix": "retry: a real translation mistake (memory, return value, call target or argument); one more Haiku run from its best work.c"},
     {"id": "no_build", "status": ["failed"], "stage": "^(build|lint)$",
      "fix": "retry: the last attempt does not build or breaks a rule; one more Haiku run from its best work.c"}
-  ]
+  ],
+  "translator": {
+    "name": "sh4-translate",
+    "command": ["{python}", "{target}/translate.py", "--repo", "{repo}", "--tool", "{tool}", "--binary", "{binary}",
+                "--addr", "{addr}", "--meta", "{meta}", "--target-json", "{target_json}", "--bodies", "{bodies}",
+                "--out", "{out}"],
+    "timeout_s": 120
+  }
 }

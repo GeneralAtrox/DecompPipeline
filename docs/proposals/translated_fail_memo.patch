@@ -1,0 +1,192 @@
+Keep a translator's FAIL for a later job on the same inputs (waste audit 2, row 23): core/translate_stage.
+A translated attempt 0 that FAILs is kept in the ledger row as "translated_fail", under a key of everything the
+translator and the judge read (the translator's revision, the verdict_memo key, every packet file, the function
+bodies). A later job of that function (a requeue, or tools/translate_backlog.py --record, which now records FAILs)
+takes the kept attempt instead of translating and judging the same C again. A PASS, a tamper, a "-dirty" or unknown
+revision keep none.
+Proof: docs/proofs/2026-10-23/PROOFS.md proof F: 97 Skies functions, the same verdict, score, summary and first
+differences in all three runs (89 PASS, 8 FAIL); the later job took all 8 FAILs, 10.3 -> 0.21 s for them.
+It changes when the judge runs, so it is the user's call with the judge set.
+Apply: git apply docs/proposals/translated_fail_memo.patch   Undo: git apply -R docs/proposals/translated_fail_memo.patch
+
+diff --git a/core/translate_stage.py b/core/translate_stage.py
+index 23e9f70..e50775b 100644
+--- a/core/translate_stage.py
++++ b/core/translate_stage.py
+@@ -13,15 +13,19 @@ seconds), kept in runs/ADDR/translated/ (work.c, check.json); a PASS is a match
+ On a FAIL: agent attempt 1 starts from the translated C (work.c) with its official result and first differences
+ (agent.PREVIOUS) and NOTE, unless an import or the function's own earlier C failed with a better score.
+ Translator gave no C (exit status, timeout): r["translator"] says why; the agent starts as before, from scratch.
++A FAIL is kept in r["translated_fail"] under the key of all the translator and the judge read (_fail_key): a later
++job of the same function (a requeue, or tools/translate_backlog.py --record's FAIL) on the very same inputs takes it
++instead of translating and judging the same C again. A PASS, a tamper, a "-dirty" or unknown revision keep none.
+ """
+ import datetime
++import hashlib
+ import pathlib
+ import shutil
+ import subprocess
+ import sys
+ import time
+ 
+-from . import busylog, paths
++from . import busylog, paths, verdict_memo
+ 
+ NO_TRANSLATION = 3  # the translator's exit status for "this function cannot be translated"
+ SOURCES = {"translated": "translated", "import": "import", "previous": "previous"}  # attempt model -> ledger source
+@@ -108,6 +112,26 @@ def translate(cfg, addr, out, stop_flag=None):
+     return dict(info, ok=True)
+ 
+ 
++def _fail_key(addr, work, rev):
++    """The key of a translated FAIL: the translator's revision, every input the judge reads (core/verdict_memo.key:
++    the C, the harness, the packet's asm, the judge's code, the config with the binary's sha256) and what the
++    translator reads besides (every packet file, the function bodies)."""
++    h = hashlib.sha256(f"translated {rev}\n{verdict_memo.key(addr, work, verdict_memo.judge_stamp())}\n".encode())
++    for p in [paths.FUNCTION_BODIES, *sorted(q for q in (paths.PACKETS / addr).glob("*") if q.is_file())]:
++        h.update(f"{p.name} {paths.sha256_file(p) if p.is_file() else '-'}\n".encode())
++    return h.hexdigest()
++
++
++def _kept_fail(r, addr, rev, work):
++    """The attempt of a FAIL this translator gave on the very inputs it would read now, else None."""
++    k = r.get("translated_fail") or {}
++    if (not k or k.get("rev") != rev or rev == "unknown" or rev.endswith("-dirty") or not work.is_file()
++            or k.get("key") != _fail_key(addr, work, rev)):
++        return None
++    return dict(k["att"], reused=k["att"].get("started"), started=datetime.datetime.now().isoformat(timespec="seconds"),
++                duration_s=0.0, judge_s=0.0)
++
++
+ def attempt(o, w, addr, judge):
+     """Attempt 0 by the target's translator, judged by judge (core/job.judge: the official check, unchanged); None
+     when the stage is off or the translator gave no C (r["translator"] then says why)."""
+@@ -120,6 +144,12 @@ def attempt(o, w, addr, judge):
+     if w.stop_flag.is_set():  # a stop asked for before the translator ran: no attempt, the job records the stop
+         return None
+     run_dir = paths.RUNS / addr / "translated"
++    kept = _kept_fail(r, addr, revision(st[2]), run_dir / "work.c")
++    if kept is not None:
++        r["translator"] = r["translated_fail"]["translator"]
++        o.log(f"[W{w.id}] {addr}: {st[0]} {kept['translator_rev']} failed on these very inputs before "
++              f"({kept.get('summary')}): not translated or judged again")
++        return kept
+     shutil.rmtree(run_dir, ignore_errors=True)
+     run_dir.mkdir(parents=True)
+     work_file = run_dir / "work.c"
+@@ -140,9 +170,14 @@ def attempt(o, w, addr, judge):
+            "cost_usd": 0.0, "work_file": str(work_file), "run_dir": str(run_dir)}
+     if harness() != before:
+         att["tamper"] = "harness files changed while translating"
++    key = _fail_key(addr, work_file, info["rev"])  # before the judge reads its inputs
+     t0 = time.monotonic()
+     att = judge(o, w, addr, 0, att, work_file, run_dir)
+     att["judge_s"] = round(time.monotonic() - t0, 2)
++    if att["verdict"] != "PASS" and not att.get("tamper"):
++        r["translated_fail"] = {"rev": info["rev"], "key": key, "translator": r["translator"], "att": dict(att)}
++    else:
++        r.pop("translated_fail", None)
+     return att
+ 
+ 
+diff --git a/tests/test_translate_stage.py b/tests/test_translate_stage.py
+index 32d42ce..7e72d0a 100644
+--- a/tests/test_translate_stage.py
++++ b/tests/test_translate_stage.py
+@@ -9,7 +9,9 @@ config "translators") writes the function's C and the official judge decides it:
+    for before it runs: no attempt; a translator that changes the harness files: a FAIL (tamper), as for an agent;
+ 4. stage off (no entry, no folder, translate_first false): the job is exactly as before;
+ 5. an import that fails with a better score than the translation still seeds attempt 1; one that passes wins;
+-6. targets/saturn_sh2/translate.py maps DP's inputs onto sh2-translate's API (here a stand-in package).
++6. targets/saturn_sh2/translate.py maps DP's inputs onto sh2-translate's API (here a stand-in package);
++7. a FAIL is kept (r["translated_fail"]): the next attempt on the very same inputs takes it without translating or
++   judging; a changed input, a PASS, or a translator of unknown revision keeps none.
+ The judge (check.run_check) is faked: the stage never changes it. The translator is a real subprocess (a stub).
+ Run: python -W error tests/test_translate_stage.py (also from test_tooling.py).
+ """
+@@ -197,6 +199,56 @@ class Stopped(Stage):
+         self.assertFalse((paths.RUNS / A / "translated").exists())
+ 
+ 
++def vectors(text):
++    (paths.HARNESS / A).mkdir(parents=True, exist_ok=True)
++    (paths.HARNESS / A / "vectors.txt").write_text(text, encoding="utf-8")
++
++
++class KeptFail(Stage):  # waste audit 2, row 23: a FAIL on the same inputs is not translated and judged again
++    def attempts(self, *verdicts, rev="r1", change=None):
++        if rev:
++            (self.root / "REVISION").write_text(rev, encoding="utf-8")
++        o, w = FakeO(), base.FakeW()
++        o.cfg.update({"translator": self.tx, "translators": {"stub-tx": str(self.root)},
++                      "binary_path": self.root / "game.bin"})
++        vectors("1 2 3\n")
++        self.verdicts = list(verdicts)
++        first = translate_stage.attempt(o, w, A, job.judge)
++        if change:
++            change()
++        second = translate_stage.attempt(o, w, A, job.judge)
++        self.assertEqual(self.verdicts, [], "every faked verdict used")
++        return o.rec(A), first, second
++
++    def test_same_inputs_taken(self):
++        r, first, second = self.attempts("FAIL")
++        self.assertEqual(self.judged, [TX_C])  # judged once
++        self.assertEqual({k: second[k] for k in ("verdict", "score", "summary", "work_file")},
++                         {k: first[k] for k in ("verdict", "score", "summary", "work_file")})
++        self.assertEqual(second["reused"], first["started"])
++        self.assertEqual(r["translated_fail"]["rev"], "r1")
++
++    def test_changed_input_judged(self):
++        r, first, second = self.attempts("FAIL", "FAIL",
++                                         change=lambda: vectors("1 2 4\n"))
++        self.assertEqual(self.judged, [TX_C, TX_C])
++        self.assertNotIn("reused", second)
++
++    def test_unknown_revision_judged(self):
++        r, first, second = self.attempts("FAIL", "FAIL", rev=None)
++        self.assertEqual(len(self.judged), 2)
++
++    def test_pass_keeps_none(self):
++        r, first, second = self.attempts("PASS", "PASS")
++        self.assertNotIn("translated_fail", r)
++        self.assertEqual(len(self.judged), 2)
++
++    def test_backlog_record_keeps_fail(self):
++        src = (pathlib.Path(__file__).resolve().parents[1] / "tools" / "translate_backlog.py").read_text(
++            encoding="utf-8")
++        self.assertIn('o.rec(addr)["translated_fail"] = probe.row["translated_fail"]', src)
++
++
+ class Contract(unittest.TestCase):
+     def test_placeholders(self):
+         cfg = {"binary_path": pathlib.Path("g.bin")}
+diff --git a/tools/translate_backlog.py b/tools/translate_backlog.py
+index 7f5ebe3..501e065 100644
+--- a/tools/translate_backlog.py
++++ b/tools/translate_backlog.py
+@@ -10,8 +10,9 @@ usage: python tools/bounded.py 3600 python tools/translate_backlog.py --project
+   keeps them there), not the workspace's build/ADDR/official, which a live worker uses too: no private copy needed.
+   --record  a PASS of a function not yet matched, on a current harness and not unsupported, is finished as a worker
+             finishes it (core/job.finish: matched/ADDR.c, proof gates, ledger "source": "translated"; the row's
+-            earlier attempts kept); a FAIL keeps the row as it is. Refused while the project's server answers (the
+-            server owns the ledger): run it on a private copy, or with the server stopped.
++            earlier attempts kept); a FAIL is kept in the row's "translated_fail" (core/translate_stage), so the
++            job does not translate and judge the same C again on the same inputs. Refused while the project's
++            server answers (the server owns the ledger): run it on a private copy, or with the server stopped.
+   --json    one row per function: verdict, translate_s, judge_s, the first differences or why there was no C, and the
+             ledger's agent figures for it before this run (attempts, tokens, cost, agent seconds), for comparison.
+ """
+@@ -162,6 +163,12 @@ def report(a, paths, filelock, check, job, oracle_fresh, translate_stage):
+             job.finish(o, addr, "matched", f"PASS: translated by {att['translator']} {att['translator_rev']}, "
+                                            f"no agent run" + job.weak_note(att))
+             row["recorded"] = o.rec(addr).get("source")
++        elif (a.record and probe.row.get("translated_fail") and before[addr]["status"] != "matched"
++                and addr not in stale and not meta.get("unsupported")):  # the job takes it on these inputs
++            with o.lock:
++                o.rec(addr)["translated_fail"] = probe.row["translated_fail"]
++            o.save()
++            row["recorded"] = "translated_fail"
+         return row
+ 
+     t0 = time.monotonic()

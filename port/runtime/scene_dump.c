@@ -1,4 +1,4 @@
-/* "Copy game context" (scene_dump.h): the JSON an agent gets, with the frame and the session recording beside it.
+/* "Copy agent prompt" (scene_dump.h): the JSON an agent gets, with the frame and the session recording beside it.
  *   task          the game and the scene fields its map names for the task, on one line
  *   problem       empty: the user says what is wrong
  *   how_to_reach  the port.exe command that replays the session to this frame (session.c), and how to compare
@@ -192,15 +192,23 @@ static void dump(u32 frame)
         port_log("scene: cannot write %s\n", path);
     }
     if (f) fclose(f);
+    /* The clipboard holds a prompt: one instruction line (as Phangrade's crash prompt leads), the JSON, then
+     * Phangrade's context for the run. */
+    Json prompt = {0};
+    json_f(&prompt, "The game \"%s\" (Dreamcast port) shows a problem at the frame captured below. Read the user's "
+                    "description of it, then investigate with this scene dump (how_to_reach replays the session to "
+                    "this frame).\n\n", PORT_GAME_NAME);
+    if (j.p) json_put(&prompt, j.p);
     const char *ctx = scene_env("PHANGRADE_AGENT_CONTEXT", env, sizeof env);
     u32 size = 0;
     char *extra = ctx ? scene_read_file(ctx, 1u << 20, &size) : NULL; /* read now: Phangrade rewrites it */
     if (extra && size) {
-        json_put(&j, "\nPhangrade context for this run:\n");
-        json_put(&j, extra);
+        json_put(&prompt, "\nPhangrade context for this run:\n");
+        json_put(&prompt, extra);
     }
     free(extra);
-    int clip = j.p && scene_clipboard(j.p);
+    int clip = j.p && prompt.p && scene_clipboard(prompt.p);
+    free(prompt.p);
     port_log("scene: dumped %s.json at frame %u (vertical blank %u)%s%s%s\n", base, frame, port_vblank_count(),
              clip ? ", copied to the clipboard" : ", NOT copied to the clipboard", bmp ? "" : ", no frame image",
              rec ? "" : ", no session recording");

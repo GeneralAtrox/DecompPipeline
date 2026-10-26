@@ -1,0 +1,45 @@
+{
+ "old": {
+  "mode": "old",
+  "seconds": 73.0,
+  "added": 187,
+  "analysis_total": [
+   "26",
+   "1",
+   "1"
+  ],
+  "sha256": {
+   "catalog.json": "d6f1310088b5c92292b853564a0ee108a33b139a65cd5399493a7d966b04044a",
+   "code_ranges.txt": "04ae1c863721ed6ad4cffe8384dd2e61097318520109f62a894fc33848072025",
+   "function_bodies.txt": "98a833852dfe5b3512e8f0a946f16a4c5d11ea37c0dc6d6d8617961504108324"
+  }
+ },
+ "new": {
+  "mode": "new",
+  "seconds": 53.1,
+  "added": 187,
+  "analysis_total": [
+   "1"
+  ],
+  "sha256": {
+   "catalog.json": "af9e0ea0b42be6a2569f59386e03ec5d881da7cedc807b4c323a607ed6adba0e",
+   "code_ranges.txt": "04ae1c863721ed6ad4cffe8384dd2e61097318520109f62a894fc33848072025",
+   "function_bodies.txt": "c20ffa2c873490289f2a4233ee2d2fa786dd6cf1e788d24f6a600fa0d625ecc1"
+  }
+ },
+ "old_again": {
+  "mode": "old",
+  "seconds": 76.9,
+  "added": 187,
+  "analysis_total": [
+   "28",
+   "1",
+   "1"
+  ],
+  "sha256": {
+   "catalog.json": "d6f1310088b5c92292b853564a0ee108a33b139a65cd5399493a7d966b04044a",
+   "code_ranges.txt": "04ae1c863721ed6ad4cffe8384dd2e61097318520109f62a894fc33848072025",
+   "function_bodies.txt": "98a833852dfe5b3512e8f0a946f16a4c5d11ea37c0dc6d6d8617961504108324"
+  }
+ }
+}

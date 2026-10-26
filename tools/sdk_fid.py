@@ -33,7 +33,7 @@ import is5cab  # noqa: E402
 import sdk_fid_lib as L  # noqa: E402
 from bounded import kill_tree  # noqa: E402
 sys.path.insert(0, str(TOOL))
-from core import toolcfg  # noqa: E402  (config.json + the git-ignored config.local.json)
+from core import ghidra_broker, toolcfg  # noqa: E402  (config.json + the git-ignored config.local.json)
 
 SCRIPTS = TOOL / "tools" / "fid_scripts"
 
@@ -66,7 +66,8 @@ def headless(cfg, project_dir, name, args, timeout, log):
     env = dict(os.environ, JAVA_HOME=toolcfg.need(cfg, "java_home"))
     env["PATH"] = os.path.join(env["JAVA_HOME"], "bin") + os.pathsep + env["PATH"]
     exe = os.path.join(toolcfg.need(cfg, "ghidra_home"), "support", "analyzeHeadless.bat" if os.name == "nt" else "analyzeHeadless")
-    rc, out = run([exe, project_dir, name, *args], timeout, env=env, log=log)
+    with ghidra_broker.ensure(cfg, label=f"sdk_fid {name}"):  # a machine-wide Ghidra token (core/ghidra_broker)
+        rc, out = run([exe, project_dir, name, *args], timeout, env=env, log=log)
     if rc == 124:
         raise RuntimeError(f"Ghidra killed after {timeout} s (log {log})")
     if rc != 0 or "SCRIPT ERROR" in out or "Unable to lock project" in out or re.search(r"\.java:\d+: error:", out):

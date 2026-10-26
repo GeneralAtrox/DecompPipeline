@@ -11,6 +11,7 @@
 #include "platform.h"
 #include "pvr_vs.h"
 #include "pvr_ps.h"
+#include <d3d11_1.h> /* ClearView, for a clear within the global clip */
 
 #define ISP_DEPTH_SHIFT 29
 #define DEPTH_NEVER 0u
@@ -25,6 +26,7 @@ typedef struct FrameConsts {
     f32 depth_scale, fog_density, punch_ref, shadow_alpha; /* shadow_alpha: 1 - the cheap shadow intensity */
     f32 fog_color[4];
     u32 fog_table[128];
+    f32 wide[4]; /* x: 1 / port_widescreen() */
 } FrameConsts;
 
 static PvrScene g_scene;
@@ -190,8 +192,19 @@ static f32 frame_consts(void)
     c.shadow_alpha = g_pvr.shadow < 0 ? 0.0f : 1.0f - (f32)g_pvr.shadow / 256.0f;
     argb_float(g_pvr.fog_color, c.fog_color);
     for (u32 i = 0; i < 128u; i++) c.fog_table[i] = g_pvr_debug & PVR_DBG_NOFOG ? 0u : g_pvr.fog_table[i];
+    c.wide[0] = 1.0f / port_widescreen();
     upload(g_cb, &c, sizeof c);
     return c.depth_scale;
+}
+
+/* A screen x (0..640) in the draw target: widescreen puts the screen in its middle, and a clip that spans the
+ * screen's width spans the frame's. */
+static LONG draw_x(u32 x, int full)
+{
+    f32 k = port_widescreen();
+    if (k <= 1.0f) return (LONG)(x * g_gfx.draw_w / 640u);
+    if (full) return x ? (LONG)g_gfx.draw_w : 0;
+    return (LONG)((0.5f + ((f32)x - 320.0f) / (640.0f * k)) * (f32)g_gfx.draw_w + 0.5f);
 }
 
 void pvr_scissor(const PvrBatch *b)
@@ -201,11 +214,33 @@ void pvr_scissor(const PvrBatch *b)
     u32 y0 = b->clip[1] > g_pvr.clip[1] ? b->clip[1] : g_pvr.clip[1];
     u32 x1 = b->clip[2] < g_pvr.clip[2] + 1u ? b->clip[2] : g_pvr.clip[2] + 1u;
     u32 y1 = b->clip[3] < g_pvr.clip[3] + 1u ? b->clip[3] : g_pvr.clip[3] + 1u;
-    r.left = (LONG)(x0 * g_gfx.draw_w / 640u);
+    r.left = draw_x(x0, x0 == 0u && x1 >= 640u);
     r.top = (LONG)(y0 * g_gfx.draw_h / 480u);
-    r.right = (LONG)(x1 * g_gfx.draw_w / 640u);
+    r.right = draw_x(x1, x0 == 0u && x1 >= 640u);
     r.bottom = (LONG)(y1 * g_gfx.draw_h / 480u);
     ID3D11DeviceContext_RSSetScissorRects(g_gfx.ctx, 1, &r);
+}
+
+/* Fills the frame with the background colour; with a global clip smaller than the screen only inside it, so the
+ * rest keeps what earlier scenes drew there, as the hardware's frame buffer does (a game drawing its split-screen
+ * views on alternate frames clips each frame to one view). */
+static void clear_background(const f32 bg[4])
+{
+    ID3D11DeviceContext1 *c1;
+    D3D11_RECT r;
+    u32 x0 = g_pvr.clip[0], y0 = g_pvr.clip[1], x1 = g_pvr.clip[2] + 1u, y1 = g_pvr.clip[3] + 1u;
+    int full = x0 == 0u && x1 >= 640u;
+    if ((full && y0 == 0u && y1 >= 480u) ||
+        FAILED(ID3D11DeviceContext_QueryInterface(g_gfx.ctx, &IID_ID3D11DeviceContext1, (void **)&c1))) {
+        ID3D11DeviceContext_ClearRenderTargetView(g_gfx.ctx, g_gfx.draw_rtv, bg);
+        return;
+    }
+    r.left = draw_x(x0, full);
+    r.right = draw_x(x1 < 640u ? x1 : 640u, full);
+    r.top = (LONG)(y0 * g_gfx.draw_h / 480u);
+    r.bottom = (LONG)((y1 < 480u ? y1 : 480u) * g_gfx.draw_h / 480u);
+    ID3D11DeviceContext1_ClearView(c1, (ID3D11View *)g_gfx.draw_rtv, bg, &r, 1);
+    ID3D11DeviceContext1_Release(c1);
 }
 
 static void draw_list(u32 pass, u32 list)
@@ -268,7 +303,7 @@ static int draw_scene(const PvrPass *passes)
         return 0;
     scale = frame_consts();
     argb_float(g_pvr.bg_argb[0] | 0xff000000u, bg);
-    ID3D11DeviceContext_ClearRenderTargetView(cx, g_gfx.draw_rtv, bg);
+    clear_background(bg);
     bind_pipeline();
     for (u32 p = 0; p < g_scene.passes; p++) {
         if (p == 0 || passes[p].z_clear)

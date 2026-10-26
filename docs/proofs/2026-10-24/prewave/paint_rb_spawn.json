@@ -1,0 +1,2382 @@
+{
+"8c010080": [
+"PASS",
+0,
+98,
+"compare",
+"{}"
+],
+"8c010868": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c010bfe": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c010c8c": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c010c92": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c011058": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c011c16": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c011e24": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c011ebc": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c012290": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0122d8": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0123c8": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0123d0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01243a": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c012444": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c012490": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0128a0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0134ba": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c014064": [
+"FAIL",
+36,
+96,
+"compare",
+"{\"vector\": 0, \"inputs\": \"sh4_fr(14)=-758.0485\", \"diffs\": [\"memory 0x8cff8ffc: expected 54fe0000, got 54fe0001 (the original does not write here)\"]}"
+],
+"8c0146ba": [
+"FAIL",
+1,
+96,
+"compare",
+"{\"vector\": 40, \"inputs\": \"param_1=0x6fd3b00b\", \"diffs\": [\"memory 0x8cff9000: expected 3005c08c, got 00000000 (the original does not write here)\", \"memory 0x8cff9004: expected e067f2be, got 09000000 (the original does not write here)\", \"memory 0x8cff9008: expected 6004c08c, got 00008a42 (the original"
+],
+"8c014b00": [
+"FAIL",
+89,
+99,
+"compare",
+"{\"vector\": 0, \"inputs\": \"sh4_fr(14)=-1\", \"diffs\": [\"memory 0x8cff8ffc: expected 980bc08c, got 9800c08c (the original does not write here)\"]}"
+],
+"8c015340": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01552e": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c015552": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c015660": [
+"FAIL",
+40,
+96,
+"compare",
+"{\"vector\": 0, \"inputs\": \"param_1=0x00000000\", \"diffs\": [\"memory 0x8cff8fec: expected be0eef94, got 00000000 (the original does not write here)\", \"memory 0x8cff8ff0: expected e400c08c, got 00000000 (the original does not write here)\"]}"
+],
+"8c0157b0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c015960": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c015a40": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c015da0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0160a0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c016260": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0164e0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0165b6": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01669c": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0169b0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c017460": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c017660": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0176b0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0176ce": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01771e": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01781c": [
+"PASS",
+0,
+100,
+"compare",
+"{}"
+],
+"8c0179b0": [
+"FAIL",
+27,
+96,
+"compare",
+"{\"vector\": 1, \"inputs\": \"param_r5=0xc61ffb40, param_r6=0x8cc00c14, param_s0 in stack, param_s1 in stack, param_s2 in stack, param_fr4 in fr4, param_fr5 in fr5, param_fr6 in fr6, param_fr7 in fr7, param_fr8 in fr8, param_fr9 in fr9, param_fr10 in fr10, param_fr11 in fr11\", \"diffs\": [\"memory 0x8cfe306"
+],
+"8c018058": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c018066": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c018076": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0180e0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01812e": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c018268": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c018568": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0185f6": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c018ab2": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c018b20": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c018d96": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c018f16": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0190e0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0192aa": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0192e0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0194e0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0197e0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c019f22": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01a860": [
+"FAIL",
+96,
+96,
+"compare",
+"{\"vector\": 0, \"inputs\": \"param_r4=0x8cc00d04, param_r5=0x8cc00e94, param_r6=0x8cc01900, param_r7=0x00000000, param_9 in stack\", \"diffs\": [\"memory 0x8cc15174: expected 0000c07f, got 0000c0ff\", \"memory 0x8cc15194: expected 0000c07f, got 0000c0ff\", \"memory 0x8cc151b4: expected 0000c07f, got 0000c0ff\", "
+],
+"8c01ad2c": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01ae40": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01b6f8": [
+"PASS",
+0,
+98,
+"compare",
+"{}"
+],
+"8c01b9e0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01bd9c": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01d52c": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01db80": [
+"FAIL",
+1,
+96,
+"compare",
+"{\"vector\": 4, \"inputs\": \"param_1 in fr4, param_2=0x8cc01100, param_3=0x8cc00064, param_4=0x8cc00f0c\", \"diffs\": [\"memory 0x8cc00068: expected 0000c07f, got ffffffff\"]}"
+],
+"8c01de10": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01e9c0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01f000": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01f43e": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01f6a0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c01f706": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c021160": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c021280": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c021282": [
+"PASS",
+0,
+104,
+"compare",
+"{}"
+],
+"8c0217e0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c021ac6": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0232b4": [
+"FAIL",
+10,
+102,
+"compare",
+"{\"vector\": 24, \"inputs\": \"param_r4=0x8cc0013c, param_r5=0x8cc0088c\", \"diffs\": [\"memory 0x8cc00140: expected 0000c07f, got ffffffff\", \"memory 0x8cc00144: expected 0000c07f, got ffffffff\"]}"
+],
+"8c023fc0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c02412a": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c024740": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c024e24": [
+"PASS",
+0,
+94,
+"compare",
+"{}"
+],
+"8c024ea6": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0255ca": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c025786": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c02702e": [
+"PASS",
+0,
+148,
+"compare",
+"{}"
+],
+"8c027e80": [
+"PASS",
+0,
+110,
+"compare",
+"{}"
+],
+"8c02876e": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c029380": [
+"PASS",
+0,
+128,
+"compare",
+"{}"
+],
+"8c029fc0": [
+"PASS",
+0,
+122,
+"compare",
+"{}"
+],
+"8c02aca0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c02b340": [
+"PASS",
+0,
+98,
+"compare",
+"{}"
+],
+"8c02bcaa": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c02bcfe": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c02be8e": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c02e1c0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c02e300": [
+"PASS",
+0,
+114,
+"compare",
+"{}"
+],
+"8c02eccc": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c02f5a0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c02f704": [
+"PASS",
+0,
+97,
+"compare",
+"{}"
+],
+"8c02fb40": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c02fd1a": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c030382": [
+"PASS",
+0,
+98,
+"compare",
+"{}"
+],
+"8c0305de": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c030d3c": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c030e36": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c030eb4": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c030f5a": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c030fa0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c030fae": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c030fca": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c030fd8": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c030fe6": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c030ff4": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c031002": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0312fa": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0313a0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c032028": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c032076": [
+"PASS",
+0,
+114,
+"compare",
+"{}"
+],
+"8c032d60": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0330c2": [
+"PASS",
+0,
+111,
+"compare",
+"{}"
+],
+"8c033840": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c033980": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c034080": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0343c0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c034900": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c035510": [
+"FAIL",
+1,
+96,
+"compare",
+"{\"vector\": 36, \"inputs\": \"param_1=0x8cc00fa4\", \"diffs\": [\"memory 0x8cc00fd0: expected 0000c07f, got ffffffff\"]}"
+],
+"8c03572e": [
+"FAIL",
+3,
+96,
+"compare",
+"{\"vector\": 7, \"inputs\": \"param_1=0x8cc01100\", \"diffs\": [\"memory 0x8cc01128: expected 0000c07f, got ffffffff\"]}"
+],
+"8c0360e0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c036320": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c036384": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c036860": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c037fa0": [
+"PASS",
+0,
+98,
+"compare",
+"{}"
+],
+"8c038740": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c038de0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0393ac": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0396e0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c039bca": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c03a160": [
+"PASS",
+0,
+102,
+"compare",
+"{}"
+],
+"8c03a760": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c03b260": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c03b280": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c03c964": [
+"PASS",
+0,
+112,
+"compare",
+"{}"
+],
+"8c03d2f8": [
+"PASS",
+0,
+100,
+"compare",
+"{}"
+],
+"8c03d720": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c03d8a0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c03dc22": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c03e0a0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c03f364": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c03f500": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c03fc20": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c040062": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c040422": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c040880": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c041100": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c041af6": [
+"PASS",
+0,
+98,
+"compare",
+"{}"
+],
+"8c042c80": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c043000": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c043184": [
+"PASS",
+0,
+98,
+"compare",
+"{}"
+],
+"8c04339a": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c043604": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c043c72": [
+"PASS",
+0,
+100,
+"compare",
+"{}"
+],
+"8c043e80": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0444c0": [
+"PASS",
+0,
+98,
+"compare",
+"{}"
+],
+"8c044700": [
+"PASS",
+0,
+101,
+"compare",
+"{}"
+],
+"8c044f34": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c045632": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c045832": [
+"PASS",
+0,
+98,
+"compare",
+"{}"
+],
+"8c045a34": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c045a92": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c045aa0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c045b40": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c045b4e": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c046220": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c046252": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c046262": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0466c0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c046860": [
+"PASS",
+0,
+98,
+"compare",
+"{}"
+],
+"8c046a24": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c046b06": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c046c50": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c046de0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c047396": [
+"PASS",
+0,
+99,
+"compare",
+"{}"
+],
+"8c047598": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0475c4": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c047d1e": [
+"PASS",
+0,
+106,
+"compare",
+"{}"
+],
+"8c048140": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c048bac": [
+"PASS",
+0,
+102,
+"compare",
+"{}"
+],
+"8c048f8e": [
+"PASS",
+0,
+107,
+"compare",
+"{}"
+],
+"8c049240": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0498a8": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c049a40": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04a354": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04ac02": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04b380": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04b4c0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04b76a": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04bd9e": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04bec0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04c824": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04c860": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04cba0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04cc40": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04ce4a": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04d360": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04d38c": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04d7e0": [
+"FAIL",
+50,
+96,
+"compare",
+"{\"vector\": 1, \"inputs\": \"sh4_fr(14)=-396.4438\", \"diffs\": [\"memory 0x8cff6118: expected 6db2e90c, got 0100e90c (the original does not write here)\", \"memory 0x8cff6130: expected 3c937d46, got 3c007d46 (the original does not write here)\"]}"
+],
+"8c04d970": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04da10": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04dab0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04e960": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04eca0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04ede0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04eeb0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04f0f0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04f360": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04f410": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04f8d0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04f930": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04f950": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04f970": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04f980": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04f9a0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04f9b0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c04ff40": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c050250": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c050360": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c050370": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c050380": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c050420": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c050480": [
+"PASS",
+0,
+98,
+"compare",
+"{}"
+],
+"8c050650": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0507d0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c050880": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0508f0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c050ab0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c050c30": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c050c40": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c051250": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0515c0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0517c0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c051960": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c051c30": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c051fb0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c052130": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c052470": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0524e0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0526a0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c052b30": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c052c00": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c052f00": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c052ff0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c053160": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c053170": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c053680": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0536a0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c053970": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c053990": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c053d80": [
+"FAIL",
+8,
+96,
+"compare",
+"{\"vector\": 0, \"inputs\": \"param_r4=0x8cc001b0, param_r5=0x8cc0068c, param_fr4 in fr4\", \"diffs\": [\"memory 0x8cc001b0: expected 0000c07f, got 0000c0ff\", \"memory 0x8cc001b4: expected 0000c07f, got 0000c0ff\", \"memory 0x8cc001b8: expected 0000c07f, got 0000c0ff\"]}"
+],
+"8c054030": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0540f0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0541f0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c054230": [
+"FAIL",
+18,
+96,
+"compare",
+"{\"vector\": 0, \"inputs\": \"param_r4=0x00000000, param_fr4 in fr4, param_fr5 in fr5, param_fr6 in fr6\", \"diffs\": [\"memory 0x8c0c7250: expected 0000c07f, got ffffffff\", \"memory 0x8c323db4: expected 0000c07f, got ffffffff\"]}"
+],
+"8c054ec0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c054f40": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c055180": [
+"PASS",
+0,
+97,
+"compare",
+"{}"
+],
+"8c0554a0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0554e0": [
+"PASS",
+0,
+89,
+"compare",
+"{}"
+],
+"8c0555b0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0555c0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0555d0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c055810": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c055c70": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c055d10": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c055d50": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c055d60": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c055ed0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c055f30": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c056000": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0560a0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0562f0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c056460": [
+"FAIL",
+10,
+96,
+"compare",
+"{\"vector\": 10, \"inputs\": \"\", \"diffs\": [\"memory 0x8c361fd8: expected 0000c07f, got ffffffff\", \"memory 0x8c361fdc: expected 0000c07f, got ffffffff\"]}"
+],
+"8c056700": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c056970": [
+"PASS",
+0,
+86,
+"compare",
+"{}"
+],
+"8c056bf0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c056ca0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c056dc0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c056df0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c056f20": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c056f30": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c057010": [
+"PASS",
+0,
+100,
+"compare",
+"{}"
+],
+"8c057600": [
+"FAIL",
+1,
+96,
+"compare",
+"{\"vector\": null, \"inputs\": \"\", \"diffs\": [\"(failures are only in the hidden set)\"]}"
+],
+"8c057950": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0579e0": [
+"PASS",
+0,
+98,
+"compare",
+"{}"
+],
+"8c057be0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c057c00": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c058030": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c058150": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0583b0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c058560": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c058740": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0587e0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0587f0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c058800": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c058810": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c058820": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0588d0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c058b70": [
+"FAIL",
+3,
+96,
+"compare",
+"{\"vector\": 13, \"inputs\": \"param_1=0x8cc00938\", \"diffs\": [\"memory 0x8c0c74f4: expected 0000c0ff, got ffffff7f\", \"memory 0x8c327f7c: expected 0000c07f, got ffffffff\", \"memory 0x8c327f84: expected 0000c07f, got ffffffff\"]}"
+],
+"8c059010": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c059230": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c059b20": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c059c10": [
+"PASS",
+0,
+98,
+"compare",
+"{}"
+],
+"8c05a240": [
+"PASS",
+0,
+98,
+"compare",
+"{}"
+],
+"8c05b374": [
+"PASS",
+0,
+98,
+"compare",
+"{}"
+],
+"8c05b492": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05b5a8": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05b738": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05b7d8": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05b974": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05bb2c": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05bf68": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05c048": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05c206": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05c338": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05c3ec": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05cbc6": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05d228": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05d5a0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05d638": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05d688": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05d6be": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05d828": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05dd78": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c05e700": [
+"PASS",
+0,
+104,
+"compare",
+"{}"
+],
+"8c05fec0": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c062d60": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c062d6a": [
+"PASS",
+0,
+96,
+"compare",
+"{}"
+],
+"8c0639c0": [
+"FAIL",
+30,
+96,
+"compare",
+"{\"vector\": 0, \"inputs\": \"param_3=0x8cc0029c, param_r5=0x8cc01100, sh4_fr(0..15)=-1,-22,0.5,1,-14,142.5284,-86258.95,0.4487723,595.9586,-29854.1,149.7972,185.3119,0.397621,-3.657723e-32,254.4751,-1.000934e-15\", \"diffs\": [\"memory 0x8c07d56c: expected 0000c07f, got ffffffff\"]}"
+]
+}

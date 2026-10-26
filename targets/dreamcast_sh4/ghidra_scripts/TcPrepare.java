@@ -7,6 +7,10 @@
 //   7 marks file ("-" for none): lines "addr<TAB>status<TAB>note" written back as bookmarks
 //   8 hints file ("-" for none): oracle/hints/<addr>.txt, input hints passed to TcInputs.applyHints
 //   9 target facts file ("-" for none): the calling convention and memory map (TcFacts, written by core/ghidra.py)
+//  10 "spin" when project.json "spin_waits" lists the function (TcSpin applies), "spin:w_..." with the words its
+//     evidence names (compare.spin_arg), else "-" or absent
+//  11 "hw:..." when project.json "hw_ops" lists the function: its listed hardware ops (TcHw, core/hw_ops.arg), else
+//     "-" or absent
 //
 // LOCKED: the watcher agent may not change this file (it may only change the project's TcInputs.java and hints).
 //
@@ -41,11 +45,15 @@ public class TcPrepare extends TcVectors {
         long entry = Long.parseLong(a[0], 16);
         Path packet = Paths.get(a[1]), harness = Paths.get(a[2]);
         int ndev = Integer.parseInt(a[3]), nhidden = Integer.parseInt(a[4]);
-        long seed = Long.parseLong(a[5]);
+        long seed = TcStrict.seed = Long.parseLong(a[5]);  // TcStrict: the junk's key
         Path fsca = Paths.get(a[6]);
         String marks = a.length > 7 ? a[7] : "-";
         String hintsFile = a.length > 8 ? a[8] : "-";
         facts = TcFacts.load(a.length > 9 ? a[9] : "-");
+        frameLo = facts.frameLo;
+        spinWait = a.length > 10 && a[10].startsWith("spin");
+        if (spinWait && a[10].startsWith("spin:")) for (String w : a[10].substring(5).split("_")) spinWords.add(Long.parseLong(w, 16));
+        TcHw.on = TcHw.parse(a.length > 11 ? a[11] : "-");  // listed hardware ops (TcHw), null: none (every prepare)
         List<String> hints = hintsFile.equals("-") ? new ArrayList<>() : Files.readAllLines(Paths.get(hintsFile));
         Files.createDirectories(packet);
         Files.createDirectories(harness);
@@ -59,6 +67,8 @@ public class TcPrepare extends TcVectors {
         fn = fm.getFunctionAt(toAddr(entry));
         if (fn == null) throw new IllegalArgumentException("no function at " + a[0]);
         body = TcTail.extent(currentProgram, fn);  // its body and the shared tails it runs: listed, blocked, covered, run
+        TcFpscr.on = TcFpscr.of(listing, body, facts.fpscrModel);  // FPSCR is state when the body reads or writes it
+        TcTrack.on = null;  // set once the prototype is known
         String name = "fn_" + a[0].toLowerCase();
 
         // blocks
@@ -71,13 +81,21 @@ public class TcPrepare extends TcVectors {
         }
         blocks.sort(Comparator.comparingLong(x -> x[0]));
         for (int i = 0; i < blocks.size(); i++) blockIndex.put(blocks.get(i)[0], i);
+        if (facts.branchCoverage || facts.targetedVectors) dirs = TcDirs.of(listing, body);  // TcDirs, TcBound
 
-        // fsca table: 65536 x (sin bits, cos bits), little endian
+        // fsca table (core/fsca.py): 2 x 65536 x (sin bits, cos bits), little endian; round to nearest, toward zero
         byte[] tb = Files.readAllBytes(fsca);
+        if (tb.length != 2 * 65536 * 8)
+            throw new IllegalStateException("fsca table " + fsca + ": " + tb.length + " bytes, not " + 2 * 65536 * 8
+                + " (both tables: python -m core.fsca)");
         java.nio.ByteBuffer bb = java.nio.ByteBuffer.wrap(tb).order(java.nio.ByteOrder.LITTLE_ENDIAN);
+        for (int t = 0; t < 2; t++) {
+            for (int i = 0; i < 65536; i++) {
+                fscaSin[t][i] = bb.getInt();
+                fscaCos[t][i] = bb.getInt();
+            }
+        }
         for (int i = 0; i < 65536; i++) {
-            fscaSin[i] = bb.getInt();
-            fscaCos[i] = bb.getInt();
             float angle = (Float.intBitsToFloat(0x40c90fdb) * (float) i) / 65536f;
             angleToFraction.put(Float.floatToIntBits(angle), i);
         }
@@ -108,7 +126,9 @@ public class TcPrepare extends TcVectors {
             if (blockIndex.containsKey(ia) && ia != entry) asm.append(String.format("LAB_%s:\n", hex(ia)));
             String text = in.toString();
             String m = in.getMnemonicString().toLowerCase().replace("_", "");
-            if (m.matches("fsca|fsrra|fsqrt|ftrv|fipr|frchg|fschg|fpchg")) sh4Special.add(m); // agent.py: the helpers
+            if (m.matches("fsca|fsrra|fsqrt|fmac|ftrv|fipr|frchg|fschg|fpchg")) sh4Special.add(m); // agent.py: helpers
+            if (TcSr.op(in) != null) sh4Special.add(TcSr.op(in));  // stc sr, ldc sr: sh4_stc_sr, sh4_ldc_sr
+            if (TcHw.on != null && TcHw.on.special(in) != null) sh4Special.add(TcHw.on.special(in));  // gbr, cache: TcHw
             if (m.matches("ftrv|frchg") || text.toLowerCase().contains("xd") || text.toLowerCase().contains("xf")) usesXf = true;
             String note = "";
             Long pv = poolValue(in);
@@ -131,6 +151,11 @@ public class TcPrepare extends TcVectors {
         Files.write(packet.resolve("asm.txt"), asm.toString().getBytes("UTF-8"));
 
         Proto proto = prototypeOf(di, fn);
+        String hwWhy = TcHw.on == null || proto.unsupported != null ? null : TcHw.on.check(this, body);
+        if (hwWhy != null) {  // a hardware op the listing does not name: as unsupported as before (TcHw)
+            proto = copyOf(proto);
+            proto.unsupported = hwWhy;
+        }
         callWide |= proto.fpuState;  // TcOracle: the 57-field call record (r0..r3, r8..r14, then the FPU)
         DecompileResults dres = di.decompileFunction(fn, 60, monitor);
         String cText = dres.decompileCompleted() ? dres.getDecompiledFunction().getC()
@@ -141,11 +166,14 @@ public class TcPrepare extends TcVectors {
 
         // callees: registers that carry their parameters (compared at each call)
         StringBuilder callees = new StringBuilder();
+        Map<Long, List<String>> regsOf = new HashMap<>();  // TcStrict: each callee's compared registers
         for (Function c : calledBy(fn, body)) {
             Proto cp = prototypeOf(di, c, PASS_DEPTH - 1);  // what fn's pass-through analysis assumed
             if (cp.ret.equals("f32")) floatRet.add(c.getEntryPoint().getOffset());  // TcFret
             StringBuilder regs = new StringBuilder();
-            for (String r : calleeRegs(cp, c)) {
+            List<String> cr = calleeRegs(cp, c);
+            regsOf.put(c.getEntryPoint().getOffset(), cr);
+            for (String r : cr) {
                 if (regs.length() > 0) regs.append(',');
                 regs.append('"').append(r).append('"');
                 callWide |= r.matches("r([0-3]|[89]|1[0-4])");  // TcOracle: the 36-field call record
@@ -155,7 +183,10 @@ public class TcPrepare extends TcVectors {
                 hex(c.getEntryPoint().getOffset()), regs, esc(cSignature("fn_" + hex(c.getEntryPoint().getOffset()), cp))));
         }
         live = facts.paramSummaries ? TcLive.of(this, calledBy(fn, body)) : null;  // callees changing r8..r14
+        TcTrack.on = TcTrack.of(listing, body, calledBy(fn, body), proto);  // pointer calls' arguments, float NaN words
+        TcStrict.callees(this, calledBy(fn, body), regsOf);  // mock_junk: what each callee may change (TcStrict)
         sq = TcSq.of(listing, body, proto.giState);  // a state pointer whose store queue the function sends
+        sr = TcSr.of(listing, body);  // SR read or written (TcSr)
         di.dispose();
 
         StringBuilder params = new StringBuilder();
@@ -194,6 +225,9 @@ public class TcPrepare extends TcVectors {
         if (live != null) extra.append(",\n  \"r_live\": ").append(live.meta());  // TcLive
         if (sq != null) extra.append(",\n  \"sq_window\": ").append(sq.meta());  // TcSq
         if (proto.fpuState) extra.append(",\n  \"fpu_state\": true");  // TcSig.fpuProto: the whole FPU is state
+        if (TcHw.on != null) extra.append(",\n  \"hw_ops\": ").append(TcHw.on.meta());  // listed hardware ops (TcHw)
+        if (TcFpscr.on != null) extra.append(",\n  \"fpscr_state\": true");  // FPSCR is state (TcFpscr)
+        extra.append(TcStrict.meta(facts));  // the facts mock_writes wrote from (TcStrict)
         String meta = String.format("{\n  \"addr\": \"%s\",\n  \"name\": \"%s\",\n  \"bytes\": %d,\n  \"signature\": \"%s\",\n"
                 + "  \"params\": [%s],\n  \"ret\": \"%s\",\n  \"unsupported\": %s,\n  \"callees\": [%s],\n"
                 + "  \"globals\": [%s],\n  \"blocks\": [%s],\n  \"sh4_special\": [%s],\n  \"uses_xf\": %s,\n"
@@ -208,6 +242,7 @@ public class TcPrepare extends TcVectors {
         }
 
         // vectors + oracle (TcVectors)
+        for (long g : globals) namedWords.add(g & ~3L);
         makeVectors(proto, new ArrayList<>(globals), hints, seed, ndev, nhidden);
         String why = outside >= 0 ? "executes code outside its body at " + hex(outside) : outOfTime ? String.format(
             "oracle: vector generation did not finish in time (dev %d of %d tried valid, hidden %d of %d; step limit x%d:"
@@ -221,6 +256,8 @@ public class TcPrepare extends TcVectors {
             valid[0] = valid[1] = 0;
             covDev.clear();
             covAll.clear();
+            dirsDev.clear();
+            dirsAll.clear();
             blockHits.clear();
             siteHits.clear();
             meta = meta.replace("\"unsupported\": null,", "\"unsupported\": \"" + why + "\",");
@@ -229,8 +266,17 @@ public class TcPrepare extends TcVectors {
             println("TcPrepare: unsupported: " + why);
         }
         String reach = why == null ? TcReach.run(this, proto, seed, seeds) : null;  // vectors reaching unreached calls
-        Files.write(harness.resolve("vectors.txt"), (fpscrLine() + (live != null ? live.header() : "") + (sq != null ? sq.header() : "") + vout).getBytes("UTF-8"));
+        String bound = why == null ? TcBoundPass.run(this, proto, seed, new ArrayList<>(globals)) : null;  // TcBound
+        if (why == null) align.replace(this, proto, new ArrayList<>(globals), hints, seed);  // for those left out
+        String head = fpscrLine() + TcHw.header() + (live != null ? live.header() : "")
+            + (sq != null ? sq.header() : "");
+        Files.write(harness.resolve("vectors.txt"), (head + TcStrict.header(facts) + vout).getBytes("UTF-8"));  // J, U
         Files.write(harness.resolve("expected.txt"), eout.toString().getBytes("UTF-8"));
+        for (int s = 0; s < 2; s++) {  // chosen vectors whose strict replay failed: not written (TcStrict.replay)
+            valid[s] -= TcStrict.dropped[s];
+            if (TcStrict.dropped[s] > 0) invalid.merge("strict flags: the replay failed", TcStrict.dropped[s], Integer::sum);
+        }
+        if (why == null) align.fix(this);  // the written vectors' counts and coverage (TcAlign)
         StringBuilder inv = new StringBuilder();
         for (Map.Entry<String, Integer> e : invalid.entrySet()) {
             if (inv.length() > 0) inv.append(',');
@@ -259,12 +305,16 @@ public class TcPrepare extends TcVectors {
         }
         String summary = String.format("{\"dev_valid\":%d,\"dev_tried\":%d,\"hidden_valid\":%d,\"hidden_tried\":%d,"
                 + "\"blocks_total\":%d,\"blocks_hit_dev\":%d,\"blocks_hit_all\":%d,\"min_block_hits\":%d,"
-                + "\"repaired\":%d,%s\"hints\":%d,\"call_sites\":{%s},\"invalid\":{%s},\"examples\":[%s]}\n",
+                + "\"repaired\":%d,\"work\":[%d,%d],%s\"hints\":%d,\"call_sites\":{%s},\"invalid\":{%s},"
+                + "\"examples\":[%s]}\n",
             valid[0], tried[0], valid[1], tried[1], blocks.size(), covDev.size(), covAll.size(),
-            blockHits.isEmpty() ? 0 : Collections.min(blockHits.values()), repaired, (rescued ? "\"rescued\":1," : "")
+            blockHits.isEmpty() ? 0 : Collections.min(blockHits.values()), repaired, workSteps, workRuns,
+            (rescued ? "\"rescued\":1," : "")
             + (textRestored > 0 ? "\"text_restored\":" + textRestored + "," : "")
             + (bal.length() > 0 ? "\"stack_balance\":[" + bal + "]," : "") + (reach != null ? reach + "," : "")
-            + (unhit.length() > 0 ? "\"blocks_unhit\":[" + unhit + "]," : ""),
+            + (unhit.length() > 0 ? "\"blocks_unhit\":[" + unhit + "]," : "")
+            + (bound != null ? bound + "," : "")
+            + (dirs != null && why == null ? dirs.summary(dirsDev, dirsAll) : "") + (why == null ? align.note() : ""),
             hints.size(), sites, inv, ex);
         Files.write(harness.resolve("oracle_summary.json"), summary.getBytes("UTF-8"));
         println("TcPrepare: " + summary.trim());

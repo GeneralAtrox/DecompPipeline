@@ -3,14 +3,16 @@
 Verdict is PASS only when every rule holds and every vector in the requested sets matches
 the original machine code's observable effects bit for bit.
 """
+import hashlib
 import json
+import os
 import pathlib
 import re
 import shutil
 import threading
 import time
 
-from . import paths, toolcfg
+from . import filelock, paths, proof, readable_stack, strict_judge, target_hooks, toolcfg
 from .compare import (IMAGE_BASE, REG_INDEX, SP, STACK_LO, Memory, _f, compare_vector, is_nan,  # noqa: F401
                       parse_results, parse_vectors, same_f32)
 from .lint import lint
@@ -109,24 +111,135 @@ void tc_thunk(const u32 *r, const f32 *fr, u32 *out_r0, f32 *out_fr0)
 """
 
 
-def msvc_env(cfg):
-    env = paths.read_json(paths.MSVC_ENV)
-    if env:
-        return env
-    vcvars = toolcfg.need(cfg, "vcvars").replace("/", "\\")
-    rc, out, reason = paths.run_bounded(f'cmd /d /s /c ""{vcvars}" >nul 2>&1 && set"', 180)
-    if rc != 0 or reason:
-        raise RuntimeError("could not load the Visual Studio environment (vcvars64.bat)")
-    env = {}
-    for line in out.splitlines():
-        if "=" in line:
-            k, v = line.split("=", 1)
-            env[k] = v
-    paths.write_json(paths.MSVC_ENV, env)
+# What a Visual Studio environment cache keeps (state/msvc_env.json, msvc_env_x86.json; port/tools/build.py keeps
+# the same): the compiler's and linker's variables, Visual Studio's and the Windows SDK's, and the Windows ones a
+# process needs. Nothing else the shell had is written to disk: no session token, pass key or address.
+CAPTURED = ("PATH", "INCLUDE", "LIB", "LIBPATH", "EXTERNAL_INCLUDE", "CL", "_CL_", "LINK", "_LINK_",
+            "SYSTEMROOT", "WINDIR", "SYSTEMDRIVE", "COMSPEC", "PATHEXT", "TEMP", "TMP", "OS", "NUMBER_OF_PROCESSORS",
+            "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER", "PROCESSOR_LEVEL", "PROCESSOR_REVISION",
+            "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432", "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(X86)",
+            "COMMONPROGRAMW6432", "PROGRAMDATA", "ALLUSERSPROFILE", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+            "PLATFORM", "COMMANDPROMPTTYPE", "DEVENVDIR", "EXTENSIONSDKDIR", "HTMLHELPDIR", "NETFXSDKDIR",
+            "UCRTVERSION", "UNIVERSALCRTSDKDIR", "VCIDEINSTALLDIR", "VCINSTALLDIR", "VCTOOLSINSTALLDIR",
+            "VCTOOLSREDISTDIR", "VCTOOLSVERSION", "VSINSTALLDIR", "VISUALSTUDIOVERSION", "WINDOWSLIBPATH",
+            "VCPKG_ROOT")  # the port build's vcpkg toolchain
+CAPTURED_RE = re.compile(r"VS\d+COMNTOOLS|VSCMD_\w+|__VSCMD_\w+|__DOTNET_\w+|FRAMEWORK\w*|WINDOWSSDK\w*", re.I)
+
+
+def kept(name):
+    return name.upper() in CAPTURED or bool(CAPTURED_RE.fullmatch(name))
+
+
+def env_cache(path):
+    """A cached Visual Studio environment, only its kept() variables; a cache written before that rule is cleaned in
+    place."""
+    env = paths.read_json(path)
+    if env and not all(kept(k) for k in env):
+        env = {k: v for k, v in env.items() if kept(k)}
+        paths.write_json(path, env)
     return env
 
 
+def captured(out):
+    """The kept() variables of the environment `set` printed."""
+    env = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+    return {k: v for k, v in env.items() if kept(k)}
+
+
+def msvc_env(cfg):
+    vcvars = toolcfg.need(cfg, "vcvars").replace("/", "\\")
+    env = env_cache(paths.MSVC_ENV)
+    if toolcfg.cache_current(paths.MSVC_ENV, env, vcvars, cfg):
+        return env
+    rc, out, reason = paths.run_bounded(toolcfg.vcvars_command(vcvars, cfg), 180)
+    if reason:
+        raise RuntimeError(f"could not load the Visual Studio environment (vcvars64.bat): {reason}")
+    env = toolcfg.loaded(rc, captured(out), vcvars, cfg)  # its exit code and the pin decide, not how it looks
+    paths.write_json(paths.MSVC_ENV, env)
+    toolcfg.write_key(paths.MSVC_ENV, env, vcvars, cfg)
+    return env
+
+
+RUNTIME_SRCS = ("runner.c", "tc_rt.c", "tc_fpu.c", "tc_p4.c")
+CL_FLAGS = ("/nologo", "/O1", "/fp:strict", "/W4", "/WX")
+
+
+def runtime_objs(cl, env):
+    """The runtime's objects, compiled once per content (every runtime file, the compiler, its INCLUDE and the flags)
+    into build/runtime_obj/KEY/ and linked by every build after: compiling them was 0.38 s of a 0.59 s build. Each
+    translation unit compiles alone, so an object is the same whichever build compiles it. None when they do not
+    compile (a runtime warning under /WX): the full build then reports it as before."""
+    h = hashlib.sha256(repr((CL_FLAGS, cl, os.stat(cl).st_size, os.stat(cl).st_mtime_ns,
+                             next((v for k, v in env.items() if k.upper() == "INCLUDE"), ""))).encode())
+    for f in sorted(paths.RUNTIME.iterdir()):
+        if f.is_file():
+            h.update(f.name.encode() + b"\0" + f.read_bytes() + b"\0")
+    d = paths.BUILD / "runtime_obj" / h.hexdigest()[:16]  # build_prune passes it by (not a function folder)
+    objs = [d / f"{s[:-2]}.obj" for s in RUNTIME_SRCS]
+    if all(o.is_file() for o in objs):
+        return objs
+    tmp = d.with_name(f"{d.name}.tmp{os.getpid()}_{threading.get_ident()}")
+    shutil.rmtree(tmp, ignore_errors=True)
+    tmp.mkdir(parents=True)
+    cmd = [cl, "/c", *CL_FLAGS, "/TC", f"/I{paths.RUNTIME}", f"/Fo{tmp}\\", *(str(paths.RUNTIME / s) for s in RUNTIME_SRCS)]
+    rc, _out, reason = paths.run_bounded(cmd, 120, cwd=tmp, env=env)
+    if rc != 0 or reason:
+        shutil.rmtree(tmp, ignore_errors=True)
+        return None
+    with filelock.locked(d.parent):  # build/runtime_obj.lock: a complete set another build links is never removed
+        if not all(o.is_file() for o in objs):
+            shutil.rmtree(d, ignore_errors=True)  # an incomplete set (a file deleted by hand)
+            try:
+                os.replace(tmp, d)
+            except OSError:  # Windows refused (a file of the old set still open): this build compiles it itself
+                pass
+    shutil.rmtree(tmp, ignore_errors=True)  # another build put the same set there first
+    return objs if all(o.is_file() for o in objs) else None
+
+
+RUNNERS_KEPT = 8  # runner builds kept per folder (build/ADDR/raw_runners): the latest
+
+
+def _runner_key(cl, env, build_dir, rt):
+    """The sha256 of everything a raw build reads: the compiler (path, size, mtime), its INCLUDE and LIB, the flags,
+    work.c and thunk.c as copied, every file of runtime/ and whether its objects come from runtime_objs, and the
+    judge's own build code (this file: the flags, MINMAX and its unoptimized rebuild)."""
+    st = os.stat(cl)
+    h = hashlib.sha256(repr(("runner 1", CL_FLAGS, (cl, st.st_size, st.st_mtime_ns), rt is not None,
+                             *(next((v for k, v in env.items() if k.upper() == n), "") for n in ("INCLUDE", "LIB")))
+                            ).encode())
+    for p in (build_dir / "work.c", build_dir / "thunk.c", pathlib.Path(__file__)):
+        h.update(b"file " + p.name.encode() + b"\0" + p.read_bytes() + b"\0")
+    for f in sorted((f for f in paths.RUNTIME.rglob("*") if f.is_file()),
+                    key=lambda f: f.relative_to(paths.RUNTIME).as_posix()):
+        h.update(f"rt {f.relative_to(paths.RUNTIME).as_posix()}".encode() + b"\0" + f.read_bytes() + b"\0")
+    return h.hexdigest()
+
+
+def keep_runner(build_dir, kept, exe="runner.exe"):
+    """Keep build_dir's runner as kept (a whole file or none), and only the latest RUNNERS_KEPT of the folder."""
+    tmp = kept.with_name(f"{kept.name}.tmp{os.getpid()}_{threading.get_ident()}")
+    try:
+        tmp.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(build_dir / exe, tmp / exe)
+        with filelock.locked(kept.parent):  # build/ADDR/raw_runners.lock
+            if not (kept / exe).is_file():
+                shutil.rmtree(kept, ignore_errors=True)
+                os.replace(tmp, kept)
+            old = sorted((d for d in kept.parent.iterdir() if d.is_dir() and ".tmp" not in d.name),
+                         key=lambda d: d.stat().st_mtime_ns)[:-RUNNERS_KEPT]
+            for d in old:
+                shutil.rmtree(d, ignore_errors=True)
+    except OSError:  # not kept: the next build of these inputs compiles again
+        pass
+    shutil.rmtree(tmp, ignore_errors=True)
+
+
 def build(cfg, meta, work_file, build_dir):
+    """Compile work.c + its generated thunk + the runtime into runner.exe.
+    A clean build (no message) is kept by the key of all it read (_runner_key) in build_dir's parent, raw_runners/:
+    a build of the very same inputs (the official judge of the work.c the agent's last check built) takes that
+    runner instead of compiling again. The vectors always run afresh."""
     shutil.rmtree(build_dir, ignore_errors=True)
     build_dir.mkdir(parents=True)
     shutil.copyfile(work_file, build_dir / "work.c")
@@ -136,11 +249,28 @@ def build(cfg, meta, work_file, build_dir):
     cl = shutil.which("cl.exe", path=env_path)
     if not cl:
         raise RuntimeError("cl.exe not found in the Visual Studio environment")
+    rt = runtime_objs(cl, env)
+    kept = build_dir.parent / "raw_runners" / _runner_key(cl, env, build_dir, rt)[:24]
+    if (kept / "runner.exe").is_file():
+        shutil.copyfile(kept / "runner.exe", build_dir / "runner.exe")
+        try:
+            os.utime(kept)  # the latest kept stay
+        except OSError:
+            pass
+        return True, []
+    ok, msgs = _build(build_dir, env, cl, rt)
+    if ok and not msgs:
+        keep_runner(build_dir, kept)
+    return ok, msgs
+
+
+def _build(build_dir, env, cl, rt):
     # Zero-warning build: every warning at /W4 is an error, in work.c and in our own runtime alike.
-    srcs = ["runner.c", "tc_rt.c", "tc_fpu.c", "tc_p4.c"]
-    cmd = [cl, "/nologo", "/O1", "/fp:strict", "/W4", "/WX", "/TC", f"/I{paths.RUNTIME}", f"/Fo{build_dir}\\",
-           "/FA", f"/Fa{build_dir}\\", f"/Fe{build_dir / 'runner.exe'}", str(build_dir / "work.c"),
-           str(build_dir / "thunk.c"), *(str(paths.RUNTIME / s) for s in srcs)]
+    srcs = list(RUNTIME_SRCS)
+    head = [cl, *CL_FLAGS, f"/I{paths.RUNTIME}", f"/Fo{build_dir}\\", "/FA", f"/Fa{build_dir}\\",
+            f"/Fe{build_dir / 'runner.exe'}"]
+    cmd = ([*head, "/Tc", str(build_dir / "work.c"), "/Tc", str(build_dir / "thunk.c"), *map(str, rt)] if rt else
+           [*head, "/TC", str(build_dir / "work.c"), str(build_dir / "thunk.c"), *(str(paths.RUNTIME / s) for s in srcs)])
     rc, out, reason = paths.run_bounded(cmd, 120, cwd=build_dir, env=env)
     keep = [ln for ln in out.splitlines() if ("error" in ln or "warning" in ln) and ".c" in ln]
     if rc != 0 or reason:
@@ -155,7 +285,8 @@ def build(cfg, meta, work_file, build_dir):
                f"/Fo{build_dir}\\", str(build_dir / "work.c")]
         rc, out, reason = paths.run_bounded(cmd, 120, cwd=build_dir, env=env)
         if rc == 0 and not reason:
-            objs = [build_dir / f"{s[:-2]}.obj" for s in ["work.c", "thunk.c", *srcs]]
+            objs = [build_dir / "work.obj", build_dir / "thunk.obj",
+                    *(rt or [build_dir / f"{s[:-2]}.obj" for s in srcs])]
             cmd = [cl, "/nologo", f"/Fe{build_dir / 'runner.exe'}", *map(str, objs)]
             rc, out, reason = paths.run_bounded(cmd, 120, cwd=build_dir, env=env)
         if rc != 0 or reason:
@@ -167,6 +298,9 @@ def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harn
     """Full check of work_file. Returns a result dict; result['verdict'] is 'PASS' or 'FAIL'.
 
     harness_dir: test vectors from somewhere else (the watcher gate checks staged oracle output)."""
+    hook = target_hooks.get("run_check")  # a target with its own runtime and harness format (core/target_hooks)
+    if hook:
+        return hook(cfg, addr, work_file, sets=sets, build_dir=build_dir, harness_dir=harness_dir)
     harness = harness_dir or paths.HARNESS / addr
     meta = paths.read_json(harness / "meta.json")
     from . import ret_reg  # the original returns in fr0 whatever the signature says: compare fr0 too
@@ -190,7 +324,8 @@ def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harn
     result["stage"] = "run"
     out = build_dir / "actual.txt"
     which = sets[0] if len(sets) == 1 else "all"
-    cmd = [str(build_dir / "runner.exe"), str(cfg["binary_path"]), str(paths.CODE_RANGES), str(paths.FSCA_TABLE),
+    table = paths.fsca_table() if cfg.get("fsca_table") else paths.FSCA_TABLE  # made current, as for a prepare
+    cmd = [str(build_dir / "runner.exe"), str(cfg["binary_path"]), str(paths.CODE_RANGES), str(table),
            str(harness / "vectors.txt"), which, str(out)]
     rc, log, reason = run_runner(cmd, cfg["check_timeout_s"], out, output_cap(harness))
     if reason:
@@ -202,11 +337,14 @@ def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harn
     act = parse_results(out)
     image = cfg["binary_path"].read_bytes()
     result["stage"] = "compare"
+    lo = readable_stack.frame_lo()  # the own frame: writes from there up are the original's scratch
+    strict = strict_judge.modes(cfg)  # report-only call snapshots or exit frame (core/strict_judge)
     for s in sets:
         ids = [i for i, v in vecs.items() if v["set"] == s]
         fails = []
         for i in ids:
-            d = compare_vector(meta, image, vecs[i], exp[i], act.get(i))
+            d = compare_vector(meta, image, vecs[i], exp[i], act.get(i), lo, strict, report := [])
+            strict_judge.note(result, s, i, report)
             if d:
                 fails.append(i)
                 if s == "dev" and len(result["first_diffs"]) < 3:
@@ -247,6 +385,10 @@ def _finish(result, sets, summary):
                                    and "run_error" not in result) else "FAIL"
     result["coverage"] = {"blocks_total": summary.get("blocks_total"), "blocks_hit_dev": summary.get("blocks_hit_dev"),
                           "blocks_hit_all": summary.get("blocks_hit_all")}
+    g = proof.grade(summary)  # report only (TcDirs): "fully proven" or "proven where tested", with the figures
+    if g:
+        result["coverage"].update({k: summary.get(k) for k in ("branch_dirs_total", "branch_dirs_hit_dev",
+                                                              "branch_dirs_hit_all")}, grade=g["grade"])
     sites = summary.get("call_sites")  # call sites no valid vector reaches leave a "weak" pass (core/call_coverage)
     if sites is not None:
         unreached = sorted(a for a, n in sites.items() if not n)

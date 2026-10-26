@@ -11,6 +11,7 @@ Readable code includes game.h. For the port, game.h declares every function and 
 For verification, game.h makes every other function name a pointer to its guest address (the call faults
 and is logged) and every global a dereference of its guest address.
 """
+import collections
 import re
 
 from . import paths
@@ -84,7 +85,7 @@ class Registry:
             self.typedefs.update(parse_typedefs(h))  # the per-system headers types.h includes
         names = [parse_proto(e["proto"])[1] for e in self.functions.values()]
         names += [global_name(e["decl"]) for e in self.globals.values()]
-        dup = {n for n in names if names.count(n) > 1}
+        dup = {n for n, k in collections.Counter(names).items() if k > 1}
         if dup:
             raise RegistryError(f"names used twice: {sorted(dup)}")
 

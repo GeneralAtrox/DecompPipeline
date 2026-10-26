@@ -31,11 +31,48 @@ port that is already taken. From tests/test_batch32.py, the proof gates (the cov
 mutant generation, the kill and survive logic, the runner output cap, the backlog tool, the unreached blocks); from
 tests/test_float_gaps.py, the float gaps (fr0 results, the original's pool floats, TcFret's wiring); from
 tests/test_mirror.py, the mirror rule (one RAM word through its 0x0c and 0x8c views, the raw pointer compares);
-from tests/test_ptr_views.py, matched C that keeps a pool pointer in the other view.
-From tests/test_reach.py, call-site coverage
-(the figure, the final audit's calls check, the verdict's reasons) and the reach pass's wiring. From tests/test_port_kit.py, the
-Dreamcast port kit (game.json, the generated per-game files, no game material in port/, the runtime at /W4 /WX
-where Visual Studio's 32-bit tools are found, skipped elsewhere).
+from tests/test_ptr_views.py, matched C that keeps a pool pointer in the other view; from tests/test_helper_abi.py,
+matched C that calls a runtime helper without the r0..r3 it takes. From tests/test_stack_window.py, the
+original's own frame: bounded below (a global in the stack window), the members of a struct local passed by address.
+From tests/test_judge_window.py, the judge's stack window (only the own frame is scratch: 0x8cff.... globals judged);
+from tests/test_oracle_window.py, the oracle's and both runners' (stores there logged, loads there inputs).
+From tests/test_p4_window.py, QACR0/1 stores logged and judged, a store-queue pointer built in any register.
+From tests/test_reach.py, call-site coverage (the figure, the final audit's calls check, the verdict's reasons) and the
+reach pass's wiring. From tests/test_port_kit.py, the Dreamcast port kit (game.json, the generated per-game files, no
+game material in port/, the runtime at /W4 /WX where Visual Studio's 32-bit tools are found, skipped elsewhere). From
+tests/test_pch_c4505.py, the port's C4505 (a precompiled header) in the readable check. From tests/test_lean_cap.py, the
+cap on a lean context's types. From tests/test_tail.py, TcTail's run-on rule on a stub program (javac and java against
+the Ghidra jars, skipped without them).
+From tests/test_catalog_hw.py, the catalog's hardware address-use scan on a stub listing (the same jars), and a function
+matched before the catalog flags it hardware keeps its tier, row and PASS.
+From tests/test_mova_pool.py, pool words read through a `mova` base are the function's text (TcText).
+From tests/test_finish_no_attempts.py, a function ended before any attempt ends cleanly (its worker lives on).
+From tests/test_requeue_rejudge.py, a requeued function's own C judged again before any agent run.
+From tests/test_translate_stage.py, the target's translator writes and the judge decides C before any agent run.
+From tests/test_cache_ttl.py, the agents' prompt cache lifetime (config cache_ttl).
+From tests/test_shared_prefix.py, the shared prompt prefix of raw attempts (config shared_prefix).
+From tests/test_ledger_rows.py, the ledger's save: one line per function, the same data read back.
+From tests/test_prefetch.py, the next function's Ghidra prepare while the current agent works (config prefetch).
+From tests/test_kill_cost.py, a killed session's spend estimated from its requests (config agent_rates).
+From tests/test_joined.py, a matched function whose body a catalog run grew over a function its C still calls is
+requeued (decomp.py setup/catalog/seed; core/joined.py).
+From tests/test_stale_skips.py, finished rows whose blocker kind a landing fixed after they were judged are
+requeued (target.json blocker_kinds "fixed_at"; tools/requeue.py --stale-skips and decomp.py serve).
+From tests/test_restage.py, xproject.py restage: staged imports today's relocation maps better are rewritten.
+From tests/test_xmatch_prefer.py, xproject.py match tries OLD's matched twins first, never a function itself.
+From tests/test_fsca_rm.py, the FSCA tables (pinned SHA-256s, the state file's and the port kit's layouts).
+From tests/test_fmac.py, fmac rounded once: the C (32- and 64-bit) and the oracle against exact arithmetic.
+From tests/test_xmatch_ties.py, xmatch near matches are the same whatever the hash seed, never worse than most_common(5).
+From tests/test_checkout_state.py, two checkouts on one project can't change each other's facts, scripts or fsca
+table.
+From tests/test_regress_targets.py, the targeted regress gate (tools/regress.py --targeted, the harness cache).
+From tests/test_land_smoke.py, the live-prepare smoke for landings (only when needed; no slot fails, never skips).
+From tests/test_prebuilt_runtime.py, the judge's runtime objects compiled once per content, and run_bounded without a
+sleep.
+From tests/test_scorecard.py and tests/test_records.py, the definition-of-done scorecard and the records it reads
+(workers' busy/idle time, manual operator steps, readable attempts' duration_s): records only, verdicts unchanged.
+From tests/test_readable_tx.py, the readable pass's machine files (adopted at any length when they pass, else the
+agent's start) and the lift's rules that keep the raw C's meaning, per target.
 
 usage: python tests/test_tooling.py   (or python -m unittest discover -s tests -p "test_*.py")
 """
@@ -58,9 +95,7 @@ os.environ["DECOMP_PROJECT"] = str(PROJ)
 sys.path[:0] = [str(TOOL), str(TOOL / "tools")]
 
 from core import agent_cli, oracle_stamp, paths, readable_headers, readable_lean  # noqa: E402
-import regress  # noqa: E402
-import regress_project  # noqa: E402
-import usage_readable  # noqa: E402
+import regress, regress_project, usage_readable  # noqa: E401,E402
 from test_retire import Doctor, RedoStatus, Retire  # noqa: E402,F401  (retire, consistency check, redo status)
 from test_locks_systems import Assign, Locks  # noqa: E402,F401  (file locks, system assignment)
 from test_headers import Compile, Lint, MidRunEdit, Snapshots  # noqa: E402,F401  (header lint, header snapshots)
@@ -88,13 +123,95 @@ from test_batch32 import (Allowance, AuditProof, Backlog, Candidates, Check, Cla
                           Tokens)  # (proof gates)
 from test_float_gaps import FloatLits, RetReg, Wiring as FloatWiring  # noqa: E402,F401  (float gaps)
 from test_mirror import Follow, Judge as MirrorJudge, SameWord  # noqa: E402,F401  (mirror rule)
+from test_stack_window import FrameLocals, Window as StackWindow  # noqa: E402,F401  (own frame)
+from test_judge_window import (Compare as WindowCompare, OutPointers as WindowOutPointers,  # noqa: E402,F401
+                               Pairing as WindowPairing, Varargs as WindowVarargs)  # (judge's stack window)
+from test_oracle_budget import Facts as BudgetFacts, Rule as BudgetRule  # noqa: E402,F401  (work, not clock)
+from test_oracle_window import (Facts as WindowFacts, Oracle as WindowOracle,  # noqa: E402,F401
+                                Runners as WindowRunners)  # (the producers' stack window)
+from test_p4_window import (Judge as P4Judge, Oracle as P4Oracle,  # noqa: E402,F401
+                            Runners as P4Runners)  # (QACR stores, built store-queue pointers)
+from test_mid_entries import MidEntries  # noqa: E402,F401  (second entry points folded into a body)
+from test_build_prune import Prune as BuildPrune, Wiring as BuildPruneWiring  # noqa: E402,F401  (build/)
+from test_worktree_prune import Prune as WorktreePrune  # noqa: E402,F401  (landed worktrees)
 from test_ptr_views import Check as ViewCheck, Literals as ViewLiterals  # noqa: E402,F401  (pointer views)
+from test_helper_abi import Asm as AbiAsm, C as AbiC, Helpers as AbiHelpers  # noqa: E402,F401  (helper ABI)
+from test_gamecube_match import (DtkSymbols, ElfSymbols, Flow as MatchFlow, Grade as MatchGrade,  # noqa: E402,F401
+                                 MatchPercent)  # (gamecube_ppc byte-match check)
+from test_ghidra_broker import Broker, EveryStart, PassNotCaptured, Wiring as BrokerWiring  # noqa: E402,F401
+from test_wave import (  # noqa: E402,F401
+    Catalog as WaveCatalog, Estimate as WaveEstimate, Fmac as WaveFmac, Guard as WaveGuard, Parse as WaveParse)
+from test_idle_prepare import (Guard as IdleGuard, LongTail, Plan as IdlePlan,  # noqa: E402,F401
+                               Run as IdleRun, Watch as IdleWatch)  # (tools/idle_prepare.py, core/longtail)
+from test_harness_reuse import (Investigate as ReuseInvestigate, PrefetchReused, PrepareList,  # noqa: E402,F401
+                                RejudgeReused, Reusable, StatusPlate)  # (current harness: no Ghidra; prepare_list)
 from test_port_c import FrameArgs, FrameSpans  # noqa: E402,F401  (port phase C)
-from test_port_kit import GameConfig, KitIsGameFree, RuntimeCompiles  # noqa: E402,F401  (port kit)
+from test_port_kit import GameConfig, KitIsGameFree, LockstepCounter, LockstepTimer, RuntimeCompiles  # noqa: E402,F401  (port kit)
+from test_overlays import OverlayBuilt, OverlayGroups, OverlayWindows  # noqa: E402,F401  (overlays)
 from test_reach import AuditCheck, DoctorAnyWorkspace, Figure, Seed, Verdict, Wiring as ReachWiring  # noqa: E402,F401  (call-site coverage)
 from test_scope import Bytes, CrossProject, Doctor as ScopeDoctor, ExtraSystems, InScope  # noqa: E402,F401  (scope)
 from test_scope_runs import Audit as ScopeAudit, FinalAuditExtras, Orchestrator  # noqa: E402,F401  (scope list, runs)
-
+from test_lean_cap import Cap as TypesCap  # noqa: E402,F401  (context cap)
+from test_pch_c4505 import PchCompile, PchWiring  # noqa: E402,F401  (C4505)
+from test_tail import RunOn  # noqa: E402,F401  (TcTail's run-on rule)
+from test_translate_stage import (Contract as TxContract, Crash as TxCrash, NoTranslation as TxNone,  # noqa: E402,F401
+                                  SaturnAdapter as TxSaturn, Slow as TxSlow, Stopped as TxStopped,
+                                  Tamper as TxTamper, Translated)  # (translator stage)
+from test_fsca_rm import Tables as Fsca  # noqa: E402,F401  (FSCA's two tables)
+from test_fmac import (C as FmacC, Oracle as FmacOracle, Reference as FmacReference,  # noqa: E402,F401
+                       Wiring as FmacWiring)  # (fmac rounds once: every side against exact arithmetic)
+from test_catalog_hw import HwScan, MatchedKeepsRow  # noqa: E402,F401  (catalog hw scan; matched keeps its row)
+from test_mova_pool import MovaPool  # noqa: E402,F401  (mova pool words are text)
+from test_prepare_timing import ClockTest as PrepareClock, Prepare as PrepareTiming  # noqa: E402,F401  (prepare timing)
+from test_finish_no_attempts import NoAttempts  # noqa: E402,F401  (a function ended before any attempt)
+from test_requeue_rejudge import AuditAttempt0, Rejudge  # noqa: E402,F401  (a requeued function's own C judged first)
+from test_cache_ttl import CacheTtl  # noqa: E402,F401  (the agents' prompt cache lifetime)
+from test_shared_prefix import SharedPrefix  # noqa: E402,F401  (the shared prompt prefix)
+from test_ledger_rows import Rows as LedgerRows  # noqa: E402,F401  (the ledger's save: one line per function)
+from test_prefetch import Prefetch  # noqa: E402,F401  (prefetch)
+from test_kill_cost import RunAttempt as KillCostRun, SpendMeter as KillCostMeter  # noqa: E402,F401  (killed sessions' spend)
+from test_joined import RequeueJoined, Rule as JoinedRule  # noqa: E402,F401  (stale jump-in parents)
+from test_stale_skips import Requeue as StaleSkipsRequeue, Rule as StaleSkipsRule  # noqa: E402,F401  (stale skips)
+from test_restage import Restage  # noqa: E402,F401  (xproject restage)
+from test_xmatch_prefer import Prefer as XmatchPrefer  # noqa: E402,F401  (matched twins first)
+from test_ghidra_server import FirstSlot, PrepareServed, Serves as GhidraServe  # noqa: E402,F401  (one Ghidra per slot)
+from test_xmatch_ties import Ties as XmatchTies  # noqa: E402,F401  (near-match ties)
+from test_checkout_state import CheckoutState, FscaState, SharedScripts  # noqa: E402,F401  (per-checkout state)
+from test_sr_sq import Catalog as SqCat, Judge as SqJudge, SrWord, Tier as SqTier, Wiring as SqWire  # noqa: E402,F401
+from test_spin import Candidates as SpCand, Judge as SpJudge, Runtimes as SpRt, Wiring as SpWire  # noqa: E402,F401
+from test_hw_ops import Classifier as HwCls, Judge as HwJudge, Listing as HwList, Runtimes as HwRt  # noqa: E402,F401
+from test_hw_ops import Stamp as HwStamp, Wiring as HwWire  # noqa: E402,F401  (listed hardware ops)
+from test_hw_ops import WriteRuntime as HwWrt, Writes as HwWrites  # noqa: E402,F401  (listed writes, cache ops)
+from test_regress_targets import RegressTargets  # noqa: E402,F401  (the targeted regress gate)
+from test_land_smoke import LandSmoke  # noqa: E402,F401  (the live-prepare smoke for landings)
+from test_prebuilt_runtime import RealBuild as RtBuild, RunBounded, RuntimeObjs  # noqa: E402,F401  (prebuilt runtime)
+from test_mutation_audit import Gate as MaGate, Needed as MaNeeded, Outcomes as MaOut  # noqa: E402,F401
+from test_branch_cov import Grade as BcGrade, Rule as BcRule, Wiring as BcWire  # noqa: E402,F401  (item 3)
+from test_targeted_vectors import Draws as TvDraws, Harvest as TvHarvest, Wiring as TvWire  # noqa: E402,F401
+from test_saturn_sh2 import (OverlayImage as SatOverlay, Runtime as SatRuntime, SatDisc,  # noqa: E402,F401
+                             Scripts as SatScripts, Target as SatTarget)  # (the Saturn SH-2 target)
+from test_xbox360_ppc import (Aes as XAes, TooHuman as XTooHuman, Xex as XXex,  # noqa: E402,F401
+                              Xiso as XXiso)  # (the Xbox 360 Xenon target, offline)
+from test_xbox360_glue import Glue as XGlue, Runtime as XRuntime, Scan as XScan  # noqa: E402,F401
+from test_xbox360_helpers import Helpers as XHelpers  # noqa: E402,F401
+from test_xbox360_scripts import Scripts as XScripts, Target as XTarget  # noqa: E402,F401  (its Ghidra scripts)
+from test_scorecard import Gates as ScGates, Readers as ScReaders, Records as ScRecords  # noqa: E402,F401  (scorecard)
+from test_records import (BusyLog, Hooks as RecHooks, OpLog, RawJudge as RecRawJudge,  # noqa: E402,F401
+                          Readable as RecReadable)  # (the scorecard's records: busy/idle, operator steps, duration_s)
+from test_own_translators import (Dreamcast as OwnTxDc, Regress as OwnTxRegress, Small as OwnTxSmall,  # noqa: E402,F401
+                                  Stage as OwnTxStage, Xbox360 as OwnTxX360)
+from test_game_setup import Check as GsCheck, Names as GsNames, Setup as GsSetup  # noqa: E402,F401  (game_setup.py)
+from test_warm_check import Warm as WarmCheck  # noqa: E402,F401  (the warm agent check, core/warm_check)
+from test_ghidra_identity import Identity as GhidraIdentity  # noqa: E402,F401  (the oracle stamp's Ghidra line)
+from test_compiler_identity import (Pin as VcPin, PortBuild as VcPortBuild,  # noqa: E402,F401
+                                    Stamp as VcStamp, Cache as VcCache,
+                                    Fails as VcFails, SdkFiles as VcSdkFiles)  # (vcvars_args, the stamp's compiler)
+from test_requirements import Requirements  # noqa: E402,F401  (requirements.txt)
+from test_readable_tx import Adoption as MachineAdoption, Constants as MachineConstants  # noqa: E402,F401
+from test_readable_tx import Lift as MachineLift, Specs as MachineSpecs  # noqa: E402,F401
+from test_strict_judge import (Facts as SjFacts, Judge as SjJudge, Stream as SjStream,  # noqa: E402,F401
+                               Wiring as SjWire)  # (item 2: the stricter judge)
+from test_strict_runtime import Readable as SjReadable, Runtimes as SjRuntimes  # noqa: E402,F401  (item 2)
 
 atexit.register(_TMP.cleanup)  # not tearDownModule: unittest also calls that when it switches to the test_retire
 # classes and back, which would remove the folder mid-run
@@ -110,6 +227,11 @@ class Effort(unittest.TestCase):
         self.assertIsNone(e({"effort": None, "readable_effort": None}))
         with self.assertRaises(ValueError):
             e({"readable_effort": "huge"})
+
+    def test_defaults(self):  # raw attempts medium (r15 A/B), readable sessions still high
+        cfg = json.loads((TOOL / "config.json").read_text(encoding="utf-8"))
+        self.assertEqual(agent_cli.effort_value(cfg["effort"]), "medium")
+        self.assertEqual(agent_cli.readable_effort(cfg), "high")
 
     def test_command(self):
         cfg = {"claude": sys.executable, "model": "m", "attempt_budget_usd": 1, "effort": None}

@@ -2,16 +2,64 @@
 
 vectors.txt (TcVectors): V id set, R r4..r7, F, X, H fr12..fr15, L r0..r3, G r8..r14, Q fr0..fr15, C, M addr bytes,
 E.
-expected.txt / runner output: V, RET r0 fr0, RETX (the extra result word), HALT (an endless `bra .`), W, CALL (25, 36 or 57 fields), XF, FH, GH,
-QH (fr0..fr15 and the FPSCR mode word), COV, FAULT, CODEREAD, CRASH, E.
+expected.txt / runner output: V, RET r0 fr0, RETX (the extra result word), HALT (an endless `bra .`; HALT SPIN: a wait
+loop nothing in it ends, TcSpin), W, CALL (25, 36 or 57 fields), XF, FH, GH,
+QH (fr0..fr15 and the FPSCR mode word), CJ, CS and XR (core/strict_judge), COV, FAULT, CODEREAD, CRASH, E.
 """
+import json
 import os
+import pathlib
+import re
 import struct
 
-STACK_LO = 0x8CFF0000
+from . import strict_judge
+
+
+def _judge_memory():
+    """target.json "judge_memory" of the workspace's target (DECOMP_PROJECT, else the current folder, as core/paths
+    finds it): the image base, entry r15, stack window bottom, byte order and mirror rule of a target whose memory is
+    not the Dreamcast's (Saturn SH-2). {} for the Dreamcast targets, outside a workspace, or without the section."""
+    for c in (os.environ.get("DECOMP_PROJECT"), os.getcwd()):
+        p = pathlib.Path(c) / "project.json" if c else None
+        if p and p.exists():
+            try:
+                t = json.loads(p.read_text(encoding="utf-8"))["target"]
+                tj = pathlib.Path(__file__).resolve().parents[1] / "targets" / t / "target.json"
+                return json.loads(tj.read_text(encoding="utf-8")).get("judge_memory") or {}
+            except (OSError, ValueError, KeyError, TypeError):
+                return {}
+    return {}
+
+
+_JM = _judge_memory()
+STACK_LO = int(_JM.get("stack_lo", "0x8CFF0000"), 16)
 P4_OCA = (0xF4000000, 0xF5000000)  # P4 operand-cache address array: stores logged as W lines (tc_p4.c, TcOracle)
-IMAGE_BASE = 0x8C010000
-SP = 0x8CFFE000
+P4_QACR = (0xFF000038, 0xFF000040)  # QACR0/1, the store queues' area registers: logged the same way (TcExit.p4)
+IMAGE_BASE = int(_JM.get("image_base", "0x8C010000"), 16)
+SP = int(_JM.get("entry_sp", "0x8CFFE000"), 16)
+STACK_HI = int(_JM.get("stack_hi", "0x8D000000"), 16)  # the end of the stack's RAM (the readable judge's stack window)
+RAM = tuple(int(v, 16) for v in _JM.get("ram", ("0x8C000000", "0x8D000000")))  # main RAM: a number in it is an address
+FLOAT_REGS = _JM.get("float_regs", True)  # FPU argument registers fr4..fr11; off (SH-2: no FPU): an f32 goes as an int
+UNMAPPED = [tuple(int(v, 16) for v in r) for r in _JM.get("unmapped", ())]  # guest RAM the readable build cannot map
+WORD = ">I" if _JM.get("endian") == "big" else "<I"  # a guest word's bytes (W lines, image words) as a number
+MIRROR_RULE = _JM.get("word_mirror", True)  # same_word's 0x0c/0x8c RAM views (the SH-4's); off: exact words only
+FRAME_MAX = 0x1000  # deepest own-frame constant below the entry r15 measured: TC 0x640, PS2 0x334, Spawn 0x6f0
+FRAME_LO = SP - FRAME_MAX  # the own frame's default bottom; readable_stack.frame_lo() reads "readable_frame_max"
+
+
+def judged(a, frame_lo=FRAME_LO, named=()):
+    """Whether a written guest address is compared: anything below the original's own frame (frame_lo; the frame
+    and what lies above it, stack arguments and the caller's frame, are its scratch), a word of a global the oracle
+    names, or a P4 operand-cache store. [STACK_LO, frame_lo) is ordinary memory: Spawn keeps globals there (save
+    data at 0x8cff9000), so a store there the C code leaves out is a miss. QACR0/1 stores are judged too."""
+    return a < frame_lo or (a & ~3) in named or P4_OCA[0] <= a < P4_OCA[1] or P4_QACR[0] <= a < P4_QACR[1]
+
+
+def named_words(meta):
+    """The words of the globals the oracle's meta names (compared even inside the frame window), and of the hardware
+    registers its listed hardware ops store to (meta "hw_ops" "writes": TcHw, logged as W lines on both sides)."""
+    hw = ((meta or {}).get("hw_ops") or {}).get("writes") or ()
+    return {int(g, 16) & ~3 for g in [*((meta or {}).get("globals") or ()), *hw] if isinstance(g, str)}
 
 
 def _lines(path):
@@ -67,7 +115,7 @@ def parse_results(path):
         elif k == "RETX":
             cur["retx"] = int(t[1], 16)
         elif k == "HALT":  # the run ended in an endless `bra .` (TcExit; tc_halt in C): it never returns
-            cur["halt"] = True
+            cur["halt"] = "spin" if t[1:2] == ["SPIN"] else "loop"  # HALT SPIN: TcSpin; tc_spin in C
         elif k == "W":
             a, data = int(t[1], 16), bytes.fromhex(t[2]) if len(t) > 2 else b""
             for i, b in enumerate(data):
@@ -75,6 +123,10 @@ def parse_results(path):
         elif k == "CALL":
             call = [int(x, 16) for x in t[1:CALL_FIELDS + 1]]
             cur["calls"].append(call + [0] * (CALL_FIELDS - len(call)))  # older or narrower records: zero-padded
+        elif k == "CA":  # the call before is through a function pointer: the argument registers the original set
+            cur.setdefault("call_args", {})[len(cur["calls"]) - 1] = t[1:]  # since its entry or last call (TcTrack)
+        elif k == "FN":  # the memory words a float store left a NaN in (TcTrack): the only NaN-tolerant words
+            cur["float_nan"] = {int(x, 16) for x in t[1:]}
         elif k == "XF":
             cur["xf"] = [int(x, 16) for x in t[1:17]]
         elif k == "FH":  # fr12..fr15 at exit: only for vectors that set them at entry (line H)
@@ -88,6 +140,16 @@ def parse_results(path):
             cur["cov"] = {int(x) for x in t[1:]}
         elif k == "FAULT":
             cur["faults"].append(" ".join(t[1:]))
+        elif k == "IM":  # SR.IMASK at exit (TcSr): only for functions that read or write SR
+            cur["imask"] = int(t[1], 16)
+        elif k == "GB":  # GBR at exit (TcHw): only for functions whose listed hardware ops move GBR
+            cur["gbr"] = int(t[1], 16)
+        elif k == "FS":  # FPSCR at exit (TcFpscr): only for functions whose original reads or writes FPSCR
+            cur["fpscr"] = int(t[1], 16)
+        elif k == "FC":  # FPSCR at each call, with FS
+            cur["fpscr_calls"] = [int(x, 16) for x in t[1:]]
+        elif k in ("CJ", "CS", "XR"):  # leftover junk, call snapshots, the exit frame (core/strict_judge)
+            strict_judge.parse(cur, t)
         elif k == "CODEREAD":
             cur["coderead"] = t[1]
         elif k == "CRASH":
@@ -111,7 +173,7 @@ def same_word(a, b):
     0x8c......, and the judge compares it as a value only where it leaves the function: a call argument, the result,
     a stored word, r8..r14 at exit (the mirror rule, docs/PROOF_GATES.md). tools/mirror_ptrs.py lists the functions
     and callees that compare such a pointer raw, for review."""
-    return a == b or ((a ^ b) == 0x80000000 and (a >> 24) & 0x7F == 0x0C)
+    return a == b or (MIRROR_RULE and (a ^ b) == 0x80000000 and (a >> 24) & 0x7F == 0x0C)
 
 
 REG_INDEX = {f"r{i}": i - 3 for i in range(4, 8)} | {f"fr{i}": i + 1 for i in range(4, 12)} | {
@@ -123,6 +185,13 @@ REG_INDEX = {f"r{i}": i - 3 for i in range(4, 8)} | {f"fr{i}": i + 1 for i in ra
     f"xf{i}": 40 + i for i in range(16)} | {"fpscr": 56}
 # Compared at every call of a function whose whole FPU is state (meta fpu_state), whatever the callee.
 FPU_REGS = [f"fr{i}" for i in range(16)] + [f"xf{i}" for i in range(16)] + ["fpscr"]
+
+
+def same_arg(reg, e, a):
+    """A call argument's comparison: floats as f32 (NaN matches NaN), words and stack words by the mirror rule."""
+    if reg.startswith(("fr", "xf")):
+        return same_f32(e, a)
+    return same_word(e, a) if reg[0] in "rs" else e == a
 
 
 def arg_name(reg):
@@ -188,8 +257,31 @@ def mode_text(m):
 
 def compare_state(exp, act):
     """fr12..fr15 (FH), r8..r14 (GH) and the whole FPU (QH) at exit, for functions with runtime state (meta fr_state,
-    r_state, fpu_state)."""
+    r_state, fpu_state); SR's interrupt mask (IM) for a function that reads or writes SR (TcSr); GBR (GB) for one
+    whose listed hardware ops move it (TcHw, project.json "hw_ops"); FPSCR at exit (FS) and at each call (FC) for one
+    whose original reads or writes FPSCR (TcFpscr, meta fpscr_state)."""
     diffs = []
+    if "fpscr" in exp:
+        if exp["fpscr"] != act.get("fpscr"):
+            got = "nothing" if act.get("fpscr") is None else f"0x{act['fpscr']:08x}"
+            diffs.append(f"FPSCR at exit: expected 0x{exp['fpscr']:08x}, got {got}: write FPSCR with sh4_lds_fpscr "
+                         "where the original does (lds ...,fpscr), reading it with sh4_sts_fpscr (sts fpscr,...)")
+        want, got = exp.get("fpscr_calls", []), act.get("fpscr_calls", [])
+        for i in range(max(len(want), len(got))):  # the first call whose FPSCR differs (a missing call: CALL says so)
+            w, g = (want[i] if i < len(want) else None), (got[i] if i < len(got) else None)
+            if w != g:
+                diffs.append(f"FPSCR at call {i + 1}: expected {'no call' if w is None else f'0x{w:08x}'}, got "
+                             f"{'no call' if g is None else f'0x{g:08x}'}: write FPSCR with sh4_lds_fpscr where the "
+                             "original does, before or after that call as it does")
+                break
+    if "imask" in exp and exp["imask"] != act.get("imask"):
+        got = act.get("imask", "nothing")
+        diffs.append(f"SR interrupt mask (bits 4..7) at exit: expected {exp['imask']}, got {got}: "
+                     "set SR with sh4_ldc_sr where the original does (ldc), reading it with sh4_stc_sr (stc)")
+    if "gbr" in exp and exp["gbr"] != act.get("gbr"):
+        got = "nothing" if act.get("gbr") is None else f"0x{act['gbr']:08x}"
+        diffs.append(f"GBR at exit: expected 0x{exp['gbr']:08x}, got {got}: set GBR with sh4_ldc_gbr where the "
+                     "original does (ldc ...,gbr), reading it with sh4_stc_gbr (stc gbr,...)")
     if "fq" in exp:
         got = act.get("fq")
         for i in range(16):
@@ -213,7 +305,60 @@ def compare_state(exp, act):
     return diffs
 
 
-def compare_vector(meta, image, vec, exp, act):
+def spin_wait(cfg, addr):
+    """Whether TcSpin applies to the function at addr: project.json "spin_waits" ({address: evidence}, e.g.
+    {"8c010080": "waits on vblank word 8cfe000c"}) names it. Opt-in, since a repeating state is not always a wait (TC
+    8c04362c's ring-buffer search). An entry without its evidence is refused."""
+    waits = cfg.get("spin_waits") or {}
+    if not isinstance(waits, dict):
+        raise ValueError('project.json "spin_waits" must map each address to its evidence')
+    addr = addr.lower()
+    if addr not in waits:
+        return False
+    if not isinstance(waits[addr], str) or not waits[addr].strip():
+        raise ValueError(f'project.json "spin_waits" {addr}: no evidence (say what the loop waits on)')
+    return True
+
+
+def spin_arg(cfg, addr):
+    """TcPrepare's script arg 10: "-" for a function spin_waits does not list, else "spin", and ":" with the words
+    its evidence names (8 hex digits, without the P0..P4 bits): a wait loop that calls functions halts only when its
+    exits read no other memory (TcSpin.proves). "8c0116c0": "... the vblank counter word 8cfe000c ..." gives
+    "spin:0cfe000c" (several: "spin:0cfe000c_0cfe0054")."""
+    if not spin_wait(cfg, addr):
+        return "-"
+    words = sorted({int(w, 16) & 0x1FFFFFFF for w in re.findall(r"(?<![0-9a-fA-F])(?:0x)?([0-9a-fA-F]{8})(?![0-9a-fA-F])",
+                                                               cfg["spin_waits"][addr.lower()])})
+    return "spin" + (":" + "_".join(f"{w:08x}" for w in words) if words else "")  # analyzeHeadless.bat splits at commas
+
+
+def compare_halt(exp, act):
+    """How the run ended: "loop" (an endless `bra .`, tc_halt), "spin" (a wait loop nothing in it ends, tc_spin) or
+    None (it returned)."""
+    if exp == act:
+        return []
+    if exp == "loop" and not act:
+        return ["the original never returns here: it ends in an endless loop (`bra .`, or a callee that is one); "
+                "call tc_halt() at that point (after the tc_call when the callee is the loop)"]
+    if exp == "spin" and not act:
+        return ["the original waits here forever on this input (a loop nothing in it changes: only an interrupt or the "
+                "hardware ends it); keep the loop and its condition and call tc_spin() as its body (as the body's "
+                "last statement when the loop calls functions: the run halts after their first pass)"]
+    if act == "loop" and not exp:
+        return ["your code called tc_halt(), but the original does not halt on this input"]
+    if act == "spin" and not exp:
+        return ["your code called tc_spin(), but the original does not wait forever on this input: call it only as "
+                "the body of the loop the original waits in, with the loop's own condition"]
+    if exp == "loop":
+        return ["your code called tc_spin(), but the original ends here in an endless `bra .`: call tc_halt()"]
+    return ["your code called tc_halt(), but the original waits here in a loop: keep the loop and call tc_spin() "
+            "as its body"]
+
+
+def compare_vector(meta, image, vec, exp, act, frame_lo=FRAME_LO, strict=None, report=None):
+    """The differences of one vector (empty: it matches). frame_lo: the original's own frame bottom
+    (readable_stack.frame_lo(); writes from there up are its scratch, unless meta names them). strict, report:
+    core/strict_judge.compare's modes and the list its report-only differences go to."""
     if act is None or not act["done"]:
         return ["no result for this vector (the C code crashed, hung or timed out)"]
     diffs = []
@@ -223,25 +368,21 @@ def compare_vector(meta, image, vec, exp, act):
         diffs.append(f"R8: read machine code at {act['coderead']}")
     for f in act["faults"]:
         diffs.append(f"invalid guest memory access: {f}")
-    if exp.get("halt") and not act.get("halt"):
-        diffs.append("the original never returns here: it ends in an endless loop (`bra .`, or a callee that is one); "
-                     "call tc_halt() at that point (after the tc_call when the callee is the loop)")
-    elif act.get("halt") and not exp.get("halt"):
-        diffs.append("your code called tc_halt(), but the original does not halt on this input")
+    diffs += compare_halt(exp.get("halt"), act.get("halt"))
     if not exp.get("halt"):  # a halted run has no return value
         diffs += compare_return(meta, exp, act)
     mem = Memory(image, vec)
-    words = sorted({a & ~3 for a in set(exp["writes"]) | set(act["writes"])
-                    if a < STACK_LO or P4_OCA[0] <= a < P4_OCA[1]})
+    named = named_words(meta)
+    words = sorted({a & ~3 for a in set(exp["writes"]) | set(act["writes"]) if judged(a, frame_lo, named)})
     bad = []
     for w in words:
         ev = [exp["writes"].get(w + i, mem.initial(w + i)) for i in range(4)]
         av = [act["writes"].get(w + i, mem.initial(w + i)) for i in range(4)]
         if ev == av:
             continue
-        eb, ab = struct.unpack("<I", bytes(ev))[0], struct.unpack("<I", bytes(av))[0]
-        if is_nan(eb) and is_nan(ab):
-            continue
+        eb, ab = struct.unpack(WORD, bytes(ev))[0], struct.unpack(WORD, bytes(av))[0]
+        if is_nan(eb) and is_nan(ab) and w in exp.get("float_nan", ()):
+            continue  # a float NaN the original stored: its payload is the FPU's (an integer word compares exactly)
         if same_word(eb, ab) and all(w + i in exp["writes"] and w + i in act["writes"] for i in range(4)):
             continue  # a whole stored word on both sides: a pointer through the other RAM view
         bad.append(f"memory 0x{w:08x}: expected {bytes(ev).hex()}, got {bytes(av).hex()}"
@@ -263,19 +404,19 @@ def compare_vector(meta, image, vec, exp, act):
         if ec[k][0] != ac[k][0]:
             diffs.append(f"call #{k + 1}: expected target 0x{ec[k][0]:08x}, got 0x{ac[k][0]:08x}")
             break
-        regs = callee_regs.get(ec[k][0], [])
+        regs = callee_regs.get(ec[k][0], exp.get("call_args", {}).get(k, []))  # unlisted: the original's own (CA)
         if meta.get("fpu_state"):
             regs = regs + [r for r in FPU_REGS if r not in regs]
         for reg in regs:
             i = REG_INDEX[reg]
-            if reg.startswith(("fr", "xf")) and same_f32(ec[k][i], ac[k][i]):
+            alt = strict_judge.alternative(exp, k, i)
+            if same_arg(reg, ec[k][i], ac[k][i]) or (alt is not None and same_arg(reg, alt, ac[k][i])):
                 continue
-            if reg[0] in "rs" and same_word(ec[k][i], ac[k][i]):
-                continue
-            if ec[k][i] != ac[k][i]:
-                diffs.append(f"call #{k + 1} to 0x{ec[k][0]:08x}: argument {arg_name(reg)} expected 0x{ec[k][i]:08x}, "
-                             f"got 0x{ac[k][i]:08x}")
+            diffs.append(f"call #{k + 1} to 0x{ec[k][0]:08x}: argument {arg_name(reg)} expected 0x{ec[k][i]:08x}"
+                         + ("" if alt is None else f" (junk a callee left there: the original never set it) or "
+                            f"0x{alt:08x} (its value before)") + f", got 0x{ac[k][i]:08x}")
     for i in range(16):
         if not same_f32(exp["xf"][i], act["xf"][i]):
             diffs.append(f"xf{i} (XMTRX): expected 0x{exp['xf'][i]:08x}, got 0x{act['xf'][i]:08x}")
-    return diffs + compare_state(exp, act)
+    return diffs + compare_state(exp, act) + strict_judge.compare(meta, exp, act, REG_INDEX, strict_judge.XR_SH,
+                                                                  same_word, strict, report, WORD)

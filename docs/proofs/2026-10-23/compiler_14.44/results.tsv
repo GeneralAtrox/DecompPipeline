@@ -1,0 +1,181 @@
+console	function	judge	sample	verdict	score	failing/total	same in all 5 runs
+Toy Commander	8c010080	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c014390	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c01687c	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c01bed0	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c01c79e	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c01d502	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c01e1ee	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c01fa0e	raw (x64)	matched	PASS	0	0/100	yes
+Toy Commander	8c021cac	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c024080	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c028f6a	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c033c2e	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c036d64	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c03992e	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c03d844	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c0422ea	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c04693c	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c04a860	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c04c18c	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c04ded0	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c0505de	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c053f06	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c056a0a	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c05b406	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c05dbc2	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c0613b8	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c062268	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c063a0c	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c067aa6	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c06ff88	raw (x64)	matched	PASS	0	0/98	yes
+Toy Commander	8c075036	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c07ab6a	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c08dc52	raw (x64)	matched	PASS	0	0/98	yes
+Toy Commander	8c097bb0	raw (x64)	matched	PASS	0	0/96	yes
+Toy Commander	8c07564c	raw (x64)	fail-attempt-03 (failed)	FAIL	13	13/96	yes
+Toy Commander	8c0149b4	raw (x64)	fail-attempt-00 (matched)	FAIL	8	8/96	yes
+Toy Commander	8c03054c	raw (x64)	fail-attempt-00 (matched)	FAIL	96	96/96	yes, with the noise masked ("got" values)
+Toy Commander	8c041cfe	raw (x64)	fail-attempt-00 (matched)	FAIL	28	28/96	yes
+Toy Commander	8c058938	raw (x64)	fail-attempt-00 (matched)	FAIL	96	96/96	yes, with the noise masked ("got" values)
+Toy Commander	8c071130	raw (x64)	fail-attempt-00 (matched)	FAIL	24	24/96	yes
+Toy Commander	8c010080	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c0158ba	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c01c1a8	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c01d602	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c01eefa	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c022d44	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c029b68	readable (x86)	readable	PASS		0/102	yes
+Toy Commander	8c0366d0	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c03bbc0	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c042c30	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c04a6c6	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c04d134	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c05101e	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c0569b8	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c05d2c8	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c0616e0	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c063b52	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c06ebc4	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c076ac2	readable (x86)	readable	PASS		0/96	yes
+Toy Commander	8c08e0be	readable (x86)	readable	PASS		0/96	yes
+Dragon Force 2	06010000	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	06010c74	raw (x64)	translated, judged FAIL	FAIL	0	0/0	yes
+Dragon Force 2	060118b8	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	0601304c	raw (x64)	translated, judged FAIL	FAIL	0	0/0	yes
+Dragon Force 2	0601334a	raw (x64)	translated, judged FAIL	FAIL	0	0/0	yes
+Dragon Force 2	06013a94	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	060163cc	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	06017438	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	06017f40	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	060182d4	raw (x64)	translated, judged FAIL	FAIL	74	74/96	yes
+Dragon Force 2	06018ce4	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	06019878	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	0601a5b8	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	0601af38	raw (x64)	translated, judged FAIL	FAIL	0	0/0	yes
+Dragon Force 2	0601b1bc	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	0601bff8	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	0601cc30	raw (x64)	translated, judged PASS	PASS	0	0/98	yes
+Dragon Force 2	0601dbd0	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	0601e91c	raw (x64)	translated, judged PASS	PASS	0	0/98	yes
+Dragon Force 2	06020960	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	06027674	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	0602adf0	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	0602d080	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	0602ecac	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	060325c4	raw (x64)	translated, judged FAIL	FAIL	0	0/0	yes
+Dragon Force 2	06033cbc	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	060348dc	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	0603668c	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	06039984	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	060605e8	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	060638b8	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	06063964	raw (x64)	translated, judged FAIL	FAIL	0	0/0	yes
+Dragon Force 2	06066b90	raw (x64)	translated, judged PASS	PASS	0	0/102	yes
+Dragon Force 2	0606a454	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	0606dbc8	raw (x64)	translated, judged PASS	PASS	0	0/100	yes
+Dragon Force 2	06070584	raw (x64)	translated, judged PASS	PASS	0	0/100	yes
+Dragon Force 2	0607546c	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	0607767c	raw (x64)	translated, judged FAIL	FAIL	0	0/0	yes
+Dragon Force 2	0607b7fc	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Dragon Force 2	0607e010	raw (x64)	translated, judged PASS	PASS	0	0/96	yes
+Skies	80090a20	raw (x64)	matched	PASS	0	0/96	yes
+Skies	80090b68	raw (x64)	matched	PASS	0	0/96	yes
+Skies	80091228	raw (x64)	matched	PASS	0	0/96	yes
+Skies	80095360	raw (x64)	matched	PASS	0	0/96	yes
+Skies	800967f0	raw (x64)	matched	PASS	0	0/96	yes
+Skies	80097294	raw (x64)	matched	PASS	0	0/96	yes
+Skies	8009761c	raw (x64)	matched	PASS	0	0/96	yes
+Skies	800c24cc	raw (x64)	failed, attempt-03 (FAIL, compare)	FAIL	95	95/96	yes
+Skies	800c5530	raw (x64)	matched	PASS	0	0/96	yes
+Skies	800c79c4	raw (x64)	matched	PASS	0	0/96	yes
+Skies	800c86ec	raw (x64)	matched	PASS	0	0/96	yes
+Skies	800cf554	raw (x64)	failed, attempt-03 (FAIL, compare)	FAIL	2	2/96	yes
+Skies	800cf6a8	raw (x64)	matched	PASS	0	0/96	yes
+Skies	800cf988	raw (x64)	matched later; failed attempt-01	FAIL	1	1/96	yes
+Skies	800cfbf4	raw (x64)	matched	PASS	0	0/96	yes
+Skies	800d1324	raw (x64)	matched	PASS	0	0/96	yes
+Skies	800d1b5c	raw (x64)	matched	PASS	0	0/96	yes
+Skies	800d8e1c	raw (x64)	matched	PASS	0	0/96	yes
+Skies	800dbb4c	raw (x64)	failed, attempt-03 (FAIL, compare)	FAIL	1	1/96	yes
+Skies	80100b74	raw (x64)	matched	PASS	0	0/96	yes
+Skies	80101060	raw (x64)	matched	PASS	0	0/96	yes
+Skies	801dceb0	raw (x64)	matched	PASS	0	0/96	yes
+Skies	801dd5e8	raw (x64)	failed, attempt-03 (FAIL, compare)	FAIL	1	1/96	yes
+Skies	801f58b8	raw (x64)	matched	PASS	0	0/96	yes
+Skies	801f6120	raw (x64)	stopped, attempt-01 (FAIL, build)	FAIL	2000000	0/0	C4100 warning wording only (19.38 vs 19.44)
+Skies	801fdfb8	raw (x64)	matched	PASS	0	0/96	yes
+Skies	801fed58	raw (x64)	matched	PASS	0	0/96	yes
+Skies	80201228	raw (x64)	matched	PASS	0	0/96	yes
+Skies	802056a8	raw (x64)	matched	PASS	0	0/96	yes
+Skies	80207130	raw (x64)	matched	PASS	0	0/96	yes
+Skies	8020cba4	raw (x64)	matched	PASS	0	0/96	yes
+Skies	80213fe8	raw (x64)	matched	PASS	0	0/96	yes
+Skies	80214954	raw (x64)	matched	PASS	0	0/96	yes
+Skies	80214a20	raw (x64)	matched	PASS	0	0/96	yes
+Skies	80214dfc	raw (x64)	matched	PASS	0	0/96	yes
+Skies	80214fac	raw (x64)	matched	PASS	0	0/96	yes
+Skies	802150bc	raw (x64)	matched	PASS	0	0/96	yes
+Skies	80222930	raw (x64)	matched	PASS	0	0/96	yes
+Skies	802258bc	raw (x64)	matched	PASS	0	0/96	yes
+Skies	80226984	raw (x64)	matched	PASS	0	0/96	yes
+Too Human	82334de0	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	8239c808	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	823c6f28	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82414460	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	8247c700	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	824d8420	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	8253a818	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	825b8410	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	8263a3f0	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82696708	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	8270d9f8	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82782480	raw (x64)	translated, screened FAIL	FAIL	94	94/96	yes
+Too Human	827dff28	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82858c68	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	828a2ce8	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	8291d1f8	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82988f10	raw (x64)	translated, screened PASS	PASS	0	0/94	yes
+Too Human	829fb088	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82a64f70	raw (x64)	translated, screened PASS	PASS	0	0/67	yes
+Too Human	82b3a998	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82c14ed8	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82cf5eb0	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82d61ba8	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82e33860	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82ef93d0	raw (x64)	translated, screened PASS	PASS	0	0/93	yes
+Too Human	82f34d30	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82f50ad0	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82f6fd48	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82f8aee0	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82fa2410	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82fbe250	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82fd6cd8	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	82fef458	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	8300b1c8	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	830243a8	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	8303db18	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	83059350	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	8307c888	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	830a4ad8	raw (x64)	translated, screened PASS	PASS	0	0/96	yes
+Too Human	830d4730	raw (x64)	translated, screened PASS	PASS	0	0/96	yes

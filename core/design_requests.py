@@ -15,7 +15,7 @@ grouped by system (state/systems.json) and, within it, by the type, address or f
 import json
 import re
 
-from . import paths
+from . import paths, readable_stack
 
 ADDR = r"0x(8c[0-9a-fA-F]{6})"
 FIELDS = re.compile(r"MISSING FIELDS?\s*:\s*(.+?)(?=\s*(?:MISSING \w+\s*:|RESULT:|\n|$))")
@@ -30,7 +30,6 @@ PROTO = re.compile(rf"{CLAUSE}*\bprototype\b{CLAUSE}*?\b(?:cannot carry|can't ca
 FUNC = re.compile(r"\b((?:fn_8c[0-9a-f]{6})|(?:[A-Z][A-Za-z0-9]*_[A-Za-z0-9_]+)|(?:[a-z]+[A-Z]\w+))\b")
 TYPE = re.compile(r"\b([A-Z][A-Za-z0-9_]*)\b")
 NONE = re.compile(r"^\s*(?:none|n/?a|-)\b", re.I)
-STACK_LO = 0x8CFF0000  # a guest stack address is never a missing name
 
 
 def final_messages(addr, row):
@@ -87,9 +86,10 @@ def parse(text, own=""):
             t = TYPE.search(item)
             if item:
                 out.append(("field", t.group(1) if t else "(other)", item[:120]))
+    lo = readable_stack.frame_lo()  # an own-frame address is never a missing name (the frame is bounded)
     for rx in NAME:
         for m in rx.finditer(text):
-            if int(m.group(1), 16) < STACK_LO:
+            if int(m.group(1), 16) < lo:
                 out.append(("name", m.group(1).lower(), clause(text, m.start(), m.end())))
     for m in PROTO.finditer(text):
         s = m.group(0)

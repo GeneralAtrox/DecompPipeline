@@ -9,7 +9,8 @@
 // following fall-throughs (also after a call returns), delay slots and jump references, and stopping at the body and at
 // function entries (a tail call: a callee, mocked and compared). TcPrepare lists, blocks, covers and runs the extent;
 // TcFlow reads the registers through it. A PR-redirected tail call (prContinuations) adds the code its callee returns
-// to, even at a function entry: that code pops the function's own frame (Toy Commander 8c061aac). A non-instruction
+// to, even at a function entry: that code pops the function's own frame (Toy Commander 8c061aac). So does code that
+// runs on (no jump) into a function entry (runOn: TC 8c061630 into 8c06163e after the entry split). A non-instruction
 // is not followed: a run reaching one is refused (TcOracle.entersCallee), like a jump without references into another
 // function. The catalog fixup TcCont decodes a continuation Ghidra left as undefined bytes and makes the code of it
 // that lies in no function part of the redirecting function's body (TC 8c061ec4 returns into 8c061ee4).
@@ -29,7 +30,7 @@ public class TcTail {
         FunctionManager fm = prog.getFunctionManager();
         AddressSet tail = new AddressSet();
         Deque<Address> work = new ArrayDeque<>();
-        Set<Address> pr = new HashSet<>(); // PR continuations: followed even into a function entry
+        Set<Address> pr = new HashSet<>(); // PR continuations and run-ons: followed even into a function entry
         for (Instruction in : listing.getInstructions(body, true)) follow(prog, in, work, pr);
         while (!work.isEmpty()) {
             Address a = work.poll();
@@ -49,6 +50,39 @@ public class TcTail {
         work.addAll(exits(prog, in));
         Address c = prTarget(prog, in);
         if (c != null) pr.add(c);
+        Address on = runOn(in);
+        if (on != null && prog.getFunctionManager().getFunctionAt(on) != null) pr.add(on);
+    }
+
+    // Where `in` runs on to without a jump: its fall-through, or after its delay slot (a call's return, a conditional
+    // branch not taken); null for a delay slot (its branch's business) and an instruction that does not run on. Code
+    // that runs on into another function's entry runs that function's code as its own, with no call and no return of
+    // its own (Toy Commander 8c061630 saves PR in r2 and runs into 8c06163e, which returns by `jmp @r2`; 8c061a98's
+    // `bsr` returns into 8c061aa0, which pops the PR 8c061a98 pushed): a mock there would return to the PR of the
+    // last call, back into the function, without end. A run-on entry is followed like a PR continuation, but only
+    // with PR not the function's own (callPr): with it (Spawn 8c020560 pops r13, r14 and runs into 8c0205a4), the
+    // entry's code returns to the caller as a tail call's callee does, and stays a mocked tail call. Not after a call
+    // to a callee that halts (TcExit: its run ends there; what follows the call is the next function).
+    static Address runOn(Instruction in) {
+        if (in.isInDelaySlot() || !in.getFlowType().hasFallthrough() || !callPr(in)) return null;
+        if (in.getFlowType().isCall()) {
+            for (Address t : in.getFlows()) if (TcExit.halts(in.getProgram().getListing(), t)) return null;
+        }
+        Instruction slot = in.getDelaySlotDepth() > 0 ? in.getNext() : null;
+        return slot != null && slot.isInDelaySlot() ? slot.getMaxAddress().next() : in.getFallThrough();
+    }
+
+    // PR holds a return address into this code where `in` runs on: `in` is a call, or the straight line before it
+    // (back to an instruction control can also enter from elsewhere) has a call after the last `lds`/`lds.l` to PR.
+    static boolean callPr(Instruction in) {
+        ReferenceManager refs = in.getProgram().getReferenceManager();
+        Instruction p = in;
+        for (int k = 0; k < LOOKBACK * 4 && p != null; k++, p = p.getPrevious()) {
+            if (p.getFlowType().isCall()) return true;
+            if (p.toString().toLowerCase().replaceFirst("^_", "").matches("^lds(\\.l)?\\s+\\S+,pr$")) return false;
+            if (entered(refs, p)) return false;
+        }
+        return false;
     }
 
     // PR-redirected tail calls: `lds rN,PR` with rN a literal-pool constant (or `mova`) naming code, then a jump to a

@@ -1,10 +1,10 @@
 """Lockstep check: the port against Flycast, frame by frame, from the same input.
 
 Flycast plays the game from a scripted input (the port's --input syntax) with a Lua script (lockstep_emu.lua) that
-reads the game's watched state (the game's lockstep.spec) at every vertical blank and keeps the last sample of each
-frame. The port then replays those frames (runtime/lockstep.c): every frame takes its length (the SDK timer's
-delta) and its pad from the paired emulator frame, and the port writes the same watched state at each frame's end.
-The compare names the first frame where the two differ, and what differs.
+reads the game's watched state (lockstep.spec) at every vertical blank, or where the port samples (game.json
+lockstep_sample_pcs), and keeps each frame's last sample. The port replays those frames (runtime/lockstep.c): every
+frame takes its length (the SDK timer's delta) and its pad from the paired emulator frame, and the port writes the
+same watched state at each frame's end. The compare names the first frame where the two differ, and what differs.
 
     python tools/lockstep.py run --game DIR --input START@900,A@1500+10,R@6000+2000 --seconds 600
         [--emu FILE] [--build-dir x86-agent] [--out DIR] [--spec FILE]
@@ -36,9 +36,9 @@ import sys
 import time
 
 import emu_capture as ec
-from lockstep_frames import build_frames, draws_path, read_draws, sample_of
+from lockstep_frames import build_frames, draws_path, iter_frames, read_draws, read_frames, sample_of
 from lockstep_watch import exit_line, report_hits, watch_arg
-from game_config import PIPELINE, load as load_game
+from game_config import PIPELINE, load as load_game, oplog
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 BUTTONS = {"C": 0x1, "B": 0x2, "A": 0x4, "START": 0x8, "UP": 0x10, "DOWN": 0x20, "LEFT": 0x40, "RIGHT": 0x80,
@@ -47,6 +47,7 @@ TRIGGERS = {"R": 255}
 FLOAT_REL, FLOAT_ABS = 1e-4, 1e-6        # float words this close are rounding, not divergence
 PRESS = 10                               # vertical blanks a press without +N lasts (the port's gfx_input.c)
 LOAD_VBLANKS = 4                         # an emulator frame longer than this is a load: sampled mid-work
+SET_APART_MAX = 0.05                     # more compared frames set apart than this: the check is blind (fails)
 
 
 def parse_spec(path):
@@ -86,21 +87,21 @@ def emu_run(game, spec, out, seconds, inputs, exe=None, hw=None, lua_vars=None, 
     more -config entries (later ones win); drive(ctl, proc, deadline): runs the session instead of waiting
     (tools/reference.py). Returns the wall time."""
     exe = flycast_exe(exe)
-    disc = pathlib.Path(load_game(game)["disc"])
+    cfg = load_game(game)
     out = pathlib.Path(out).resolve()
     out.parent.mkdir(parents=True, exist_ok=True)
     lua, draws = out.with_suffix(".lua"), draws_path(out)
     table = ",".join("{%d,%d,%d,%d}" % i for i in inputs)
+    lua_vars = {"LS_SAMPLE_PCS": "{%s}" % ",".join("0x" + a for a in cfg["lockstep_sample_pcs"]), **(lua_vars or {})}
     lua.write_text(f'LS_SPEC = "{pathlib.Path(spec).resolve().as_posix()}"\nLS_OUT = "{out.as_posix()}"\n'
                    f'LS_DRAWS = "{draws.as_posix()}"\nLS_INPUT = {{{table}}}\n'
                    + (f'LS_HW = "{pathlib.Path(hw).resolve().as_posix()}"\n' if hw else "")
-                   + "".join(f"{k} = {v}\n" for k, v in (lua_vars or {}).items())
+                   + "".join(f"{k} = {v}\n" for k, v in lua_vars.items())
                    + (TOOLS / "lockstep_emu.lua").read_text(encoding="utf-8")
                    + ((TOOLS / "hw_emu.lua").read_text(encoding="utf-8") if hw else ""),
                    encoding="utf-8")
     for old in (out, draws):
-        if old.exists():
-            old.unlink()
+        old.unlink(missing_ok=True)
     port, token = ec.free_port(), secrets.token_hex(16)
     rel = os.path.relpath(lua, exe.parent).replace("\\", "/")
     # unpaced (no vsync; null audio without its real-time wait) and minimised without focus: the same frames, sooner
@@ -111,7 +112,7 @@ def emu_run(game, spec, out, seconds, inputs, exe=None, hw=None, lua_vars=None, 
     keys = {e.partition("=")[0] for e in entries}
     config = [e for e in base if e.partition("=")[0] not in keys] + list(entries)
     t0 = time.monotonic()
-    proc = subprocess.Popen([str(exe), "-config", ",".join(config), str(disc)], cwd=str(exe.parent),
+    proc = subprocess.Popen([str(exe), "-config", ",".join(config), str(cfg["disc"])], cwd=str(exe.parent),
                             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP, stdin=subprocess.DEVNULL,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                             env=dict(os.environ, FLYCAST_RESEARCH_UNTHROTTLED_NULL_AUDIO="1"),
@@ -134,17 +135,6 @@ def emu_run(game, spec, out, seconds, inputs, exe=None, hw=None, lua_vars=None, 
             time.sleep(0.5)
         ec.kill_tree(proc)
     return time.monotonic() - t0
-
-
-def read_frames(path):
-    """[(label, n, words)]: n is the emulator's vertical blank, or the port's paired emulator frame."""
-    frames = []
-    with open(path, encoding="ascii", errors="replace") as f:
-        for line in f:
-            p = line.split()
-            if len(p) >= 2:
-                frames.append((int(p[0], 16), int(p[1]), p[2:]))
-    return frames
 
 
 def layout(items, port):
@@ -175,7 +165,7 @@ def drive_file(items, emu, frames, out):
     with open(out, "w", encoding="ascii") as f:
         for fr in frames:
             label, jump = fr["label"], fr["jump"]
-            w = emu[min(bisect.bisect_left(labels, label), len(emu) - 1)][2]
+            w = emu[min(bisect.bisect_left(labels, label), len(emu) - 1)][2].split()
             rec = [word(x) or 0 for x in w[pad[1]:pad[1] + pad[0]["words"]]]
             on, rl, xy = rec[2], rec[6], rec[7]
             x, y = struct.unpack("<hh", struct.pack("<I", xy))
@@ -195,7 +185,7 @@ def port_run(game, build_dir, spec, drive, trace, seconds, extra=()):
     cmd = [str(bdir / "port.exe"), "--disc", str(cfg["disc"]), "--seconds", str(seconds), "--log",
            str(rdir / "port.log"), "--headless", "--fixed-clock", "1", "--audio", "off", "--present", "tick",
            "--vmu", "none", "--settings", "none", "--record", "off", "--lockstep-spec", str(spec),
-           "--lockstep", str(drive), "--lockstep-trace", str(trace)] + list(extra)
+           "--lockstep", str(drive), "--lockstep-trace", str(trace), "--lockstep-end", "exit"] + list(extra)
     t0 = time.monotonic()
     proc = subprocess.Popen(cmd, cwd=str(rdir), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
@@ -280,26 +270,27 @@ def item_diffs(it, pw, pat, ew, eat, res=None):
 
 
 def compare(items, emu, frames, port, limit=12, base=None):
-    """{frames, first, first_time, diffs}: the first port frame that differs outside the time words, and the first
-    that differs only in them. A sample taken mid-frame (before the frame's end counted it: a load, a frame longer
-    than the vertical blank) or after a long frame (LOAD_VBLANKS) is counted apart, and so is one that shows the
-    port's frame before (drawn): the vertical blank came within the frame's draw on the console, before the draw
-    wrote its words (the port's state is the frame's end). With base (another port run's trace from the same
-    recording, a reference build), a frame whose differing items read as base's does is known: a change's own
-    divergence is the first the reference does not share."""
+    """{frames, traced, first, first_time, diffs}: the first port frame that differs outside the time words, and the
+    first that differs only in them. A sample taken mid-frame (its frames word not the draw's, nor one more as after a
+    lockstep_sample_pcs PC: a load, a frame longer than the vertical blank) or after a long frame (LOAD_VBLANKS) is
+    counted apart, and so is one that shows the port's frame before (drawn): the vertical blank came within the frame's
+    draw on the console, before the draw wrote its words (the port's state is the frame's end). With base (another port
+    run's trace from the same recording, a reference build), a frame whose differing items read as base's does is known:
+    a change's own divergence is the first the reference does not share. port and base are read row by row."""
     elay, play = dict((it["name"], at) for it, at in layout(items, False)), layout(items, True)
     res = {"frames": 0, "first": None, "first_time": None, "diffs": [], "time_diffs": [], "pointers": 0,
-           "floats": 0, "float_max": 0.0, "loads": 0, "load_diffs": 0, "drawn": 0,
-           "known": 0}
+           "floats": 0, "float_max": 0.0, "loads": 0, "load_diffs": 0, "drawn": 0, "known": 0}
     samples = sample_of(emu, frames)
     fat = next((at for it, at in layout(items, False) if "frames" in it["flags"]), None)
-    for n, (label, gi, pw) in enumerate(port):
+    rows, base_rows, prev, n = iter(port), iter(base or ()), None, -1
+    for n, (label, gi, pw) in enumerate(rows):
+        brow, before, prev = next(base_rows, None), prev, pw
         if gi not in samples:
             continue  # not driven, or a frame no vertical blank sampled
-        ei, draw = samples[gi], frames[gi]["draw"]
+        ei, draw, pw = samples[gi], frames[gi]["draw"], pw.split()
         res["frames"] += 1
-        ew = emu[ei][2]
-        mid = draw is not None and fat is not None and word(ew[fat]) != draw[1]
+        ew = emu[ei][2].split()
+        mid = draw is not None and fat is not None and (ew[fat] == "-" or (word(ew[fat]) - draw[1]) % 2**32 > 1)
         load = mid or ei == 0 or emu[ei][1] - emu[ei - 1][1] > LOAD_VBLANKS  # the first: sampled within the boot
         res["loads"] += load
         diffs, tdiffs, late = [], [], []
@@ -313,12 +304,11 @@ def compare(items, emu, frames, port, limit=12, base=None):
         if diffs and load:
             res["load_diffs"] += 1
             continue
-        if diffs and n > 0 and not any(item_diffs(it, port[n - 1][2], at, ew, elay[it["name"]])
-                                       for it, at in play if it in late):
+        if diffs and before is not None and not any(item_diffs(it, before.split(), at, ew, elay[it["name"]])
+                                                    for it, at in play if it in late):
             res["drawn"] += 1
             continue
-        if diffs and base and n < len(base) and not any(item_diffs(it, pw, at, base[n][2], at)
-                                                         for it, at in play if it in late):
+        if diffs and brow and not any(item_diffs(it, pw, at, brow[2].split(), at) for it, at in play if it in late):
             res["known"] += 1
             continue
         if diffs and res["first"] is None:
@@ -328,15 +318,20 @@ def compare(items, emu, frames, port, limit=12, base=None):
         if tdiffs and res["first_time"] is None:
             res["first_time"] = (n, label, ei, emu[ei][1])
             res["time_diffs"] = tdiffs[:limit]
+    res["traced"] = n + 1 + sum(1 for _ in rows)
     return res
 
 
-def report(res, emu, port):
-    print(f"compared {res['frames']} port frames ({len(port)} traced) with {len(emu)} emulator frames; "
+def report(res, emu):
+    print(f"compared {res['frames']} port frames ({res['traced']} traced) with {len(emu)} emulator frames; "
           f"{res['pointers']} pointer words differ by heap layout only, {res['floats']} float words by rounding "
           f"(largest relative gap {res['float_max']:.2g}); {res['loads']} load or split frames, {res['load_diffs']} "
           f"of them differ (sampled mid-frame); {res['drawn']} sampled within the frame's draw (the frame before)"
           + (f"; {res['known']} as the baseline's" if res["known"] else ""))
+    blind = res["frames"] >= 100 and res["loads"] > SET_APART_MAX * res["frames"]
+    if blind:
+        print(f"CHECK BLIND: {res['loads']} of {res['frames']} compared frames set apart, over "
+              f"{SET_APART_MAX:.0%} (the emulator's sample point and the frames word disagree?)")
     if res["first_time"]:
         n, label, ei, vb = res["first_time"]
         print(f"first clock-only difference: port frame {n} (label {label:08x}), emulator frame {ei} (vblank {vb})")
@@ -344,7 +339,7 @@ def report(res, emu, port):
             print("   ", d)
     if res["first"] is None:
         print("no divergence")
-        return 0
+        return 2 if blind else 0
     n, label, ei, vb = res["first"]
     print(f"FIRST DIVERGENT FRAME: port frame {n} (label {label:08x}), emulator frame {ei} (vblank {vb})")
     for d in res["diffs"]:
@@ -367,6 +362,7 @@ def main(argv=None):
     ap.add_argument("--watch", default=None, help="NAME[J]@N: log the writes to that word in port frame N")
     a, extra = ap.parse_known_args(argv)
     game = pathlib.Path(a.game).resolve()
+    oplog().begin(f"port lockstep.py {a.step}", [game])
     spec = pathlib.Path(a.spec or game / "lockstep.spec").resolve()
     out = pathlib.Path(a.out or game / "build" / "lockstep").resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -391,10 +387,9 @@ def main(argv=None):
         print(f"port: exit {rc} ({exit_line(log)}), {wall:.0f} s; log {log}")
         if a.watch:
             report_hits(log, game / "build" / a.build_dir / "port.map")
-    port = read_frames(trace)
-    base = read_frames(a.baseline) if a.baseline else None
-    return report(compare(items, emu, frames, port, base=base), emu, port)
+    base = iter_frames(a.baseline) if a.baseline else None
+    return report(compare(items, emu, frames, iter_frames(trace), base=base), emu)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(oplog().main(main))

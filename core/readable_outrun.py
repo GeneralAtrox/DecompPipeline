@@ -3,23 +3,49 @@ vectors file they make: a trace run (T lines: how far the original reads a buffe
 which bytes it wrote before the call), then D lines for the readable run."""
 import hashlib
 import json
+import os
+import pathlib
+import threading
 
-from . import check, paths
+from . import check, paths, readable_stack
 from .readable_outptr import FLIPS, deliver, lines_for, parse_ob, parse_ot, trace_lines, type_sizes, with_lines
 
 
 class RawRuns:
     """Runs the matched raw C of addr on vectors files, built once on the first run that is not cached. Each run's
-    output (its V, OB and OT lines) is cached in cache_file by the raw text, the vectors, the sets and the runtime."""
+    output (its V, OB and OT lines) is cached in the function's cache_file (build/ADDR/raw_runs.json, shared by its
+    build folders: the agent's check, the official judge, verify) by the raw text, the vectors, the sets and
+    everything else the run reads (inputs())."""
 
     def __init__(self, cfg, addr, meta, harness, build_dir, sets):
-        from . import readable_check as rcheck
         self.cfg, self.meta, self.harness, self.build_dir, self.sets = cfg, meta, harness, build_dir, sets
         self.raw = paths.MATCHED / f"{addr}.c"
         self.built = None
-        self.cache_file = build_dir.parent / (build_dir.name + "_runs.json")
-        self.runtime = "".join(f"{p.name}{p.stat().st_mtime_ns}" for d in (rcheck.RUNTIME_RD, paths.RUNTIME)
-                               for p in sorted(d.glob("*.[ch]")))
+        self.cache_file = build_dir.parent / "raw_runs.json"
+        self.runtime = None
+
+    def inputs(self):
+        """The rest of what a run reads, hashed once: the runner's build (its thunk from the harness meta, the
+        readable runtime's files, the link options, the 32-bit compiler's environment, the judge's build and run
+        code) and the runner's arguments (the binary, the code ranges, the FSCA table)."""
+        from . import readable_check as rcheck
+        if self.runtime is None:
+            h = hashlib.sha256(b"raw runs 2\0" + check.gen_thunk(self.meta).encode() + b"\0"
+                               + repr(rcheck.link_flags(self.cfg)).encode())
+            table = paths.fsca_table() if self.cfg.get("fsca_table") else paths.FSCA_TABLE  # as rcheck.run
+            core = pathlib.Path(__file__).parent
+            files = [*(p for d in (rcheck.RUNTIME_RD, paths.RUNTIME) for p in sorted(d.iterdir()) if p.is_file()),
+                     rcheck.MSVC_ENV_X86, self.cfg["binary_path"], paths.CODE_RANGES, pathlib.Path(table),
+                     *(core / f for f in ("readable_check.py", "readable_outrun.py", "check.py", "pch_warnings.py"))]
+            for p in files:
+                try:
+                    data = pathlib.Path(p).read_bytes()
+                except OSError:
+                    data = None
+                h.update(pathlib.Path(p).name.encode() + b"\0" + (hashlib.sha256(data).digest() if data is not None
+                                                                   else b"-") + b"\0")
+            self.runtime = h.hexdigest()
+        return self.runtime
 
     def available(self):
         return self.raw.exists()
@@ -29,8 +55,8 @@ class RawRuns:
         from . import readable_check as rcheck
         if not self.raw.exists():
             return None
-        key = hashlib.sha1(b"ob5\0" + self.raw.read_bytes() + b"\0" + vec.read_bytes() + b"\0"
-                           + ",".join(self.sets).encode() + self.runtime.encode()).hexdigest()
+        key = hashlib.sha1(b"ob6\0" + self.raw.read_bytes() + b"\0" + vec.read_bytes() + b"\0"
+                           + ",".join(self.sets).encode() + self.inputs().encode()).hexdigest()
         cache = paths.read_json(self.cache_file, {}) if self.cache_file.exists() else {}
         if key in cache:
             return cache[key]
@@ -43,11 +69,17 @@ class RawRuns:
             return None
         text = "".join(ln for ln in out.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
                        if ln.startswith(("V ", "OB ", "OT ")))
+        cache = paths.read_json(self.cache_file, {}) if self.cache_file.exists() else {}  # another folder's runs too
         cache = {k: v for k, v in cache.items() if k != key}
         cache[key] = text
-        if len(cache) > 8:  # the latest runs only (another harness or raw C makes new keys)
-            cache = dict(list(cache.items())[-8:])
-        self.cache_file.write_text(json.dumps(cache), encoding="utf-8")
+        if len(cache) > 16:  # the latest runs only (another harness or raw C makes new keys)
+            cache = dict(list(cache.items())[-16:])
+        tmp = self.cache_file.with_name(f"{self.cache_file.name}.{os.getpid()}_{threading.get_ident()}")
+        tmp.write_text(json.dumps(cache), encoding="utf-8")
+        try:
+            os.replace(tmp, self.cache_file)  # whole: a reader never sees half a file
+        except OSError:  # Windows refused (a reader has it open): this run is not cached
+            tmp.unlink(missing_ok=True)
         return text
 
 
@@ -83,9 +115,10 @@ def vectors_file(cfg, meta, harness, specs, build_dir, include_dirs, addr=None, 
     if not specs:
         return src, 0
     exp = parse_results(harness / "expected.txt")
+    lo = readable_stack.frame_lo()  # a guest stack address is the own frame's (a global below it is memory)
     need = {s[2] for s in specs if s[2] != "void"}
     sizes = {}
-    if lines_for(exp, specs, lambda b: 1):  # some call passes a guest stack address there: size the pointees
+    if lines_for(exp, specs, lambda b: 1, frame_lo=lo):  # a call passes a guest stack address there: size the pointees
         if need:
             sizes = type_sizes(cfg, need, build_dir.parent / (build_dir.name + "_outsz"), include_dirs)
     else:
@@ -93,11 +126,11 @@ def vectors_file(cfg, meta, harness, specs, build_dir, include_dirs, addr=None, 
     # the raw build folder is wiped by each build: its vectors live in the readable build folder
     runner = raw_runs(cfg, addr, meta, harness, build_dir.parent / (build_dir.name + "_orig"), sets) if addr else None
     extents = {}
-    tl = trace_lines(exp, specs)
+    tl = trace_lines(exp, specs, lo)
     if tl and runner and runner.available():
         text = runner.run(with_lines(src, tl, build_dir / "vectors_t.txt", after_v=True))
         extents = parse_ot(text) if text else {}
-    extra = lines_for(exp, specs, sizes.get, extents)
+    extra = lines_for(exp, specs, sizes.get, extents, lo)
     if not extra:
         return src, 0
     dst = build_dir / "vectors_out.txt"

@@ -146,6 +146,24 @@ def write_json(path, data, indent=2):
     write_atomic(path, json.dumps(data, indent=indent))
 
 
+def dumps_rows(data, rows="functions"):
+    """JSON text of a dict with each entry of data[rows] on a line of its own (the ledger: one line per function).
+    Unlike indent=2 it keeps json's C encoder: about 4x faster on a 25 MB ledger (113 ms against 480; the server
+    saves it under its lock many times per function), a quarter smaller, and still one line per function for grep
+    and diff. json.loads reads back the same data. rows=None: data's own entries one a line (state/readable.json:
+    an indent=2 dump of Toy Commander's 4 MB took 86 ms of each 150 ms refine.update; this one 15)."""
+    if rows is None:
+        return "{\n" + ",\n".join(f"  {json.dumps(k)}: {json.dumps(v)}" for k, v in data.items()) + "\n}\n"
+    parts = []
+    for k, v in data.items():
+        if k == rows and isinstance(v, dict) and v:
+            body = ",\n".join(f"  {json.dumps(a)}: {json.dumps(r)}" for a, r in v.items())
+            parts.append(f"{json.dumps(k)}: {{\n{body}\n}}")
+        else:
+            parts.append(f"{json.dumps(k)}: {json.dumps(v)}")
+    return "{\n" + ",\n".join(parts) + "\n}\n"
+
+
 def read_json(path, default=None):
     path = pathlib.Path(path)
     if not path.exists():
@@ -153,13 +171,17 @@ def read_json(path, default=None):
     return json.loads(read_text(path))
 
 
-def update_json(path, fn, default=None, wait=WAIT_S, indent=2):
+def update_json(path, fn, default=None, wait=WAIT_S, indent=2, dump=None):
     """Locked read-modify-write: fn(data) changes the freshly loaded data (or a copy of `default`) in place; the
-    result is written atomically. Returns (the data written, fn's return value)."""
+    result is written atomically (dump(data)'s text when given, e.g. dumps_rows). Returns (the data written, fn's
+    return value)."""
     with locked(path, wait):
         data = read_json(path, default)
         ret = fn(data)
-        write_json(path, data, indent)
+        if dump is not None:
+            write_atomic(path, dump(data))
+        else:
+            write_json(path, data, indent)
         return data, ret
 
 

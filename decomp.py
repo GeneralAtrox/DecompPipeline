@@ -5,6 +5,7 @@ Every command works on one project workspace (a folder with project.json):
   python decomp.py --project DIR catalog              re-run the function catalog on the existing project
   python decomp.py --project DIR seed                 find more functions (TcSeed) in the existing project + catalog
       setup, catalog and seed then retire the artefacts of every address that is no longer a function (tools/retire.py)
+      and requeue each matched function whose body took a removed function its C still calls (core/joined.py)
   python decomp.py --project DIR serve                start the monitor UI
   python decomp.py --project DIR prepare ADDR         export packet + vectors + oracle for one function
   python decomp.py --project DIR check ADDR --work F  official verdict for a C file (dev + hidden)
@@ -23,6 +24,11 @@ import pathlib
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from core import oplog  # noqa: E402  (imports nothing else of core: the project is not chosen yet)
+
+# the commands that are steps of a run (core/oplog: a start, and a stop when one does not finish); the rest only read
+# or judge one file
+DRIVERS = ("setup", "catalog", "seed", "serve", "prepare", "investigate", "systems")
 
 
 def retire_removed(ws, note):
@@ -39,6 +45,31 @@ def retire_removed(ws, note):
     if loose:  # new functions: placed by hand-checked rules, never silently (designs refer to the systems)
         print(f"{len(loose)} game function(s) in no system: python tools/assign_systems.py --project {ws} --dry, "
               "then without --dry (completeness.py --check fails until then)")
+
+
+def requeue_joined(ws, cmd, before, before_bodies):
+    """After a catalog change: requeue each matched function whose body took a function the run removed and whose
+    matched C still calls it (core/joined.py: a TcJumpIn join), through tools/requeue.py (the server's API when one
+    runs). The next job judges that C again on the new body first; an agent runs only if it fails."""
+    from core import joined, paths
+    led = (paths.read_json(paths.LEDGER) or {}).get("functions") or {}
+    after = {f["addr"] for f in (paths.read_json(paths.CATALOG) or {}).get("functions", [])}
+    after_bodies = joined.read_bodies(paths.FUNCTION_BODIES.read_text(encoding="utf-8")
+                                      if paths.FUNCTION_BODIES.exists() else "")
+
+    def matched_c(a):
+        f = paths.MATCHED / f"{a}.c"
+        ok = (led.get(a) or {}).get("status") == "matched" and f.exists()
+        return f.read_text(encoding="utf-8", errors="replace") if ok else None
+    stale = joined.stale(joined.grown(before, before_bodies, after, after_bodies), matched_c)
+    for p, kids in stale.items():
+        note = (f"decomp.py {cmd}: {' '.join(kids)} joined this function's body (TcJumpIn); its matched C still calls "
+                f"{'them' if len(kids) > 1 else 'it'}")
+        rc, out, why = paths.run_bounded([sys.executable, str(pathlib.Path(__file__).resolve().parent / "tools" /
+                                                               "requeue.py"), "--project", str(ws), "--note", note, p], 300)
+        print(f"stale jump-in parent {p} ({' '.join(kids)}): " + (out.strip().splitlines() or ["?"])[-1]
+              + ("" if rc == 0 else f" (requeue.py exit {rc}{', ' + why if why else ''}: requeue it by hand)"))
+    return stale
 
 
 def main():
@@ -80,11 +111,15 @@ def main():
         sys.exit(audit.main(wss or [str(paths.ROOT)], as_json=a.json, verbose=a.verbose))
     if a.project:
         os.environ["DECOMP_PROJECT"] = str(pathlib.Path(a.project).resolve())
-    from core import check, ghidra, paths  # paths resolves the project at import
+    from core import check, ghidra, joined, paths  # paths resolves the project at import
     cfg = paths.config()
+    if a.cmd in DRIVERS:
+        oplog.begin(f"decomp.py {a.cmd}", [paths.ROOT])
 
     if a.cmd in ("setup", "catalog", "seed"):
         before = {f["addr"] for f in (paths.read_json(paths.CATALOG) or {}).get("functions", [])}
+        before_bodies = joined.read_bodies(paths.FUNCTION_BODIES.read_text(encoding="utf-8")
+                                           if paths.FUNCTION_BODIES.exists() else "")
         if a.cmd == "setup":
             ghidra.setup(cfg, force=a.force)
         else:
@@ -92,14 +127,17 @@ def main():
         cat = paths.read_json(paths.CATALOG)
         after = {f["addr"] for f in cat["functions"]}
         print(f"catalog: {len(after)} functions ({len(after - before)} new, {len(before - after)} gone)"
-              + (f"; FPSCR loads: {cat['fpscr_loads'][:12]}" if a.cmd == "setup" else ""))
+              + (f"; FPSCR loads: {cat['fpscr_loads'][:12]}" if a.cmd == "setup" and cat.get("fpscr_loads") else ""))
+        requeue_joined(paths.ROOT, a.cmd, before, before_bodies)  # before retire: it reads the parents' matched C
         retire_removed(paths.ROOT, f"decomp.py {a.cmd}: no longer in the catalog")
     elif a.cmd == "serve":
         from core import orch, server
         why = server.port_taken(cfg["port"], cfg.get("name"))
         if why:
             sys.exit(f"serve refused: {why}")
-        server.serve(orch.Orchestrator(), cfg["port"])
+        o = orch.Orchestrator()
+        o.requeue_stale_skips()  # a landing since fixed their blocker kind (target.json "fixed_at")
+        server.serve(o, cfg["port"])
     elif a.cmd == "prepare":
         meta, summary = ghidra.prepare(cfg, paths.norm_addr(a.addr), on_line=None)
         print(json.dumps({"signature": meta["signature"], "unsupported": meta["unsupported"], "oracle": summary}, indent=2))
@@ -114,8 +152,11 @@ def main():
             print(check.format_for_agent(res))
             sys.exit(0 if res["verdict"] == "PASS" else 1)
         res = check.run_check(cfg, addr, a.work, sets=("dev", "hidden"), build_dir=paths.BUILD / addr / "manual")
+        grade = "" if not res.get("grade") else (  # a target's byte-match check (gamecube_ppc), when present
+            f"  grade={res['grade']} ({res['check']})" + (f"  match={res['match'].get('percent')}% "
+                                                           f"[{res['match'].get('stage')}]" if res.get("match") else ""))
         print(check.dumps(res) if a.json else f"{res['verdict']}  stage={res['stage']}  failing={res['failing']}/"
-              f"{res['total']}\n" + check.format_for_agent({**res, "verdict": res["verdict"]}))
+              f"{res['total']}{grade}\n" + check.format_for_agent({**res, "verdict": res["verdict"]}))
         sys.exit(0 if res["verdict"] == "PASS" else 1)
     elif a.cmd == "systems":
         from core import orch, systems
@@ -152,4 +193,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    oplog.main(main)

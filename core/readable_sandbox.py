@@ -10,7 +10,7 @@ import shutil
 import stat
 
 from . import agent_cli, asm_pool, check, global_extents, header_snapshot, paths, readable, readable_abi, readable_lean
-from . import readable_stack
+from . import readable_stack, target_hooks
 from . import readable_check as rcheck
 from .readable_context import context_md
 
@@ -18,9 +18,14 @@ TYPES_STUB = ("/* The types and constants of this function are in context.md (\"
               " * The check builds work.c with the project's full headers. */\n")
 
 CHECK_LAUNCHER = """# Checks work.c on the dev test set. The official verdict (dev + hidden) is computed after your session.
-import subprocess, sys
-sys.exit(subprocess.call([sys.executable, r"{tool}", "--project", r"{project}", "check", "{addr}", "--agent",
-                          "--work", r"{work}"{headers}]))
+import os, subprocess, sys
+argv = [sys.executable, r"{tool}", "--project", r"{project}", "check", "{addr}", "--agent",
+        "--work", r"{work}"{headers}]
+if os.environ.get("DP_WARM_CHECK"):  # the session's ready check process (core/warm_check): the same check, warm
+    sys.path.insert(0, os.path.join(os.path.dirname(argv[1]), "core"))
+    import warm_client
+    sys.exit(warm_client.run(argv))
+sys.exit(subprocess.call(argv))
 """
 
 
@@ -113,7 +118,10 @@ the whole function first; run `python check.py` as soon as it builds and fix wha
 def sandbox_decls(reg, addr, meta):
     """({addr: signature as game.h declares it}, data function addrs): the function itself, its callees (raw-named
     ones with parameters named by storage) and the functions raw.c uses as data."""
-    sigs = {c["addr"]: readable_abi.storage_named(reg, c, rcheck.callee_storage(paths.HARNESS / addr, c))
+    hook = target_hooks.get("readable_sandbox_decls")  # another CPU's argument placement (gamecube_ppc)
+    if hook:
+        return hook(reg, addr, meta)
+    sigs ={c["addr"]: readable_abi.storage_named(reg, c, rcheck.callee_storage(paths.HARNESS / addr, c))
             for c in meta["callees"]} | {addr: meta["signature"]}
     return sigs, rcheck.data_functions(reg, addr, meta)
 
@@ -122,9 +130,13 @@ def stub_c(reg, proto):
     """A work.c that does nothing but is valid C for the prototype (/W4: every parameter referenced)."""
     _, _, params = readable.parse_proto(proto)
     body = "".join(f"    (void){n};\n" for _, n in params)
-    rk = reg.kind(readable.parse_proto(proto)[0])
-    body += {"v": "", "f": "    return 0.0f;\n"}.get(rk, "    return 0;\n")
-    return f'#include "game.h"\n\n{proto}\n{{\n{body}}}\n'
+    return f'#include "game.h"\n\n{proto}\n{{\n{body}{return_stub(proto)}}}\n'
+
+
+def return_stub(proto):
+    """The do-nothing body's return statement: none for void, else 0 (any result type takes it without a warning:
+    f32, and the GameCube's f64 the registry has no kind for)."""
+    return "" if readable.parse_proto(proto)[0] == "void" else "    return 0;\n"
 
 
 def build_sandbox(cfg, reg, addr, meta, prev_work, previous_text):
@@ -143,25 +155,29 @@ def build_sandbox(cfg, reg, addr, meta, prev_work, previous_text):
                                                 lean_globals=lean["globals"]), encoding="utf-8")
     (box / "types.h").write_text(TYPES_STUB, encoding="utf-8")  # batch 25: the types are shown once, in context.md
     (box / "index.txt").write_text(lean["index.txt"], encoding="utf-8")
-    shutil.copyfile(rcheck.RUNTIME_RD / "rd_rt.h", box / "rd_rt.h")
+    for h in ("rd_rt.h", "rd_be.h"):  # rd_be.h: big-endian guest memory's be_ types (saturn_sh2, gamecube_ppc)
+        if (rcheck.RUNTIME_RD / h).exists():
+            shutil.copyfile(rcheck.RUNTIME_RD / h, box / h)
     raw_box = readable_stack.annotate_raw(raw_text, reg, addr, meta)  # zero pool placeholders: the image's word
     raw_box = asm_pool.fill_raw(raw_box, cfg["binary_path"].read_bytes(), check.IMAGE_BASE, int(addr, 16))
     (box / "raw.c").write_text(raw_box, encoding="utf-8")
-    (box / "context.md").write_text(context_md(reg, addr, meta, cfg, raw_text, lean["types_body"], sigs, ext),
-                                    encoding="utf-8")
+    context = target_hooks.get("readable_context_md") or context_md  # another CPU's argument placement (gamecube_ppc)
+    (box / "context.md").write_text(context(reg, addr, meta, cfg, raw_text, lean["types_body"], sigs, ext,
+                                            lean["views"]), encoding="utf-8")
     proto = reg.proto(addr, meta)
     name = readable.parse_proto(proto)[1]
     if agent_cli.is_large(cfg, len(raw_text.encode("utf-8"))):  # batch 26
         previous_text = LARGE_NOTE + (previous_text or "")
-    task = TASK.format(addr=addr, name=name, proto=proto, box=box, previous=previous_text)
+    previous_text = (previous_text or "") + paths.agent_note(addr)
+    own = paths.TARGET / "readable_task.md"  # a target whose CPU and memory are not the Dreamcast's: its own TASK
+    task = (own.read_text(encoding="utf-8") if own.exists() else TASK).format(addr=addr, name=name, proto=proto,
+                                                                                box=box, previous=previous_text)
     (box / "TASK.md").write_text(task, encoding="utf-8")
     (box / "check.py").write_text(check_launcher(addr, box / "work.c"), encoding="utf-8")
     if prev_work and os.path.exists(prev_work):
         shutil.copyfile(prev_work, box / "work.c")
     else:
-        rk = reg.kind(readable.parse_proto(proto)[0])
-        stub = {"v": "", "f": "    return 0.0f;\n"}.get(rk, "    return 0;\n")
-        (box / "work.c").write_text(f'#include "game.h"\n\n{proto}\n{{\n{stub}}}\n', encoding="utf-8")
+        (box / "work.c").write_text(f'#include "game.h"\n\n{proto}\n{{\n{return_stub(proto)}}}\n', encoding="utf-8")
     for p in box.rglob("*"):
         if p.is_file() and p.name != "work.c":
             os.chmod(p, stat.S_IREAD)

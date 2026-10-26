@@ -13,6 +13,8 @@ code, such as a jump table's base, is left alone). The packet itself is unchange
 import re
 import struct
 
+from .compare import WORD
+
 MOVA = re.compile(r"^(\s+[0-9a-f]{8}\s+_?mova\s+0x([0-9a-f]{8}),r0)\s*$")
 WORDS = 2
 
@@ -52,7 +54,7 @@ def describe(target, image, base, ranges):
     for k in range(WORDS):
         if off + 4 * k + 4 > len(image):
             break
-        w = struct.unpack_from("<I", image, off + 4 * k)[0]
+        w = struct.unpack_from(WORD, image, off + 4 * k)[0]
         f = _f32(w)
         words.append(f"0x{w:08x}" + (f" (f32 {f})" if f else ""))
     return f"; r0 = 0x{target:08x} (literal pool): words " + ", ".join(words)
@@ -106,7 +108,7 @@ def fill_raw(text, image, base, addr):
             in_block = False
         at = _pool_address(m, addr) if m else None
         off = at - base if at is not None else -1
-        f = _f32(struct.unpack_from("<I", image, off)[0]) if 0 <= off <= len(image) - 4 else None
+        f = _f32(struct.unpack_from(WORD, image, off)[0]) if 0 <= off <= len(image) - 4 else None
         if f is not None and (float(f) == 0 or 1e-7 <= abs(float(f)) <= 1e7) and \
                 struct.pack("<f", float(f)) != struct.pack("<f", float(m.group(3))):
             line = (f"{bare} /* no test reached this constant: 0x{at:08x} in the image holds {float(f)!r}f, "

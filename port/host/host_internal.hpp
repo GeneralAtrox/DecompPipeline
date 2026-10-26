@@ -36,7 +36,9 @@ Prefs &prefs();
 void menu_attach(void *hwnd);
 void menu_show(bool on);
 
-// host_copy_button.cpp: the bar's "Copy game context" icon. message: true if it handled msg (then *result)
+// host_copy_button.cpp: the bar's "Copy agent prompt" icon, and the command that the icon, the Help menu's entry
+// and F9 share (a scene dump: runtime/scene_dump.c). message: true if it handled msg (then *result)
+constexpr unsigned kCopyAgentPrompt = 0x7207;
 void copy_button_attach(void *hwnd, void *bar);
 bool copy_button_message(void *hwnd, unsigned msg, uintptr_t wp, intptr_t lp, intptr_t *result);
 

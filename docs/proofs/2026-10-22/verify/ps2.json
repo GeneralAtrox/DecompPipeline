@@ -1,0 +1,2203 @@
+{
+ "8c01c912": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c01cbb6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01ea38": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01f5c4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01f6e4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c01fe38": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Serial_Read",
+   "Shc_QuickStrCpy",
+   "Shc_SlowStrCpy",
+   "strcat"
+  ],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c020950": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c021198": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 102,
+  "verdict": "PASS"
+ },
+ "8c021828": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c021928": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c021998": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02af32": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02b06e": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02c7dc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02c9e8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02cf88": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02d498": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02d4dc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02d854": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02d944": {
+  "stage": "build",
+  "verdict": "FAIL"
+ },
+ "8c02dc10": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02e34a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02ec74": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02f022": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 100,
+  "verdict": "PASS"
+ },
+ "8c02fd48": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02fdec": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c02fe80": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c030242": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0349b8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c035bca": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c035d78": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c036d5c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0379f8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c038f74": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 102,
+  "verdict": "PASS"
+ },
+ "8c0397de": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03a17c": {
+  "stage": "build",
+  "verdict": "FAIL"
+ },
+ "8c03a658": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03a694": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03aef0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03b40e": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03c5c4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c03c9cc": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "buMakeBackupFileImage",
+   "memcpy",
+   "memset",
+   "strcpy"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03ce26": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "buAnalyzeBackupFileImage"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03d3ba": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03df86": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03e2d6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03e646": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03ee9a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03effa": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03f34a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03f650": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03fb7c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03fbd0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c03fcac": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0403c0": {
+  "stage": "build",
+  "verdict": "FAIL"
+ },
+ "8c045a26": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c045a3c": {
+  "stage": "build",
+  "verdict": "FAIL"
+ },
+ "8c045acc": {
+  "stage": "build",
+  "verdict": "FAIL"
+ },
+ "8c045cf8": {
+  "stage": "build",
+  "verdict": "FAIL"
+ },
+ "8c047068": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c048b0e": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04a5c8": {
+  "stage": "build",
+  "verdict": "FAIL"
+ },
+ "8c04b0c0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04ca8e": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c04d7a4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 102,
+  "verdict": "PASS"
+ },
+ "8c04e040": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0520b8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0521a0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0521bc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c053f4e": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c054826": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c056fa8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05741a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c057a48": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c057a98": {
+  "stage": "build",
+  "verdict": "FAIL"
+ },
+ "8c058378": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0588a4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c058c24": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c058d2c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c059408": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c059c60": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c059ca4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c059d38": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05a1c4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05a848": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05acf8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05afda": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05b076": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05b15c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05b2a0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05bd16": {
+  "stage": "build",
+  "verdict": "FAIL"
+ },
+ "8c05e2b4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05e4f4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05e598": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05e5e2": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05f35e": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05f376": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05f7ec": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05f876": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c05ff00": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06002c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c061308": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06149a": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Hit_MoveObj",
+   "Shc_QuickMoveWordsR3"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c061cd8": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Hit_CarryRider",
+   "Hit_IsFixedAgainst",
+   "Hit_MoveObj",
+   "Hit_PairSkipsPush",
+   "Hit_PullOntoBoxTop",
+   "Shc_QuickMoveWordsR3",
+   "Vec_UnitDirectionXZ"
+  ],
+  "stage": "compare",
+  "total": 108,
+  "verdict": "PASS"
+ },
+ "8c063150": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Hit_IgnoresFixedShapes",
+   "Hit_MoveObj",
+   "Hit_PullOntoBoxTop",
+   "Shc_QuickMoveWordsR3"
+  ],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c0639cc": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Hit_IgnoresFixedShapes",
+   "Hit_MoveObj",
+   "Shc_QuickMoveWordsR3",
+   "Vec_UnitDirectionXZCoords"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c063fa8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c064168": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c065134": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c06559e": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c065ea2": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c066034": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c066368": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c066658": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c066d18": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c067adc": {
+  "stage": "build",
+  "verdict": "FAIL"
+ },
+ "8c06a2b4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c074686": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Mtx_CalcVector"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c076602": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c076b6c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c076da0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c07728a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c077354": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c077fba": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0793a8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0794d0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c079508": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c079998": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c079afc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c079c18": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c07a40c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c07bd10": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c07d750": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c07e784": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c086b58": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 97,
+  "verdict": "PASS"
+ },
+ "8c099310": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c09943a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c0996f8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c099cd8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c099ef8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c09a000": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c09a082": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 99,
+  "verdict": "PASS"
+ },
+ "8c09a2ec": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0b4b76": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0b70b8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0ba914": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 97,
+  "verdict": "PASS"
+ },
+ "8c0bac90": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0cfea8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0d050c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0d937c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0dcbee": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0dcc70": {
+  "stage": "build",
+  "verdict": "FAIL"
+ },
+ "8c0e0050": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0e8fc0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c0e941c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0ed2a6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0f12ec": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0f13e4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0f3e0c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0f3e1a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0f42e0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 102,
+  "verdict": "PASS"
+ },
+ "8c0f44cc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0f4bec": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0f52e8": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Mtx_GetPosition",
+   "Shc_QuickMoveWordsR3"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0f5750": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0f5908": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 102,
+  "verdict": "PASS"
+ },
+ "8c0f5e80": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0f6000": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 100,
+  "verdict": "PASS"
+ },
+ "8c0faa02": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 102,
+  "verdict": "PASS"
+ },
+ "8c0fb98c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0fd9d4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0fd9fe": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 101,
+  "verdict": "PASS"
+ },
+ "8c0fe342": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c0fe532": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c10013c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c102574": {
+  "stage": "build",
+  "verdict": "FAIL"
+ },
+ "8c103be6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c104184": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c1041ec": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 97,
+  "verdict": "PASS"
+ },
+ "8c104614": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c1050ca": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c105684": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c11543a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c1157e4": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Shc_QuickMoveWordsR3"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c115828": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 102,
+  "verdict": "PASS"
+ },
+ "8c1214dc": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c12156c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c121580": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c121cd8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c12309c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c12cd34": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c12d99e": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c12da04": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c133a9e": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c13ef96": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c1490b0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c14a968": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c14bbdc": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Mtx_GetPosition",
+   "Vec_RotateByMatrix"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c14be1c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c14cc28": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c14cc7a": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "BossB_FlapWings",
+   "Obj_Destroy",
+   "Shc_QuickMoveWordsR3",
+   "Vec_AddTo"
+  ],
+  "stage": "compare",
+  "total": 100,
+  "verdict": "PASS"
+ },
+ "8c14ceec": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c1537e4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c15bfc6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c15c368": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Mtx_GetPositionB",
+   "Obj_Destroy",
+   "Shc_QuickMoveWordsR3",
+   "Vec_MakeUnit"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c15c4ec": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 108,
+  "verdict": "PASS"
+ },
+ "8c1698ae": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c16a72a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c16dd30": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c16dd50": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c16fad2": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c16fc84": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c171222": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c171708": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Obj_LocalToWorld",
+   "Shc_QuickMoveWords"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c172568": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c1725e8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c173608": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c175a4c": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17689a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 106,
+  "verdict": "PASS"
+ },
+ "8c177580": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c177970": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c177c50": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c178860": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c178960": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c178c10": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c178e10": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c1794b0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c179750": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c179840": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c179ba0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c179fd0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17a060": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17a320": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17a810": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17a880": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17a900": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17aa40": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17abf0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17aca0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17ad10": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Mtx_Copy",
+   "Mtx_Store",
+   "Vec_Cross"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17ae00": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17ae40": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17b100": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17b390": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17b3c0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17b6ec": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17ba10": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17bb50": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17bd10": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17bf60": {
+  "failing": 76,
+  "first_diffs": [
+   {
+    "diffs": [
+     "xf0 (XMTRX): expected 0x3ee73005, got 0x3ee730b4",
+     "xf1 (XMTRX): expected 0x3f7ff9bb, got 0x3f7ff9b8",
+     "xf2 (XMTRX): expected 0x3f80de94, got 0x3f80df05",
+     "xf3 (XMTRX): expected 0x3f80bf3b, got 0x3f80bf9c",
+     "xf5 (XMTRX): expected 0xbf800323, got 0xbf800324",
+     "fr0 (sh4_fr(0)) at exit: expected 0x3ee73005 (0.4515382), got 0x3ee730b4 (0.4515435)",
+     "fr1 (sh4_fr(1)) at exit: expected 0x3f7ff9bb (0.9999043), got 0x3f7ff9b8 (0.9999042)",
+     "fr2 (sh4_fr(2)) at exit: expected 0x3f80de94 (1.006793), got 0x3f80df05 (1.006806)"
+    ],
+    "set": "dev",
+    "vector": 0
+   },
+   {
+    "diffs": [
+     "xf0 (XMTRX): expected 0x431ac7c3, got 0x431ac7af",
+     "xf1 (XMTRX): expected 0x429de0b4, got 0x429de0b5",
+     "xf2 (XMTRX): expected 0xbf7fe6dc, got 0xbf7fe6d9",
+     "xf4 (XMTRX): expected 0xc43df134, got 0xc43df135",
+     "xf5 (XMTRX): expected 0x3f70823e, got 0x3f70802f",
+     "xf6 (XMTRX): expected 0x3f00323b, got 0x3f003241",
+     "xf7 (XMTRX): expected 0x4209ee4e, got 0x4209ee07",
+     "fr0 (sh4_fr(0)) at exit: expected 0x431ac7c3 (154.7803), got 0x431ac7af (154.78)"
+    ],
+    "set": "dev",
+    "vector": 1
+   },
+   {
+    "diffs": [
+     "xf1 (XMTRX): expected 0x3856cc0a, got 0x3856cc0b",
+     "xf4 (XMTRX): expected 0x3ebd1f7d, got 0x3ebd1f7c",
+     "xf7 (XMTRX): expected 0x41ed6dcf, got 0x41ed6dd1",
+     "fr1 (sh4_fr(1)) at exit: expected 0x3856cc0a (5.12116e-05), got 0x3856cc0b (5.121161e-05)",
+     "fr4 (sh4_fr(4)) at exit: expected 0x3ebd1f7d (0.3693809), got 0x3ebd1f7c (0.3693808)",
+     "fr7 (sh4_fr(7)) at exit: expected 0x41ed6dcf (29.67862), got 0x41ed6dd1 (29.67862)"
+    ],
+    "set": "dev",
+    "vector": 4
+   }
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "FAIL"
+ },
+ "8c17c130": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17c300": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17c680": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17c6a0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17d7b0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17d990": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17e130": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17e140": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17e2b0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17e410": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17e4c0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17e800": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17ea70": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Mtx_CalcPoint"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17eb40": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Mtx_CalcPoint"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17ebf0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17ecb0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17ee70": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17eeb0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17f1f0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17f3d0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17f5a0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c17fef0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c180770": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "SndDrv_AllocBank"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c180928": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "SndDrv_AllocBank"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c180e68": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c181004": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 104,
+  "verdict": "PASS"
+ },
+ "8c181178": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c18121a": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c181850": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c1818a4": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c1818b0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c1818e6": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c181c46": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c181d90": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c181e70": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Line_Clip2D",
+   "Line_ClipNear",
+   "Mtx_TransformPoint4"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c1821c0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c1825b0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c182e18": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c1832f0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c1833e4": {
+  "failing": 0,
+  "first_diffs": [],
+  "out_pointers": [
+   "Serial_ReadLineState",
+   "Shc_SlowMove"
+  ],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c183a08": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c1841b0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 98,
+  "verdict": "PASS"
+ },
+ "8c184208": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c184a70": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c185180": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c185204": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c1858b0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c185ee8": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ },
+ "8c186900": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 102,
+  "verdict": "PASS"
+ },
+ "8c186fb0": {
+  "failing": 0,
+  "first_diffs": [],
+  "stage": "compare",
+  "total": 96,
+  "verdict": "PASS"
+ }
+}

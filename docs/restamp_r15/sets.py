@@ -124,6 +124,9 @@ if key == "ovl":
             entry, parent = line.split("\t")[:2]
             jumpins[entry] = parent
     add("ovl TcJumpIn parents (entries join them)", set(jumpins.values()), harness)
+# helper ABI crashes (TC port, 2026-10-19): a new oracle/hints file makes the re-stamp reach the helper call
+if key == "tc":
+    add("hint: reach the call of the division 8c067c64 (port crash)", {"8c03a4b0", "8c0248e0"})
 
 
 def read_list(p):
@@ -163,6 +166,10 @@ for a, why in read_list(ws / "state/ptr_views/requeue.txt").items():
     requeue.setdefault(a, []).append("ptr_views: " + why)
 for a, why in read_list(ws / "state/mirror_ptrs/requeue.txt").items():
     requeue.setdefault(a, []).append("mirror review: " + (why or "can differ"))
+for a, why in read_list(ws / "state/helper_abi/requeue.txt").items():
+    requeue.setdefault(a, []).append("helper_abi: " + why)
+for a in (paths.read_json(paths.STATE / "stamp_refresh.json") or {}).get("must_failed", []):
+    requeue.setdefault(a, []).append("re-stamp: raw C fails on the new harness")
 for name, fns in sets.items():
     if name.startswith("r15-oracle"):
         for a in fns:

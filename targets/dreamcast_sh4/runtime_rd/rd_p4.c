@@ -1,4 +1,5 @@
-/* Readable-C runtime: stores to the P4 operand-cache address array (0xF4000000..0xF4FFFFFF), as runtime/tc_p4.c
+/* Readable-C runtime: stores to the P4 operand-cache address array (0xF4000000..0xF4FFFFFF) and to QACR0/1
+ * (0xFF000038..0xFF00003F, in a page kept the same way), as runtime/tc_p4.c
  * logs them for raw C (that file is linked here too: the log, its limits and its W lines are the same code).
  *
  * Raw C stores through wr8/wr16/wr32 (rd_mem.c checks the range). Readable C stores through a pointer: the array is
@@ -7,18 +8,32 @@
  * closes the page again. A load faults and is not let through (the original's test run faults on it too:
  * TcFold.p4Read), and so does a store by an instruction the decoder does not know: the vector then differs, it can
  * never match wrongly.
+ *
+ * Both pages sit at fixed addresses, so the runner links without ASLR (core/readable_check.link_flags): with it, a
+ * mapped section took QACR0/1's page in 26 of 300 runs, the store then crashed the runner (test_p4_window's flake).
+ * A page that cannot be had still ends the run at init, loudly, rather than as a crash on correct C.
  */
+#include <stdio.h>
 #include <string.h>
 #include <windows.h>
 #include "rd_internal.h"
 
-static int g_mapped;
+static int g_mapped, g_qacr;
 static u32 g_addr, g_size; /* the store being single-stepped (g_size 0: none) */
 
-void rd_p4_init(void)
+int rd_p4_init(void)
 {
     void *want = (void *)(uintptr_t)TCRT_P4_OCA_LO;
     g_mapped = VirtualAlloc(want, TCRT_P4_OCA_HI - TCRT_P4_OCA_LO, MEM_RESERVE | MEM_COMMIT, PAGE_NOACCESS) == want;
+    if (!g_mapped)
+        fprintf(stderr, "runner: cannot map the P4 operand-cache array at %08x (error %lu)\n", TCRT_P4_OCA_LO,
+                GetLastError());
+    want = (void *)(uintptr_t)(TCRT_P4_QACR_LO & ~0xffffu);
+    g_qacr = VirtualAlloc(want, 0x10000, MEM_RESERVE | MEM_COMMIT, PAGE_NOACCESS) == want;
+    if (!g_qacr)
+        fprintf(stderr, "runner: cannot map QACR0/1's page at %08x (error %lu)\n", TCRT_P4_QACR_LO & ~0xffffu,
+                GetLastError());
+    return g_mapped && g_qacr;
 }
 
 /* Bytes of a ModRM memory operand after the opcode byte (the ModRM byte, a SIB byte, the displacement). */
@@ -61,6 +76,8 @@ static u32 store_size(const u8 *p)
     case 0xc6: return reg == 0 ? 1 : 0;          /* mov r/m8, imm8 */
     case 0x89: return opsize ? 2 : 4;            /* mov r/m, r */
     case 0xc7: return reg == 0 ? (opsize ? 2u : 4u) : 0; /* mov r/m, imm */
+    case 0xa2: return 1;                         /* mov moffs8, al: a constant address (QACR0/1) */
+    case 0xa3: return opsize ? 2 : 4;            /* mov moffs, eax */
     case 0x80: case 0x81: case 0x83: return const_rmw(p, opsize); /* and 0 / or -1 */
     case 0xd9: return (reg == 2 || reg == 3) ? 4 : 0;    /* fst / fstp m32 */
     case 0xaa: return rep ? 0 : 1;               /* stosb (one at a time only) */
@@ -82,9 +99,10 @@ static void protect(u32 addr, DWORD prot)
 int rd_p4_fault(u32 addr, int is_write, void *context)
 {
     CONTEXT *c = (CONTEXT *)context;
-    if (!g_mapped || !is_write || g_size || addr < TCRT_P4_OCA_LO || addr >= TCRT_P4_OCA_HI) return 0;
+    if (!is_write || g_size || !tcrt_p4_logged(addr, 1)) return 0;
+    if (!(addr >= TCRT_P4_OCA_LO && addr < TCRT_P4_OCA_HI ? g_mapped : g_qacr)) return 0;
     u32 size = store_size((const u8 *)(uintptr_t)c->Eip);
-    if (!size || addr > TCRT_P4_OCA_HI - size || ((addr ^ (addr + size - 1)) & ~(RD_PAGE - 1))) return 0;
+    if (!size || !tcrt_p4_logged(addr, size) || ((addr ^ (addr + size - 1)) & ~(RD_PAGE - 1))) return 0;
     g_addr = addr;
     g_size = size;
     protect(addr, PAGE_READWRITE);

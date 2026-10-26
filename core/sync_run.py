@@ -129,7 +129,7 @@ def record(addr, new, out, res):
         return row
 
     with refine._LOCK:
-        filelock.update_json(refine.LEDGER, merge, {})
+        filelock.update_json(refine.LEDGER, merge, {}, dump=refine.dump)
 
 
 def registry_names(reg):

@@ -7,15 +7,23 @@ store queues) acts only on
 - callers of a callee that may leave r8..r14 changed (header lines K): every function with such a callee, by a scan
   of the packets' asm (a writer changes rN without pushing it, or calls a writer; a superset of TcSum's writes is
   wanted, and the sample is the check of it);
-- functions with their own `pref @rN`, rN one of r8..r14 (header line S);
+- functions with their own `pref @rN`, rN one of r8..r14 or a copy of one (queue_pref; header line S);
 - harnesses a rescue pass made (oracle_summary "rescued": TcCount.zeroCut acts in the overtime rescue only).
 --change fret is the TcFret change (float callee results) instead: it acts only on functions with a callee whose
 prototype returns f32 (harness meta.json callee records; Ghidra's signature where callee_drift adopted another).
 --change fargs is the TcFguide change (float-guided arguments): a function with an f32 parameter whose packet asm
-has a `mova` and an `fcmp/` (a superset of the functions TcFguide harvests a constant for). Changes join with +
+has a `mova` and an `fcmp/` (a superset of the functions TcFguide harvests a constant for). --change late is the
+TcLate change (results for calls after the 16th): a harness with a vector that made more than 16 calls (expected.txt
+CALL lines); in any other the draws and line C stay byte for byte. --change spin is the TcSpin change (a wait loop
+nothing in it ends is a halt): opt-in, so only the functions project.json "spin_waits" lists. Changes join with +
 (--change fret+fargs: either alters the harness).
 Only harnesses current under the scripts before the change (--old-scripts: that commit's ghidra_scripts folder) are
-refreshable; any other is stale for its own reasons and left to tools/reprepare_stale.py --stamps.
+refreshable; any other is stale for its own reasons and left to tools/reprepare_stale.py --stamps. --old-scripts can
+be given more than once when the harnesses were stamped at different times (TC: the 2026-10-16 full re-stamp, then
+112 more on 10-17), and a folder can be a baseline: ghidra_scripts/ with the *.java, and the project's catalog.json
+and code_ranges.txt of that time beside it when those changed since (both are stamp inputs; keep their bytes,
+CRLF included). --list FILE adds the addresses in FILE (first word of a line) to the candidates: a combined
+re-stamp's own set (docs/restamp_r15/<game>/restamp.txt).
 
 Phases (each resumable; run under tools/bounded.py, servers stopped):
   --phase sample  re-prepare --sample N refreshable non-candidates (seeded), each harness saved first under
@@ -29,8 +37,9 @@ Phases (each resumable; run under tools/bounded.py, servers stopped):
                   then re-stamp the whole workspace with reprepare_stale.py --stamps), except callers whose callee
                   records differ: they stay stale, listed in state/stamp_refresh_stale.txt for reprepare_stale.py
   --phase must    re-prepare the refreshable candidates (at most --max per run) and judge each one's matched raw C
-usage: python tools/selective_restamp.py --project DIR --old-scripts DIR --phase sample|refresh|must [--sample 100]
-       [--seed 14] [--max 100] [--slots N] [--change r14|fret|fargs|fret+fargs] [--dry]
+usage: python tools/selective_restamp.py --project DIR --old-scripts DIR [--old-scripts DIR ...]
+       --phase sample|refresh|must [--sample 100] [--seed 14] [--max 100] [--slots N]
+       [--change r14|fret|fargs|late|spin|fret+fargs|none] [--list FILE] [--dry]
 Exit 0 when the phase finished clean (all identical; nothing left; every judged raw C passes), 1 otherwise.
 """
 import argparse
@@ -51,18 +60,52 @@ from core import callee_drift  # noqa: E402  (pure: no core.paths)
 
 REGS = ["r%d" % n for n in range(8, 15)]
 ASM = re.compile(r"^\s*[0-9a-f]{8}\s+_?(\S+)\s+(.*?)\s*(;.*)?$")
-PREF = re.compile(r"^\s*[0-9a-f]{8}\s+_?pref\s+@r(8|9|1[0-4])\b")
+TARGET = re.compile(r"^\s*[0-9a-f]{8}\s+_?(?:bra|bsr|bt|bf|bt/s|bf/s)\s+0x([0-9a-f]{8})")
+REG = re.compile(r"^r\d+$")
+
+
+def queue_pref(lines):
+    """Whether a `pref @rN` sends a store queue through r8..r14 (TcSq.of): rN one of them, or a register copied from
+    one in the same block (`mov r14,r3`) and since moved only by add or an @-r3 / @r3+ access (Toy Commander
+    8c075898). A block starts at a branch target and after a call (r0..r7 are the callee's); any other write to the
+    register ends the copy. TcSq.of also wants exactly one of r8..r14 in the runtime state for a copy: a superset."""
+    starts = {m.group(1) for m in map(TARGET.match, lines) if m}
+    root, call = {}, False  # register -> the one of r8..r14 it holds (plus an offset); the last line was a call
+    for ln in lines:
+        m = ASM.match(ln)
+        if not m:
+            continue
+        slot = ln.split()[1].startswith("_")
+        if ln.split()[0].lower() in starts or call and not slot:
+            root = {}
+        mn, ops = m.group(1).lower(), [o.strip() for o in m.group(2).split(",")]
+        after_call, call = call and slot, mn in ("jsr", "bsr", "bsrf")
+        if mn == "pref" and len(ops) == 1 and ops[0].startswith("@"):
+            if ops[0][1:] in REGS or ops[0][1:] in root:
+                return True
+        elif mn == "mov" and len(ops) == 2 and REG.match(ops[0]) and REG.match(ops[1]):
+            src = ops[0] if ops[0] in REGS else root.get(ops[0])
+            if src and ops[1] not in REGS:
+                root[ops[1]] = src
+            else:
+                root.pop(ops[1], None)
+        elif mn != "add" and not mn.startswith(("cmp", "tst")):
+            root.pop(ops[-1], None)
+        if after_call:  # the delay slot ran, then the callee owns r0..r7: a copy made there is gone too
+            root = {}
+    return False
 
 
 def asm_facts(pkt):
-    """(registers of r8..r14 the asm changes, those it pushes, whether it has a pref @r8..r14)."""
+    """(registers of r8..r14 the asm changes, those it pushes, whether it sends a store queue through r8..r14)."""
     own, pushed, pref = set(), set(), False
     for name in sorted(os.listdir(pkt)):
         if not (name.startswith("asm") and name.endswith(".txt")):
             continue
         with open(os.path.join(pkt, name), errors="replace") as f:
-            for ln in f:
-                pref = pref or bool(PREF.match(ln))
+            lines = f.readlines()
+            pref = pref or queue_pref(lines)
+            for ln in lines:
                 m = ASM.match(ln)
                 if not m:
                     continue
@@ -138,6 +181,29 @@ def fargs_candidates(harness, packets):
     return out
 
 
+def late_candidates(harness, calls=16):
+    """The functions whose harness TcLate can alter: a vector that made more than `calls` calls (expected.txt)."""
+    out = set()
+    for d in pathlib.Path(harness).iterdir():
+        p = d / "expected.txt"
+        if not p.is_file():
+            continue
+        n = 0
+        for line in p.read_text(encoding="utf-8", errors="replace").splitlines():
+            n = 0 if line.startswith("V ") else n + line.startswith("CALL ")
+            if n > calls:
+                out.add(d.name)
+                break
+    return out
+
+
+def spin_candidates(cfg):
+    """The functions whose harness TcSpin can alter: those project.json "spin_waits" lists (compare.spin_wait; an
+    entry without its evidence is refused). Every other harness stays byte for byte."""
+    from core import compare
+    return {x.lower() for x in cfg.get("spin_waits") or {} if compare.spin_wait(cfg, x)}
+
+
 def harness_bytes(d, sig_of=None):
     """What must stay identical: vectors.txt, expected.txt, and meta.json without its stamp keys. With sig_of
     (callee_drift.Signatures), meta.json's callee records first take the callees' own harness signatures, as
@@ -187,17 +253,39 @@ def refresh_split(rest, harness):
     return [x for x in rest if x not in stale], stale
 
 
+def baseline(folder):
+    """(scripts {name: path}, catalog or None, code ranges or None) of an --old-scripts folder: its *.java, or a
+    baseline folder's ghidra_scripts/*.java with the catalog.json and code_ranges.txt beside it."""
+    d = pathlib.Path(folder)
+    sd = d / "ghidra_scripts" if (d / "ghidra_scripts").is_dir() else d
+    cat, rng = d / "catalog.json", d / "code_ranges.txt"
+    return ({p.name: p for p in sd.glob("*.java")}, cat if sd != d and cat.is_file() else None,
+            rng if sd != d and rng.is_file() else None)
+
+
+def listed(path):
+    """The addresses of a list file: the first word of each line, comments (#) left out."""
+    out = set()
+    for line in pathlib.Path(path).read_text(encoding="utf-8-sig").splitlines():
+        m = re.match(r"\s*([0-9a-fA-F]{8})\b", line.split("#", 1)[0])
+        if m:
+            out.add(m.group(1).lower())
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--project", required=True)
-    ap.add_argument("--old-scripts", required=True, help="the target's ghidra_scripts folder before the change")
+    ap.add_argument("--old-scripts", required=True, action="append",
+                    help="the target's ghidra_scripts folder before the change, or a baseline folder (docstring)")
     ap.add_argument("--phase", required=True, choices=("sample", "refresh", "must"))
     ap.add_argument("--sample", type=int, default=100)
     ap.add_argument("--seed", type=int, default=14)
     ap.add_argument("--max", type=int, default=100)
     ap.add_argument("--slots", type=int)
-    ap.add_argument("--change", choices=("r14", "fret", "fargs", "fret+fargs"), default="r14",
+    ap.add_argument("--change", choices=("r14", "fret", "fargs", "late", "spin", "fret+fargs", "none"), default="r14",
                     help="which oracle change (docstring)")
+    ap.add_argument("--list", action="append", default=[], help="a file of more candidate addresses")
     ap.add_argument("--dry", action="store_true")
     a = ap.parse_args()
     ws = use_project(a.project)
@@ -208,18 +296,38 @@ def main():
     if a.slots:
         cfg["ghidra_parallel"] = a.slots
     new = oracle_fresh.Stamper(cfg)
-    old = oracle_fresh.Stamper(cfg)
-    old.scripts = {p.name: p for p in pathlib.Path(a.old_scripts).glob("*.java")}
-    old.scripts["TcInputs.java"] = paths.INPUTS
-    if not old.scripts.keys() - {"TcInputs.java"}:
-        sys.exit(f"no *.java in {a.old_scripts}")
+    olds = []
+    for folder in a.old_scripts:
+        scripts, catalog, ranges = baseline(folder)
+        if not scripts:
+            sys.exit(f"no *.java in {folder}")
+        old = oracle_fresh.Stamper(cfg)
+        old.scripts = dict(scripts, **{"TcInputs.java": paths.INPUTS})
+        if ranges:
+            old.facts = oracle_stamp.facts_hashed(ghidra.facts_body(cfg).replace(str(paths.CODE_RANGES), str(ranges)))
+        olds.append((old, catalog))
+
+    def was_current(st, x):
+        for old, catalog in olds:
+            keep, paths.CATALOG = paths.CATALOG, catalog or paths.CATALOG
+            try:
+                if st == old.today(x):
+                    return True
+            finally:
+                paths.CATALOG = keep
+        return False
+
     cand = (candidates(paths.PACKETS) | rescued(paths.HARNESS) if a.change == "r14" else
             (fret_candidates(paths.HARNESS) if "fret" in a.change else set())
-            | (fargs_candidates(paths.HARNESS, paths.PACKETS) if "fargs" in a.change else set()))
+            | (fargs_candidates(paths.HARNESS, paths.PACKETS) if "fargs" in a.change else set())
+            | (late_candidates(paths.HARNESS) if "late" in a.change else set())
+            | (spin_candidates(cfg) if "spin" in a.change else set()))
+    for f in a.list:
+        cand |= listed(f)
     current, refreshable, other = [], [], []
     for x in oracle_fresh.matched_functions():
         st = (paths.read_json(paths.HARNESS / x / "meta.json") or {}).get("oracle_stamp")
-        (current if st == new.today(x) else refreshable if st == old.today(x) else other).append(x)
+        (current if st == new.today(x) else refreshable if was_current(st, x) else other).append(x)
     must = [x for x in refreshable if x in cand]
     rest = [x for x in refreshable if x not in cand]
     print(f"{len(current)} current, {len(refreshable)} refreshable ({len(must)} candidates, {len(rest)} not), "

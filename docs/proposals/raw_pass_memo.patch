@@ -1,0 +1,278 @@
+Keep the raw judge's PASS across readable runs (waste audit 2, row 22): state/raw_pass.jsonl, core/verdict_memo.RawPass.
+refine() and the draft (harness_stale_kept) take a kept PASS when every input the judge reads is unchanged (the
+verdict_memo key: the matched C, harness, packet, judge files, config). A FAIL is never kept; with on_pass
+(reprepare_stale --verdicts) the judge always runs; verify, final_audit and fresh_oracle pass no memo.
+Proof: docs/proofs/2026-10-23/PROOFS.md proof E: 60 Toy Commander and 83 Skies functions, the same answer every
+time (59 + 83 PASS, the one FAIL judged each run); a later run 27.8 -> 1.6 s (TC) and 65.5 -> 1.5 s (Skies).
+It changes when the judge runs, so it is the user's call with the judge set.
+Apply: git apply docs/proposals/raw_pass_memo.patch   Undo: git apply -R docs/proposals/raw_pass_memo.patch
+
+diff --git a/core/refine.py b/core/refine.py
+index fcbb1e1..1263697 100644
+--- a/core/refine.py
++++ b/core/refine.py
+@@ -133,19 +133,28 @@ def raw_missing(addr):
+     return None
+ 
+ 
+-def harness_stale(cfg, addr, on_pass=None):
++def harness_stale(cfg, addr, on_pass=None, memo=None):
+     """Why the function's harness cannot judge it, or None: the verified raw C (matched/) must still pass its own
+     harness with check.py. One made by an older oracle fails it too, so a readable rewrite could never pass (and
+     agents would be paid to chase it): re-prepare the harness (decomp.py prepare ADDR, servers stopped).
+-    on_pass(result): called with check.run_check's result when it passes (reprepare_stale --verdicts)."""
++    on_pass(result): called with check.run_check's result when it passes (reprepare_stale --verdicts).
++    memo (core/verdict_memo.RawPass, the readable stage's): a PASS kept on the very inputs the judge would read now
++    is taken without judging again, and a new PASS is kept; never with on_pass, which needs the judge's result."""
+     missing = raw_missing(addr)
+     if missing:
+         return missing
+-    res = check.run_check(cfg, addr, str(paths.MATCHED / f"{addr}.c"), build_dir=paths.BUILD / addr / "rd_rawcheck")
++    src = paths.MATCHED / f"{addr}.c"
++    memo = None if on_pass else memo
++    key = memo.key_of(addr, src) if memo is not None else None  # before the judge reads its inputs
++    if key is not None and memo.passed(addr, key) is not None:
++        return None
++    res = check.run_check(cfg, addr, str(src), build_dir=paths.BUILD / addr / "rd_rawcheck")
+     infra.check(res.get("build"), res.get("run_error"), what="raw check")  # a refused file is no stale harness
+     if res["verdict"] == "PASS":
+         if on_pass:
+             on_pass(res)
++        if memo is not None:
++            memo.record(addr, key, res.get("total"))
+         return None
+     return (f"the matched raw C fails this harness too ({res['stage']}, {res.get('failing')}/{res.get('total')} "
+             f"vectors): re-prepare it with `decomp.py prepare {addr}`")
+@@ -159,6 +168,14 @@ def stale_callee_records(meta):
+ 
+ 
+ _RAW_PASSED = {}  # addr -> the verdict_memo key of the inputs harness_stale_kept saw pass
++_RAW_MEMO = {}  # state folder -> its verdict_memo.RawPass
++_MEMO_LOCK = threading.Lock()
++
++
++def raw_memo():
++    """This workspace's kept raw-judge PASSes (core/verdict_memo.RawPass), one per process."""
++    with _MEMO_LOCK:
++        return _RAW_MEMO.setdefault(paths.STATE, verdict_memo.RawPass())
+ 
+ 
+ def harness_stale_kept(cfg, addr):
+@@ -166,7 +183,7 @@ def harness_stale_kept(cfg, addr):
+     fact: a PASS is kept under the key of the inputs it was judged on (core/verdict_memo: every input run_check
+     reads, hashed before judging), for raw_pass_kept."""
+     key = verdict_memo.key(addr, paths.MATCHED / f"{addr}.c", verdict_memo.judge_stamp())
+-    stale = harness_stale(cfg, addr)
++    stale = harness_stale(cfg, addr, memo=raw_memo())
+     if stale is None:
+         _RAW_PASSED[addr] = key
+     return stale
+@@ -225,7 +242,7 @@ def refine(cfg, addr, model=None, max_attempts=3, log=print, stop_flag=None, eff
+         return "raw_not_matched"
+     reg = readable.Registry()
+     meta = paths.read_json(paths.HARNESS / addr / "meta.json")
+-    stale = None if raw_pass_kept(addr) else harness_stale(cfg, addr)  # the draft just judged the same inputs
++    stale = None if raw_pass_kept(addr) else harness_stale(cfg, addr, memo=raw_memo())  # the draft just judged them
+     if stale:  # true of an old file too: verify records the same
+         log(f"harness_stale: {stale}")
+         update(addr, status="harness_stale", note=stale)
+diff --git a/core/verdict_memo.py b/core/verdict_memo.py
+index 1efb6a0..498b72d 100644
+--- a/core/verdict_memo.py
++++ b/core/verdict_memo.py
+@@ -127,3 +127,51 @@ class Memo:
+             with _LOCK:
+                 self.hits += 1
+         return total
++
++
++class RawPass:
++    """Raw-judge PASSes kept across runs (state/raw_pass.jsonl, lines of {"addr", "key", "total"}), for the readable
++    stage's first fact: matched/ADDR.c still passes its harness (core/refine.harness_stale, memo=). A readable run,
++    a redo and the draft each judged it again on inputs nothing had changed since (0.62 s on GameCube, every run).
++    A lookup takes the key now, judge_stamp() included, so a changed C, harness, packet, judge file or config judges
++    again; a FAIL is never kept. The file is read again when its size or mtime changed (another process appended);
++    a line cut short (a kill, two processes appending at once) is skipped: that function is judged again."""
++
++    def __init__(self, path=None):
++        self.path, self.seen, self.at, self.hits = pathlib.Path(path or paths.STATE / "raw_pass.jsonl"), {}, None, 0
++
++    def _load(self):
++        try:
++            st = self.path.stat()
++        except OSError:
++            return
++        if (st.st_size, st.st_mtime_ns) == self.at:
++            return
++        seen = {}
++        for line in self.path.read_text(encoding="utf-8").splitlines():
++            try:
++                r = json.loads(line)
++            except ValueError:
++                continue
++            seen[(r.get("addr"), r.get("key"))] = r.get("total")
++        self.seen, self.at = seen, (st.st_size, st.st_mtime_ns)
++
++    def key_of(self, addr, src):
++        """The key of judging src as addr on the inputs as they are now."""
++        return key(addr, src, judge_stamp())
++
++    def passed(self, addr, k):
++        """The vector count of a kept PASS of addr under key k (key_of), else None."""
++        with _LOCK:
++            self._load()
++            total = self.seen.get((addr, k))
++            if total is not None:
++                self.hits += 1
++        return total
++
++    def record(self, addr, key_before, total):
++        """key_before: key_of() taken before the judge read its inputs (an input changed meanwhile: no match)."""
++        with _LOCK:
++            with open(self.path, "a", encoding="utf-8") as f:
++                f.write(json.dumps({"addr": addr, "key": key_before, "total": total}) + "\n")
++            self.seen[(addr, key_before)] = total
+diff --git a/tests/test_batch21.py b/tests/test_batch21.py
+index 6888d49..2d32ae7 100644
+--- a/tests/test_batch21.py
++++ b/tests/test_batch21.py
+@@ -171,7 +171,7 @@ class Cycle(unittest.TestCase):
+                         mock.patch.object(paths, "RUNS", self.d / "runs"),
+                         mock.patch.object(fn_claim, "LOCKS", self.d / "locks"),
+                         mock.patch.object(refine, "raw_missing", lambda a: None),
+-                        mock.patch.object(refine, "harness_stale", lambda cfg, a: None),
++                        mock.patch.object(refine, "harness_stale", lambda cfg, a, **k: None),
+                         mock.patch.object(refine, "preflight", lambda cfg, reg, a, meta: None),
+                         mock.patch.object(refine, "build_sandbox", lambda *a: (self.d / "box", "task")),
+                         mock.patch.object(refine, "tree_hashes", lambda box: {}),
+diff --git a/tests/test_batch21_runs.py b/tests/test_batch21_runs.py
+index d2d307e..0867adf 100644
+--- a/tests/test_batch21_runs.py
++++ b/tests/test_batch21_runs.py
+@@ -62,7 +62,7 @@ def run_attempt(cfg, box, task, transcript, log, stop):
+ 
+ 
+ header_snapshot.acquire = lambda cfg, log=None, **k: Snap()
+-refine.harness_stale = lambda cfg, a: None
++refine.harness_stale = lambda cfg, a, **k: None
+ refine.preflight = lambda cfg, reg, a, meta: None
+ readable.Registry = lambda: None
+ refine.tree_hashes = lambda box: {}
+diff --git a/tests/test_records.py b/tests/test_records.py
+index eab70b9..b491046 100644
+--- a/tests/test_records.py
++++ b/tests/test_records.py
+@@ -278,7 +278,7 @@ class Readable(Records):
+                    mock.patch.object(paths, "RUNS", d / "runs"),
+                    mock.patch.object(fn_claim, "LOCKS", d / "locks"),
+                    mock.patch.object(refine, "raw_missing", lambda a: None),
+-                   mock.patch.object(refine, "harness_stale", lambda cfg, a: None),
++                   mock.patch.object(refine, "harness_stale", lambda cfg, a, **k: None),
+                    mock.patch.object(refine, "preflight", lambda cfg, reg, a, meta: None),
+                    mock.patch.object(refine, "build_sandbox", lambda *a: (d / "box", "task")),
+                    mock.patch.object(refine, "tree_hashes", lambda box: {}),
+diff --git a/tests/test_retire.py b/tests/test_retire.py
+index 7676014..4a93e90 100644
+--- a/tests/test_retire.py
++++ b/tests/test_retire.py
+@@ -202,7 +202,7 @@ class RedoStatus(unittest.TestCase):
+                         mock.patch.object(refine.readable, "Registry", lambda: None),
+                         mock.patch.object(paths, "RUNS", self.d / "runs"),
+                         mock.patch.object(refine, "raw_missing", lambda a: None),
+-                        mock.patch.object(refine, "harness_stale", lambda cfg, a: None),
++                        mock.patch.object(refine, "harness_stale", lambda cfg, a, **k: None),
+                         mock.patch.object(refine, "preflight", lambda cfg, reg, a, meta: None),
+                         mock.patch.object(refine, "build_sandbox", lambda *a: (self.d / "box", "task")),
+                         mock.patch.object(refine, "tree_hashes", lambda box: {}),
+diff --git a/tests/test_sync.py b/tests/test_sync.py
+index 0f694e5..2cd3be8 100644
+--- a/tests/test_sync.py
++++ b/tests/test_sync.py
+@@ -110,7 +110,7 @@ class SyncCase(unittest.TestCase):
+                         mock.patch.object(paths, "MATCHED", self.ws / "matched"),
+                         mock.patch.object(paths, "BUILD", self.ws / "build"),
+                         mock.patch.object(refine, "LEDGER", self.ws / "state/readable.json"),
+-                        mock.patch.object(refine, "harness_stale", lambda cfg, a: None),
++                        mock.patch.object(refine, "harness_stale", lambda cfg, a, **k: None),
+                         mock.patch.object(header_snapshot, "ACTIVE", None),
+                         mock.patch.object(rcheck, "check_readable", self.judge)]
+         for p in self.patches:
+diff --git a/tests/test_verdict_memo.py b/tests/test_verdict_memo.py
+index 55e4396..823c8bb 100644
+--- a/tests/test_verdict_memo.py
++++ b/tests/test_verdict_memo.py
+@@ -5,7 +5,10 @@
+ 3. oracle_fresh.judge_one with a hit does not run the judge, and with a miss (or without a memo: final_audit,
+    fresh_oracle) runs it as before;
+ 4. a draft cycle (draft_run.first: refine.harness_stale_kept, then refine.refine: raw_pass_kept) judges the raw C
+-   once when nothing changed between them, twice when anything did, and never takes a FAIL or a PASS twice.
++   once when nothing changed between them, twice when anything did, and never takes a FAIL or a PASS twice;
++5. the readable stage's kept raw PASSes (verdict_memo.RawPass, refine.harness_stale memo=): a PASS is taken by a
++   later run (another RawPass on the same file) while nothing changed; a changed C judges again; a FAIL is never
++   kept; with on_pass (reprepare_stale --verdicts) the judge always runs.
+ Run: python -W error tests/test_verdict_memo.py.
+ """
+ import os
+@@ -146,7 +149,12 @@ class Memo(unittest.TestCase):
+ 
+ 
+ class DraftCycle(unittest.TestCase):  # refine.harness_stale_kept / raw_pass_kept (finding R2)
+-    setUp = Memo.setUp
++    def setUp(self):
++        Memo.setUp(self)
++        memo = verdict_memo.RawPass(self.file.with_name("raw_pass.jsonl"))  # each test its own kept PASSes
++        patcher = mock.patch.object(refine, "raw_memo", lambda: memo)
++        patcher.start()
++        self.addCleanup(patcher.stop)
+ 
+     def judge(self, verdict="PASS"):
+         calls = []
+@@ -188,9 +196,47 @@ class DraftCycle(unittest.TestCase):  # refine.harness_stale_kept / raw_pass_kep
+     def test_cycle_wiring(self):  # the draft keeps its PASS, refine takes it
+         core = pathlib.Path(refine.__file__).parent
+         self.assertIn("refine.harness_stale_kept(cfg, addr)", (core / "draft_run.py").read_text(encoding="utf-8"))
+-        self.assertIn("stale = None if raw_pass_kept(addr) else harness_stale(cfg, addr)",
++        self.assertIn("stale = None if raw_pass_kept(addr) else harness_stale(cfg, addr, memo=raw_memo())",
+                       (core / "refine.py").read_text(encoding="utf-8"))
+ 
+ 
++class RawPassKept(unittest.TestCase):  # verdict_memo.RawPass through refine.harness_stale (audit 2, row 22)
++    setUp = Memo.setUp
++    judge = DraftCycle.judge
++
++    def memo(self):
++        return verdict_memo.RawPass(self.file.with_name("raw_pass.jsonl"))
++
++    def test_kept_across_runs(self):
++        calls, p = self.judge()
++        with p:
++            self.assertIsNone(refine.harness_stale({}, A, memo=self.memo()))
++            self.assertIsNone(refine.harness_stale({}, A, memo=self.memo()))  # a later run, the same inputs
++        self.assertEqual(calls, [A])
++
++    def test_changed_c_judged(self):
++        calls, p = self.judge()
++        with p:
++            refine.harness_stale({}, A, memo=self.memo())
++            put(self.src, "u32 f(u32 x) { return x | 0; }\n")
++            refine.harness_stale({}, A, memo=self.memo())
++        self.assertEqual(calls, [A, A])
++
++    def test_fail_not_kept(self):
++        calls, p = self.judge("FAIL")
++        with p:
++            self.assertIsNotNone(refine.harness_stale({}, A, memo=self.memo()))
++            self.assertIsNotNone(refine.harness_stale({}, A, memo=self.memo()))
++        self.assertEqual(calls, [A, A])
++
++    def test_on_pass_judges(self):
++        calls, p = self.judge()
++        got = []
++        with p:
++            refine.harness_stale({}, A, memo=self.memo())
++            refine.harness_stale({}, A, on_pass=got.append, memo=self.memo())
++        self.assertEqual((calls, len(got)), ([A, A], 1))
++
++
+ if __name__ == "__main__":
+     unittest.main(verbosity=1)

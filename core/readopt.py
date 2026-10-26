@@ -89,7 +89,7 @@ def adopt(addr, n, path, res):
         return row
 
     with refine._LOCK:
-        filelock.update_json(refine.LEDGER, merge, {})
+        filelock.update_json(refine.LEDGER, merge, {}, dump=refine.dump)
     return source
 
 

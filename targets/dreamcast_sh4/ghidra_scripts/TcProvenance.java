@@ -7,7 +7,7 @@
 // 0; 744 of 768 runs rejected, the function refused). In the rescue pass the run stops at the store, with the base
 // register's value (Result.storeBase). Its source is the most recent input that produced exactly that value:
 // - a mocked callee's return (Vec.rets[k], in r0 after call k), or
-// - a 4-byte load the vector can set: in RAM and outside the function's own frame [STACK_LO, SP) (those words hold
+// - a 4-byte load the vector can set: in RAM and outside the function's own frame [frameLo, SP) (those words hold
 //   what the function saved or spilled itself, so a poke there changes nothing; the batch 27 rule pins uninitialized
 //   ones to 0).
 // Which came last is told by the calls made before the load (the load log's fifth word). The source gets a pointer
@@ -17,7 +17,7 @@ import java.util.*;
 
 public class TcProvenance {
     static boolean ownFrame(long a) {
-        return a >= TcBase.STACK_LO && a < TcBase.SP;
+        return a >= TcBase.frameLo && a < TcBase.SP;
     }
 
     // The load log without loads from the function's own frame.

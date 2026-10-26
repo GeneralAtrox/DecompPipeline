@@ -1,13 +1,16 @@
-"""Batch 20: address constants in raw C (core/raw_consts.py) and the coverage of unnamed pointers, context.md's
-pointer and variadic notes (core/readable_context.py), RR5 (readable_lint.pointer_bytes_lint), the callee records
-compared on the registers the callee reads (readable_check.callee_reads), callee out-pointers (core/readable_outptr.py),
-the variadic call audit (core/varargs_audit.py) and the design requests (core/design_requests.py). Pure functions on
-synthetic data: no Ghidra, no compiler. Run: python -W error tests/test_batch20.py (also from tests/test_tooling.py).
+"""Batch 20: address constants in raw C (core/raw_consts.py) and the coverage of unnamed pointers, context.md's pointer
+and variadic notes, a function or the inside of a global named among the globals (core/readable_context.py), RR5
+(readable_lint.pointer_bytes_lint), the callee records compared on the registers the callee reads
+(readable_check.callee_reads), callee out-pointers (core/readable_outptr.py), the variadic call audit
+(core/varargs_audit.py) and the design requests (core/design_requests.py). Pure functions on synthetic data: no
+Ghidra, no compiler. Run: python -W error tests/test_batch20.py (also from tests/test_tooling.py).
 """
 import pathlib
+import struct
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from test_sync import TMP  # noqa: E402,F401  (sets DECOMP_PROJECT when run alone)
@@ -15,7 +18,7 @@ from test_sync import TMP  # noqa: E402,F401  (sets DECOMP_PROJECT when run alon
 from core import design_requests, raw_consts, readable_context, readable_outptr, varargs_audit  # noqa: E402
 from core.compare import IMAGE_BASE, Memory  # noqa: E402
 from core.readable_check import callee_reads  # noqa: E402
-from core.readable_lint import pointer_bytes_lint  # noqa: E402
+from core.readable_lint import pointer_bytes_lint, readable_lint  # noqa: E402
 
 FN, STR, DATA, POOL = 0x8C010100, 0x8C010200, 0x8C010300, 0x8C010040  # a function, a string, data, a pool word
 
@@ -111,6 +114,67 @@ class Context(unittest.TestCase):
             self.assertIn("`void Cb_Run(void)`", ptrs[0][1])
             self.assertIn("`char g_fmt[8]`", ptrs[1][1])
 
+    def test_global_hint_function(self):
+        """An address the oracle lists among the globals that the registry names as a function (an SDK entry PS2
+        8c17e960 stores, 8c189540) is that function, not a MISSING GLOBAL."""
+        reg = Reg({"8c010100": {"proto": "void Lib_RenderModelB(void *model, void *context)"}},
+                  {"8c010000": {"decl": "u8 g_table[0x40]"}})
+        hint = readable_context.global_hint(reg, "8c010100")
+        self.assertIn("`void Lib_RenderModelB(void *model, void *context)`", hint)
+        self.assertIn("MISSING GLOBAL", readable_context.global_hint(Reg(), "8c010100"))  # control: unnamed
+        self.assertIn("g_table", readable_context.global_hint(reg, "8c010010"))  # control: a global's inside
+
+    def test_global_hint_extent(self):
+        """An address deep inside a declared global (PS2 8c16d9da: 0x8c535ea4 = g_fighters + 0x380c) is named by the
+        global's extent, not a MISSING GLOBAL."""
+        reg = Reg(globals_={"8c010000": {"decl": "Fighter g_fighters[4]"}})
+        hint = readable_context.global_hint(reg, "8c01380c", [(0x8C010000, 0x8000)])
+        self.assertIn("`Fighter g_fighters[4]`", hint)
+        self.assertIn("offset 0x380c", hint)
+        self.assertIn("MISSING GLOBAL", readable_context.global_hint(reg, "8c01380c"))  # control: no extents
+        self.assertIn("MISSING GLOBAL", readable_context.global_hint(reg, "8c01380c", [(0x8C010000, 0x100)]))
+
+    def test_f32_literal_extremes(self):
+        """FLT_MAX's 8-digit form is above FLT_MAX (struct refuses it): the literal takes more digits, no crash."""
+        lit = readable_context.f32_literal(0x7F7FFFFF)
+        self.assertEqual(struct.unpack("<I", struct.pack("<f", float(lit[:-1])))[0], 0x7F7FFFFF)
+        self.assertEqual(readable_context.f32_literal(0xFF7FFFFF), "-" + lit)
+        self.assertEqual(readable_context.f32_literal(0x3F800000), "1.0f")  # control: the shortest form
+
+    def test_mirror_pointers(self):
+        """PS2 S20: raw.c writes a pointer in the 0x0c mirror (target.json address_mirrors), a value or a pool word:
+        context.md names it like its 0x8c form (it was a constant to copy, or nothing), and RR3 refuses the number."""
+        mirror, img = {"0c": "8c"}, bytearray(image())
+        img[0x44:0x48] = (0x0C010100).to_bytes(4, "little")  # a pool word holding FN's mirror form
+        raw = ("void fn_8c010000(void)\n{\n    TcArgs args = {0};\n    args.r[0] = rd32(0x8c010044u);\n"
+               "    args.r[1] = 0x0c010200u;\n    (void)tc_call(0x8c010380u, &args);\n}\n")
+        meta = {"addr": "8c010000", "globals": [], "callees": [{"addr": "8c010380"}]}
+        reg = Reg({"8c010100": {"proto": "void Cb_Run(void)"}}, {"8c010200": {"decl": "char g_fmt[8]"}})
+        self.assertEqual(raw_consts.uses(raw, 0x400, mirror)[STR], {"value"})
+        self.assertNotIn(STR, raw_consts.uses(raw, 0x400))  # control: no mirrors, no use
+        with tempfile.TemporaryDirectory(dir=TMP) as d, mock.patch.object(readable_context, "own_pool",
+                                                                          lambda m: set()):
+            (pathlib.Path(d) / "game.bin").write_bytes(bytes(img))
+            cfg = {"binary_path": pathlib.Path(d) / "game.bin"}
+            consts = readable_context.pool_constants(cfg, meta, raw, mirror)
+            self.assertEqual([a for a, _ in consts], ["8c010044", "8c010200"])
+            ptrs, rest = readable_context.split_pointers(reg, cfg, raw, consts, None, mirror)
+            self.assertEqual((len(ptrs), rest), (2, []))
+            self.assertIn("pool word holding the address of function `void Cb_Run(void)`", ptrs[0][1])
+            self.assertIn("`char g_fmt[8]`", ptrs[1][1])
+            consts = readable_context.pool_constants(cfg, meta, raw, {})  # control: no mirrors (the old reading)
+            self.assertEqual(consts, [("8c010044", 0x0C010100)])
+            self.assertEqual(readable_context.split_pointers(reg, cfg, raw, consts, None, {}), ([], consts))
+
+        def rr3(src, named=lambda v: raw_consts.resolve(reg, None, v), m=mirror):
+            body = f'#include "game.h"\n\nvoid F(void)\n{{\n    {src}\n}}\n'
+            return [e for e in readable_lint(body, "F", "void F(void)", named, m) if e.startswith("RR3")]
+        self.assertEqual(len(rr3("Cb_Set((void *)(uintptr_t)0x0c010100u);")), 1)
+        self.assertIn("Cb_Run", rr3("Cb_Set((void *)(uintptr_t)0x0c010100u);")[0])
+        self.assertEqual(rr3("Cb_Set((void *)(uintptr_t)0x0c010390u);"), [])  # control: names nothing
+        self.assertEqual(rr3("Cb_Set((void *)(uintptr_t)0x0c010100u);", m={}), [])  # control: no mirrors
+        self.assertEqual(len(rr3("Cb_Set((void *)(uintptr_t)0x8c010390u);", m={})), 1)  # the 0x8c rule as before
+
     def test_raw_word(self):
         self.assertEqual(readable_context.raw_word("r5"), "args.r[1]")
         self.assertEqual(readable_context.raw_word("fr6"), "args.fr[2]")
@@ -169,9 +233,27 @@ class OutPtr(unittest.TestCase):
         self.assertEqual(readable_outptr.deliver([(same, 0)], g, Memory(b"", {"patches": []})), "00xx")
         self.assertEqual(readable_outptr.deliver([(same, 0), (same, 0x5A)], g, Memory(b"", {"patches": []})), "xxxx")
 
+    def test_deliver_stored_paint(self):
+        # TC 8c0117f4: yaw = the painted output of an earlier call + (-2); bytes 1..3 keep the paint in both runs.
+        g = 0x8CFFDF00
+        paint = [readable_outptr.canary(g + k) for k in range(4)]
+        runs = []
+        for flip in readable_outptr.FLIPS:
+            w = int.from_bytes(bytes(p ^ flip for p in paint), "little") - 2
+            runs.append((w.to_bytes(4, "little").hex(), flip))
+        none = Memory(b"", {"patches": []})
+        self.assertEqual(readable_outptr.deliver(runs, g, none), "xx000000")  # paints alone: read as unwritten
+        stored = [((h, "1111"), flip) for h, flip in runs]
+        self.assertEqual(readable_outptr.deliver(stored, g, none), "xxxxxxxx")
+        # a byte the original never stored to stays the vector's, mask or not
+        part = [((h, "1000"), flip) for h, flip in runs]
+        self.assertEqual(readable_outptr.deliver(part, g, none), "xx000000")
+
     def test_parse_ob_and_with_lines(self):
         ob = readable_outptr.parse_ob("V 3\nOB 2 8c0126ec 1 0a0b0c0d\nOB bad\nE\nV 4\nE\n")
         self.assertEqual(ob, {3: {(2, "8c0126ec", 1): "0a0b0c0d"}})
+        ob = readable_outptr.parse_ob("V 3\nOB 2 8c0126ec 1 0a0b0c0d 0110\nE\n")
+        self.assertEqual(ob, {3: {(2, "8c0126ec", 1): ("0a0b0c0d", "0110")}})
         with tempfile.TemporaryDirectory(dir=TMP) as d:
             src, dst = pathlib.Path(d) / "v.txt", pathlib.Path(d) / "o.txt"
             src.write_text("V 3\nM 8c100000 00\nE\nV 4\nE\n", encoding="utf-8")

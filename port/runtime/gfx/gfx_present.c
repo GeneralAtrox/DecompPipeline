@@ -1,7 +1,7 @@
 /* The frame target and presenting it. The frame is the 4:3 picture as large as the output allows (2133x1600 on a
  * 2560x1600 screen); presenting clears the back buffer to the border colour and copies the frame into its middle
- * (pillarbox or letterbox), then presents with the swap chain's sync interval 1 (--vsync off: 0, with tearing where
- * allowed). Headless runs only count the frame. With --ssaa K the renderer draws into a K-times larger target whose
+ * (pillarbox or letterbox), then presents with the swap chain's sync interval 0, with tearing where allowed (--vsync
+ * on: 1). Headless runs only count the frame. With --ssaa K the renderer draws into a K-times larger target whose
  * mips are built after each render; mip log2(K) is then exactly frame-sized, the box-filtered average of K x K
  * samples, and is copied into the frame. */
 #include <string.h>
@@ -14,6 +14,16 @@ static ID3D11RenderTargetView *g_back_rtv;
 static u32 g_border = 0xff000000u;
 
 void gfx_set_border(u32 argb) { g_border = argb; }
+
+/* Widescreen is for play: a game that supports it (game.json "widescreen") draws it unless --widescreen off, or the
+ * run is a check (headless or on the fixed clock: regress goldens, lockstep, emulator comparisons) and --widescreen
+ * on did not ask for it. */
+static int wide_on(void)
+{
+    return PORT_WIDESCREEN && (g_gfx.wide > 0 || (g_gfx.wide < 0 && !g_gfx.headless && !host_fixed_clock()));
+}
+
+f32 port_widescreen(void) { return g_gfx.wide_k > 1.0f ? g_gfx.wide_k : 1.0f; }
 
 static void release_frame(void)
 {
@@ -98,14 +108,17 @@ int gfx_resize(u32 out_w, u32 out_h)
     }
     g_gfx.out_w = out_w;
     g_gfx.out_h = out_h;
-    /* the largest 4:3 rectangle, centred */
+    /* the largest 4:3 rectangle (widescreen: as wide as the output, up to 16:9), centred */
     g_gfx.frame_h = out_h;
-    g_gfx.frame_w = (out_h * 4u + 1u) / 3u;
-    if (g_gfx.frame_w > out_w) {
+    g_gfx.frame_w = wide_on() ? (out_h * 16u + 4u) / 9u : (out_h * 4u + 1u) / 3u;
+    if (g_gfx.frame_w > out_w && wide_on() && out_w * 3u >= out_h * 4u) {
+        g_gfx.frame_w = out_w;
+    } else if (g_gfx.frame_w > out_w) {
         g_gfx.frame_w = out_w;
         g_gfx.frame_h = (out_w * 3u + 2u) / 4u;
     }
     g_gfx.frame_x = (out_w - g_gfx.frame_w) / 2u;
+    g_gfx.wide_k = wide_on() ? (f32)(g_gfx.frame_w * 3u) / (f32)(g_gfx.frame_h * 4u) : 1.0f;
     g_gfx.frame_y = (out_h - g_gfx.frame_h) / 2u;
     memset(&d, 0, sizeof d);
     d.Width = g_gfx.frame_w;

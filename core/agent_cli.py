@@ -61,7 +61,9 @@ def is_large(cfg, raw_bytes):
     return bool(limit) and raw_bytes > int(limit)
 
 
-def claude_command(cfg):
+def claude_command(cfg, system_file=None):
+    """system_file: a file holding this session's system prompt in place of the lean one (a raw attempt's shared
+    prefix: too long for a Windows command line through claude.cmd)."""
     override = os.environ.get("TCD_AGENT_COMMAND")  # JSON list; used for dry runs with tools/fake_agent.py
     if override or cfg.get("agent_command"):
         cmd = list(json.loads(override) if override else cfg["agent_command"])
@@ -75,14 +77,28 @@ def claude_command(cfg):
         "--tools", "Read,Edit,Write,Bash",
         "--allowedTools", "Read,Edit(./work.c),Write(./work.c),Bash(python check.py)",
         "--max-budget-usd", str(cfg["attempt_budget_usd"]),
-        *(["--system-prompt", SYSTEM_PROMPT] if lean else []),
+        *(["--system-prompt-file", str(system_file)] if system_file else ["--system-prompt", SYSTEM_PROMPT] if lean
+          else []),
         *(["--effort", cfg["effort"]] if cfg.get("effort") else []),  # null = CLI default (adaptive per turn)
     ]
 
 
-def agent_env():
-    """The session's environment: ours, plus the CLI switches that keep CLAUDE.md files and memory out."""
-    return dict(os.environ, **AGENT_ENV)
+CACHE_TTLS = ("5m", "1h")
+
+
+def agent_env(cfg=None):
+    """The session's environment: ours, plus the CLI switches that keep CLAUDE.md files and memory out, plus the
+    prompt cache's lifetime from config `cache_ttl` (raw attempts; refine sets `readable_cache_ttl` in its place).
+    null keeps the CLI's own choice (1 h on a subscription). A Haiku session's turns are seconds apart, so 5 min
+    keeps every hit and writes cost 1.25x the input price instead of 2x: -20% per verified function ($0.0139 ->
+    $0.0112), attempt-1 pass rate unchanged (60/60 in both arms; r15 A/B on 60 Toy Commander functions)."""
+    env = dict(os.environ, **AGENT_ENV)
+    ttl = (cfg or {}).get("cache_ttl")
+    if ttl:
+        if ttl not in CACHE_TTLS:
+            raise ValueError(f"cache_ttl {ttl!r}: use one of {', '.join(CACHE_TTLS)} or null")
+        env["CLAUDE_CODE_PROMPT_CACHE_TTL"] = ttl
+    return env
 
 
 class OutputCap:
@@ -105,3 +121,55 @@ class OutputCap:
 
     def is_set(self):
         return self.hit or bool(self.stop is not None and self.stop.is_set())
+
+
+class SpendMeter:
+    """A session's spend so far, from its stream events, for a session that ends without a result event (killed by
+    the timeout, the output cap or a stop): the CLI reports total_cost_usd only in that event, so a killed session
+    would otherwise cost $0 in the ledger and the worker's budget.
+
+    Each request (assistant message id) is priced at rates[family] on its last usage, with the thinking tokens the
+    CLI reported before it (system/thinking_tokens deltas; its usage leaves them out) as output, and times long_x
+    when its prompt is over long_tokens. family: the first key of rates found in the model name. An estimate: it
+    reads 0.77-0.98 (median 0.91) of the CLI's own total on 148 finished
+    sessions (r15 A/B transcripts): low, never high."""
+
+    def __init__(self, rates):
+        self.rates, self.usage, self.think, self.order, self.pending, self.model = rates or {}, {}, {}, [], 0, None
+
+    def feed(self, ev):
+        t = ev.get("type")
+        if t == "system" and ev.get("subtype") == "thinking_tokens":
+            self.pending += ev.get("estimated_tokens_delta") or 0
+        elif t == "system" and ev.get("subtype") == "init":
+            self.model = ev.get("model")
+        elif t == "assistant":
+            msg = ev.get("message") or {}
+            key = msg.get("id") or id(msg)
+            if key not in self.usage:
+                self.order.append(key)
+                self.think[key] = 0
+            self.usage[key] = msg.get("usage") or {}
+            self.think[key] += self.pending
+            self.pending = 0
+
+    def cost(self, model=None):
+        """Estimated USD so far, or None when no rate is known for the model."""
+        name = (self.model or model or "").lower()
+        r = next((v for k, v in self.rates.items() if k in name), None)
+        if r is None:
+            return None
+        think = dict(self.think)
+        if self.order:
+            think[self.order[-1]] += self.pending
+        usd = 0.0
+        for key in self.order:
+            u = self.usage[key]
+            prompt = sum(u.get(k) or 0 for k in ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"))
+            w1h = (u.get("cache_creation") or {}).get("ephemeral_1h_input_tokens") or 0
+            w5m = (u.get("cache_creation_input_tokens") or 0) - w1h
+            c = ((u.get("input_tokens") or 0) * r["input"] + (u.get("cache_read_input_tokens") or 0) * r["cache_read"]
+                 + w5m * r["cache_write_5m"] + w1h * r["cache_write_1h"]
+                 + ((u.get("output_tokens") or 0) + think[key]) * r["output"]) / 1e6
+            usd += c * (r.get("long_x", 1) if prompt > r.get("long_tokens", float("inf")) else 1)
+        return round(usd, 6)

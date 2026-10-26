@@ -6,18 +6,22 @@ import re
 import shutil
 import stat
 
-from . import asm_pool, check, ghidra, paths
-from .agent_cli import OutputCap, agent_env, claude_command, readable_effort  # noqa: F401
+from . import asm_pool, check, ghidra, paths, target_hooks, warm_check
+from .agent_cli import SYSTEM_PROMPT, OutputCap, SpendMeter, agent_env, claude_command, readable_effort  # noqa: F401
 
 SANDBOX_FILES = ("TASK.md", "context.md", "tc_rt.h", "check.py")  # plus the packet files (asm*.txt, ghidra*.c)
 
 CHECK_LAUNCHER = """# Runs the dev test set on work.c. The official verdict (dev + hidden) is computed after your session.
-import subprocess, sys
-sys.exit(subprocess.call([sys.executable, r"{tool}", "--project", r"{project}", "check", "{addr}", "--agent",
-                          "--work", r"{work}"]))
+import os, subprocess, sys
+argv = [sys.executable, r"{tool}", "--project", r"{project}", "check", "{addr}", "--agent", "--work", r"{work}"]
+if os.environ.get("DP_WARM_CHECK"):  # the session's ready check process (core/warm_check): the same check, warm
+    sys.path.insert(0, os.path.join(os.path.dirname(argv[1]), "core"))
+    import warm_client
+    sys.exit(warm_client.run(argv))
+sys.exit(subprocess.call(argv))
 """
 
-TASK = """# TASK: decompile fn_{addr} into C that behaves exactly like the original SH-4 code
+TASK_HEAD = """# TASK: decompile fn_{addr} into C that behaves exactly like the original SH-4 code
 
 A machine judges your work: explanations and claims are ignored, only the official check's PASS/FAIL counts.
 Working directory: {box}
@@ -32,13 +36,17 @@ For every test input it must produce exactly the same observable effects as the 
 machine code at 0x{addr}, compared bit for bit:
 
 1. the same return value ({ret_reg}),
-2. the same final bytes at every guest memory address the original writes,
+"""
+
+TASK_GOAL = """2. the same final bytes at every guest memory address the original writes,
 3. the same calls: same targets, same order, same argument registers,
 4. the same back-bank registers xf0-xf15 (XMTRX),
 5. the same fr12-fr15 and r8-r14 at exit, when context.md lists them as runtime state, and the whole FPU
    (fr0-fr15, the FPSCR mode bits) at exit and at every call, when context.md says the whole FPU is state.
 
-## Files in this directory
+"""
+
+TASK_BODY = """## Files in this directory
 
 - `asm.txt`: the original disassembly. This is the authority. Literal-pool constants are annotated (a `mova` line shows the first words at its
   target; read further words of a table with rd32/rdf32 of their address).
@@ -57,13 +65,13 @@ Every rule is enforced automatically. Breaking one fails the attempt.
 
 - R1. Edit only work.c. Do not create, rename or delete any file.
 - R2. work.c contains `#include "tc_rt.h"` once and no other preprocessor lines (#define, #if, #pragma, other #include).
-- R3. Define exactly one non-static function, fn_{addr}, with exactly the signature above. Every helper function must be `static`.
+- R3. Define exactly one non-static function, {fname}, with exactly the signature {sig_where}. Every helper function must be `static`.
 - R4. All guest memory goes through rd8/rd16/rd32/rdf32 and wr8/wr16/wr32/wrf32. Guest pointers are u32 values, never C pointers.
 - R5. Make every call the original makes with tc_call or tc_callf: every jsr, every bsr, and every jmp or bra to another function. Use the same target, the same order and the same argument registers. Never implement a callee and never skip a call.
 - R6. No global or static variables, no static locals, no string literals, no initializer list with more than 32 elements, no inline assembly, no extern, no volatile.
 - R7. Never special-case test inputs. After your session, a hidden test set with different random inputs is run. Code that only fits the visible tests fails there.
 - R8. Never read machine-code bytes, and never interpret or emulate instructions. Reading any instruction address fails the check.
-- R9. Floats: use f32 only, never double. Write one C operation per original float instruction, in the original order. Use sh4_ftrc for ftrc, and sh4_fsqrt_rm, sh4_fsrra, sh4_fsca, sh4_fipr and sh4_ftrv for those instructions (sh4_fsqrt_rm rounds as the game's FPSCR does: never write your own square root). When context.md says the whole FPU is state, also sh4_frchg, sh4_fschg, sh4_fpchg, sh4_ftrv_fv and sh4_fipr_fv.
+- R9. Floats: use f32 only, never double. Write one C operation per original float instruction, in the original order. Use sh4_ftrc for ftrc, sh4_fmac for fmac (it rounds once, as the SH-4 does: never write a*b + c), and sh4_fsqrt_rm, sh4_fsrra, sh4_fsca, sh4_fipr and sh4_ftrv for those instructions (sh4_fsqrt_rm rounds as the game's FPSCR does: never write your own square root). When context.md says the whole FPU is state, also sh4_frchg, sh4_fschg, sh4_fpchg, sh4_ftrv_fv and sh4_fipr_fv.
 - R10. Never try to read hidden tests, expected outputs or files outside this directory. The file tools are confined to this directory, and every attempt is logged.
 - R11. work.c must build with zero compiler warnings (MSVC /W4; every warning is an error). Typical fixes: an explicit cast for a narrowing conversion such as `(u8)`, `(u16)` or `(s32)`; `(void)param_2;` for a parameter the original never reads; removing unused locals.
 - R12. When the original passes an address in its own stack frame (`mov r15,rN`, maybe `add #imm,rN`, before the call), pass that same frame address (r15 at that point plus the offset), never 0: the callee reads or fills the local there.
@@ -84,12 +92,47 @@ Every rule is enforced automatically. Breaking one fails the attempt.
 ## Procedure
 
 1. Read context.md, then every asm part and ghidra part listed in context.md.
-2. Write fn_{addr} in work.c by translating asm.txt block by block. Keep the original control flow and the original order of memory writes and calls.
+2. Write {fname} in work.c by translating asm.txt block by block. Keep the original control flow and the original order of memory writes and calls.
 3. Run `python check.py`.
 4. If it prints DEV FAIL, read the listed differences, fix the cause in work.c, and run it again.
 5. Stop as soon as it prints DEV PASS, or after you have run check.py 12 times.
 6. Your final message must be exactly one line: `RESULT: PASS`, or `RESULT: FAIL <one sentence naming the remaining difference>`.
+"""
+
+# One function's whole TASK.md (shared_prefix off): head, goal, body and the previous attempt.
+TASK = TASK_HEAD + TASK_GOAL + TASK_BODY.replace("{fname}", "fn_{addr}").replace("{sig_where}", "above") + "{previous}"
+
+# shared_prefix on: TASK.md and the first message hold only the per-function part. The rest (the goal's generic
+# items, files, rules, SH-4 reminders, procedure, and tc_rt.h) goes into the system prompt (raw_system_prompt): the
+# same text for every function of the target, so the CLI's cached prefix carries it from one session to the next.
+TASK_SHARED = """# TASK: decompile fn_{addr} into C that behaves exactly like the original SH-4 code
+
+Working directory: {box}
+
+Write ONE C function in `work.c`, with exactly this signature:
+
+    {signature}
+
+The original is the machine code at 0x{addr}. Its return value: {ret_reg}.
+
+The goal, the files, rules R1-R12, the SH-4 reminders and the procedure are in your system prompt (the same for
+every function): follow them exactly. tc_rt.h is reproduced there too.
 {previous}"""
+
+SHARED_GOAL = """# Standing instructions for every task
+
+Each task (your first message, also in TASK.md) names one function, fn_ADDR below: its signature, the original's
+address, its return register, and your working directory. A machine judges your work: explanations and claims
+are ignored, only the official check's PASS/FAIL counts.
+
+## Goal
+
+For every test input the function must produce exactly the same observable effects as the original
+machine code, compared bit for bit:
+
+1. the same return value (in the register the task names),
+"""
+
 
 PREVIOUS = """
 ## Previous attempt (#{n}), which FAILED
@@ -112,6 +155,30 @@ def entry_sp():
     """r15 at entry, from the target's calling convention (target.json abi.entry_sp)."""
     sp = (paths.config().get("abi") or {}).get("entry_sp")
     return int(str(sp), 16) if sp else check.SP
+
+
+def for_target(text):
+    """A TASK template for the workspace's target: target.json "agent_cpu" names the CPU of "the original ... code"
+    and of the reminders section, and "agent_reminders" (a file in the target folder) replaces that section's body.
+    The Dreamcast's text (SH-4, its reminders) is unchanged without them."""
+    cfg = paths.config()
+    cpu = cfg.get("agent_cpu")
+    if not cpu:
+        return text
+    text = text.replace("original SH-4 code", f"original {cpu} code").replace("SH-4 reminders", f"{cpu} reminders")
+    if cfg.get("agent_reminders"):
+        head = f"## {cpu} reminders\n\n"
+        i, j = text.find(head), text.find("\n## Procedure")
+        if 0 <= i < j:
+            body = (paths.TARGET / cfg["agent_reminders"]).read_text(encoding="utf-8")
+            text = text[:i + len(head)] + body.rstrip("\n") + "\n" + text[j:]
+    return text
+
+
+def scratch_lo():
+    """The scratch area's start, from the target's memory map (target.json memory.scratch)."""
+    sc = (paths.config().get("memory") or {}).get("scratch")
+    return int(str(sc[0]), 16) if sc else 0x8CC00000
 
 
 def abi_notes(meta):
@@ -173,9 +240,20 @@ FPU_STATE = [
 ]
 
 
+FPSCR_STATE = [
+    "", "## FPSCR is state", "",
+    "The original reads or writes FPSCR (sts / lds FPSCR). Read it with sh4_sts_fpscr() and write it with",
+    "sh4_lds_fpscr(v) exactly where the original does, keeping every bit it keeps (an `and` or `or` of what it read):",
+    "each test vector starts with its own FPSCR, and FPSCR is compared at exit and at every call.",
+    "While the original runs with FPSCR.PR = 1 (double precision), a DRn operation is the pair helper on fr n, fr n+1",
+    "(sh4_dadd(&fr4, &fr5, fr2, fr3) for fadd dr2,dr4; sh4_dftrc, sh4_fcnvsd, sh4_fcnvds ...): never a C double.",
+]
+
 # The tc_rt.h helper for each SH-4 special instruction TcPrepare lists (meta sh4_special).
 SPECIAL_HELPER = {"fsqrt": "sh4_fsqrt_rm", "fsrra": "sh4_fsrra", "fsca": "sh4_fsca", "fipr": "sh4_fipr",
-                  "ftrv": "sh4_ftrv"}
+                  "ftrv": "sh4_ftrv", "stc sr": "sh4_stc_sr", "ldc sr": "sh4_ldc_sr", "ldc gbr": "sh4_ldc_gbr",
+                  "stc gbr": "sh4_stc_gbr", "ocbi": "sh4_ocbi", "ocbp": "sh4_ocbp", "ocbwb": "sh4_ocbwb",
+                  "fmac": "sh4_fmac"}
 
 
 def call_notes(meta):
@@ -188,6 +266,25 @@ def call_notes(meta):
     if regs & {f"r{n}" for n in range(8, 15)}:
         lines += ["", "r8-r14 in a callee's compared registers: the callee reads them as runtime state. Before that",
                   "tc_call, give them the values the original has there with sh4_set_r(N, value)."]
+    return lines
+
+
+def hw_notes(hw):
+    """context.md lines for the hardware project.json "hw_ops" lists for the function (TcHw.meta): a register's
+    value has 2 hex digits per byte of its width, so a narrower register is read with tc_hw_read16 / tc_hw_read8."""
+    lines = [f"Hardware register 0x{r} (listed, project.json hw_ops): read it with tc_hw_read32(0x{r}u),"
+             f" never through a pointer; it returns the value the test run uses (0x{v})." if len(v) == 8 else
+             f"Hardware register 0x{r} (listed, project.json hw_ops, {len(v) // 2} byte(s) wide): read it with"
+             f" tc_hw_read{4 * len(v)}(0x{r}u) (mov.{'w' if len(v) == 4 else 'b'}), never through a pointer; it"
+             f" returns the value the test run uses (0x{v})." for r, v in hw["reads"].items()]
+    lines += [f"Hardware register 0x{r} (listed): store to it with tc_hw_write32(0x{r}u, v) (mov.l) or"
+              " tc_hw_write16 (mov.w), never through a pointer; the store is compared." for r in hw.get("writes", ())]
+    lines += ["Cache block ops (listed): sh4_ocbi / sh4_ocbp / sh4_ocbwb(address) where the original has them; "
+              "they do nothing in the test run."] if hw.get("cache") else []
+    lines += ["GBR is runtime state, compared at exit: ldc ...,gbr is sh4_ldc_gbr(v), stc gbr,... is "
+              "sh4_stc_gbr(); a load or store @(disp,gbr) uses sh4_stc_gbr() + disp."] if hw.get("gbr") else []
+    lines += ["This function sets SR.BL (exceptions blocked): write SR with sh4_ldc_sr as the original does,"
+              " BL included."] if hw.get("bl") else []
     return lines
 
 
@@ -229,24 +326,54 @@ def context_md(meta, summary):
     lines += [f"- 0x{g}" for g in meta["globals"]] or ["None."]
     if meta.get("fpu_state"):
         lines += FPU_STATE
+    if meta.get("fpscr_state"):
+        lines += FPSCR_STATE
     if meta["sh4_special"]:
         helper = SPECIAL_HELPER | ({"ftrv": "sh4_ftrv_fv", "fipr": "sh4_fipr_fv"} if meta.get("fpu_state") else {})
         lines += ["", "## SH-4 special instructions used", "",
                   ", ".join(f"{m} ({helper[m]})" if m in helper else m for m in meta["sh4_special"])
                   + ". Use the matching sh4_* helpers in tc_rt.h, never your own version: they compute exactly what the"
                   " SH-4 does here (rounding mode, denormals as zero)."]
+        if meta.get("hw_ops"):
+            lines += hw_notes(meta["hw_ops"])
         if "frchg" in meta["sh4_special"]:
             lines += ["frchg swaps fr0-fr15 with xf0-xf15. After frchg, writes to fr registers land in xf (use sh4_set_xf)."
                       if not meta.get("fpu_state") else "frchg is sh4_frchg(): see the section above."]
+    elif meta.get("hw_ops"):  # listed hardware in a function with no special instruction (Grandia 060398cc)
+        lines += ["", "## Listed hardware", ""] + hw_notes(meta["hw_ops"])
     lines += ["", "## Test vectors", "",
               f"Dev vectors: {summary.get('dev_valid')}, hidden vectors: {summary.get('hidden_valid')}.",
               f"Basic blocks reached by the dev vectors: {summary.get('blocks_hit_dev')} of {summary.get('blocks_total')}.",
-              "Inputs are random: pointers into a scratch area at 0x8cc00000, small integers, floats, and",
+              f"Inputs are random: pointers into a scratch area at 0x{scratch_lo():08x}, small integers, floats, and",
               "randomised bytes at the referenced globals. Unwritten memory keeps the game image contents (or zero)."]
     return "\n".join(lines) + "\n"
 
 
+def shared_prefix(cfg):
+    """Config `shared_prefix`: the generic TASK text and tc_rt.h go into the system prompt (raw attempts of a target
+    without its own build_sandbox hook, with the lean system prompt). r15 A/B on 60 Toy Commander functions: the
+    same verdicts and attempt-1 pass rate (60/60 in both arms); P1 cheaper on 55 of 60 functions; base-rate cost
+    -13% per function ($0.0071 -> $0.0062: cache writes -27%, output -8%, 0.8 fewer turns: no Read of tc_rt.h)."""
+    lean = (cfg.get("agent_system_prompt") or "lean") == "lean"
+    return bool(cfg.get("shared_prefix")) and lean and not target_hooks.get("build_sandbox")
+
+
+def raw_system_prompt(cfg):
+    """A raw attempt's system prompt: None (the command's own, agent_system_prompt) unless shared_prefix is on. Then
+    it is the lean prompt, everything of TASK.md that is the same for every function of the target (its entry r15
+    included), and tc_rt.h."""
+    if not shared_prefix(cfg):
+        return None
+    body = for_target(TASK_BODY).format(fname="fn_ADDR", sig_where="the task gives", entry_sp=entry_sp())
+    rt = (paths.RUNTIME / "tc_rt.h").read_text(encoding="utf-8")
+    return (f"{SYSTEM_PROMPT}\n\n{SHARED_GOAL}{TASK_GOAL}{body}\n"
+            f"## tc_rt.h (also in the working directory: no need to read it)\n\n```c\n{rt}```\n")
+
+
 def build_sandbox(cfg, addr, meta, summary, prev_work, previous_text):
+    hook = target_hooks.get("build_sandbox")  # a target with its own TASK.md and runtime (core/target_hooks)
+    if hook:
+        return hook(cfg, addr, meta, summary, prev_work, previous_text)
     box = paths.SANDBOX / addr
     if box.exists():
         for p in box.iterdir():
@@ -264,8 +391,9 @@ def build_sandbox(cfg, addr, meta, summary, prev_work, previous_text):
                                     encoding="utf-8")
     shutil.copyfile(paths.RUNTIME / "tc_rt.h", box / "tc_rt.h")
     (box / "context.md").write_text(context_md(meta, summary), encoding="utf-8")
-    task = TASK.format(addr=addr, box=box, signature=meta["signature"], ret_reg=ret_reg(meta), entry_sp=entry_sp(),
-                       previous=previous_text)
+    task = for_target(TASK_SHARED if shared_prefix(cfg) else TASK).format(
+        addr=addr, box=box, signature=meta["signature"], ret_reg=ret_reg(meta), entry_sp=entry_sp(),
+        previous=(previous_text or "") + paths.agent_note(addr))
     (box / "TASK.md").write_text(task, encoding="utf-8")
     (box / "check.py").write_text(CHECK_LAUNCHER.format(tool=paths.TOOL / "decomp.py", project=paths.ROOT, addr=addr,
                                                             work=box / "work.c"),
@@ -334,13 +462,21 @@ def api_error(final, output):
     return None
 
 
-def run_attempt(cfg, box, task, transcript_path, log, stop_flag, on_usage=None):
+def run_attempt(cfg, box, task, transcript_path, log, stop_flag, on_usage=None, system=None):
     """Run one locked-down session in the sandbox. Returns a summary dict.
 
-    on_usage(rate_limit_info) receives the account's 5-hour/weekly utilisation as the CLI reports it."""
+    on_usage(rate_limit_info) receives the account's 5-hour/weekly utilisation as the CLI reports it. system: the
+    session's system prompt in place of the command's own (raw_system_prompt), passed in system_prompt.md beside
+    the transcript."""
     prompt = "Follow TASK.md (reproduced below) exactly.\n\n" + task
     final = {}
     cap = OutputCap(cfg.get("output_cap"), stop_flag)  # cfg output_cap: stop after that many output tokens
+    meter = SpendMeter(cfg.get("agent_rates"))  # a killed session's spend (no result event): cfg agent_rates
+    system_file = None
+    if system:
+        system_file = os.path.join(os.path.dirname(os.path.abspath(transcript_path)), "system_prompt.md")
+        with open(system_file, "w", encoding="utf-8", newline="\n") as f:
+            f.write(system)
     with open(transcript_path, "w", encoding="utf-8") as tf:
         def on_line(line):
             tf.write(line)
@@ -350,6 +486,7 @@ def run_attempt(cfg, box, task, transcript_path, log, stop_flag, on_usage=None):
             except ValueError:
                 return
             cap.feed(ev)
+            meter.feed(ev)
             if ev.get("type") == "result":
                 final.update(ev)
             elif ev.get("type") == "system" and ev.get("subtype") == "init":
@@ -360,16 +497,24 @@ def run_attempt(cfg, box, task, transcript_path, log, stop_flag, on_usage=None):
             if msg:
                 log(msg)
 
-        rc, _out, reason = paths.run_bounded(claude_command(cfg), cfg["attempt_timeout_s"], cwd=box, env=agent_env(),
-                                             stdin_text=prompt, on_line=on_line, stop_flag=cap)
+        env = agent_env(cfg)
+        with warm_check.session(cfg, env, box, paths.ROOT) as warm:  # check.py's ready process (core/warm_check)
+            rc, _out, reason = paths.run_bounded(claude_command(cfg, system_file), cfg["attempt_timeout_s"], cwd=box,
+                                                 env={**env, **warm}, stdin_text=prompt, on_line=on_line,
+                                                 stop_flag=cap)
     if cap.hit and reason == "stopped":
         reason = f"output_cap {cfg.get('output_cap')}"
     usage = final.get("usage") or {}
+    cost, estimated = final.get("total_cost_usd"), None
+    if cost is None:  # no result event: what the requests so far cost, estimated (None for a model with no rates)
+        cost = meter.cost(cfg.get("model"))
+        estimated = cost is not None or None
     return {
         "api_error": api_error(final, _out),
         "model_actual": final.get("_model"), "effort": cfg.get("effort") or "CLI default",
         "thinking_tokens": sum((m or {}).get("thinkingTokens") or 0 for m in (final.get("modelUsage") or {}).values()),
-        "exit_code": rc, "killed": reason, "cost_usd": final.get("total_cost_usd"),
+        "exit_code": rc, "killed": reason, "cost_usd": cost,
+        **({"cost_estimated": True} if estimated else {}),
         "turns": final.get("num_turns"), "is_error": final.get("is_error"),
         "final_message": (final.get("result") or "")[-400:],
         "tokens_in": (usage.get("input_tokens") or 0) + (usage.get("cache_read_input_tokens") or 0)

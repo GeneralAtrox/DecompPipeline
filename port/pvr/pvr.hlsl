@@ -1,10 +1,10 @@
 // The PowerVR's pixel pipeline for one batch of triangles, compiled by fxc at build time (CMakeLists.txt).
 //
-// Vertices arrive in 640x480 screen space with z = 1/w. The vertex shader rebuilds clip space with W = 1/z, so the
-// rasterizer interpolates UVs and colours perspective-correct as the PowerVR does, and writes depth = z * scale
-// (scale: 1 / the frame's largest 1/w), which keeps "greater" meaning nearer. The pixel shader applies the TSP word
-// of its batch: texture/shading instruction, alpha use, offset colour, fog (table, per vertex, table mode 2) and
-// the punch-through alpha test.
+// Vertices arrive in 640x480 screen space with z = 1/w (widescreen: the screen is the frame's middle). The vertex
+// shader rebuilds clip space with W = 1/z, so the rasterizer interpolates UVs and colours perspective-correct as the
+// PowerVR does, and writes depth = z * scale (scale: 1 / the frame's largest 1/w), which keeps "greater" meaning
+// nearer. The pixel shader applies the TSP word of its batch: texture/shading instruction, alpha use, offset colour,
+// fog (table, per vertex, table mode 2) and the punch-through alpha test.
 
 cbuffer Frame : register(b0)
 {
@@ -14,6 +14,7 @@ cbuffer Frame : register(b0)
     float shadow_alpha;  // 1 - FPU_SHAD_SCALE's intensity / 256 (cheap shadow)
     float4 fog_color;    // FOG_COL_RAM
     uint4 fog_table[32]; // FOG_TABLE: 128 entries, (this density << 8) | the next one's
+    float4 wide;         // x: 1 / port_widescreen(), the 640-pixel screen's share of the frame's width
 };
 
 struct Batch { uint isp, tsp, tcw, flags; };
@@ -50,7 +51,7 @@ PSIn vs_main(VSIn i)
 {
     PSIn o;
     float w = 1.0 / i.pos.z;
-    o.pos = float4((i.pos.x / 320.0 - 1.0) * w, (1.0 - i.pos.y / 240.0) * w, i.pos.z * depth_scale * w, w);
+    o.pos = float4((i.pos.x / 320.0 - 1.0) * wide.x * w, (1.0 - i.pos.y / 240.0) * w, i.pos.z * depth_scale * w, w);
     o.uv = i.uv;
     o.base = i.base;
     o.off = i.off;

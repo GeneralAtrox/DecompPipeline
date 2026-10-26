@@ -94,7 +94,13 @@ instruction text.
   vector, and the word holding it becomes a fresh chunk pointer. On the Dreamcast such an address has no memory; in
   the 32-bit readable runner it can be a host DLL's code, run natively (8c08d48c called 0x76386e41 and crashed).
   NULL stays a valid target: both judges trap a call to it.
-- `fmac` is emulated with two roundings; whether SH-4 rounds once is unverified (8c01ac9a differs by 1 ulp).
+- `fmac` rounds once, as the SH-4 software manual says (6.4; 9.36 normal_fmac: the exact product, one conversion).
+  The p-code rounds twice: TcFpu checks it with two roundings, then replaces the result with TcRound.fma's in the
+  live FPSCR.RM, for every game. The C uses `sh4_fmac` (tc_rt.c, rd_sh4.c, the port's sh4_rt.c; xemu calls it):
+  SSE2 only, exact in both rounding modes (tests/test_fmac.py). The manual's pseudo-code gives 0 + 0 the sign
+  s0^sm^sn; its special-case table and IEEE (which both sides follow) do not. An exact value in
+  [2^-126 - 2^-150, 2^-126) rejects the vector: the manual rounds it onto the denormal grid before the DN flush
+  (2^-126 stays), SSE's FTZ judges it after rounding to 24 bits.
 - Paired 64-bit FPU moves (`fschg` + `fmov` on DRn) in little-endian mode are not yet verified against hardware.
 - The oracle assumes FPSCR PR=0, SZ=0 at entry (true for all game code; only the SDK changes FPSCR).
 - `fsrra` and `fsca` use exact maths and a 64K-entry table, not the hardware's approximations.

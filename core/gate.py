@@ -37,8 +37,9 @@ def staging_scripts(ws):
     """The target's locked scripts plus the workspace's TcInputs.java (compiled as a separate bundle)."""
     d = WATCH / "scripts"
     d.mkdir(parents=True, exist_ok=True)
+    scripts = paths.target_scripts()
     for n in locked():
-        paths.copy_if_changed(paths.TARGET_SCRIPTS / n, d / n)
+        paths.copy_if_changed(scripts[n], d / n)
     paths.copy_if_changed(ws / "TcInputs.java", d / "TcInputs.java")
     return d
 

@@ -2,13 +2,15 @@
  * a read of the SDK timer (session_timer): the game's clock reads it once per frame, so the state at that read is
  * the state the previous frame left. Both halves trace it as it was at that frame's last vertical blank (before the
  * game's handler), so state the game swaps within a frame reads the same. The timer value is the frame's label on
- * both sides.
+ * both sides. A game that reads no timer and labels its frames with its own frame counter (flag counter) ends each
+ * frame at the vertical blank where that counter moved instead (counter_vblank), and no timer value is replayed.
  *   --lockstep-spec FILE   the watched state, from the game's folder: one item per line, "name words address
  *                          [flags]". The address is hex with steps: * reads a pointer there, +X and -X move by hex X;
  *                          the item is that many u32 words from where the steps end. Flags are the compare tool's,
  *                          except key: the key items are the frames' phase (a scene number, say), and frames: the
  *                          game's frame counter (a timer read with no frame ended since the last is no new frame,
- *                          and the emulator's frames that ran several game frames are split). "EMU|PORT"
+ *                          and the emulator's frames that ran several game frames are split), and counter: the
+ *                          label item when it is the game's frame counter, not a copy of the timer. "EMU|PORT"
  *                          gives the port its own address; "@rand" is the C library generator's state (one word).
  *   --lockstep-trace FILE  one line per frame: "label emulator-frame word..", hex, "-" for a word that is not in
  *                          guest RAM (a null or host pointer on the way).
@@ -18,6 +20,8 @@
  *                          frame. Frames pair one to one; when the key changes, the next emulator frame that starts
  *                          the same key pairs instead (a movie the port does not play, a different number of loading
  *                          frames).
+ *   --lockstep-end exit    ends the run (exit code 0) once the drive's last frame is traced; "live" (the default)
+ *                          plays on in live time.
  *   --lockstep-watch W@N   logs each write to trace word W through the port frame that trace line N shows (its state
  *                          is that frame's end), with the stack (lockstep_watch.c). */
 #include <stdlib.h>
@@ -27,128 +31,28 @@
 #include "lockstep.h"
 #include "lockstep_parts.h"
 
-#define MAX_ITEMS 512u
-#define MAX_STEPS 8u
-#define LINE_CAP 4096u
-#define STEP_DEREF 0x7fffffff
 #define MAX_WORDS 8192u
 #define NO_WORD 0xffffffffu /* in g_snap_ok: the word is not in guest RAM */
 #define TIMER_UNIT 3125     /* 4 ms of the SDK timer (781,250 Hz): a whole number of milliseconds */
 #define LOAD_REACH 4u       /* emulator frames a load may pair away from the paired one */
 
-typedef struct Item {
-    u32 base, words, steps, key, rand, frames, paused;
-    s32 step[MAX_STEPS];
-} Item;
-
-static Item g_items[MAX_ITEMS];
-static u32 g_nitems, g_nkey;
+static LsSpec g_spec;
 static FILE *g_trace;
 static EmuFrame *g_emu;
 static u32 g_nemu, g_ei, g_seg, g_calls, g_unmatched, g_jump_next; /* the first emulator frame a load may pair with */
 static u32 g_key[MAX_KEY], g_prev_key[MAX_KEY];
 static s32 g_value, g_off; /* the timer value returned last; the port's timer minus the emulator's */
-static int g_drive, g_started, g_ended, g_snapped, g_jumped;
-static const Item *g_frames; /* the game's frame counter (flag frames), if the spec names one */
-static const Item *g_paused; /* the game clock's pause count (flag paused) */
+static int g_drive, g_started, g_ended, g_snapped, g_jumped, g_end_exit;
 static u32 g_frames_seen;
 static int g_scenes; /* scenes begun since the last frame read */
 static u32 g_watch_word, g_watch_frame, g_watching; /* --lockstep-watch */
 static u32 g_snap[MAX_WORDS], g_snap_ok[MAX_WORDS], g_nwords;
 
-static int guest_word(u32 a, u32 *out)
-{
-    u32 p = a & 0x1fffffffu;
-    if ((a & 3u) || p < 0x0c000000u || p >= 0x0c000000u + GUEST_RAM_SIZE) return 0;
-    *out = *(const volatile u32 *)(uintptr_t)(GUEST_RAM_BASE + (p - 0x0c000000u));
-    return 1;
-}
-
-/* Where an item's words start; 0 if a step leaves guest RAM. */
-static int item_at(const Item *it, u32 *at)
-{
-    u32 a = it->base;
-    for (u32 s = 0; s < it->steps; s++) {
-        if (it->step[s] == STEP_DEREF) {
-            if (!guest_word(a, &a)) return 0;
-        } else {
-            a += (u32)it->step[s];
-        }
-    }
-    *at = a;
-    return 1;
-}
-
-static int parse_item(char *line, Item *it)
-{
-    char *ctx = NULL, *name = strtok_s(line, " \t\r\n", &ctx), *words, *addr, *p, *flag;
-    if (!name || name[0] == '#') return 0;
-    words = strtok_s(NULL, " \t\r\n", &ctx);
-    addr = strtok_s(NULL, " \t\r\n", &ctx);
-    if (!words || !addr) return -1;
-    memset(it, 0, sizeof *it);
-    while ((flag = strtok_s(NULL, " \t\r\n", &ctx)) != NULL) {
-        if (!strcmp(flag, "key")) it->key = 1;
-        if (!strcmp(flag, "frames")) it->frames = 1;
-        if (!strcmp(flag, "paused")) it->paused = 1;
-        if (!strcmp(flag, "emu")) return 0; /* the emulator's only */
-    }
-    it->words = (u32)strtoul(words, NULL, 0);
-    if ((p = strchr(addr, '|')) != NULL) addr = p + 1;
-    if (!strcmp(addr, "@rand")) {
-        it->rand = 1;
-        return 1;
-    }
-    it->base = (u32)strtoul(addr, &p, 16);
-    while (*p) {
-        if (it->steps == MAX_STEPS) return -1;
-        if (*p == '*') {
-            it->step[it->steps++] = STEP_DEREF;
-            p++;
-        } else if (*p == '+' || *p == '-') {
-            s32 sign = *p == '-' ? -1 : 1;
-            it->step[it->steps++] = sign * (s32)strtoul(p + 1, &p, 16);
-        } else {
-            return -1;
-        }
-    }
-    if (it->key && g_nkey + it->words > MAX_KEY) return -1;
-    if (it->key) g_nkey += it->words;
-    if (it->frames) g_frames = it;
-    if (it->paused) g_paused = it;
-    return 1;
-}
-
-static int load_spec(const char *path)
-{
-    FILE *f = NULL;
-    char line[LINE_CAP];
-    u32 n = 0;
-    if (fopen_s(&f, path, "r") || !f) {
-        port_log("lockstep: cannot open the spec %s\n", path);
-        return 0;
-    }
-    while (fgets(line, sizeof line, f)) {
-        n++;
-        if (g_nitems == MAX_ITEMS) break;
-        int r = parse_item(line, &g_items[g_nitems]);
-        if (r < 0) {
-            port_log("lockstep: %s line %u is not \"name words address [flags]\"\n", path, n);
-            fclose(f);
-            return 0;
-        }
-        g_nitems += (u32)r;
-    }
-    fclose(f);
-    port_log("lockstep: %u watched items, %u key words\n", g_nitems, g_nkey);
-    return 1;
-}
-
 int lockstep_option(const char *arg, const char *value)
 {
     if (!value) return 0;
     if (!strcmp(arg, "--lockstep-spec")) {
-        if (!load_spec(value)) exit(2);
+        if (!lockstep_spec_load(value, &g_spec)) exit(2);
     } else if (!strcmp(arg, "--lockstep-trace")) {
         if (fopen_s(&g_trace, value, "w") || !g_trace) {
             port_log("lockstep: cannot write %s\n", value);
@@ -159,6 +63,9 @@ int lockstep_option(const char *arg, const char *value)
         g_nemu = lockstep_load_emu(value, &g_emu);
         g_drive = g_nemu != 0;
         if (!g_drive) exit(2);
+    } else if (!strcmp(arg, "--lockstep-end")) {
+        g_end_exit = !strcmp(value, "exit");
+        if (!g_end_exit && strcmp(value, "live")) exit(2);
     } else if (!strcmp(arg, "--lockstep-watch")) {
         if (sscanf_s(value, "%u@%u", &g_watch_word, &g_watch_frame) != 2) exit(2);
         g_watching = 1;
@@ -168,46 +75,15 @@ int lockstep_option(const char *arg, const char *value)
     return 2;
 }
 
-/* An item's word j; 0 if it is not in guest RAM. */
-static int item_word(const Item *it, u32 j, u32 *w)
-{
-    u32 at;
-    if (it->rand) {
-        *w = port_rand_state();
-        return j == 0;
-    }
-    return item_at(it, &at) && guest_word(at + 4u * j, w);
-}
-
-/* Trace word n in host memory as it is now; NULL if it is not in guest RAM. */
-static volatile u32 *word_host(u32 n)
-{
-    u32 at, w;
-    for (u32 i = 0; i < g_nitems; n -= g_items[i++].words) {
-        const Item *it = &g_items[i];
-        if (n >= it->words) continue;
-        if (it->rand || !item_at(it, &at) || !guest_word(at += 4u * n, &w)) return NULL;
-        return (volatile u32 *)(uintptr_t)(GUEST_RAM_BASE + ((at & 0x1fffffffu) - 0x0c000000u));
-    }
-    return NULL;
-}
-
 /* Every watched word into g_snap: at the vertical blank, as the emulator's half samples (the game swaps state
  * within a frame, a world for its overlay say, and waits for the vertical blank once the frame is done). */
 static void snap(void)
 {
     u32 n = 0;
-    for (u32 i = 0; i < g_nitems; i++)
-        for (u32 j = 0; j < g_items[i].words && n < MAX_WORDS; j++, n++)
-            g_snap_ok[n] = item_word(&g_items[i], j, &g_snap[n]) ? 0u : NO_WORD;
+    for (u32 i = 0; i < g_spec.nitems; i++)
+        for (u32 j = 0; j < g_spec.items[i].words && n < MAX_WORDS; j++, n++)
+            g_snap_ok[n] = lockstep_item_word(&g_spec.items[i], j, &g_snap[n]) ? 0u : NO_WORD;
     g_nwords = n;
-}
-
-void lockstep_vblank(void)
-{
-    if ((!g_drive && !g_trace) || port_extra_drawing()) return;
-    snap();
-    g_snapped = 1;
 }
 
 /* A scene begins: on the console the flip is waited for here, so a read after a frame counted itself and before
@@ -224,11 +100,11 @@ void lockstep_scene(void)
 static void read_key(u32 *key, int live)
 {
     u32 n = 0, at = 0, w;
-    for (u32 i = 0; i < g_nitems; i++) {
-        const Item *it = &g_items[i];
+    for (u32 i = 0; i < g_spec.nitems; i++) {
+        const LsItem *it = &g_spec.items[i];
         for (u32 j = 0; j < it->words; j++, at++) {
             if (!it->key) continue;
-            if (live) key[n++] = item_word(it, j, &w) ? w : 0xffffffffu;
+            if (live) key[n++] = lockstep_item_word(it, j, &w) ? w : 0xffffffffu;
             else key[n++] = g_snap_ok[at] != NO_WORD ? g_snap[at] : 0xffffffffu;
         }
     }
@@ -236,7 +112,7 @@ static void read_key(u32 *key, int live)
 
 static int key_is(const EmuFrame *e, const u32 *key)
 {
-    return e->nkey == g_nkey && !memcmp(e->key, key, g_nkey * sizeof *key);
+    return e->nkey == g_spec.nkey && !memcmp(e->key, key, g_spec.nkey * sizeof *key);
 }
 
 static void trace_frame(u32 label, s32 emu)
@@ -264,7 +140,7 @@ static u32 phase_start(const u32 *key)
 static int frame_read(void)
 {
     u32 n;
-    if (!g_frames || !item_word(g_frames, 0, &n)) return 1;
+    if (!g_spec.frames || !lockstep_item_word(g_spec.frames, 0, &n)) return 1;
     if (g_started && (n == g_frames_seen || (n == g_frames_seen + 1u && g_scenes == 0))) return 0;
     g_scenes = 0;
     g_frames_seen = n;
@@ -274,7 +150,7 @@ static int frame_read(void)
 /* When the key has changed to one the paired frame does not have, the next emulator frame that starts it pairs. */
 static void pair(const u32 *key)
 {
-    if (memcmp(key, g_prev_key, g_nkey * sizeof *key) && !key_is(&g_emu[g_ei], key)) {
+    if (memcmp(key, g_prev_key, g_spec.nkey * sizeof *key) && !key_is(&g_emu[g_ei], key)) {
         u32 m = phase_start(key);
         if (m < g_nemu) {
             /* the port's timer from here: the emulator's plus what the frames between (a movie) left over, in
@@ -288,7 +164,7 @@ static void pair(const u32 *key)
             port_log("lockstep: no emulator phase for the key at frame %u; pairing on one to one\n", g_calls);
         }
     }
-    memcpy(g_prev_key, key, g_nkey * sizeof *key);
+    memcpy(g_prev_key, key, g_spec.nkey * sizeof *key);
 }
 
 /* A load: the emulator frame within LOAD_REACH whose time jumps (a load starts in it). The read that pauses the
@@ -318,22 +194,39 @@ static s32 in_frame(void)
     u32 key[MAX_KEY], paused;
     read_key(key, 1);
     pair(key);
-    if (!g_jumped && g_paused && item_word(g_paused, 0, &paused)) load_pair(paused);
+    if (!g_jumped && g_spec.paused && lockstep_item_word(g_spec.paused, 0, &paused)) load_pair(paused);
     return ++g_value;
+}
+
+/* A frame ends: the RAM capture, the write watch and the key of the state it left. */
+static void frame_end(u32 label)
+{
+    g_calls++;
+    ram_frames_capture(g_calls, label, !g_drive ? -1 : g_ended ? -2 : (s32)g_ei);
+    g_jumped = 0;
+    if (g_watching && g_calls - g_watch_frame - 1u <= 1u) { /* trace line N is written as frame N + 2 starts */
+        volatile u32 *at = g_calls == g_watch_frame + 1u ? lockstep_word_host(&g_spec, g_watch_word) : NULL;
+        lockstep_watch(at, g_watch_frame);
+    }
+    if (!g_snapped) snap(); /* no vertical blank since the last frame: the state now */
+    g_snapped = 0;
+    read_key(g_key, 0);
+}
+
+/* The drive's last frame is traced: with --lockstep-end exit the run ends here (exit code 0; tools/lockstep.py has
+ * nothing more to compare), else it plays on in live time. */
+static void drive_ended(void)
+{
+    port_log("lockstep: the emulator frames end at port frame %u%s\n", g_calls,
+             g_end_exit ? "" : "; live time from here");
+    if (g_end_exit) port_exit("the lockstep drive ended", 0);
 }
 
 s32 lockstep_timer(s32 live)
 {
-    if ((!g_drive && !g_trace) || port_extra_drawing()) return live;
+    if ((!g_drive && !g_trace) || port_extra_drawing() || g_spec.counter) return live;
     if (!frame_read()) return g_drive ? in_frame() : live;
-    g_calls++;
-    ram_frames_capture(g_calls, (u32)g_value, !g_drive ? -1 : g_ended ? -2 : (s32)g_ei);
-    g_jumped = 0;
-    if (g_watching && g_calls - g_watch_frame - 1u <= 1u) /* trace line N is written as frame N + 2 starts */
-        lockstep_watch(g_calls == g_watch_frame + 1u ? word_host(g_watch_word) : NULL, g_watch_frame);
-    if (!g_snapped) snap(); /* no vertical blank since the last frame: the state now */
-    g_snapped = 0;
-    read_key(g_key, 0);
+    frame_end((u32)g_value);
     if (!g_drive) {
         if (g_started) trace_frame((u32)g_value, -1);
         g_started = 1;
@@ -349,7 +242,7 @@ s32 lockstep_timer(s32 live)
     pair(g_key);
     trace_frame((u32)g_value, (s32)g_ei);
     if (g_ei + 1u >= g_nemu) {
-        if (!g_ended++) port_log("lockstep: the emulator frames end at port frame %u; live time from here\n", g_calls);
+        if (!g_ended++) drive_ended();
         g_value += (s32)(g_emu[g_ei].label - (g_ei ? g_emu[g_ei - 1u].label : g_emu[g_ei].label));
         return g_value;
     }
@@ -357,6 +250,39 @@ s32 lockstep_timer(s32 live)
     g_value = next - g_value > 0 ? next : g_value + 1;    /* never back past the reads within the frame */
     g_ei++;
     return g_value;
+}
+
+/* Counter mode (flag counter): the label is the game's own frame counter and the game reads no timer. A frame ends
+ * at the vertical blank where the counter has moved, and the snapshot of the vertical blank before is the state it
+ * left, as the emulator's half takes it. The frames pair one to one (and by key); no timer value is replayed. */
+static void counter_vblank(u32 n)
+{
+    u32 label = (u32)g_value;
+    if (g_started && n == label) return;
+    g_value = (s32)n;
+    if (!g_started) {
+        g_started = 1;
+        read_key(g_prev_key, 1);
+        return;
+    }
+    frame_end(n);
+    if (!g_drive) {
+        trace_frame(label, -1);
+        return;
+    }
+    pair(g_key);
+    trace_frame(label, (s32)g_ei);
+    if (g_ei + 1u < g_nemu) g_ei++;
+    else if (!g_ended++) drive_ended();
+}
+
+void lockstep_vblank(void)
+{
+    u32 n;
+    if ((!g_drive && !g_trace) || port_extra_drawing()) return;
+    if (g_spec.counter && lockstep_item_word(g_spec.counter, 0, &n)) counter_vblank(n);
+    snap();
+    g_snapped = 1;
 }
 
 int lockstep_pad(HostPad *pad)
@@ -380,7 +306,7 @@ int lockstep_time(HostTime *t)
     u32 key[MAX_KEY], at;
     const EmuFrame *e = &g_emu[g_ei];
     read_key(key, 1);
-    if (memcmp(key, g_prev_key, g_nkey * sizeof *key) && !key_is(e, key) && (at = phase_start(key)) < g_nemu)
+    if (memcmp(key, g_prev_key, g_spec.nkey * sizeof *key) && !key_is(e, key) && (at = phase_start(key)) < g_nemu)
         e = &g_emu[at];
     lockstep_rtc_date(e->rtc, t);
     return 1;

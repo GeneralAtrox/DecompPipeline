@@ -8,3 +8,6 @@ tests/ghidra_work/
 # this machine's paths (batch 26): merged over config.json / tests/patterns.json
 config.local.json
 tests/patterns.local.json
+
+# the own translators' working output (targets/<target>/translator/tools write to out/, out_regress/)
+targets/*/translator/out*/

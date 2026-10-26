@@ -3,10 +3,11 @@ import datetime
 import json
 import re
 import shutil
+import threading
 import time
 from pathlib import Path
 
-from . import agent, check, ghidra, paths, proof
+from . import agent, busylog, check, ghidra, paths, prepare_timing, proof, stale_skips, translate_stage
 
 HARNESS_FILES = ("vectors.txt", "expected.txt", "meta.json")
 BACKOFF_S = (60, 120, 240, 480, 600)
@@ -14,6 +15,37 @@ BACKOFF_S = (60, 120, 240, 480, 600)
 
 class Fatal(Exception):
     """Stops every worker (authentication failure, spend cap)."""
+
+
+class Prefetch:
+    """Config "prefetch": the next function's Ghidra slot and prepare, on a thread of its own while the worker's
+    agent works on the current function (Worker.prefetch_next). investigate(pre=...) then waits for it instead of
+    preparing, so the prepare and its slot wait leave the worker's critical path. The same call with the same
+    arguments: the harness is the one a prepare at that point would make. prev_status: the function's status before
+    the claim, given back when the worker stops before it gets to the function."""
+
+    def __init__(self, o, w, addr, prev_status):
+        self.addr, self.prev_status, self.timing = addr, prev_status, {}
+        self.result, self.error, self.slot, self.slot_wait_s, self.reused = None, None, None, 0.0, False
+        self.thread = threading.Thread(target=self._run, args=(o, w), daemon=True, name=f"prefetch-W{w.id}")
+        self.thread.start()
+
+    def _run(self, o, w):
+        t = time.monotonic()
+        try:
+            reused = reuse_harness(o.cfg, self.addr)  # current already: no slot and no Ghidra, as investigate
+            if reused:
+                self.result, self.reused = reused, True
+                return
+            with ghidra.slot(o.cfg, w.stop_flag, prio="prefetch") as gs:
+                self.slot, self.slot_wait_s = gs, round(time.monotonic() - t, 1)
+                if w.stop_flag.is_set():
+                    raise RuntimeError("stopped while waiting for a Ghidra slot")
+                o.log(f"[W{w.id}] {self.addr}: prefetch: preparing in Ghidra slot {gs} while the agent works")
+                self.result = ghidra.prepare(o.cfg, self.addr, stop_flag=w.stop_flag, slot_index=gs,
+                                             timing=self.timing)
+        except Exception as e:  # noqa: BLE001  (raised by investigate, as its own prepare's would be)
+            self.error = e
 
 
 def now():
@@ -72,8 +104,40 @@ def attempt_summary(att):
     return s + (f"; {att['run_error']}" if att.get("run_error") else "")
 
 
-def investigate(o, w, addr):
-    """o: Orchestrator, w: Worker. Returns the final status."""
+def reuse_harness(cfg, addr):
+    """reusable_harness when config "harness_reuse" is on (project.json over target.json over config.json), else
+    None without looking: a target or project where reuse is not proven prepares every function, as before."""
+    return reusable_harness(cfg, addr, take=True) if cfg.get("harness_reuse") else None
+
+
+def reusable_harness(cfg, addr, take=False):
+    """(meta, summary) of addr's harness when a prepare now would make the same one, else None: the packet and every
+    harness file exist, and the harness is current by its oracle stamp (core/oracle_stamp: the scripts, facts, hints,
+    vector counts, catalog, binary and Ghidra install it was made from are today's, and no callee record drifts).
+    investigate() then skips Ghidra, so functions prepared ahead (tools/prepare_list.py) cost workers no slot.
+    A packet made before core/packet_split.strip_status loses its status plate, as a prepare now would, only with
+    take (a worker reusing it now: investigate, prefetch); any other caller (tools/prepare_list.py, scans) writes
+    nothing."""
+    from . import oracle_fresh, oracle_stamp
+    h = paths.HARNESS / addr
+    if not (paths.PACKETS / addr).is_dir() or not all((h / n).is_file() for n in HARNESS_FILES + ("oracle_summary.json",)):
+        return None
+    meta, summary = paths.read_json(h / "meta.json"), paths.read_json(h / "oracle_summary.json")
+    if not isinstance(meta, dict) or not meta.get("signature") or not isinstance(summary, dict):
+        return None
+    try:  # callee harnesses may be mid-write by another worker's prepare: any doubt prepares, as before
+        now = oracle_fresh.Stamper(cfg).today(addr)
+        if oracle_stamp.current(dict(meta, addr=meta.get("addr", addr)), now) is not None:
+            return None
+    except Exception:  # noqa: BLE001  (inputs unreadable: prepare as before)
+        return None
+    if not ghidra.strip_status(paths.PACKETS / addr, write=take):  # an older packet, split with the plate in it
+        return None
+    return meta, summary
+
+
+def investigate(o, w, addr, pre=None):
+    """o: Orchestrator, w: Worker, pre: addr's Prefetch (config "prefetch") or None. Returns the final status."""
     cfg = o.cfg
     f = o.functions[addr]
     r = o.rec(addr)
@@ -82,19 +146,46 @@ def investigate(o, w, addr):
     r.pop("verdict_detail", None)
     o.save()
     w.set_phase(addr, f"waiting for a free Ghidra slot ({cfg.get('ghidra_parallel', 1)} in total)")
+    timing, t_wait = {}, time.monotonic()
     try:
-        with ghidra.slot(cfg, w.stop_flag) as gs:
-            if w.stop_flag.is_set():
-                return finish(o, addr, "stopped", w.stop_reason)
+        if pre is not None:  # prepared (or found current) while the previous function's agent worked ("prefetch")
             r["status"] = "preparing"
-            w.set_phase(addr, f"Ghidra slot {gs}: export packet, generate vectors, run original in emulator")
-            o.log(f"[W{w.id}] {addr}: preparing in Ghidra slot {gs} "
-                  f"(tier {r['tier']}, score {r['score']}, system {r['system']})")
-            meta, summary = ghidra.prepare(cfg, addr, stop_flag=w.stop_flag, slot_index=gs)
+            w.set_phase(addr, "prefetched: waiting for its prepare to end")
+            pre.thread.join()  # bounded: the prepare's own ghidra_timeout_s, the slot wait by the stop flag
+            r["prefetch_wait_s"] = round(time.monotonic() - t_wait, 1)  # what is left of it on the critical path
+            if pre.error is not None:
+                raise pre.error
+            r["slot_wait_s"], timing, gs, reused = pre.slot_wait_s, pre.timing, pre.slot, pre.reused
+            meta, summary = pre.result
+            o.log(f"[W{w.id}] {addr}: " + ("prefetch found its harness current (oracle stamp); reused without Ghidra"
+                                           if reused else f"prefetched in Ghidra slot {gs}") +
+                  f" (tier {r['tier']}, score {r['score']}, system {r['system']}); "
+                  f"waited {r['prefetch_wait_s']:.1f} s for it")
+        else:
+            reused = reuse_harness(cfg, addr)  # decided once, here; a prefetch decides on its own thread
+            if reused:  # a current harness (an earlier prepare, tools/prepare_list.py): no Ghidra, no slot
+                (meta, summary), reused, r["slot_wait_s"] = reused, True, 0.0
+                o.log(f"[W{w.id}] {addr}: harness is current (oracle stamp); reused without Ghidra "
+                      f"(tier {r['tier']}, score {r['score']}, system {r['system']})")
+            else:
+                with ghidra.slot(cfg, w.stop_flag, prio="worker") as gs:
+                    r["slot_wait_s"] = round(time.monotonic() - t_wait, 1)  # the slot wait (and a slot copy refresh)
+                    if w.stop_flag.is_set():
+                        return finish(o, addr, "stopped", w.stop_reason)
+                    r["status"] = "preparing"
+                    w.set_phase(addr, f"Ghidra slot {gs}: export packet, generate vectors, run original in emulator")
+                    o.log(f"[W{w.id}] {addr}: preparing in Ghidra slot {gs} "
+                          f"(tier {r['tier']}, score {r['score']}, system {r['system']})")
+                    with busylog.busy(busylog.of(w), "p"):
+                        meta, summary = ghidra.prepare(cfg, addr, stop_flag=w.stop_flag, slot_index=gs, timing=timing)
     except Exception as e:  # noqa: BLE001
         return finish(o, addr, "stopped" if w.stop_flag.is_set() else "error", str(e).splitlines()[0])
     r["signature"] = meta["signature"]
     r["oracle"] = summary
+    r["prepare_timing"] = timing.get("phases")  # core/prepare_timing (None when the harness was reused)
+    r["harness_reused"] = bool(reused)
+    if not reused:
+        o.log(f"[W{w.id}] {addr}: prepared in {prepare_timing.brief(timing)} after a {r['slot_wait_s']:.1f} s slot wait")
     if meta.get("stale_callers"):  # ghidra.prepare: a new signature leaves these callers' records stale
         o.log(f"[W{w.id}] {addr}: new signature; caller harnesses to re-prepare: {' '.join(meta['stale_callers'])}")
     if meta.get("unsupported"):
@@ -108,9 +199,12 @@ def investigate(o, w, addr):
     r["harness_sha256"] = {n: paths.sha256_file(paths.HARNESS / addr / n) for n in HARNESS_FILES}
     r["status"] = "running"
     o.save()
+    if hasattr(w, "prefetch_next"):
+        w.prefetch_next()  # config "prefetch": the next function's prepare runs while this agent works
 
     best, stalls, prev_work, previous_text, n, waits, run_atts = None, 0, None, "", 1, 0, []
     imported = paths.IMPORTS / f"{addr}.c"
+    stale = paths.ROOT / "matched_stale" / f"{addr}.c"
     if imported.exists():  # relocated C of the same or a similar function from an earlier project
         att = judge_import(o, w, addr, imported)
         r["attempts"].append(att)
@@ -121,6 +215,27 @@ def investigate(o, w, addr):
         note = imported.with_suffix(".note")  # why work.c starts from this C, when it is not a cross-project import
         previous_text = agent.PREVIOUS.format(n=0, summary=att["summary"], details=att["feedback"]) + (
             "\n" + note.read_text(encoding="utf-8").strip() + "\n" if note.exists() else IMPORT_NOTE)
+    elif stale.exists():  # requeued (orch.requeue moved its matched C there): judged on the new harness first
+        att = judge_import(o, w, addr, stale, model="previous")
+        r["attempts"].append(att)
+        o.save()
+        if att["verdict"] == "PASS":
+            return finish(o, addr, "matched", "PASS: its C from before the requeue passes the new harness, no agent "
+                                              "run" + weak_note(att))
+        prev_work = att["work_file"]
+        previous_text = agent.PREVIOUS.format(n=0, summary=att["summary"], details=att["feedback"]) + STALE_NOTE
+    att0 = r["attempts"][-1] if r["attempts"] else None  # the failed import or earlier C, if any
+    tx = translate_stage.attempt(o, w, addr, judge)  # the target's translator: None when off or it gave no C
+    if tx is not None:
+        r["attempts"].append(tx)
+        o.save()
+        if tx["verdict"] == "PASS":
+            return finish(o, addr, "matched", f"PASS: translated by {tx['translator']} {tx['translator_rev']}, "
+                                              f"no agent run" + weak_note(tx))
+        if translate_stage.seed([att0, tx]) is tx:  # the agent starts from the translated C and its differences
+            prev_work = tx["work_file"]
+            previous_text = (agent.PREVIOUS.format(n=0, summary=tx["summary"], details=tx["feedback"]) +
+                             translate_stage.NOTE)
     while n <= cfg["max_attempts"]:
         if w.stop_flag.is_set():
             return finish(o, addr, "stopped", w.stop_reason)
@@ -193,9 +308,11 @@ def attempt(o, w, addr, n, meta, summary, prev_work, previous_text):
     w.set_phase(addr, f"{cfg['model']} attempt {n}/{cfg['max_attempts']}", n)
     o.log(f"[W{w.id}] {addr}: attempt {n} started ({cfg['model']})")
     t0 = time.time()
-    session = agent.run_attempt(cfg, box, task, run_dir / "transcript.jsonl",
-                                lambda m: o.log(f"[W{w.id}] {addr} #{n}: {m}"), w.stop_flag,
-                                lambda info: o.usage.update(info, f"W{w.id} {addr} attempt {n}"))
+    with busylog.busy(busylog.of(w), "a"):
+        session = agent.run_attempt(cfg, box, task, run_dir / "transcript.jsonl",
+                                    lambda m: o.log(f"[W{w.id}] {addr} #{n}: {m}"), w.stop_flag,
+                                    lambda info: o.usage.update(info, f"W{w.id} {addr} attempt {n}"),
+                                    system=agent.raw_system_prompt(cfg))
     att = {"n": n, "model": cfg["model"], "started": now(), "duration_s": round(time.time() - t0, 1), **session}
     att["model"] = att.get("model_actual") or cfg["model"]  # the alias resolves to whatever the CLI ships today
     w.add_cost(att.get("cost_usd") or 0)
@@ -219,23 +336,29 @@ def attempt(o, w, addr, n, meta, summary, prev_work, previous_text):
 
 IMPORT_NOTE = ("\nwork.c starts as the verified C of a similar function from an earlier game by the same developer, "
                "with its addresses translated to this game. Keep what still applies and fix the differences.\n")
+STALE_NOTE = ("\nwork.c starts as this function's own C that passed before it was requeued (the checker or its harness "
+              "changed since). Keep what still applies and fix what the new harness finds.\n")
 
 
-def judge_import(o, w, addr, imported):
+def judge_import(o, w, addr, imported, model="import"):
+    """Attempt 0: C from outside an agent run (an import, or with model "previous" the function's own C from before
+    a requeue), judged as any attempt is."""
     run_dir = paths.RUNS / addr / "attempt-00"
     shutil.rmtree(run_dir, ignore_errors=True)
     run_dir.mkdir(parents=True)
     work_file = run_dir / "work.c"
     shutil.copyfile(imported, work_file)
-    o.log(f"[W{w.id}] {addr}: checking the imported C")
-    att = {"n": 0, "model": "import", "started": now(), "duration_s": 0.0, "cost_usd": 0.0, "work_file": str(work_file)}
+    o.log(f"[W{w.id}] {addr}: checking " + ("the imported C" if model == "import" else "its C from before the requeue"))
+    att = {"n": 0, "model": model, "started": now(), "duration_s": 0.0, "cost_usd": 0.0, "work_file": str(work_file)}
     return judge(o, w, addr, 0, att, work_file, run_dir)
 
 
 def judge(o, w, addr, n, att, work_file, run_dir):
     cfg = o.cfg
     w.set_phase(addr, f"official check of attempt {n} (dev + hidden)", n)
-    res = check.run_check(cfg, addr, str(work_file), sets=("dev", "hidden"), build_dir=paths.BUILD / addr / "official")
+    with busylog.busy(busylog.of(w), "j"):
+        res = check.run_check(cfg, addr, str(work_file), sets=("dev", "hidden"),
+                              build_dir=paths.BUILD / addr / "official")
     (run_dir / "check.json").write_text(check.dumps(res), encoding="utf-8")
     verdict = "FAIL" if att.get("tamper") else res["verdict"]
     dev, hid = res["vectors"].get("dev", {}), res["vectors"].get("hidden", {})
@@ -245,6 +368,9 @@ def judge(o, w, addr, n, att, work_file, run_dir):
         "hidden_failing": hid.get("failing"), "hidden_total": hid.get("total"),
         "first_diffs": res["first_diffs"], "run_error": res.get("run_error"), "coverage": res.get("coverage"),
     })
+    for k in ("grade", "check", "grade_note", "match"):  # a target's byte-match check (gamecube_ppc), when present
+        if res.get(k) is not None:
+            att[k] = res[k]
     att["summary"] = attempt_summary(att)
     att["feedback"] = check.format_for_agent({**res, "verdict": "FAIL"}) + (
         f"\nHidden set: {hid.get('failing')} of {hid.get('total')} vectors differ." if hid else "")
@@ -274,6 +400,7 @@ def finish(o, addr, status, detail):
         paths.WORK.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(r["attempts"][-1]["work_file"], paths.WORK / f"{addr}.c")
     if status == "matched":
+        r["source"] = translate_stage.source_of(r["attempts"][-1])  # translated / import / previous / agent
         paths.MATCHED.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(r["attempts"][-1]["work_file"], paths.MATCHED / f"{addr}.c")
         r["matched_file"] = paths.show(paths.MATCHED / f"{addr}.c")
@@ -282,8 +409,11 @@ def finish(o, addr, status, detail):
             detail += f"; {r['proof']['state']}: {proof.describe(r['proof'])}"
             r["verdict_detail"] = detail
     else:
+        r.pop("source", None)
         r.pop("proof", None)  # a requeued match that ended otherwise: its proof went with it
-        cov = r["attempts"][-1].get("coverage") or {}  # flagged, never silent: why each unreached call stays so
+        # flagged, never silent: why each unreached call stays so (none before an attempt: an error, stop or skip
+        # in the prepare ends the function with no attempts)
+        cov = (r["attempts"][-1] if r["attempts"] else {}).get("coverage") or {}
         if cov.get("calls_unreached"):
             r["unreached_calls"] = cov.get("calls_reasons") or {a: "" for a in cov["calls_unreached"]}
         else:
@@ -291,6 +421,7 @@ def finish(o, addr, status, detail):
     if status in ("matched", "failed"):
         ghidra.queue_mark(addr, status.upper(), f"{detail}; {len(r['attempts'])} attempt(s), model {r.get('model')}, "
                                                 f"{r['finished']}")
+    stale_skips.record(r, (getattr(o, "cfg", None) or {}).get("blocker_kinds") or [])  # the fix it was judged under
     o.save()
     o.log(f"{addr}: {status.upper()} - {detail}")
     if status == "skipped" and detail.startswith("oracle could not produce") and getattr(o, "watcher", None):

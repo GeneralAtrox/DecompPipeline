@@ -1,7 +1,7 @@
 # Stage report: batch 30 (engine-design leftovers)
 
-**Verdict: GATE PASS; deployed 2026-10-15 23:27 (backup backup/batch30-20261015-232707).** Built in C:/Projects/DecompPipeline_stage30 by engine-design and merged by the coordinator
-into C:/Projects/DecompPipeline_stage31, a fresh copy of live after batches 28 and 29 (see "Merge and gate" at the
+**Verdict: GATE PASS; deployed 2026-10-15 23:27 (backup backup/batch30-20261015-232707).** Built in a sibling folder `DecompPipeline_stage30` by engine-design and merged by the coordinator
+into `DecompPipeline_stage31`, a fresh copy of live after batches 28 and 29 (see "Merge and gate" at the
 end). Tests on stage31: 259 of 259 (`python -W error tests/test_tooling.py`).
 
 Brief: the user's "do the leftovers" list for engine-design (batch 27 follow-ups). It has four small tooling fixes.

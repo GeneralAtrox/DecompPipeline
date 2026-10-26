@@ -47,7 +47,7 @@ void host_set_save_dir(const char *dir);   /* --save-dir */
 void host_extra_state(void);               /* registers the virtual clock with frame_extra.c */
 
 /* sh4_rt.c */
-int sh4_rt_init(const char *check_table); /* computes the fsca table; check_table: an optional file to compare */
+int sh4_rt_init(const char *check_table); /* check_table: an optional fsca table file to compare */
 void sh4_rt_set_fpu_mode(void);           /* MXCSR/x87 as the game's FPSCR (0x00040001: DN=1, RM=toward zero) */
 void sh4_rt_extra_state(void);            /* registers the register file with frame_extra.c */
 

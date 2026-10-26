@@ -9,6 +9,12 @@
 -- LS_VBFILE (optional): the vertical blank count, rewritten at each one (tools/reference.py reads it while Flycast is
 -- paused). LS_VB0 (optional): the run starts from a save state (Dreamcast.AutoLoadState) taken after that vertical
 -- blank: the count resumes there and the input held then is pressed as the state loads.
+-- LS_SAMPLE_PCS (optional, game.json lockstep_sample_pcs): the guest PCs where the port's vertical blank comes (the
+-- SDK's render and vsync-wait entries). A frame's state is then its last sample at one of them, as the port takes it
+-- after the frame's draw, not a vertical blank's inside the draw (words rewritten while drawing would read apart); a
+-- frame that reached none keeps its vertical blank's sample, and io words (the RTC that drives the port) always do.
+-- FlycastRedux's flycast.research.pc_hook calls back on the emulator's thread just before the instruction, adding no
+-- cycles.
 local r32 = flycast.memory.read32
 local items, label_item = {}, nil
 
@@ -77,7 +83,7 @@ local function sample()
       end
     end
   end
-  return table.concat(out, " ")
+  return out
 end
 
 local f = assert(io.open(LS_OUT, "w"))
@@ -120,6 +126,32 @@ end
 if LS_DRAWS and draw_at.label then
   draws = assert(io.open(LS_DRAWS, "w"))
   draws:setvbuf("full", 1048576)
+end
+
+-- the samples at LS_SAMPLE_PCS: the last one under the current label and under the label before it
+local hook_label, hook_sample, hook_prev_label, hook_prev_sample = nil, nil, nil, nil
+local function on_sample_pc()
+  local label = r32(label_item.addr.base)
+  if label ~= hook_label then hook_prev_label, hook_prev_sample = hook_label, hook_sample end
+  hook_label, hook_sample = label, sample()
+end
+if LS_SAMPLE_PCS and #LS_SAMPLE_PCS > 0 then
+  assert(flycast.research and flycast.research.pc_hook, "LS_SAMPLE_PCS needs FlycastRedux's flycast.research.pc_hook")
+  flycast.research.pc_hook(LS_SAMPLE_PCS, on_sample_pc)
+end
+-- the words of io items: hardware registers (the RTC that drives the port) keep the vertical blank's read
+local io_words, nwords = {}, 0
+for _, item in ipairs(items) do
+  for _ = 1, item.words do
+    nwords = nwords + 1
+    if item.io then io_words[#io_words + 1] = nwords end
+  end
+end
+local function frame_sample(label)
+  local s = label == hook_label and hook_sample or label == hook_prev_label and hook_prev_sample or nil
+  if not s then return prev_sample end
+  for _, n in ipairs(io_words) do s[n] = prev_sample[n] end
+  return s
 end
 
 local started = false
@@ -168,9 +200,10 @@ flycast_callbacks = {
     if not started then begin() end
     if draws and vb % 600 == 0 then draws:flush() end
     apply_input()
+    if hw_vblank then hw_vblank(vb) end -- the hardware check's late start (hw_emu.lua), when appended
     local label = r32(label_item.addr.base)
     if prev_label ~= nil and label ~= prev_label then
-      f:write(string.format("%08x %d %s\n", prev_label, vb - 1, prev_sample))
+      f:write(string.format("%08x %d %s\n", prev_label, vb - 1, table.concat(frame_sample(prev_label), " ")))
       written = written + 1
       if written % 256 == 0 then f:flush() end
     end

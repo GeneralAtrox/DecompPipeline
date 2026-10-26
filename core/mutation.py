@@ -19,7 +19,9 @@ share:
              assignments (a.r[0] = x; a.r[1] = y;), the raw C's way of passing call arguments
   return0    return e; -> return 0;
 A mutant the judge refuses before running (lint or build: e.g. /WX on a variable left unused) is dropped and
-counted; one whose run times out or fails a vector is killed; one that PASSes survived.
+counted; one whose run times out or fails a vector is killed; one that PASSes survived. "outcomes" keeps each
+generated mutant's, in id order: K killed, S survived, L / B dropped by lint / build, - not tried (time cap); the
+mutation audit (tools/mutation_audit.py) compares them mutant by mutant.
 Each survivor gets a class (core/mutation_ops.class_of): arg_slot (a TcArgs slot no callee's signature reads: the
 judge compares declared arguments only), stack (a store to the guest stack, which the judge never compares) or logic.
 The first two are equivalent by the judge's design; only logic survivors flag the harness weak_harness.
@@ -90,7 +92,7 @@ def check_function(addr, src, judge, mset, log=None, clock=time.monotonic):
     rec = {"addr": addr, "src_sha256": hashlib.sha256(src.encode()).hexdigest(), "seed": mset["seed"],
            "tried": 0, "killed": 0, "survived": 0, "dropped": 0, "dropped_lint": 0, "dropped_build": 0,
            "by_op": {}, "survivors": [], "survived_by_class": {c: 0 for c in CLASSES}, "time_capped": False,
-           "candidates": 0}
+           "candidates": 0, "outcomes": ""}
     base = judge(src, "base")
     if base["verdict"] != "PASS":
         rec["error"] = (f"baseline {base['verdict']} at {base['stage']}: the matched C does not pass its harness "
@@ -103,9 +105,11 @@ def check_function(addr, src, judge, mset, log=None, clock=time.monotonic):
     for m in muts:
         if clock() - t0 > mset["time_cap_s"]:
             rec["time_capped"] = True
+            rec["outcomes"] += "-" * (len(muts) - len(rec["outcomes"]))
             break
         res = judge(m["src"], f"m{m['id']:02d}")
         o = outcome(res)
+        rec["outcomes"] += {"killed": "K", "survived": "S", "dropped_lint": "L", "dropped_build": "B"}[o]
         per = rec["by_op"].setdefault(m["op"], {"killed": 0, "survived": 0, "dropped": 0})
         if o.startswith("dropped"):
             rec["dropped"] += 1

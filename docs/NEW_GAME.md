@@ -12,7 +12,12 @@ headers, names, the design briefs and the progress log).
 - Create `config.local.json` next to `config.json` (git-ignored, merged over it key by key) with this machine's
   paths: `ghidra_home`, `java_home`, `vcvars` (vcvars64.bat) and, for tools/sdk_fid.py only, `sevenzip` (else
   7z on PATH). Tracked `config.json` keeps them null; a command that needs one stops naming the key. Override any
-  other default there too (`claude` is the CLI command). For the regression suite, `tests/patterns.local.json`
+  other default there too (`claude` is the CLI command). To build and judge with the same compiler as the other
+  machines, set `vcvars_args`, vcvars' own arguments: the Windows SDK and the MSVC toolset, e.g.
+  `"10.0.28000.0 -vcvars_ver=14.44"`. Both must be fully installed (the SDK with its UCRT); a cached compiler
+  environment of another setting is loaded again. With `vcvars_args`, `vcvars` must be Visual Studio's own
+  vcvars64.bat (in `VC/Auxiliary/Build`), not a wrapper that passes its own pins: those would be passed twice.
+  The judge warns when it is not. For the regression suite, `tests/patterns.local.json`
   (also git-ignored) maps each `projects` key of tests/patterns.json to its workspace path.
 - Install the SH-4 language once: `python targets/dreamcast_sh4/ghidra_lang/install_lang.py <ghidra_home>`.
 - Once a workspace exists (step 2), `python tools/doctor.py --project <workspace>` checks it for consistency.
@@ -20,6 +25,18 @@ headers, names, the design briefs and the progress log).
 Every long command should run under `tools/bounded.py SECONDS ...`, which kills the whole process tree on time-out.
 
 ## 1. Get the main binary off your disc
+
+The short way does steps 1 and 2's setup in one command, for a Dreamcast, Saturn or GameCube disc. It extracts the
+binary into the workspace, writes `project.json` and `oracle/TcInputs.java`, runs `decomp.py setup`, and then
+checks Ghidra's decoding of every function against the target's own decoder:
+
+```
+python tools/bounded.py 3600 -- python tools/game_setup.py setup <image.gdi|.cue|.iso> <new_workspace>
+```
+
+(Saturn overlays: `--file NAME@ADDR`; carried decisions: `--fields FILE`; see the tool's docstring. The Xbox 360 has
+`targets/xbox360_ppc/tools/x360setup.py`.) The hand steps it replaces follow; you still need the scan below to
+find overlays and the library list.
 
 ```
 python targets/dreamcast_sh4/tools/gdrom.py info    <image.gdi|.cue>

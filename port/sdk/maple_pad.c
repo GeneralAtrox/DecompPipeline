@@ -1,7 +1,9 @@
-/* Platform layer: the Maple bus peripherals (Shinobi's pd* calls) on the host. Port A0 is a standard controller fed
- * by runtime/gfx/gfx_input.c (an SDL3 gamepad and the keyboard, or a --input script), sampled once per pdExecPeripheralServer
- * as the console's peripheral server samples the bus once per frame. Port A2 is its vibration pack, which drives the
- * gamepad's rumble; A1 is left to the memory card (sdk/bu_vmu.c), whose LCD is not shown. Every other port is empty.
+/* Platform layer: the Maple bus peripherals (Shinobi's pd* calls) on the host. Ports A0, B0, C0 and D0 are standard
+ * controllers for players 1..4, fed by runtime/gfx/gfx_input.c (SDL3 gamepads and the keyboard, or a --input script)
+ * and sampled once per pdExecPeripheralServer as the console's peripheral server samples the bus once per frame.
+ * Player 1's controller is always connected; another is while gfx_input.c gives that player one. Each controller has
+ * a vibration pack in its second socket (A2, B2, ..), which drives that player's rumble; A1 is left to the memory
+ * card (sdk/bu_vmu.c), whose LCD is not shown. Every other port is empty.
  *
  * The record pdGetPeripheral returns is laid out as the console's (MapleDevice): games read it by offset and follow
  * its info pointer to the device type word. Pointers are host pointers, which the 32-bit port shares with the game.
@@ -11,6 +13,7 @@
 #include "game.h"
 #include "platform.h"
 
+#define PORTS_PER_PAD 6u   /* a connector's ports: the controller (A0), then its expansion sockets */
 #define PORT_PAD 0u        /* A0 */
 #define PORT_VIB 2u        /* A2: the second expansion socket (the first holds the memory card) */
 #define DEV_CONTROLLER 0x001u
@@ -52,57 +55,80 @@ _Static_assert(sizeof(MapleDevice) == 0x34, "the console's peripheral record is 
 
 static const MapleInfo g_maple_info_pad = {DEV_CONTROLLER, {0, 0, 0}, 1, 0, {0, 0}, "Dreamcast Controller"};
 static const MapleInfo g_maple_info_none = {0, {0, 0, 0}, 0, 0, {0, 0}, ""};
-static MapleDevice g_maple_pad = {.support = PAD_BUTTONS | PAD_ANALOG, .off = 0xffffffffu,
-                                  .name = "Dreamcast Controller", .info = &g_maple_info_pad};
+static MapleDevice g_maple_pad[HOST_PADS];
 static MapleDevice g_maple_none = {.off = 0xffffffffu, .name = "", .info = &g_maple_info_none};
+static u32 g_connected = 1u; /* bit p: player p + 1 has a controller */
+
+/* The player whose controller has this port as its socket `sub` (PORT_PAD, PORT_VIB), if connected; -1 otherwise. */
+static s32 player_at(u32 port, u32 sub)
+{
+    u32 p = port / PORTS_PER_PAD;
+    return port % PORTS_PER_PAD == sub && p < HOST_PADS && (g_connected >> p & 1u) ? (s32)p : -1;
+}
 
 void pdInitPeripheral(s32 logic, void *recvBuffer, void *sendBuffer)
 {
     (void)logic;
     (void)recvBuffer;
     (void)sendBuffer;
-    port_log("maple: a controller on port A (its vibration pack in A2), no other device\n");
+    for (u32 p = 0; p < HOST_PADS; p++)
+        g_maple_pad[p] = (MapleDevice){.support = PAD_BUTTONS | PAD_ANALOG, .off = 0xffffffffu,
+                                       .name = "Dreamcast Controller", .info = &g_maple_info_pad};
+    port_log("maple: controllers on ports A..D for players 1..%u (A always, each with its vibration pack in socket 2),"
+             " the memory card in A1\n", HOST_PADS);
 }
 
-void pdExitPeripheral(void) { host_pad_rumble(0, 0); }
+void pdExitPeripheral(void)
+{
+    for (u32 p = 0; p < HOST_PADS; p++) host_pad_rumble(p, 0, 0);
+}
 
 void pdExecPeripheralServer(void)
 {
-    HostPad h;
-    u32 was = g_maple_pad.on;
-    host_pad_read(&h);
-    g_maple_pad.on = (h.buttons & PAD_BUTTONS) | (h.r >= TRIGGER_DOWN ? PAD_DIGITAL_R : 0u) |
-                     (h.l >= TRIGGER_DOWN ? PAD_DIGITAL_L : 0u);
-    g_maple_pad.off = ~g_maple_pad.on;
-    g_maple_pad.press = g_maple_pad.on & ~was;
-    g_maple_pad.release = was & ~g_maple_pad.on;
-    g_maple_pad.r = h.r;
-    g_maple_pad.l = h.l;
-    g_maple_pad.x1 = h.x;
-    g_maple_pad.y1 = h.y;
+    HostPad h[HOST_PADS];
+    u32 was_connected = g_connected;
+    g_connected = host_pads_read(h) | 1u;
+    if (g_connected != was_connected) port_log("maple: controllers connected %x (bit 0: port A)\n", g_connected);
+    for (u32 p = 0; p < HOST_PADS; p++) {
+        MapleDevice *d = &g_maple_pad[p];
+        u32 was = d->on;
+        if (!(g_connected >> p & 1u)) h[p] = (HostPad){0}; /* unplugged: nothing held when it comes back */
+        d->on = (h[p].buttons & PAD_BUTTONS) | (h[p].r >= TRIGGER_DOWN ? PAD_DIGITAL_R : 0u) |
+                (h[p].l >= TRIGGER_DOWN ? PAD_DIGITAL_L : 0u);
+        d->off = ~d->on;
+        d->press = d->on & ~was;
+        d->release = was & ~d->on;
+        d->r = h[p].r;
+        d->l = h[p].l;
+        d->x1 = h[p].x;
+        d->y1 = h[p].y;
+    }
 }
 
 LibPadDevice *pdGetPeripheral(u32 port)
 {
-    return (LibPadDevice *)(port == PORT_PAD ? &g_maple_pad : &g_maple_none);
+    s32 p = player_at(port, PORT_PAD);
+    return (LibPadDevice *)(p >= 0 ? &g_maple_pad[p] : &g_maple_none);
 }
 
-s32 pdVibMxIsReady(u32 port) { return port == PORT_VIB; }
+s32 pdVibMxIsReady(u32 port) { return player_at(port, PORT_VIB) >= 0; }
 
 s32 pdVibMxStart(u32 port, const PDS_VIBPARAM *param)
 {
-    s32 power;
-    if (port != PORT_VIB) return VIB_NO_VIBRATOR;
+    s32 power, p = player_at(port, PORT_VIB);
+    if (p < 0) return VIB_NO_VIBRATOR;
     power = param->power < 0 ? -param->power : param->power;
     if (power > VIB_POWER_MAX) power = VIB_POWER_MAX;
-    host_pad_rumble((u32)power * 0xffffu / VIB_POWER_MAX, (param->flag & VIB_CONTINUOUS) ? VIB_HOLD_MS : VIB_PULSE_MS);
+    host_pad_rumble((u32)p, (u32)power * 0xffffu / VIB_POWER_MAX,
+                    (param->flag & VIB_CONTINUOUS) ? VIB_HOLD_MS : VIB_PULSE_MS);
     return VIB_OK;
 }
 
 s32 pdVibMxStop(u32 port)
 {
-    if (port != PORT_VIB) return VIB_NO_VIBRATOR;
-    host_pad_rumble(0, 0);
+    s32 p = player_at(port, PORT_VIB);
+    if (p < 0) return VIB_NO_VIBRATOR;
+    host_pad_rumble((u32)p, 0, 0);
     return VIB_OK;
 }
 

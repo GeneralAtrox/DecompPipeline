@@ -23,10 +23,16 @@ def _fmt(reg, base):
 
 def excluded_functions():
     """Catalog functions of tier "excluded" (hardware registers or privileged CPU state: core/orch.tier). They are
-    never queued, prepared or rewritten; the project keeps an intent note for each (tools/final_audit.py checks it)."""
+    never queued, prepared or rewritten; the project keeps an intent note for each (tools/final_audit.py checks it).
+    A function matched before the catalog flagged it is not one: a verified match is never dropped because the catalog
+    learns more (Spawn 8c059c10 matched, then TcCatalog's flow walk found its AICA read; core/orch.keep_matched)."""
+    from . import hw_ops
     cat = paths.read_json(paths.CATALOG) or {}
-    return {e["addr"] for e in (cat.get("functions", []) if isinstance(cat, dict) else cat) if e.get("hw_refs") or
-            e.get("sys_ops")}
+    led = (paths.read_json(paths.LEDGER) or {}).get("functions") or {}
+    listed = hw_ops.listed(paths.config())  # project.json "hw_ops": a listed function is judged on the rest
+    return {e["addr"] for e in (cat.get("functions", []) if isinstance(cat, dict) else cat) if (e.get("hw_refs") or
+            e.get("sys_ops")) and (led.get(e["addr"]) or {}).get("status") != "matched"
+            and not hw_ops.covered(listed.get(e["addr"]), e)}
 
 
 def report(cfg, targets, log=print, facts=None):

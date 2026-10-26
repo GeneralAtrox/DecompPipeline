@@ -16,7 +16,7 @@ other's files, and the ledger recorded `error` ([Errno 2] ... work.c) and `block
 import os
 import sys
 
-from . import filelock, infra, paths, readable, refine
+from . import build_prune, busylog, filelock, infra, paths, readable, refine
 
 LOCKS = paths.STATE / "fnlocks"
 Busy = filelock.Busy
@@ -59,7 +59,8 @@ def cycle(cfg, addr, attempts, log, model=None, effort=None, draft="off"):
     """refine.refine, retried once on an infrastructure error with the attempts it has left (at least one). draft: the
     machine draft first (core/draft_run: off, adopt, start)."""
     from . import draft_run
-    start = draft_run.first(cfg, addr, draft, log)
+    with busylog.busy(busylog.slot(), "j"):  # the machine draft: builds and judges, no agent
+        start = draft_run.first(cfg, addr, draft, log)
     if start and start[0] == "adopted":
         return start[1]
     left = attempts
@@ -91,7 +92,9 @@ def run_one(cfg, addr, attempts, log, redo=False, since=None, model=None, effort
             if why:
                 log(f"skipped: {why}")
                 return f"skipped ({why})"
-            return cycle(cfg, addr, attempts, log, model=model, effort=effort, draft=draft)
+            status = cycle(cfg, addr, attempts, log, model=model, effort=effort, draft=draft)
+            build_prune.after_job(cfg, addr, log)  # under the claim: its build outputs
+            return status
     except Busy as e:
         log(f"{e}; not run, its ledger row is untouched")
         return f"busy (not run): {e}"

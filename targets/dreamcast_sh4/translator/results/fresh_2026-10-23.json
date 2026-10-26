@@ -1,0 +1,1910 @@
+{
+ "date": "2026-10-23",
+ "translator": "sh4-tx-100 3b151f0",
+ "how": "every function that did not pass on the live harnesses, plus every harness without an agent match, re-prepared with tools/oracle_probe.py (fresh oracle stamps, private work dirs, nothing live written) and judged with tools/dp_judge.py --harness-from; DP's judge unchanged (min_valid_vectors 16)",
+ "class_meaning": {
+  "pass": "PASS on the fresh harness",
+  "nan_judge_gap": "the only differences are NaN bits at addresses the compare's NaN tolerance does not recognise (unaligned or bytewise): a judge gap, for the judge-gaps session",
+  "oracle_refused": "the oracle could not make test vectors (its reason is quoted)",
+  "too_few_vectors": "fewer valid vectors than min_valid_vectors: nothing to judge"
+ },
+ "games": {
+  "ToyCommander": {
+   "matched_functions": 2698,
+   "matched_pass": 2698,
+   "rejudged_matched": 63,
+   "counts": {
+    "matched_pass": 63,
+    "unmatched_oracle_refused": 1,
+    "unmatched_pass": 2,
+    "unmatched_too_few_vectors": 1
+   },
+   "functions": {
+    "8c01a50c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c01ad3a": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c029308": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0295f6": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c02a41a": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c02c4c8": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 144,
+     "class": "pass"
+    },
+    "8c02c670": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c03064c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 70,
+     "class": "pass"
+    },
+    "8c033f90": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0342a6": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c03a2f6": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c03bf16": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c03c3a0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c03c530": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c042362": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c042b68": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c042d16": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c04aed2": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c050c48": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c050dd2": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c052ec4": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c05c09c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c05dc42": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c060f04": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0611c0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0611c8": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0611d0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c061a48": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c061a60": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c061a7c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c062c48": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c062ca0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c062cec": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c062dc4": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0633cc": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 240,
+     "class": "pass"
+    },
+    "8c0635f6": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c06375c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c06377a": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c06379e": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0637d2": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c063896": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0638ea": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c06419c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0661f4": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c066388": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c06fd38": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0702b0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c070b30": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0710a0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0716b4": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c071b88": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c072148": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c074e08": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c074e3c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c074e84": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c074f18": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c07564c": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c077c30": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "oracle: stopped after 64 dev tries, 0 valid, 63 at the call limit (a loop whose end the mocks never give: a sentinel walk or a callee result)"
+    },
+    "8c07dd46": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c07e49c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c07eb14": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 106,
+     "class": "pass"
+    },
+    "8c07f6e4": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c080938": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 98,
+     "class": "pass"
+    },
+    "8c0923e0": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "too_few_vectors",
+     "cause": "0 valid vectors"
+    },
+    "8c092514": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c09256c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 100,
+     "class": "pass"
+    },
+    "8c09d9dc": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "pass"
+    }
+   }
+  },
+  "PowerStone2": {
+   "matched_functions": 6541,
+   "matched_pass": 6536,
+   "rejudged_matched": 97,
+   "counts": {
+    "matched_nan_judge_gap": 1,
+    "matched_oracle_refused": 2,
+    "matched_pass": 92,
+    "matched_too_few_vectors": 2,
+    "unmatched_nan_judge_gap": 1,
+    "unmatched_oracle_refused": 11,
+    "unmatched_pass": 22,
+    "unmatched_too_few_vectors": 5
+   },
+   "functions": {
+    "8c015844": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 98,
+     "class": "pass"
+    },
+    "8c01966e": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c01bd78": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c020168": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c02b7fc": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c03764a": {
+     "verdict": "FAIL",
+     "agent_matched": true,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "oracle: vector generation did not finish in time (dev 15 of 384 tried valid, hidden 10 of 207; step limit x0: a loop count from the inputs?); an overtime rescue cutting loop counts (step limit 50000) made dev 26 of 224, hidden 0 of 0 val..."
+    },
+    "8c037ac8": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0454a0": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "too_few_vectors",
+     "cause": "0 valid vectors"
+    },
+    "8c04a9a0": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 102,
+     "class": "pass"
+    },
+    "8c04b104": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "too_few_vectors",
+     "cause": "0 valid vectors"
+    },
+    "8c04ccd8": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c04d54c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c052c82": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c052cbe": {
+     "verdict": "FAIL",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "nan_judge_gap",
+     "cause": "float NaN stored through an odd pointer from the vector (hidden set); DP's matched agent C fails the same vector"
+    },
+    "8c05826c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0585f8": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c05a870": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "oracle: vector generation did not finish in time (dev 1 of 384 tried valid, hidden 0 of 105; step limit x1: a loop count from the inputs?); an overtime rescue cutting loop counts (step limit 50000) made dev 1 of 122, hidden 0 of 0 valid ..."
+    },
+    "8c05c786": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c05c798": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 98,
+     "class": "pass"
+    },
+    "8c05c7f0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c062cd4": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0664d4": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0682b4": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 108,
+     "class": "pass"
+    },
+    "8c06ba00": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c06bfbc": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 8c09de3c"
+    },
+    "8c06cb68": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 8c06b34e"
+    },
+    "8c06d810": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 98,
+     "class": "pass"
+    },
+    "8c06db70": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 8c0ae270"
+    },
+    "8c06e668": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 8c06b34e"
+    },
+    "8c07109e": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 102,
+     "class": "pass"
+    },
+    "8c079570": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c07cb54": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c07d10a": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c085d30": {
+     "verdict": "FAIL",
+     "agent_matched": true,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 8c0ae270"
+    },
+    "8c096c54": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c09706c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0a19f2": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 102,
+     "class": "pass"
+    },
+    "8c0a1a60": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0bd530": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "oracle: stopped after 64 dev tries, 0 valid, 64 at the call limit (a loop whose end the mocks never give: a sentinel walk or a callee result)"
+    },
+    "8c0bd5c0": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0be0d4": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0bfdcc": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0c720c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 79,
+     "class": "pass"
+    },
+    "8c0ca9ac": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 102,
+     "class": "pass"
+    },
+    "8c0cab42": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "too_few_vectors",
+     "cause": "0 valid vectors"
+    },
+    "8c0d0276": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0d2904": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 100,
+     "class": "pass"
+    },
+    "8c0d6e80": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0d6ff4": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 8c0d6ff6"
+    },
+    "8c0d7050": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0d70d0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 98,
+     "class": "pass"
+    },
+    "8c0d8b68": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 8c0d8b6a"
+    },
+    "8c0e132e": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0e3ab4": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 125,
+     "class": "pass"
+    },
+    "8c0ef996": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0f7254": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0f9a58": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0fe1a4": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0fe1b2": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0fe1f0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c1007ac": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c1007b8": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c100a10": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "oracle: vector generation did not finish in time (dev 2 of 16 tried valid, hidden 0 of 0; step limit x14: a loop count from the inputs?); the first pass stopped early (14 of 16 dev tries at the step limit, 2 valid); an overtime rescue cu..."
+    },
+    "8c1047f8": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c10488e": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c104992": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c108eba": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "oracle: vector generation did not finish in time (dev 6 of 16 tried valid, hidden 0 of 0; step limit x10: a loop count from the inputs?); the first pass stopped early (10 of 16 dev tries at the step limit, 6 valid); an overtime rescue cu..."
+    },
+    "8c109ad2": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 52,
+     "class": "pass"
+    },
+    "8c10f81c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 98,
+     "class": "pass"
+    },
+    "8c1189b8": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 28,
+     "class": "too_few_vectors",
+     "cause": "28 valid vectors"
+    },
+    "8c119e6e": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c11d1da": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c123aa0": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c123ea4": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c1240c8": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c12b01c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c12b6c4": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c12da04": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 98,
+     "class": "pass"
+    },
+    "8c12fe9c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c130a38": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c13352c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c133574": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c1384c4": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 106,
+     "class": "pass"
+    },
+    "8c139480": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c1396f4": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c13ae00": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c13f102": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c13f540": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c140cc0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c1449f2": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c144acc": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c144b2c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c146274": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c149f28": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c14b544": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c14d1a0": {
+     "verdict": "FAIL",
+     "agent_matched": true,
+     "vectors": 9,
+     "class": "too_few_vectors",
+     "cause": "9 valid vectors"
+    },
+    "8c14dbcc": {
+     "verdict": "FAIL",
+     "agent_matched": true,
+     "vectors": 14,
+     "class": "too_few_vectors",
+     "cause": "14 valid vectors"
+    },
+    "8c152ec0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c153320": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 98,
+     "class": "pass"
+    },
+    "8c156bcc": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c1589cc": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c159102": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 112,
+     "class": "nan_judge_gap",
+     "cause": "float NaN stored bytewise / unaligned (hidden set): 7fc00000 vs ffc00000 bytes"
+    },
+    "8c15be10": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c1624f0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c165708": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 98,
+     "class": "pass"
+    },
+    "8c16726c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c16733e": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c167588": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c169724": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c169732": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c16edc8": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c1706ee": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 98,
+     "class": "pass"
+    },
+    "8c17389c": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 126,
+     "class": "pass"
+    },
+    "8c179da0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c179f00": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c179fd0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c17a960": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "too_few_vectors",
+     "cause": "0 valid vectors"
+    },
+    "8c17b010": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c17b100": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c17b350": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c17bc90": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c17bde0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c17be40": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c17bea0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c17bf00": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c17bf60": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c17c300": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c17c370": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c17c3b0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c17cb20": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c17ccc4": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 00000000"
+    },
+    "8c17cda0": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c17de10": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c17de70": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 98,
+     "class": "pass"
+    },
+    "8c17ef70": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 88,
+     "class": "pass"
+    },
+    "8c1821c0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    }
+   }
+  },
+  "SpawnIntheDemonsHand": {
+   "matched_functions": 1875,
+   "matched_pass": 1875,
+   "rejudged_matched": 64,
+   "counts": {
+    "matched_pass": 64,
+    "unmatched_nan_judge_gap": 3,
+    "unmatched_oracle_refused": 11,
+    "unmatched_pass": 4,
+    "unmatched_too_few_vectors": 15
+   },
+   "functions": {
+    "8c0130a0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 98,
+     "class": "pass"
+    },
+    "8c013280": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c013396": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0135a0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c013a00": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c013a82": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c013f04": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c013f34": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c014064": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 98,
+     "class": "pass"
+    },
+    "8c014500": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 98,
+     "class": "pass"
+    },
+    "8c0146ba": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c014b00": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 97,
+     "class": "pass"
+    },
+    "8c015660": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c015fa6": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c015fe0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c016020": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0164e0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0167a0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0168ac": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c016ada": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c016d02": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0184ba": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0185f6": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c019920": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 89,
+     "class": "pass"
+    },
+    "8c01f5fc": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c01f6a0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c01f706": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c01f96e": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0220a4": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c022274": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c022420": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0240c0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c024660": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c024cbe": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c024cf8": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "too_few_vectors",
+     "cause": "0 valid vectors"
+    },
+    "8c036860": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c036e80": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 98,
+     "class": "pass"
+    },
+    "8c038e12": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c03b1a0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 98,
+     "class": "pass"
+    },
+    "8c04a3a0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c04ce52": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c04cea8": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 99,
+     "class": "pass"
+    },
+    "8c04d020": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c04d1c0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c04d21e": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c04d27a": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c04d7e0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c04d84c": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c04d85e": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c050010": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c050f80": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c051050": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c052030": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c053620": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c053770": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0537d0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c053830": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c053890": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0538f0": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c053c90": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c053d00": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c053d40": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c057600": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c058300": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "too_few_vectors",
+     "cause": "0 valid vectors"
+    },
+    "8c058c20": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c059630": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "too_few_vectors",
+     "cause": "0 valid vectors"
+    },
+    "8c059740": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "too_few_vectors",
+     "cause": "0 valid vectors"
+    },
+    "8c05a490": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "too_few_vectors",
+     "cause": "0 valid vectors"
+    },
+    "8c05fd40": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "too_few_vectors",
+     "cause": "0 valid vectors"
+    },
+    "8c05fec2": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 100,
+     "class": "nan_judge_gap",
+     "cause": "NaN halves stored at unaligned addresses: 0x8c70337c expected c07f6369, got ffff6369 (and 3 more)"
+    },
+    "8c0602a0": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 8c0602aa"
+    },
+    "8c060526": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 15,
+     "class": "too_few_vectors",
+     "cause": "15 valid vectors"
+    },
+    "8c060600": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "oracle: stopped after 64 dev tries, 0 valid, 64 at the call limit (a loop whose end the mocks never give: a sentinel walk or a callee result)"
+    },
+    "8c060a00": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c060aa0": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 8c060c5e"
+    },
+    "8c060ca0": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 8c060caa"
+    },
+    "8c060efa": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 10,
+     "class": "too_few_vectors",
+     "cause": "10 valid vectors"
+    },
+    "8c062380": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 29,
+     "class": "too_few_vectors",
+     "cause": "29 valid vectors"
+    },
+    "8c0624a0": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 14,
+     "class": "too_few_vectors",
+     "cause": "14 valid vectors"
+    },
+    "8c0625a0": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 8c0625c4"
+    },
+    "8c062920": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c062a40": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c062b60": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 8c062d1e"
+    },
+    "8c062f60": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 27,
+     "class": "too_few_vectors",
+     "cause": "27 valid vectors"
+    },
+    "8c063080": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 19,
+     "class": "too_few_vectors",
+     "cause": "19 valid vectors"
+    },
+    "8c063180": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 8c0631a4"
+    },
+    "8c063620": {
+     "verdict": "PASS",
+     "agent_matched": true,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0637c0": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 8c06397e"
+    },
+    "8c063c00": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "oracle: vector generation did not finish in time (dev 5 of 16 tried valid, hidden 0 of 0; step limit x6: a loop count from the inputs?); the first pass stopped early (6 of 16 dev tries at the step limit, 5 valid); an overtime rescue cutt..."
+    },
+    "8c064220": {
+     "verdict": "PASS",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "pass"
+    },
+    "8c0644c0": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 30,
+     "class": "too_few_vectors",
+     "cause": "30 valid vectors"
+    },
+    "8c0645e0": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 18,
+     "class": "too_few_vectors",
+     "cause": "18 valid vectors"
+    },
+    "8c0646e0": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 8c064704"
+    },
+    "8c064d20": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "oracle_refused",
+     "cause": "executes code outside its body at 8c064ede"
+    },
+    "8c07cf20": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 0,
+     "class": "too_few_vectors",
+     "cause": "0 valid vectors"
+    },
+    "8c07cfe0": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "nan_judge_gap",
+     "cause": "NaN bytes at an unaligned address: 0x8cc00f9c expected 00c07f00, got ffffff00"
+    },
+    "8c07d140": {
+     "verdict": "FAIL",
+     "agent_matched": false,
+     "vectors": 96,
+     "class": "nan_judge_gap",
+     "cause": "NaN bytes at unaligned addresses: 0x8cc00508 expected 00c07f3f, got 00c0ff3f (and 3 more)"
+    }
+   }
+  }
+ }
+}

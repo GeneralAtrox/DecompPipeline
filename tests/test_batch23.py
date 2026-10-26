@@ -230,7 +230,8 @@ class Hook(unittest.TestCase):
             p.stop()
 
     def hook(self, res, gaps, mode):
-        with mock.patch.object(draft_run, "judge", lambda *a: (self.path, res, gaps)):
+        with mock.patch.object(draft_run, "judge", lambda *a: (self.path, res, gaps)), \
+                mock.patch.object(draft_run, "judge_machine", lambda *a: None):  # the draft alone
             return draft_run.before_agent({}, None, "8c010000", {}, mode, lambda m: None)
 
     def test_modes(self):
@@ -327,6 +328,61 @@ class Readopt(unittest.TestCase):
         self.assertEqual(json.loads((self.d / "readable.json").read_text(encoding="utf-8"))[self.a]["source"],
                          "readopt attempt-02")
 
+
+class DraftReplacesStale(unittest.TestCase):
+    """refine.py draft --adopt (draft_run.command): a passing machine file replaces a STALE readable file (the old one
+    backed up, as readopt does); never a readable or harness_stale one (tc-restart, 2026-10-25)."""
+
+    def setUp(self):
+        self.d = pathlib.Path(tempfile.mkdtemp(prefix="drs", dir=TMP))
+        self.a = "8c010000"
+        (self.d / "src").mkdir()
+        (self.d / "harness" / self.a).mkdir(parents=True)
+        (self.d / "harness" / self.a / "meta.json").write_text('{"addr": "8c010000"}', encoding="utf-8")
+        self.machine = self.d / "machine.c"
+        self.machine.write_text("/* machine */", encoding="utf-8")
+        ok = {"verdict": "PASS", "stage": "compare"}
+        self.patches = [mock.patch.object(refine, "LEDGER", self.d / "readable.json"),
+                        mock.patch.object(readable, "SRC", self.d / "src"), mock.patch.object(paths, "RUNS", self.d),
+                        mock.patch.object(paths, "HARNESS", self.d / "harness"),
+                        mock.patch.object(readopt, "BACKUP", self.d / "backup"),
+                        mock.patch.object(fn_claim, "LOCKS", self.d / "locks"),
+                        mock.patch.object(refine, "raw_missing", lambda a: None),
+                        mock.patch.object(readable, "Registry", lambda: None),
+                        mock.patch.object(draft_run, "candidates", lambda *a: [("machine", self.machine, ok, [])])]
+        for p in self.patches:
+            p.start()
+        (self.d / "src" / f"{self.a}.c").write_text("/* agent, old */", encoding="utf-8")
+
+    def tearDown(self):
+        for p in reversed(self.patches):
+            p.stop()
+
+    def run_adopt(self, adopt_ok=True):
+        return draft_run.command({"function_lock_wait_s": 0.2}, [self.a], adopt_ok=adopt_ok, workers=1,
+                                 log=lambda m: None)[self.a]
+
+    def test_stale_replaced_and_backed_up(self):
+        refine.update(self.a, status="stale", note="compare: 3/96 vectors differ")
+        self.assertEqual(self.run_adopt(), "ADOPTED (source: draft, machine), replaced STALE")
+        self.assertEqual((self.d / "src" / f"{self.a}.c").read_text(encoding="utf-8"), "/* machine */")
+        self.assertEqual([p.read_text(encoding="utf-8") for p in (self.d / "backup").iterdir()], ["/* agent, old */"])
+        row = refine.load_ledger()[self.a]
+        self.assertEqual((row["status"], row["source"], row["readable_by"]), ("readable", "draft", "machine"))
+        self.assertIn("backup", row["attempts"][-1])
+        self.assertNotIn("note", row)
+
+    def test_readable_and_harness_stale_kept(self):
+        for status in ("readable", "harness_stale"):
+            refine.update(self.a, status=status)
+            self.assertEqual(self.run_adopt(), f"adoptable (machine); not adopted: has a readable file ({status})")
+            self.assertEqual((self.d / "src" / f"{self.a}.c").read_text(encoding="utf-8"), "/* agent, old */")
+        self.assertFalse((self.d / "backup").exists())
+
+    def test_no_adopt_flag_changes_nothing(self):
+        refine.update(self.a, status="stale")
+        self.assertEqual(self.run_adopt(adopt_ok=False), "adoptable (machine)")
+        self.assertEqual((self.d / "src" / f"{self.a}.c").read_text(encoding="utf-8"), "/* agent, old */")
 
 class Headers23(unittest.TestCase):
     """A #define whose /* comment closes on a later line is one item; the items after it keep their names."""

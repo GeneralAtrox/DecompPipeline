@@ -21,6 +21,7 @@ The judge compares the original's registers either way, so a wrong placement giv
 """
 import re
 
+from .compare import FLOAT_REGS, SP
 from .readable import RegistryError, is_variadic, parse_proto, raw_proto
 
 GHIDRA_NAME = re.compile(r"param_(\d+|f?r\d+|s\d+)")
@@ -52,7 +53,7 @@ def storages(reg, proto):
     last = len(params) - 1 if is_variadic(proto) else -1  # SHC: the last named parameter goes on the stack
     out, ni, nf, stack = [], 0, 0, 0
     for i, (t, _) in enumerate(params):
-        k = reg.kind(t)
+        k = reg.kind(t) if FLOAT_REGS else "i"  # no FPU (SH-2): an f32 goes where an int goes, as its bits
         if i != last and k == "f" and nf < 8:
             out.append(f"fr{4 + nf}")
             nf += 1
@@ -146,7 +147,7 @@ def name_storage(reg, params, regs=()):
         if m := re.fullmatch(r"param_s(\d+)", n):  # the stack word @(4N,r15)
             out.append(f"stack+{4 * int(m.group(1))}")
             continue
-        if reg.kind(t) == "f":
+        if reg.kind(t) == "f" and FLOAT_REGS:
             while f"fr{nf}" in named:
                 nf += 1
             if nf < 12:
@@ -292,7 +293,7 @@ def thunk_c(reg, addr, meta):
     ret, name, params = parse_proto(proto)
     reg.kinds(proto)  # no 64-bit parameter
     st = own_storages(reg, addr, proto, meta)
-    sp = 0x8CFFE000
+    sp = SP
     args = []
     for (t, _), s in zip(params, st):
         if s == NONE:  # a placeholder: the original reads nothing there
@@ -317,7 +318,8 @@ def thunk_c(reg, addr, meta):
     elif rk == "L":  # r0 (low word) and r1 (high word, reported as RETX)
         body = f"u64 v = (u64){call}; *out_r0 = (u32)v; tcrt_set_retx((u32)(v >> 32));"
     else:
-        body = {"v": f"{call};", "f": f"*out_fr0 = {call};"}.get(rk, f"*out_r0 = (u32)(uintptr_t){call};")
+        fret = f"*out_fr0 = {call};" if FLOAT_REGS else f"*out_r0 = rd_f2u({call});"  # no FPU: an f32 in r0
+        body = {"v": f"{call};", "f": fret}.get(rk, f"*out_r0 = (u32)(uintptr_t){call};")
     checks = [f"_Static_assert(sizeof({t}) == {SIZES[reg.kind(t)]}, \"size of {t}\");" for t, _ in params]
     return f"""#include "game.h"
 u32 rd32(u32 addr);

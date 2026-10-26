@@ -1,0 +1,11 @@
+# run  tree  wall_s  not_passing  sha256(per-function results)
+tc-base  dp_base  375.3  3  f61263589b3c848b1d6b7466987cae97a272d62b5180cb412299ff6bfc0965ed
+tc-judge_cold  dp_judge  327.5  3  f61263589b3c848b1d6b7466987cae97a272d62b5180cb412299ff6bfc0965ed
+tc-judge_warm  dp_judge  258.6  3  f61263589b3c848b1d6b7466987cae97a272d62b5180cb412299ff6bfc0965ed
+tc-final_cold  dp_final  275.9  3  f61263589b3c848b1d6b7466987cae97a272d62b5180cb412299ff6bfc0965ed
+tc-final_warm  dp_final  201.9  3  f61263589b3c848b1d6b7466987cae97a272d62b5180cb412299ff6bfc0965ed
+ps2-base  dp_base  453.0  13  b11ac8f4c7db2e81d5cc9763b176cdccafc077f28edc68095d5ffa32fd1657bd
+ps2-judge_cold  dp_judge  347.1  13  b11ac8f4c7db2e81d5cc9763b176cdccafc077f28edc68095d5ffa32fd1657bd
+ps2-judge_warm  dp_judge  252.3  13  b11ac8f4c7db2e81d5cc9763b176cdccafc077f28edc68095d5ffa32fd1657bd
+ps2-final_cold  dp_final  239.2  13  b11ac8f4c7db2e81d5cc9763b176cdccafc077f28edc68095d5ffa32fd1657bd
+ps2-final_warm  dp_final  193.0  13  b11ac8f4c7db2e81d5cc9763b176cdccafc077f28edc68095d5ffa32fd1657bd

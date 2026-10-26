@@ -21,6 +21,10 @@ void host_set_fixed_clock(int on); /* --fixed-clock: virtual time (host.c), the 
 int host_fixed_clock(void);
 void host_set_fast_until(u32 vblank); /* --fast-until N: --fixed-clock until vertical blank N, then real time */
 u32 host_fast_until(void);
+/* gfx_present.c: widescreen (Hor+; game.json "widescreen", --widescreen on|off): the frame is wider than 4:3 (up to
+ * 16:9) and the 640x480 screen is its middle, so 2D stays 4:3. Returns the frame's width over a 4:3 frame's at the
+ * same height, 1 when off: a game that supports it widens its horizontal culling by it. */
+f32 port_widescreen(void);
 #define PORT_VBLANK_HZ 60u
 void port_wait_vblank(void); /* waits for the next vertical blank (the host clock at 60 Hz) and counts it */
 typedef void (*PortVblankFn)(void *arg);
@@ -54,8 +58,10 @@ const char *host_arg(const char *name); /* the value after the command-line opti
 int host_save_read(const char *name, void *buf, u32 size); /* 1: read, exactly size bytes; 0: missing or not size */
 int host_save_write(const char *name, const void *buf, u32 size); /* 1: written (replacing it whole); 0: failed */
 
-/* gfx/gfx_input.c: one controller, from every SDL3 gamepad and joystick and the keyboard, plus a --input script. The
- * buttons are in the Dreamcast controller's bit layout (set when held); the analog values in its ranges. */
+/* gfx/gfx_input.c: up to HOST_PADS controllers (players 1..4) from the SDL3 gamepads and joysticks and the keyboard,
+ * plus a --input script. The buttons are in the Dreamcast controller's bit layout (set when held); the analog values
+ * in its ranges. */
+#define HOST_PADS 4
 #define HOST_PAD_C 0x00001u
 #define HOST_PAD_B 0x00002u
 #define HOST_PAD_A 0x00004u
@@ -72,9 +78,10 @@ typedef struct HostPad {
     u8 l, r;   /* triggers, 0..255 */
     s8 x, y;   /* stick, -128..127; y is negative up */
 } HostPad;
-void host_pad_read(HostPad *pad);             /* samples the host now; call once per game input poll */
+u32 host_pads_read(HostPad pad[HOST_PADS]); /* samples the host now, once per game input poll; bit p of the result:
+                                               player p + 1 has a controller (player 1 always) */
 s32 session_timer(s32 live); /* session.c: the SDK timer's count as the game sees it (recorded, or replayed) */
-void host_pad_rumble(u32 strength, u32 ms);   /* both motors, strength 0..65535 for ms; 0 stops */
+void host_pad_rumble(u32 player, u32 strength, u32 ms); /* player 0..3's motors, 0..65535 for ms; 0 stops */
 
 /* gfx/: the window, the Direct3D 11 device and the frame target (gfx.h) */
 void gfx_clear(u32 argb); /* fills the frame with one colour (the alpha is ignored) */

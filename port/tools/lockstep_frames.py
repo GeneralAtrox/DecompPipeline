@@ -3,6 +3,19 @@
 import pathlib
 
 
+def iter_frames(path):
+    """(label, n, words) per line: n is the emulator's vertical blank, or the port's paired emulator frame; words are
+    one string, split where used (a trace's split words take about seven times its size)."""
+    with open(path, encoding="ascii", errors="replace") as f:
+        for p in (line.split(None, 2) for line in f):
+            if len(p) >= 2:
+                yield int(p[0], 16), int(p[1]), p[2] if len(p) > 2 else ""
+
+
+def read_frames(path):
+    return list(iter_frames(path))
+
+
 def draws_path(emu_path):
     return pathlib.Path(emu_path).with_name(pathlib.Path(emu_path).stem + "_draws.txt")
 

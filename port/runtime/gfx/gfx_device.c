@@ -8,7 +8,7 @@
 #include "platform.h"
 #include "host.h"
 
-GfxState g_gfx = {.vsync = 1};
+GfxState g_gfx = {.wide = -1};
 
 void gfx_set_vsync(int on) { g_gfx.vsync = on; }
 
@@ -35,6 +35,10 @@ int gfx_option(const char *arg, const char *value)
         return 2;
     }
     if (host_window_option(arg, value)) return 2;
+    if (!strcmp(arg, "--widescreen") && value) {
+        g_gfx.wide = strcmp(value, "off") != 0;
+        return 2;
+    }
     if (!strcmp(arg, "--size") && value && parse_size(value, &g_gfx.out_w, &g_gfx.out_h)) return 2;
     /* look-review prototypes (PHASE_D section 9.5), off by default */
     if (!strcmp(arg, "--ssaa") && value) {

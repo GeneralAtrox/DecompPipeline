@@ -132,7 +132,7 @@
 8c023234  # TcLive callers of a large-frame r8..r14 writer
 8c023e14  # TcLive callers of a large-frame r8..r14 writer
 8c0247f0  # xemu ftrc
-8c0248e0  # xemu ftrc
+8c0248e0  # xemu ftrc; hint: reach the call of the division 8c067c64 (port crash)
 8c0253f8  # xemu ftrc
 8c025bd8  # TcLive callers of a large-frame r8..r14 writer
 8c025d20  # fret
@@ -235,6 +235,7 @@
 8c03a06c  # xemu ftrc
 8c03a134  # fret; xemu ftrc
 8c03a2f6  # fret; fargs
+8c03a4b0  # hint: reach the call of the division 8c067c64 (port crash)
 8c03a63e  # fret
 8c03a824  # TcLive callers of a large-frame r8..r14 writer
 8c03aa4c  # fret

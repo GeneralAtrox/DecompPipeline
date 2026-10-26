@@ -20,8 +20,9 @@
  *                                  frame_extra.c)
  *            [--thunks on|off]    (calls through guest pointers jump straight to the host function, dispatch.c)
  *            [--replay FILE.ptrec] [--record off]   (the session recording from boot, session.c)
- *            [--scene-dump-at V] [--scene-dir DIR] [--stop-at V]   (Copy game context, scene_dump.c)
- *            [--lockstep-spec FILE] [--lockstep-trace FILE] [--lockstep FILE] [--lockstep-watch W@N]
+ *            [--scene-dump-at V] [--scene-dir DIR] [--stop-at V]   (Copy agent prompt, scene_dump.c)
+ *            [--lockstep-spec FILE] [--lockstep-trace FILE] [--lockstep FILE] [--lockstep-end exit]
+ *            [--lockstep-watch W@N]
  *                                  (the lockstep check, lockstep.c)
  *            [--hw-out FILE] [--hw-tex FILE] [--hw-strip L:S:V@F] [--hw-watch-ram A@F] [--hw-watch-vram A:N@F]
  *                                  (the hardware check, with --lockstep; hw_check.c)
