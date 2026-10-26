@@ -1,0 +1,34 @@
+diff --git a/CLAUDE.md b/CLAUDE.md
+new file mode 100644
+index 0000000..20cb7bb
+--- /dev/null
++++ b/CLAUDE.md
+@@ -0,0 +1,28 @@
++# DecompPipeline: rules for agents working on this repository
++
++## Before you hand off: one efficiency pass
++
++Every agent spends one bounded pass on this question before it hands off, reports or ends its task: **could the
++same result have been reached with fewer steps or less time?** The aim is that no second of the pipeline is spent
++on work that is not productive. A long step that cannot be avoided is fine. The same step run again on unchanged
++inputs is not.
++
++- **Bound it.** At most 10 minutes and no new pipeline runs. Use only what the task already produced: its own
++  timings and logs (`state/prepare_timing.jsonl`, the ledger's slot and prefetch waits, `wave.log`, run logs,
++  test durations, the tool calls you made).
++- **Look for repeats on unchanged inputs first.** A file hashed, parsed, copied or compiled twice; a check run
++  twice on the same inputs; a harness re-prepared while its oracle stamp was current; a fixed sleep; output
++  nothing reads; a manual step the pipeline could do.
++- **Report at most three findings,** each with evidence (`file:line` plus the logged time) and the saving per
++  run, per wave or per game. If there are none, say "none found".
++- **Fix only small findings that provably give identical output:** an existing or new offline test, or an
++  old-against-new comparison on real workspace data with 0 differences. Put the measured saving in the commit
++  message. Anything bigger, anything that needs Ghidra to prove, or anything near the judge, goes in the hand-off
++  as a proposal instead.
++- **Never remove, weaken or merge a safety, identity or evidence gate.** The one exception is two checks of the
++  same fact on the same inputs in one run. Never weaken the judge (`core/compare.py`, `core/check.py`, the
++  oracle scripts, the runtimes). Never hand-edit any game's matched or readable C.
++- **Reuse earlier results only by a key that proves they still hold:** input hashes, `harness_sha256` or the
++  oracle stamp, never a timestamp or a name alone.
++
++Put the pass's result in your hand-off under a heading "Efficiency pass".

@@ -43,6 +43,8 @@
 8c0376e0  # ptr_views: view: pool 0c2e712f, C 8c2e712f x1
 8c037758  # ptr_views: view: pool 0c09da59, C 8c09da59 x1; offset: pool 0c2e90e0, C 8c2e90e8 (+0x8) x2
 8c038aa0  # ptr_views: view: pool 0c2e7168, C 8c2e7168 x2
+8c0393ac  # helper_abi: missing: 8c05f7dc r0 not passed (1 of 1 calls); missing: 8c05f7dc r1 not passed (1 of 1 calls)
+8c0396e0  # helper_abi: missing: 8c05f440 r0 not passed (1 of 1 calls); missing: 8c05f440 r1 not passed (1 of 1 calls)
 8c03a760  # ptr_views: view: pool 0c2e90e0, C 8c2e90e0 x1
 8c03a9e0  # ptr_views: view: pool 0c08847c, C 8c08847c x1; view: pool 0c08848c, C 8c08848c x1; view: pool 0c088494, C 8c088494 x1; view: pool 0c2de65c, C 8c2de65c x1
 8c03b120  # ptr_views: view: pool 0c09dcf8, C 8c09dcf8 x1

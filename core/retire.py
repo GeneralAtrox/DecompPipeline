@@ -22,7 +22,7 @@ KEY = re.compile(r"^(?:rd_)?([0-9a-f]{8})(?=$|[._])")  # ADDR, ADDR.c, ADDR.note
 # {kind: path} adds more for one project.
 DIRS = (("harness", "harness"), ("packets", "packets"), ("matched", "matched"), ("matched_stale", "matched_stale"),
         ("work", "work"), ("runs", "runs"), ("sandbox", "sandbox"), ("build", "build"), ("import", "import"),
-        ("hints", "oracle/hints"), ("readable_src", "readable/src"))
+        ("hints", "oracle/hints"), ("readable_src", "readable/src"), ("agent_notes", "agent_notes"))
 LEDGER, READABLE, SYSTEMS, ESCALATE = "state/ledger.json", "state/readable.json", "state/systems.json", \
     "state/escalate.json"
 REMOVED_RECORDS = ("state/ledger_removed.json", "state/pruned_ledger.json")  # rows of functions removed by hand

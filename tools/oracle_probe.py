@@ -82,7 +82,7 @@ def main():
         harness, t = work / "harness" / addr, time.time()
         r = {"addr": addr}
         try:
-            staging = {"scripts": paths.SCRIPTS, "packet": work / "packets" / addr, "harness": harness,
+            staging = {"scripts": paths.sync_scripts(), "packet": work / "packets" / addr, "harness": harness,
                        "hints": live["hints"] / f"{addr}.txt", "callees": live["harness"]}
             meta, s = ghidra.prepare(cfg, addr, slot_index=slot, staging=staging)
             s = s or {}

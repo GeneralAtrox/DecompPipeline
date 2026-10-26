@@ -1,0 +1,122 @@
+[
+ {
+  "script": "vcvars64.bat",
+  "vcvars_args": null,
+  "rc": 0,
+  "command_as_before": true,
+  "VCToolsVersion": "14.38.33130",
+  "WindowsSDKVersion": "10.0.28000.0",
+  "pinned": true,
+  "compiler": "Microsoft (R) C/C++ Optimizing Compiler Version 19.38.33145 for x64 sdk 10.0.28000.0 tools 14.38.33130"
+ },
+ {
+  "script": "vcvars64.bat",
+  "vcvars_args": "-vcvars_ver=14.44",
+  "rc": 0,
+  "command_as_before": null,
+  "VCToolsVersion": "14.44.35207",
+  "WindowsSDKVersion": "10.0.28000.0",
+  "pinned": true,
+  "compiler": "Microsoft (R) C/C++ Optimizing Compiler Version 19.44.35229 for x64 sdk 10.0.28000.0 tools 14.44.35207"
+ },
+ {
+  "script": "vcvars64.bat",
+  "vcvars_args": "10.0.26100.0 -vcvars_ver=14.44",
+  "rc": 1,
+  "command_as_before": null,
+  "VCToolsVersion": null,
+  "WindowsSDKVersion": null,
+  "pinned": false,
+  "compiler": "- sdk - tools -"
+ },
+ {
+  "script": "vcvars64.bat",
+  "vcvars_args": "10.0.28000.0 -vcvars_ver=14.44",
+  "rc": 0,
+  "command_as_before": null,
+  "VCToolsVersion": "14.44.35207",
+  "WindowsSDKVersion": "10.0.28000.0",
+  "pinned": true,
+  "compiler": "Microsoft (R) C/C++ Optimizing Compiler Version 19.44.35229 for x64 sdk 10.0.28000.0 tools 14.44.35207"
+ },
+ {
+  "script": "vcvars64.bat",
+  "vcvars_args": "10.0.26100.0 -vcvars_ver=14.38",
+  "rc": 1,
+  "command_as_before": null,
+  "VCToolsVersion": null,
+  "WindowsSDKVersion": null,
+  "pinned": false,
+  "compiler": "- sdk - tools -"
+ },
+ {
+  "script": "vcvars64.bat",
+  "vcvars_args": "-vcvars_ver=14.29",
+  "rc": 0,
+  "command_as_before": null,
+  "VCToolsVersion": "14.29.30133",
+  "WindowsSDKVersion": "10.0.28000.0",
+  "pinned": true,
+  "compiler": "Microsoft (R) C/C++ Optimizing Compiler Version 19.29.30159 for x64 sdk 10.0.28000.0 tools 14.29.30133"
+ },
+ {
+  "script": "vcvars32.bat",
+  "vcvars_args": null,
+  "rc": 0,
+  "command_as_before": true,
+  "VCToolsVersion": "14.38.33130",
+  "WindowsSDKVersion": "10.0.28000.0",
+  "pinned": true,
+  "compiler": "Microsoft (R) C/C++ Optimizing Compiler Version 19.38.33145 for x86 sdk 10.0.28000.0 tools 14.38.33130"
+ },
+ {
+  "script": "vcvars32.bat",
+  "vcvars_args": "-vcvars_ver=14.44",
+  "rc": 0,
+  "command_as_before": null,
+  "VCToolsVersion": "14.44.35207",
+  "WindowsSDKVersion": "10.0.28000.0",
+  "pinned": true,
+  "compiler": "Microsoft (R) C/C++ Optimizing Compiler Version 19.44.35229 for x86 sdk 10.0.28000.0 tools 14.44.35207"
+ },
+ {
+  "script": "vcvars32.bat",
+  "vcvars_args": "10.0.26100.0 -vcvars_ver=14.44",
+  "rc": 1,
+  "command_as_before": null,
+  "VCToolsVersion": null,
+  "WindowsSDKVersion": null,
+  "pinned": false,
+  "compiler": "- sdk - tools -"
+ },
+ {
+  "script": "vcvars32.bat",
+  "vcvars_args": "10.0.28000.0 -vcvars_ver=14.44",
+  "rc": 0,
+  "command_as_before": null,
+  "VCToolsVersion": "14.44.35207",
+  "WindowsSDKVersion": "10.0.28000.0",
+  "pinned": true,
+  "compiler": "Microsoft (R) C/C++ Optimizing Compiler Version 19.44.35229 for x86 sdk 10.0.28000.0 tools 14.44.35207"
+ },
+ {
+  "script": "vcvars32.bat",
+  "vcvars_args": "10.0.26100.0 -vcvars_ver=14.38",
+  "rc": 1,
+  "command_as_before": null,
+  "VCToolsVersion": null,
+  "WindowsSDKVersion": null,
+  "pinned": false,
+  "compiler": "- sdk - tools -"
+ },
+ {
+  "script": "vcvars32.bat",
+  "vcvars_args": "-vcvars_ver=14.29",
+  "rc": 0,
+  "command_as_before": null,
+  "VCToolsVersion": "14.29.30133",
+  "WindowsSDKVersion": "10.0.28000.0",
+  "pinned": true,
+  "compiler": "Microsoft (R) C/C++ Optimizing Compiler Version 19.29.30159 for x86 sdk 10.0.28000.0 tools 14.29.30133"
+ }
+]

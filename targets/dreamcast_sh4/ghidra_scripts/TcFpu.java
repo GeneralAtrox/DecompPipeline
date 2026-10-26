@@ -3,15 +3,20 @@
 // DN (always): a denormal source operand of a float arithmetic instruction counts as a signed zero, and a denormal
 // result is flushed to a signed zero. Around each such step the oracle zeroes denormal sources (restoring the
 // registers that are not results afterwards) and flushes denormal results. The C runner does the same with SSE
-// DAZ|FTZ (tc_rt.c). Intermediate values of fmac, fipr and ftrv live in p-code temporaries the oracle cannot flush,
+// DAZ|FTZ (tc_rt.c). Intermediate values of fipr and ftrv live in p-code temporaries the oracle cannot flush,
 // while the C runner's separately rounded operations do: a vector producing a nonzero intermediate below the smallest
 // normal is rejected.
 // RM (only with TcFacts.fpscrModel, target.json "fpscr_model"): every float result of the step is recomputed from the
 // source operands with TcRound, in the precision FPSCR.PR selects, as the patched SLEIGH orders the operations
-// (fmac = (fr0*frm) + frn, fipr/ftrv element order 0..3, fsrra = 1/sqrt, each rounded on its own). The recomputation
-// is first done round-to-nearest and must equal Ghidra's result (else the vector is rejected: the model and the
-// p-code disagree), then with the live FPSCR.RM, whose result replaces Ghidra's. A step running with RM or DN other
-// than the entry mode is rejected (the C runner runs every vector in the entry mode: tc_rt.c sets MXCSR.RC once).
+// (fipr/ftrv element order 0..3, fsrra = 1/sqrt, each rounded on its own). The recomputation is first done
+// round-to-nearest as the p-code does it and must equal Ghidra's result (else the vector is rejected: the model and
+// the p-code disagree), then with the live FPSCR.RM as the SH-4 does it, whose result replaces Ghidra's. A step
+// running with RM or DN other than the entry mode is rejected (the C runner runs every vector in the entry mode:
+// tc_rt.c sets MXCSR.RC once).
+// fmac (always, with or without the model): the SH-4 rounds fr0*frm + frn once (software manual 6.4, 9.36
+// normal_fmac), the p-code rounds the product and then the sum. Its result is recomputed as above, the p-code check
+// with two roundings, the result with one (TcRound.fma; tc_rt.c's sh4_fmac). An exact value in
+// [2^-126 - 2^-150, 2^-126) rejects the vector (TcRound.nearMinNormal: the manual and SSE flush it differently).
 // ftrc (always): Ghidra's SLEIGH ftrc is trunc(), a 64-bit conversion of which FPUL keeps the low 32 bits; the SH-4
 // saturates (0x7fffffff above the int range, 0x80000000 below it and for a NaN), as tc_rt.c's sh4_ftrc does. The
 // oracle sets FPUL from the source operand after the step (r15: xemu found it in 225 functions).
@@ -24,6 +29,16 @@ import java.util.*;
 import java.util.regex.*;
 
 public class TcFpu {
+    // fsca's table (TcOracle.fscaCallbacks; TcPrepare: [0] round to nearest, [1] toward zero) is the one of the
+    // rounding the FPU runs in. Under fpscr_model, FPSCR.RM's; an RM other than the entry's rejects the vector
+    // (reject[0]), as before() rejects the other modal steps: the C runner runs every fsca in the entry mode (MXCSR.RC
+    // from line P). Without the model the oracle's whole FPU rounds to nearest, and so does the C runner (no line P).
+    static int fscaTable(boolean model, long rm, long entry, String[] reject) {
+        if (!model) return 0;
+        if (rm != (entry & 3) && reject[0] == null) reject[0] = "FPSCR mode RM=" + rm + " at fsca (not the entry's)";
+        return rm == 1 ? 1 : 0;
+    }
+
     static final Pattern OP_RE = Pattern.compile(
         "^(fadd|fsub|fmul|fdiv|fmac|fsqrt|fcmp/eq|fcmp/gt|fipr|ftrv|fsrra|float|fcnvds|fcnvsd|ftrc)\\s+(\\S+)$");
     static final Set<String> MODEL_ONLY = Set.of("float", "fcnvds", "fcnvsd"); // no denormal source: DN-only ignores them
@@ -193,6 +208,7 @@ public class TcFpu {
             }
             st.snap = new HashMap<>();
         }
+        if (st.snap == null && list.stream().anyMatch(o -> o.kind.equals("fmac"))) st.snap = new HashMap<>(); // fmac
         for (Op op : list) {
             for (String r : eff(op.src, op, st.pr)) {
                 long b = bits(emu, r);
@@ -217,11 +233,9 @@ public class TcFpu {
         return st;
     }
 
-    // A nonzero intermediate below the smallest normal, in the order the patched SLEIGH and tc_rt.c compute them.
+    // A nonzero intermediate below the smallest normal, in the order the patched SLEIGH and tc_rt.c compute them (fmac
+    // has none: its exact product is never rounded).
     String intermediate(EmulatorHelper emu, Op op, int rm) {
-        if (op.kind.equals("fmac")) {
-            return tiny(TcRound.mul(f(emu, "fr0"), f(emu, "fr" + op.m), rm)) ? "fr0*fr" + op.m : null;
-        }
         if (op.kind.equals("fipr")) {
             float t = 0;
             for (int i = 0; i < 4; i++) {
@@ -259,11 +273,19 @@ public class TcFpu {
         }
         if (st.snap != null) {
             Map<String, Long> rn = new HashMap<>(st.snap), rz = new HashMap<>(st.snap);
+            Set<String> mod = new LinkedHashSet<>(); // the results recomputed: all, or without the model fmac's
             for (Op op : st.ops) {
-                TcRound.apply(op, rn, 0, st.pr);
-                TcRound.apply(op, rz, st.rm, st.pr);
+                boolean fmac = op.kind.equals("fmac") && !st.pr;
+                if (!facts.fpscrModel && !fmac) continue;
+                if (fmac && TcRound.nearMinNormal(TcRound.f(rz, "fr0"), TcRound.f(rz, op.a[1]),
+                                                  TcRound.f(rz, op.a[2]))) {
+                    return "fmac result just below the smallest normal (" + op.text + ": TcRound.nearMinNormal)";
+                }
+                TcRound.apply(op, rn, 0, st.pr, false);
+                TcRound.apply(op, rz, st.rm, st.pr, true);
+                mod.addAll(eff(op.dst, op, st.pr));
             }
-            for (String r : dst) {
+            for (String r : mod) {
                 long got = bits(emu, r);
                 Long want = rn.get(r), mine = rz.get(r);
                 if (want == null || mine == null) continue;

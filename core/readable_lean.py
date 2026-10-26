@@ -35,13 +35,19 @@ def used_globals(reg, meta, pool=(), raw_text="", ext=None):
     (an address inside an array or struct), as context.md names them; every registry global whose address raw.c
     writes as a literal (an address the oracle's list misses: `rdf32(0x8c0fc434)` after a register-indexed load);
     and with ext (core/global_extents.cached) every one whose declared extent holds a literal raw.c writes (a pointer
-    constant it passes or stores: a string inside a string table)."""
-    from .compare import IMAGE_BASE, STACK_LO
+    constant it passes or stores: a string inside a string table). A literal in an address mirror (target.json
+    "address_mirrors": `wr32(0x0cfe0320u + 4u * i, ..)`) counts as its canonical address too."""
+    from .compare import IMAGE_BASE
     from .global_extents import containing
+    from .readable_stack import frame_lo
+    from .retire import mirrors
     lits = int_literals(raw_text) | _pool_words(raw_text)  # batch 26: a pool word naming a string
+    fold = {int(k, 16): int(c, 16) for k, c in mirrors(paths.ROOT).items()}  # `0x0cfe0320u`: 8cfe0320 (Spawn)
+    lits |= {fold[v >> 24] << 24 | v & 0xFFFFFF for v in lits if v >> 24 in fold}
     out = {a for a in reg.globals if int(a, 16) in lits}  # a named pool constant too (`const f32 g_byteToUnit`)
+    lo = frame_lo() if ext else 0  # a global in the guest stack window below the own frame (Spawn's) counts
     for v in (lits if ext else ()):
-        hit = IMAGE_BASE <= v < STACK_LO and containing(ext, v)
+        hit = IMAGE_BASE <= v < lo and containing(ext, v)
         if hit:
             out.add(f"{hit[0]:08x}")
     by_int = sorted((int(a, 16), a) for a in reg.globals)
@@ -50,7 +56,10 @@ def used_globals(reg, meta, pool=(), raw_text="", ext=None):
             continue
         v = int(g, 16)
         below = [a for ai, a in by_int if 0 <= v - ai < 0x1000]
-        if below:
+        hit = containing(ext, v) if ext else None
+        if hit and f"{hit[0]:08x}" in reg.globals:  # however far into its extent (g_fighters + 0x380c)
+            out.add(f"{hit[0]:08x}")
+        elif below:
             out.add(below[-1])
     return out
 
@@ -77,6 +86,17 @@ def int_literals(text):
         v = int(m.group(1), 0) & 0xFFFFFFFF if m.group(1)[:2].lower() == "0x" else int(m.group(1)) & 0xFFFFFFFF
         vals |= {v, (-v) & 0xFFFFFFFF}
     return vals - TRIVIAL
+
+
+ADDED_LIT = re.compile(r"\+\s*(0[xX][0-9a-fA-F]+|\d+)[uUlL]*(?![\w.])")
+
+
+def added_offsets(text):
+    """The integer values raw.c adds to an address (`wr8(param_1 + 0x1, ...)`), 0 and 1 included: member offsets.
+    int_literals drops 0, 1 and -1, so a projected struct's member at +1 was hidden (core/lean_select: offset 0 is
+    always kept, 2 and up are literals) and Haiku wrote `*((u8 *)out + 0x1)` (Spawn 8c05c10c)."""
+    return {int(m.group(1), 16) if m.group(1)[:2].lower() == "0x" else int(m.group(1))
+            for m in ADDED_LIT.finditer(text)}
 
 
 def _closure(hs, refs, chosen):
@@ -291,8 +311,14 @@ def lean_set(reg, decl_lines, raw_text=None, uses=(), fields=(), global_addrs=()
     text = "\n".join(decl_lines)
     names = declared_names(text)
     lits = None if raw_text is None else int_literals(raw_text)
-    views, chosen = lean_select.select(hs, text, names, lits, uses, fields,
-                                       lean_select.global_offsets(global_addrs, lits or ()), group_max())
+    from .retire import mirrors
+    from .reg_offsets import reached, workspace_image
+    from .frame_offsets import offsets as frame_offsets
+    regs, derived = reached(raw_text or "", workspace_image(raw_text or ""))  # pool-loaded, stepped, derived bases
+    offsets = (lean_select.global_offsets(global_addrs, (lits or set()) | derived, mirrors(paths.ROOT))
+               | added_offsets(raw_text or "") | regs
+               | frame_offsets(raw_text or ""))  # members of a struct local in the original's frame
+    views, chosen = lean_select.select(hs, text, names, lits, uses, fields, offsets, group_max())
     return hs, chosen, notes_for(hs, text, names), views
 
 

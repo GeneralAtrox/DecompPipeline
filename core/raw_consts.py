@@ -10,25 +10,33 @@ original uses as a constant, so its text says how each one is used:
 - call: a tc_call / tc_callf target (a callee, named through its prototype);
 - value: anything else: a pointer the original passes (args.r[..] = C), stores (wr32(p, C)), compares or calls
   through. Readable C needs a name for it: a named function, or a named global whose declared extent holds it.
-Constants are 0x... words inside the image [IMAGE_BASE, IMAGE_BASE + image size); comments are ignored.
+Constants are 0x... words inside the image [IMAGE_BASE, IMAGE_BASE + image size); comments are ignored. A word in a
+mirror of the image (target.json address_mirrors: PS2 raw.c writes 0x0c206130 for 0x8c206130) is its canonical address.
 """
 import bisect
 import re
 
-from .compare import IMAGE_BASE
+from .compare import IMAGE_BASE, WORD
 
 HEX = re.compile(r"\b0[xX]([0-9a-fA-F]{8})[uU]?\b")
 ACCESS = re.compile(r"\b(?:rd|wr)(?:8|16|32|f32)\s*\(\s*$")
 CALL = re.compile(r"\btc_callf?\s*\(\s*$")
 
 
-def uses(text, image_size):
-    """{address (int): set of uses ("access", "call", "value")} of the image addresses written in raw C text."""
+def fold(v, mirror):
+    """v (int) in its canonical form: a top byte target.json address_mirrors maps ({"0c": "8c"}) is replaced."""
+    c = (mirror or {}).get(f"{v >> 24:02x}")
+    return int(c, 16) << 24 | v & 0xFFFFFF if c else v
+
+
+def uses(text, image_size, mirror=None):
+    """{address (int): set of uses ("access", "call", "value")} of the image addresses written in raw C text (mirror:
+    target.json address_mirrors, a mirror-form word counted at its canonical address)."""
     from .lint import strip_comments
     code = strip_comments(text)
     out = {}
     for m in HEX.finditer(code):
-        v = int(m.group(1), 16)
+        v = fold(int(m.group(1), 16), mirror)
         if not IMAGE_BASE <= v < IMAGE_BASE + image_size:
             continue
         before = code[max(0, m.start() - 40):m.start()]
@@ -105,7 +113,7 @@ def pointer_bytes(raw_text, code, image):
         off = a - IMAGE_BASE
         if "value" not in how or off + 4 > len(image):
             continue
-        word = int.from_bytes(image[off:off + 4], "little")
+        word = int.from_bytes(image[off:off + 4], "big" if WORD == ">I" else "little")
         if word >= 0x10000 and word in nums and word not in raw_nums:
             out.append((a, word))
     return out

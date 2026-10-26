@@ -10,10 +10,10 @@
 // vector and, when a further mutation of it still reaches the site, one added hidden vector; they follow the first
 // pass's vectors (ids after them), which stay byte-identical, and a function with every site reached is unchanged.
 // A site still unreached is reported with the reason (TcPrepare: oracle_summary.json "reach"). Deterministic: own
-// generators seeded by the function seed, ordered collections, a run budget; the wall-clock limit only cuts it short
-// (the reason then says so). LOCKED: the watcher agent may not change this file. Not a script itself.
+// generators seeded by the function seed, ordered collections, a run budget and a work budget (TcBudget: steps and
+// runs, never the clock; the reason says which ran out). LOCKED: the watcher agent may not change this file. Not a
+// script itself.
 import ghidra.app.emulator.EmulatorHelper;
-import java.lang.management.ManagementFactory;
 import java.util.*;
 
 final class TcReach {
@@ -24,7 +24,7 @@ final class TcReach {
     static final int MAX_ADDED = 32;    // added vectors per set
 
     static final class Entry {  // a vector as run (v), its entry state and its result
-        TcInputs.Vec v; int[] fh, fq; long[] low, gi; TcOracle.Result r;
+        TcInputs.Vec v; int[] fh, fq; long[] low, gi, late; TcOracle.Result r;
     }
 
     final TcVectors g;
@@ -46,6 +46,7 @@ final class TcReach {
         e.fq = g.entryFq;
         e.low = g.entryLow == null ? null : g.entryLow.clone();
         e.gi = g.entryGi == null ? null : g.entryGi.clone();
+        e.late = g.entryLate == null ? null : g.entryLate.clone();
         return e;
     }
 
@@ -60,7 +61,7 @@ final class TcReach {
 
     private TcReach(TcVectors g, TcBase.Proto proto, long seed) {
         this.g = g;
-        consts = TcGuide.constants(g.listing, g.body, g::poolValue);
+        consts = TcGuide.constants(g.listing, g.body, g::poolValue);  // the same with targeted_vectors (TcBoundPass)
         h = new Random(seed * 0x9e3779b97f4a7c15L + 0x7265616368L);
         g.rnd = new Random(seed ^ 0x52454143485fL);  // the first pass is done: its sequence is not needed any more
         for (TcBase.Param q : proto.params) if (q.storage.matches("r[4-7]")) paramRegs.add(q.storage.charAt(1) - '4');
@@ -102,18 +103,17 @@ final class TcReach {
         corpus.addAll(seeds);
         for (Entry e : seeds) covered.addAll(e.r.cov);
         flow = new TcCfg(g);
-        long jvmEnd = g.facts.oracleDeadlineS <= 0 ? Long.MAX_VALUE
-            : ManagementFactory.getRuntimeMXBean().getStartTime() + g.facts.oracleDeadlineS * 1000 - 30000;
-        long deadline = Math.min(jvmEnd, System.currentTimeMillis() + g.facts.reachS * 1000);
+        long all = g.facts.oracleBudgetS <= 0 ? Long.MAX_VALUE : TcBudget.of(g.facts, g.facts.oracleBudgetS - 30);
+        long end = Math.min(all, g.work() + TcBudget.of(g.facts, g.facts.reachS));
         Set<Long> open = new TreeSet<>(targets);
         boolean progress = true;
         while (progress && !open.isEmpty()) {
             progress = false;
             for (long t : new ArrayList<>(open)) {
                 if (!open.contains(t)) continue;
-                if (runs >= g.facts.reachRuns || System.currentTimeMillis() > deadline) {
+                if (runs >= g.facts.reachRuns || g.work() > end) {
                     budgetNote = runs >= g.facts.reachRuns ? "the run budget (" + g.facts.reachRuns + ") ran out"
-                        : "the time limit ran out after " + runs + " runs";
+                        : "the work budget ran out after " + runs + " runs";
                     progress = false;
                     break;
                 }
@@ -235,10 +235,12 @@ final class TcReach {
         e.fq = base.fq;
         e.low = base.low == null ? null : base.low.clone();
         e.gi = base.gi == null ? null : base.gi.clone();
+        e.late = base.late == null ? null : base.late.clone();
         g.entryFh = e.fh;
         g.entryFq = e.fq;
         g.entryLow = e.low;
         g.entryGi = e.gi;
+        g.entryLate = e.late;
         g.watchPc = watch;
         g.storeFaults = g.rescued;
         TcInputs.Vec[] box = {v};
@@ -265,7 +267,7 @@ final class TcReach {
             long[] ld = watched.get(i);
             long a = ld[1];
             if (ld[2] != 1 && ld[2] != 2 && ld[2] != 4) continue;
-            if (a < TcBase.RAM_LO || a + ld[2] > TcBase.RAM_HI || (a >= TcBase.STACK_LO && a < TcBase.SP)) continue;
+            if (a < TcBase.RAM_LO || a + ld[2] > TcBase.RAM_HI || TcProvenance.ownFrame(a)) continue;
             if (g.facts.isCode(a) || flow.isConst(a) || !seen.add(a)) continue;
             out.add(ld);
         }
@@ -369,11 +371,11 @@ final class TcReach {
                 g.entryFh = e.fh;
                 g.entryFq = e.fq;
                 g.entryLow = e.low;
-                g.entryGi = e.gi;
+                g.entryGi = e.gi; g.entryLate = e.late;
                 g.writeVector(id++, s == 0 ? "dev" : "hidden", e.v, e.r);
                 g.valid[s]++;
-                if (s == 0) g.covDev.addAll(e.r.cov);
-                g.covAll.addAll(e.r.cov);
+                if (s == 0) { g.covDev.addAll(e.r.cov); g.dirsDev.addAll(e.r.dirs); }
+                g.covAll.addAll(e.r.cov); g.dirsAll.addAll(e.r.dirs);
                 for (int c : e.r.cov) g.blockHits.merge(c, 1, Integer::sum);
                 for (long site : e.r.sites) g.siteHits.merge(site, 1, Integer::sum);
             }

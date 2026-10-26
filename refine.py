@@ -86,6 +86,11 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 
+# the commands that are steps of a run (core/oplog: a start, and a stop when one does not finish); the rest only read
+# or judge one file (an agent's own check.py runs `check`)
+DRIVERS = ("run", "verify", "draft", "adopt", "sync-names", "library")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--project")
@@ -128,7 +133,7 @@ def main():
     ad.add_argument("targets", nargs="+")
     dr = sub.add_parser("draft")
     dr.add_argument("targets", nargs="+")
-    dr.add_argument("--adopt", action="store_true", help="adopt a passing, readable draft (no readable file yet)")
+    dr.add_argument("--adopt", action="store_true", help="adopt a passing, readable draft (no readable file yet, or a STALE one, backed up)")
     dr.add_argument("--workers", type=int, default=4)
     lk = sub.add_parser("lookalike")
     lk.add_argument("--from", dest="source", required=True, help="the source project's workspace")
@@ -146,8 +151,10 @@ def main():
     a = ap.parse_args()
     if a.project:
         os.environ["DECOMP_PROJECT"] = str(pathlib.Path(a.project).resolve())
-    from core import header_snapshot, paths
+    from core import header_snapshot, oplog, paths
     cfg = paths.config()
+    if a.cmd in DRIVERS:
+        oplog.begin(f"refine.py {a.cmd}", [paths.ROOT])
     agent = getattr(a, "agent", False)
     snap = None
     try:
@@ -339,7 +346,8 @@ def command(a, cfg):
 def run_all(a, cfg, todo, since=None):
     """One worker per function: run_one holds the function's claim for its whole cycle (a function another process
     holds is skipped as busy, its row untouched) and retries an infrastructure error once (core/fn_claim)."""
-    from core import fn_claim, refine
+    from core import build_prune, fn_claim, refine
+    build_prune.maybe_sweep(cfg, log=lambda m: print(m, flush=True))  # by age and size, when due
     lock = __import__("threading").Lock()
 
     def one(addr):
@@ -356,10 +364,17 @@ def run_all(a, cfg, todo, since=None):
                 return addr, (f"error: {e}; the ledger write failed too ({type(e2).__name__}: {e2}); "
                               f"run `refine.py verify {addr}`")
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=a.workers) as ex:
-        for addr, status in ex.map(one, todo):
-            print(f"== {addr}: {status}", flush=True)
+    from core import busylog
+    n = max(1, min(a.workers, len(todo)))  # the threads the pool will start: each a worker (core/busylog)
+    busylog.start_slots(n)
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=a.workers) as ex:
+            for addr, status in ex.map(one, todo):
+                print(f"== {addr}: {status}", flush=True)
+    finally:
+        busylog.end_slots(n)
 
 
 if __name__ == "__main__":
-    main()
+    from core import oplog
+    oplog.main(main)

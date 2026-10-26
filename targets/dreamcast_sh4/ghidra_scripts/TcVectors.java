@@ -4,19 +4,20 @@
 // vectors.txt, per vector: V id set, R r4..r7, F fr4..fr11, X xf0..xf15, H fr12..fr15 (runtime state), L r0..r3
 // (parameters there), G r8..r14 (runtime state), A the live callees' drawn deltas (TcLive; after header lines K),
 // Q fr0..fr15 (Proto.fpuState), C the scripted call results, M patches, E.
-// expected.txt: V, RET r0 fr0, RETX (a nonstandard result register, or a u64's high word in r1), HALT (the run ended
-// in an endless `bra .`: TcExit), W writes, CALL records (TcOracle.callRecord), XF, FH fr12..fr15 and GH r8..r14 at
-// exit, QH fr0..fr15 and the FPSCR mode word (TcOracle.modeWord) at exit, COV blocks, E.
-// Lines H, L, G, Q, RETX, FH, GH and QH appear only for functions that have them, so other harnesses are unchanged.
-// A first line "P fpscr" (fpscrLine) gives the entry FPSCR when the oracle models a rounding mode other than nearest
-// (TcFacts.fpscrModel): the C runner sets MXCSR.RC from its RM. Without it the runner rounds to nearest.
+// expected.txt: V, RET r0 fr0, RETX (a nonstandard result register, or a u64's high word in r1), HALT [SPIN] (the run
+// ended in an endless `bra .`: TcExit; or spun: TcSpin), W writes, CALL records (TcOracle.callRecord), XF, FH
+// fr12..fr15 and GH r8..r14 at exit, QH fr0..fr15 and the FPSCR mode word (TcOracle.modeWord) at exit, COV blocks, E.
+// Lines H, L, G, Q, RETX, FH, GH, QH (and TcFpscr's N, FS, FC) appear only for functions that have them, so other
+// harnesses are unchanged. A first line "P fpscr" (fpscrLine) gives the entry FPSCR when the oracle models a rounding
+// mode other than nearest (TcFacts.fpscrModel): the C runner sets MXCSR.RC from its RM. Else it rounds to nearest.
 // Call-site coverage (report only): siteHits counts, per call site (callSites), the valid vectors whose run reached
 // its mocked callee; TcPrepare reports them in oracle_summary.json "call_sites", the checker in the verdict detail.
 // Vectors are float-guided (TcFguide) and, with TcFacts.coverageInputs, constant-guided (TcGuide) before the hints.
 // Reach pass (TcFacts.reachRuns, TcReach): TcPrepare then adds vectors that reach call sites no vector reached.
-// Deadline (TcFacts.oracleDeadlineS, from config "ghidra_timeout_s"): when most tries run to STEP_LIMIT (a loop whose
-// count comes from the inputs: a random count word), generation would outlast Ghidra's timeout and the preparation
-// would die without a verdict. Past the deadline it stops (outOfTime) and TcPrepare refuses the function instead.
+// Budget (TcFacts.oracleBudgetS, from config "ghidra_timeout_s"; work, never the clock: TcBudget): when most tries
+// run to STEP_LIMIT (a loop whose count comes from the inputs: a random count word), generation would outlast Ghidra's
+// timeout and the preparation would die without a verdict. Past the budget it stops (outOfTime) and TcPrepare refuses
+// the function instead.
 // Call-cap fail-fast (CAP_FAIL_FAST): after that many tries in a set, at least 3/4 of them at CALL_LIMIT (a sentinel
 // walk whose end marker mocked memory never holds), a pass whose valid rate would reach under half of minValid by the
 // set's try cap ends there: each such try runs every repair at the call limit, so the full pass held a slot ~8 min for the same
@@ -28,16 +29,15 @@
 // and on the pointers mocked fetchers return. The rescue pass is kept when it gives more valid vectors (TcPrepare
 // reports "rescued"); a function the first pass serves never sees it, so its vectors are unchanged. In the rescue
 // pass a store outside RAM stops the run at the store, and the input its base came from is repaired (TcProvenance).
-// Overtime rescue (TcFacts.oracleRescueS, TcCount): a first pass that ran out of time gets that much longer for a
+// Overtime rescue (TcFacts.oracleRescueS, TcCount): a first pass out of its budget gets that much more work for a
 // rescue pass with a tenth of the step limit in which a run hitting it gets its loop counts cut (TcCount.repair). It
 // is kept when both sets reach the rescue threshold; otherwise the function is refused as before, the reason saying
 // what the overtime rescue made and where the loop compares. Functions the first pass finishes never see it.
 // Step-limit fail-fast (STEP_FAIL_FAST): after that many first-pass dev tries, at least a quarter of them at the step
-// limit (each such try costs seconds), a first pass that cannot finish in time ends: no valid vector and 3/4 of the
-// tries at the step limit, or a valid rate too low to fill both sets by the deadline (Spawn 8c01bde0: 27 of 64 valid
-// when its 750 s ran out). The overtime rescue starts at once and also gets the time the first pass would have spent
-// (TcRescue.overtime).
-import java.lang.management.ManagementFactory;
+// limit (each such try costs seconds), a first pass that cannot finish in its budget ends: no valid vector and 3/4 of
+// the tries at the step limit, or a valid rate too low to fill both sets by the budget's end (Spawn 8c01bde0: 27 of 64
+// valid when its 750 s ran out). The overtime rescue starts at once and also gets the work the first pass would have
+// spent (TcRescue.overtime).
 import ghidra.program.model.address.*;
 import ghidra.program.model.listing.*;
 import ghidra.program.model.symbol.*;
@@ -57,8 +57,8 @@ public abstract class TcVectors extends TcOracle {
     Map<Integer, Integer> blockHits = new TreeMap<>();
     Map<Long, Integer> siteHits = new TreeMap<>();
     List<TcReach.Entry> seeds = new ArrayList<>(); // the valid vectors, for the reach pass (TcReach)
-    int[] valid = new int[2], tried = new int[2];
-    int repaired = 0;
+    int[] valid = new int[2], tried = new int[2]; TcAlign align = new TcAlign();  // TcAlign: vectors left out
+    int repaired = 0; Set<Integer> dirsDev = new TreeSet<>(), dirsAll = new TreeSet<>();  // branch directions (TcDirs)
 
     String fpscrLine() {
         return facts.fpscrModel && (facts.fpscrEntry & 3) != 0 ? "P " + hex(facts.fpscrEntry) + "\n" : "";
@@ -66,9 +66,11 @@ public abstract class TcVectors extends TcOracle {
     List<String> examples = new ArrayList<>();
     long outside = -1;
     boolean outOfTime = false, rescued = false;
-    long deadlineAt = 0;     // the overtime rescue's own deadline (System.currentTimeMillis), else 0
+    long workEnd = 0;        // the overtime rescue's own budget end (work()), else 0
     String overtimeNote = "", countSites = ""; // the overtime rescue's outcome (TcPrepare); TcCount's uncut loop compares
     boolean[] lowWhich = new boolean[4], giWhich = new boolean[7]; // the entry registers entryLow/entryGi really set
+
+    long work() { return TcBudget.work(workSteps, workRuns); }  // the work so far (TcBudget)
 
     // The dev and hidden sets. Each set has its own generator (rnd), so the hidden set does not depend on ndev.
     void makeVectors(Proto proto, List<Long> globals, List<String> hints, long seed, int ndev, int nhidden) {
@@ -94,7 +96,6 @@ public abstract class TcVectors extends TcOracle {
         int[] want = {ndev, nhidden};
         int id = 0, idTry = 0;
         storeFaults = rescue;  // TcProvenance
-        boolean state = proto.frState != 0, gi = proto.giState != 0;
         boolean[] low = new boolean[4], lowPtr = new boolean[4];
         for (int i = 0; i < proto.params.size(); i++) {
             String st = proto.params.get(i).storage;
@@ -102,22 +103,19 @@ public abstract class TcVectors extends TcOracle {
             low[st.charAt(1) - '0'] = true;
             lowPtr[st.charAt(1) - '0'] = proto.paramIsPointer.get(i);
         }
-        boolean anyLow = low[0] || low[1] || low[2] || low[3];
         lowWhich = low;
         giWhich = giMask(proto.giState);
         entryRet = proto.retReg != null ? proto.retReg : proto.ret.equals("u64") ? facts.retInt64Hi : null;
         for (long site : callSites()) siteHits.put(site, 0);
         List<Long> consts = facts.coverageInputs || rescue ? TcGuide.constants(listing, body, this::poolValue) : List.of();
-        long passStart = System.currentTimeMillis();
-        long deadline = deadlineAt > 0 ? deadlineAt : facts.oracleDeadlineS <= 0 ? 0
-            : ManagementFactory.getRuntimeMXBean().getStartTime() + facts.oracleDeadlineS * 1000;
+        long passStart = work(), end = workEnd > 0 ? workEnd : TcBudget.of(facts, facts.oracleBudgetS);
         int[] capped = new int[2];  // tries ending at CALL_LIMIT, per set (the call-cap fail-fast)
         int[] limited = new int[2]; // tries ending at the step limit, per set (the step-limit fail-fast)
         vectors:
         for (int s = 0; s < 2; s++) {
             rnd = new Random(seed * 31 + s * 0x5bd1e995L);
             while (valid[s] < want[s] && tried[s] < want[s] * 8) {
-                if (deadline > 0 && System.currentTimeMillis() > deadline) {
+                if (TcBudget.over(work(), end)) {
                     outOfTime = true;
                     break vectors;
                 }
@@ -128,33 +126,19 @@ public abstract class TcVectors extends TcOracle {
                         valid[s], capped[s]);
                     break vectors;
                 }
-                long now = System.currentTimeMillis(), left = want[0] - valid[0] + want[1];
+                long left = want[0] - valid[0] + want[1];
                 if (!rescue && s == 0 && facts.oracleRescueS > 0 && tried[s] >= STEP_FAIL_FAST
                     && limited[s] * 4 >= tried[s] && (valid[s] == 0 ? limited[s] * 4 >= tried[s] * 3
-                    : deadline > 0 && now + (now - passStart) * left / valid[s] > deadline)) {  // the rescue now
+                    : TcBudget.wontFinish(work(), passStart, left, valid[s], end))) {  // the rescue now
                     earlyNote = String.format("%d of %d dev tries at the step limit, %d valid", limited[s], tried[s],
                         valid[s]);
                     earlyOvertime = outOfTime = true;
                     break vectors;
                 }
                 tried[s]++;
-                Vec v = makeVec(id % 4, proto, new ArrayList<>(globals));
-                entryFh = state ? stateValues(seed, id, idTry) : null;
-                entryLow = anyLow ? intValues(seed ^ 0x1b873593L, id, idTry, low, lowPtr) : null;
-                entryGi = gi ? intValues(seed ^ 0x5851f42dL, id, idTry, giWhich, null) : null;
-                if (live != null) live.draw(seed, id, idTry);  // TcLive: the drawn deltas (line A)
-                if (sq != null) sq.draw(entryGi, seed, id, idTry);  // TcSq: rN in the store-queue window (header line S)
-                Random h = new Random(seed * 0x2545f4914f6cdd1dL + id * 0x632be59bd9b4e019L + idTry * 0x85ebca6bL);
-                if (facts.coverageInputs || rescue) TcGuide.guide(v, proto, consts, globals, h, facts.scrLo, rescue);
-                TcFguide.guide(v, proto, listing, body, mem, seed, id, idTry, rescue);
-                idTry++;
-                applyHints(v, hints);
-                entryFq = proto.fpuState ? fpuValues(seed, id, idTry, v.fr) : null;
-                Vec[] box = {v};
-                int[] nrep = {0};
-                Result r = runRepaired(box, h, consts, rescue, nrep);
-                v = box[0];
-                int repairs = nrep[0];
+                Vec[] box = {null}; int[] nrep = {0};
+                Result r = attempt(proto, globals, hints, seed, id, idTry++, lowPtr, consts, rescue, box, nrep);
+                Vec v = box[0]; int repairs = nrep[0];
                 if (!r.ok) {
                     if (r.reason.startsWith("more than " + CALL_LIMIT + " calls")) capped[s]++;
                     if (r.stepLimited) limited[s]++;
@@ -169,15 +153,32 @@ public abstract class TcVectors extends TcOracle {
                 if (repairs > 0) repaired++;
                 valid[s]++;
                 writeVector(id, sets[s], v, r);
-                if (facts.reachRuns > 0) seeds.add(TcReach.entry(this, v, r));
-                if (s == 0) covDev.addAll(r.cov);
-                covAll.addAll(r.cov);
+                if (facts.reachRuns > 0 || facts.targetedVectors) seeds.add(TcReach.entry(this, v, r));
+                if (s == 0) { covDev.addAll(r.cov); dirsDev.addAll(r.dirs); }
+                covAll.addAll(r.cov); dirsAll.addAll(r.dirs);
                 for (int c : r.cov) blockHits.merge(c, 1, Integer::sum);
                 for (long site : r.sites) siteHits.merge(site, 1, Integer::sum);
-                id++;
-                idTry = 0;
+                id++; idTry = 0;
             }
         }
+    }
+
+    // Try idTry of vector id, run with its repairs (runRepaired): box[0] the vector as last run, nrep[0] its repairs.
+    Result attempt(Proto proto, List<Long> globals, List<String> hints, long seed, int id, int idTry, boolean[] lowPtr,
+                   List<Long> consts, boolean rescue, Vec[] box, int[] nrep) {
+        Vec v = makeVec(id % 4, proto, new ArrayList<>(globals));
+        entryLate = TcLate.draw(facts, seed, id, idTry, v.rets.length);  // TcLate: calls 17 on
+        entryFh = proto.frState != 0 ? stateValues(seed, id, idTry) : null;
+        boolean[] w = lowWhich; entryLow = w[0] || w[1] || w[2] || w[3] ? intValues(seed ^ 0x1b873593L, id, idTry, w, lowPtr) : null;
+        entryGi = proto.giState != 0 ? intValues(seed ^ 0x5851f42dL, id, idTry, giWhich, null) : null;
+        if (live != null) live.draw(seed, id, idTry);  // TcLive: the drawn deltas (line A)
+        if (sq != null) sq.draw(entryGi, seed, id, idTry);  // TcSq: rN in the store-queue window (header line S)
+        Random h = new Random(seed * 0x2545f4914f6cdd1dL + id * 0x632be59bd9b4e019L + idTry * 0x85ebca6bL);
+        if (facts.coverageInputs || rescue) TcGuide.guide(v, proto, consts, globals, h, facts.scrLo, rescue);
+        TcFguide.guide(v, proto, listing, body, mem, seed, id, idTry, rescue);
+        applyHints(v, hints);
+        entryFq = proto.fpuState ? fpuValues(seed, id, idTry + 1, v.fr) : null;
+        box[0] = v; return runRepaired(box, h, consts, rescue, nrep);
     }
 
     // One vector's run with its repairs (the overtime rescue's count cuts, TcProvenance, TcCalls, pointer, entry and
@@ -237,9 +238,9 @@ public abstract class TcVectors extends TcOracle {
         return r;
     }
 
-    void writeVector(int id, String set, Vec v, Result r) {
-        vout.append("V ").append(id).append(' ').append(set).append('\n');
-        vout.append("R");
+    void writeVector(int id, String set, Vec v, Result r) {  // not written: a failed strict replay, an address error
+        if ((r = TcStrict.replay(this, v, r, set)) == null || align.drop(set, r)) return;  // TcStrict; TcAlign
+        vout.append("V ").append(id).append(' ').append(set).append("\nR");
         for (long x : v.r) vout.append(' ').append(hex(x));
         vout.append("\nF");
         for (int x : v.fr) vout.append(' ').append(hex(x));
@@ -262,17 +263,17 @@ public abstract class TcVectors extends TcOracle {
             vout.append("\nQ");
             for (int x : entryFq) vout.append(' ').append(hex(x));
         }
-        vout.append("\nC");
+        vout.append(TcSr.line(sr, v)).append(TcFpscr.line(r.fs)).append("\nC");  // lines I (TcSr), N (TcFpscr)
         for (long x : v.rets) vout.append(' ').append(hex(x));
-        vout.append('\n');
+        vout.append(TcLate.tail(entryLate, r.calls.size() - v.rets.length)).append('\n');
         for (int i = 0; i < v.patchAddr.size(); i++) {
             vout.append("M ").append(hex(v.patchAddr.get(i))).append(' ').append(bytesHex(v.patchData.get(i))).append('\n');
         }
-        vout.append("E\n");
+        vout.append(TcStrict.vec(r)).append("E\n");  // lines N, W (TcStrict)
         eout.append("V ").append(id).append(' ').append(set).append('\n');
-        eout.append("RET ").append(hex(r.r0)).append(' ').append(hex(r.fr0)).append('\n');
+        eout.append("RET ").append(hex(r.r0)).append(' ').append(hex(r.fr0)).append('\n').append(TcHw.exit(r));
         if (entryRet != null) eout.append("RETX ").append(hex(r.retx)).append('\n');
-        if (r.halted) eout.append("HALT\n");
+        if (r.halted) eout.append(r.spun ? "HALT SPIN\n" : "HALT\n");  // TcExit, TcSpin
         for (String w : r.writes) eout.append("W ").append(w).append('\n');
         for (String c : r.calls) eout.append("CALL ").append(c).append('\n');
         eout.append("XF");
@@ -290,7 +291,7 @@ public abstract class TcVectors extends TcOracle {
             for (int x : r.fq) eout.append(' ').append(hex(x));
             eout.append(' ').append(hex(r.mode));
         }
-        eout.append("\nCOV");
+        eout.append(TcStrict.exp(r)).append("\nCOV");  // lines CS, XR (TcStrict)
         for (int c : r.cov) eout.append(' ').append(c);
         eout.append("\nE\n");
     }

@@ -1,0 +1,603 @@
+{
+ "summary": {
+  "mode": "readable",
+  "checks": 45,
+  "all_same": true,
+  "all_warm_served": true,
+  "verdict_lines": [
+   "DEV FAIL",
+   "DEV PASS"
+  ],
+  "cold_median_s": 2.567,
+  "warm_median_s": 2.3,
+  "cold_runs": 90,
+  "warm_runs": 90
+ },
+ "checks": {
+  "8c010080 as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    3.028,
+    2.853,
+    2.91,
+    2.422,
+    2.797
+   ]
+  },
+  "8c010080 no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.404,
+    1.498,
+    1.324,
+    0.794,
+    1.146
+   ]
+  },
+  "8c010080 const_plus_1": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - 48 of 48 dev vectors differ from the original.",
+   "seconds": [
+    3.536,
+    2.835,
+    2.666,
+    2.238,
+    2.71
+   ]
+  },
+  "8c0158ba as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    3.616,
+    3.012,
+    2.882,
+    2.424,
+    2.717
+   ]
+  },
+  "8c0158ba no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.203,
+    0.988,
+    1.229,
+    0.788,
+    1.228
+   ]
+  },
+  "8c01c1f6 as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    3.396,
+    2.844,
+    2.81,
+    2.499,
+    2.942
+   ]
+  },
+  "8c01c1f6 no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.331,
+    1.064,
+    1.264,
+    0.813,
+    1.143
+   ]
+  },
+  "8c01d622 as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    3.192,
+    2.523,
+    2.595,
+    2.348,
+    2.763
+   ]
+  },
+  "8c01d622 no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.215,
+    0.975,
+    1.183,
+    0.772,
+    1.183
+   ]
+  },
+  "8c01f144 as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    8.081,
+    2.667,
+    2.737,
+    2.53,
+    2.755
+   ]
+  },
+  "8c01f144 no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.018,
+    0.819,
+    1.01,
+    0.636,
+    0.967
+   ]
+  },
+  "8c022d5e as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    3.336,
+    3.224,
+    2.826,
+    2.365,
+    2.609
+   ]
+  },
+  "8c022d5e no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.22,
+    1.025,
+    1.079,
+    0.73,
+    1.381
+   ]
+  },
+  "8c029f9a as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    3.372,
+    2.511,
+    2.489,
+    2.403,
+    2.698
+   ]
+  },
+  "8c029f9a no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.263,
+    1.156,
+    1.155,
+    0.763,
+    1.128
+   ]
+  },
+  "8c029f9a const_plus_1": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - 9 of 48 dev vectors differ from the original.",
+   "seconds": [
+    3.784,
+    2.813,
+    2.855,
+    2.528,
+    2.974
+   ]
+  },
+  "8c036790 as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    4.246,
+    3.262,
+    3.14,
+    2.901,
+    3.646
+   ]
+  },
+  "8c036790 no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.455,
+    1.198,
+    1.47,
+    0.9,
+    1.461
+   ]
+  },
+  "8c03bd02 as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    4.197,
+    3.131,
+    2.981,
+    2.552,
+    2.68
+   ]
+  },
+  "8c03bd02 no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.252,
+    1.068,
+    1.273,
+    0.799,
+    1.332
+   ]
+  },
+  "8c042e80 as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    5.365,
+    3.327,
+    3.11,
+    2.531,
+    3.532
+   ]
+  },
+  "8c042e80 no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    2.169,
+    1.142,
+    1.205,
+    0.799,
+    1.205
+   ]
+  },
+  "8c04a700 as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    3.638,
+    2.8,
+    2.781,
+    2.425,
+    3.225
+   ]
+  },
+  "8c04a700 no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.571,
+    1.388,
+    1.275,
+    0.849,
+    1.387
+   ]
+  },
+  "8c04a700 const_plus_1": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.663,
+    1.383,
+    1.386,
+    0.856,
+    1.32
+   ]
+  },
+  "8c04d170 as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    9.991,
+    2.935,
+    2.694,
+    2.334,
+    2.704
+   ]
+  },
+  "8c04d170 no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.247,
+    1.121,
+    1.152,
+    0.743,
+    1.128
+   ]
+  },
+  "8c051084 as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    3.356,
+    2.581,
+    2.527,
+    2.472,
+    2.726
+   ]
+  },
+  "8c051084 no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.128,
+    1.026,
+    1.075,
+    0.627,
+    1.039
+   ]
+  },
+  "8c0569d8 as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    3.344,
+    2.637,
+    2.63,
+    2.298,
+    2.636
+   ]
+  },
+  "8c0569d8 no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.216,
+    1.03,
+    1.357,
+    0.819,
+    1.04
+   ]
+  },
+  "8c0569d8 const_plus_1": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    3.215,
+    2.578,
+    2.855,
+    2.443,
+    2.814
+   ]
+  },
+  "8c05d362 as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    3.689,
+    3.1,
+    3.403,
+    2.503,
+    3.259
+   ]
+  },
+  "8c05d362 no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.752,
+    1.121,
+    1.288,
+    0.817,
+    1.494
+   ]
+  },
+  "8c0616ec as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    4.305,
+    2.81,
+    2.725,
+    2.467,
+    2.996
+   ]
+  },
+  "8c0616ec no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.275,
+    1.127,
+    1.336,
+    0.78,
+    1.227
+   ]
+  },
+  "8c063b8e as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    3.687,
+    2.595,
+    2.662,
+    2.497,
+    2.697
+   ]
+  },
+  "8c063b8e no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.194,
+    1.137,
+    1.233,
+    0.745,
+    1.205
+   ]
+  },
+  "8c06ec10 as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    3.547,
+    2.626,
+    2.539,
+    2.193,
+    2.613
+   ]
+  },
+  "8c06ec10 no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.208,
+    1.065,
+    1.202,
+    0.772,
+    1.213
+   ]
+  },
+  "8c076b24 as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    3.463,
+    2.73,
+    2.62,
+    2.306,
+    2.72
+   ]
+  },
+  "8c076b24 no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.173,
+    0.985,
+    1.276,
+    1.06,
+    1.475
+   ]
+  },
+  "8c08e0ea as_is": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV PASS - all 48 dev vectors match the original.",
+   "seconds": [
+    3.556,
+    2.758,
+    2.677,
+    2.302,
+    2.672
+   ]
+  },
+  "8c08e0ea no_build": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - work.c does not build cleanly (every compiler warning is an error, rule R11):",
+   "seconds": [
+    1.113,
+    0.97,
+    1.144,
+    0.729,
+    1.132
+   ]
+  },
+  "8c08e0ea const_plus_1": {
+   "same": true,
+   "warm_served": 2,
+   "rc": 0,
+   "first_line": "DEV FAIL - 3 of 48 dev vectors differ from the original.",
+   "seconds": [
+    4.141,
+    2.742,
+    2.667,
+    2.432,
+    2.771
+   ]
+  }
+ }
+}

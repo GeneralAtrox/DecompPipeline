@@ -22,7 +22,9 @@ usage: python tools/xemu_check.py --project DIR [ADDR... | @FILE] [--sample FRAC
 --harness-root: the harnesses to check (default the workspace's harness/; e.g. a staging trial's output).
 --out: where the build and the results go (default the workspace's state/xemu/); a run there resumes, skipping
        the functions OUT/records.jsonl already has (delete it for a fresh run).
-Exit 0 when every checked function agrees, 1 when one disagrees, 2 on a usage or build error.
+A harness with the stricter judge's mock_junk or exit_frame (vectors.txt line J) is skipped and listed: xemu keeps
+its own r1..r7 and r15. Exit 0 when every checked function agrees or is skipped, 1 when one disagrees, 2 on a usage
+or build error.
 """
 import argparse
 import json
@@ -99,6 +101,17 @@ def flags(image, meta, harness):
     return sorted(f)
 
 
+def strict_flags(harness):
+    """vectors.txt header line J (core/strict_judge's flags; 0 without one)."""
+    with open(harness / "vectors.txt", encoding="utf-8", errors="replace") as fh:
+        for ln in fh:
+            if ln.startswith("V"):
+                break
+            if ln.startswith("J "):
+                return int(ln.split()[1])
+    return 0
+
+
 _BODIES = {}
 
 
@@ -157,16 +170,21 @@ def run(exe, args, env, timeout):
 
 
 def check_one(addr, harness, exe, cfg, image, fpscr, out, timeout):
-    from core import compare, paths
+    from core import compare, paths, readable_stack
     meta = paths.read_json(harness / "meta.json")
     rec = {"addr": addr, "flags": flags(image, meta, harness), "ret": meta.get("ret")}
+    if strict_flags(harness) & 9:  # mock_junk, exit_frame: the oracle junks r1..r7 and reports r15, xemu keeps its own
+        rec.update(skipped="strict judge (mock_junk or exit_frame): xemu does not model it", vectors=0, disagree=0,
+                   first=[], disagree_vectors=[], seconds=0, peak_mb=0)
+        return rec
     fn = out / "fn" / f"{addr}.txt"
     fn.parent.mkdir(parents=True, exist_ok=True)
     fn.write_text(config_text(meta, fpscr, bodies(paths.FUNCTION_BODIES).get(addr, ())), encoding="utf-8")
     act_path = out / "fn" / f"{addr}.actual.txt"
     env = dict(os.environ, XEMU_FN=str(fn), XEMU_MODEL=MODEL)
     t = time.monotonic()
-    rc, log, reason, peak = run(exe, [str(cfg["binary_path"]), str(paths.CODE_RANGES), str(paths.FSCA_TABLE),
+    rc, log, reason, peak = run(exe, [str(cfg["binary_path"]), str(paths.CODE_RANGES),
+                                      str(paths.fsca_table() if cfg.get("fsca_table") else paths.FSCA_TABLE),
                                       str(harness / "vectors.txt"), "all", str(act_path)], env, timeout)
     rec.update(seconds=round(time.monotonic() - t, 3), peak_mb=round(peak, 1))
     if reason or rc:
@@ -177,11 +195,11 @@ def check_one(addr, harness, exe, cfg, image, fpscr, out, timeout):
     vecs = compare.parse_vectors(harness / "vectors.txt")
     exp = compare.parse_results(harness / "expected.txt")
     act = compare.parse_results(act_path) if act_path.exists() else {}
-    bad = []
+    bad, lo = [], readable_stack.frame_lo()
     for i, v in vecs.items():
         if i not in exp:
             continue
-        d = compare.compare_vector(meta, image, v, exp[i], act.get(i))
+        d = compare.compare_vector(meta, image, v, exp[i], act.get(i), lo)
         if d:
             bad.append({"vector": i, "set": v["set"], "diffs": d[:8]})
     rec.update(vectors=sum(1 for i in vecs if i in exp), disagree=len(bad), first=bad[:5],
@@ -253,24 +271,29 @@ def main():
         recs.append(rec)
         with open(log, "a", encoding="utf-8") as fh:
             fh.write(json.dumps(rec) + "\n")
-        if rec["disagree"] or rec.get("run_error"):
+        if rec.get("skipped"):
+            print(f"[{k}/{len(todo)}] {addr} SKIPPED {rec['skipped']}", flush=True)
+        elif rec["disagree"] or rec.get("run_error"):
             paths.write_json(out / f"{addr}.json", rec)
             print(f"[{k}/{len(todo)}] {addr} DISAGREE {rec['disagree']}/{rec['vectors']} {rec['flags']} "
                   f"{(rec['first'][0]['diffs'][:2] if rec['first'] else rec.get('run_error'))}", flush=True)
         else:
             (out / f"{addr}.json").unlink(missing_ok=True)
-    agree = [r for r in recs if not r["disagree"] and not r.get("run_error")]
+    skipped = [r for r in recs if r.get("skipped")]
+    agree = [r for r in recs if not r["disagree"] and not r.get("run_error") and not r.get("skipped")]
     summary = {"project": str(paths.ROOT), "harness_root": str(root), "functions": len(recs), "agree": len(agree),
                "vectors": sum(r["vectors"] for r in recs), "vectors_disagree": sum(r["disagree"] for r in recs),
                "seconds": round(time.monotonic() - t0, 1),
                "seconds_per_function": round(sum(r["seconds"] for r in recs) / len(recs), 3),
                "peak_mb_max": max(r["peak_mb"] for r in recs),
-               "disagree": [r["addr"] for r in recs if r not in agree], "records": recs}
+               "skipped": [r["addr"] for r in skipped],
+               "disagree": [r["addr"] for r in recs if r not in agree and r not in skipped], "records": recs}
     paths.write_json(out / "summary.json", summary)
-    print(f"xemu: {len(agree)}/{len(recs)} functions agree; {summary['vectors_disagree']}/{summary['vectors']} "
+    print(f"xemu: {len(agree)}/{len(recs)} functions agree ({len(skipped)} skipped: strict judge); "
+          f"{summary['vectors_disagree']}/{summary['vectors']} "
           f"vectors disagree; {summary['seconds_per_function']} s per function, peak {summary['peak_mb_max']} MB",
           flush=True)
-    return 0 if len(agree) == len(recs) else 1
+    return 0 if len(agree) + len(skipped) == len(recs) else 1
 
 
 if __name__ == "__main__":

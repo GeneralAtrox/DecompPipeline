@@ -26,7 +26,16 @@ static inline u32 tcrt_fold(u32 a)
 /* P4 operand-cache address array (tc_p4.c): stores there are logged and compared, not faults */
 #define TCRT_P4_OCA_LO 0xf4000000u
 #define TCRT_P4_OCA_HI 0xf5000000u
+/* QACR0/1, the store queues' area registers (Spawn 8c05fec2 sets them before its sends): logged the same way; the
+ * window still folds onto RAM (tcrt_fold), as in the port */
+#define TCRT_P4_QACR_LO 0xff000038u
+#define TCRT_P4_QACR_HI 0xff000040u
+static inline int tcrt_p4_logged(u32 a, u32 size)
+{
+    return (a >= TCRT_P4_OCA_LO && a <= TCRT_P4_OCA_HI - size) || (a >= TCRT_P4_QACR_LO && a <= TCRT_P4_QACR_HI - size);
+}
 #define TCRT_SP 0x8cffe000u
+#define TCRT_RETS 64 /* scripted call results per vector (line C, TcOracle.RETS); a later call returns 0 */
 
 int tcrt_init(const char *image, const char *code_ranges, const char *fsca_table);
 void tcrt_reset(void);
@@ -37,14 +46,20 @@ void tcrt_set_fh(const u32 bits[4]);     /* fr12..fr15 at entry (vectors.txt lin
 void tcrt_report_fh(FILE *out);          /* fr12..fr15 at exit (line FH): only for vectors with an H line */
 void tcrt_set_gs(const u32 bits[7]);     /* r8..r14 at entry (line G) */
 void tcrt_report_gs(FILE *out);          /* r8..r14 at exit (line GH): only for vectors with a G line */
+void tcrt_set_sr(u32 imask);            /* line I: SR at entry, MD=1 and this interrupt mask (TcSr) */
+void tcrt_report_sr(FILE *out);         /* line IM: the interrupt mask at exit, only after a line I */
+void tcrt_add_hw(u32 reg, u32 value);   /* header line Y: a listed hardware register and its value (TcHw) */
+void tcrt_set_gbr_state(void);          /* header line Z: GBR is state (TcHw) */
+void tcrt_report_gbr(FILE *out);        /* line GB: GBR at exit, only after a line Z */
 void tcrt_set_low(const u32 bits[4]);    /* r0..r3 at entry (line L) */
 u32 tcrt_low(int index);                 /* for the generated thunk: a parameter in r0..r3 */
 void tcrt_set_retx(u32 value);           /* for the generated thunk: the extra result word (line RETX) */
-void tcrt_set_call_returns(const u32 rets[16]);
+void tcrt_set_call_returns(const u32 rets[TCRT_RETS]);
 void tcrt_add_live(u32 target, u32 reg, u32 n, const u32 d[4]); /* header line K: a callee changing rN (TcLive) */
 void tcrt_set_draws(const u32 draws[16]); /* line A: the vector's draws for the K callees' deltas */
 void tcrt_report(FILE *out, u32 r0, u32 fr0_bits);
-/* tc_halt (TcExit): longjmps here; the runner sets it before each vector. tcrt_halted: the vector halted (HALT). */
+/* tc_halt (TcExit), tc_spin (TcSpin): longjmp here; the runner sets it before each vector. tcrt_halted: the vector
+ * halted (1: HALT, 2: HALT SPIN). */
 extern jmp_buf tcrt_halt_jmp;
 extern int tcrt_halted;
 
@@ -56,9 +71,22 @@ void tcrt_fpu_result(u32 bits);          /* a mocked call's result, in fr0 as in
 void tcrt_fpu_log(u32 *rec, const TcArgs *args); /* call log fields 5..12, 21..24 and, with line Q, 36..56 */
 void tcrt_report_xf(FILE *out);          /* line XF */
 void tcrt_report_fq(FILE *out);          /* fr0..fr15 and the mode word at exit (line QH): only with line Q */
+void tcrt_set_fpscr_state(u32 fpscr);    /* line N: the vector's entry FPSCR, FPSCR is state (TcFpscr) */
+int tcrt_fpu_pr(void);                   /* FPSCR.PR now (the pair helpers: double or single, as the SH-4) */
+void tcrt_fpscr_call(void);              /* a call: FPSCR there (line FC) */
+void tcrt_report_fpscr(FILE *out);       /* lines FS and FC: only after a line N */
 
-/* tc_p4.c: stores to the P4 operand-cache address array, reported as W lines. */
-int tcrt_p4_store(u32 addr, u32 value, u32 size); /* 1: addr is in the array (the store is logged) */
+/* tc_strict.h (included by tc_rt.c): the stricter judge's vectors.txt lines J and U (header), N and W (per
+ * vector, after tcrt_reset, which forgets them), and its report (CS lines). */
+void tcrt_strict_line(const char *line);
+void tcrt_strict_reset(void);
+int tcrt_strict_flags(void);
+void tcrt_strict_report(FILE *out);
+void tcrt_fpu_scratch(int i, u32 bits); /* mock_junk: fri (1..11) after a mocked call (tc_fpu.c) */
+u32 tcrt_fr_bits(int index);             /* fr0..fr15 as bits (the exit frame, XR) */
+
+/* tc_p4.c: stores to the P4 operand-cache address array and QACR0/1, reported as W lines. */
+int tcrt_p4_store(u32 addr, u32 value, u32 size); /* 1: addr is one of them (the store is logged) */
 void tcrt_p4_reset(void);
 void tcrt_p4_report(FILE *out);
 

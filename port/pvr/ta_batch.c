@@ -3,7 +3,9 @@
  * A strip's triangle k is vertices k, k+1, k+2; odd triangles swap their first two so that every triangle of a strip
  * has the first one's winding, as the PowerVR sees them. The ISP word's culling mode then drops triangles by the
  * sign of their screen-space area (y down: positive is clockwise on screen): mode 2 culls counter-clockwise, mode 3
- * clockwise. Flat-shaded polygons (no Gouraud bit) take the colours of each triangle's last vertex. */
+ * clockwise. Flat-shaded polygons (no Gouraud bit) take the colours of each triangle's last vertex.
+ * Widescreen (port_widescreen): an untextured triangle that covers exactly the 640x480 screen (a fade, a dimmed
+ * backdrop) is widened to the frame; everything else keeps its screen place, so 2D art stays 4:3. */
 #include <stdlib.h>
 #include <string.h>
 #include "pvr_int.h"
@@ -59,6 +61,20 @@ void tb_poly(PvrScene *s, u32 list, u32 isp, u32 tsp, u32 tcw, u32 flags, const 
 
 static int finite_depth(f32 z) { return z > 0.0f && z < 3.0e38f; }
 
+static void widen_full_screen(PvrVtx *o, u32 flags)
+{
+    f32 k = port_widescreen(), x0 = o[0].x, x1 = o[0].x, y0 = o[0].y, y1 = o[0].y;
+    if (k <= 1.0f || (flags & PVR_BF_TEXTURE)) return;
+    for (u32 i = 1; i < 3u; i++) {
+        x0 = o[i].x < x0 ? o[i].x : x0;
+        x1 = o[i].x > x1 ? o[i].x : x1;
+        y0 = o[i].y < y0 ? o[i].y : y0;
+        y1 = o[i].y > y1 ? o[i].y : y1;
+    }
+    if (x0 < -1.0f || x0 > 0.5f || x1 < 639.0f || x1 > 641.0f || y0 > 0.5f || y1 < 479.0f) return;
+    for (u32 i = 0; i < 3u; i++) o[i].x = 320.0f + (o[i].x - 320.0f) * k;
+}
+
 static void emit(PvrScene *s, const PvrVtx *a, const PvrVtx *b, const PvrVtx *c)
 {
     PvrBatch *bt = &s->batch[s->nbatch - 1u];
@@ -80,6 +96,7 @@ static void emit(PvrScene *s, const PvrVtx *a, const PvrVtx *b, const PvrVtx *c)
         o[0].base = o[1].base = c->base;
         o[0].offset = o[1].offset = c->offset;
     }
+    widen_full_screen(o, bt->flags);
     for (u32 i = 0; i < 3u; i++) {
         o[i].batch = s->nbatch - 1u;
         if (o[i].z > s->max_z) s->max_z = o[i].z;

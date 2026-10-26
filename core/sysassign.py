@@ -1,9 +1,9 @@
 """Put every game function that is in no system into a system, without touching existing ids or members.
 
 Systems (state/systems.json) are built once (core/systems.build) and then designed by hand: their ids and members
-are referenced by designs, names and headers, so this only ever adds. A function found later (a catalog rebuild,
-a split, a seed) is placed by evidence, strongest first, repeating until nothing changes (a function placed in one
-round gives evidence to its neighbours in the next):
+are referenced by designs, names and headers, so this only ever adds (but for system_overrides, below). A function
+found later (a catalog rebuild, a split, a seed) is placed by evidence, strongest first, repeating until nothing
+changes (a function placed in one round gives evidence to its neighbours in the next):
 
   call      call or function-pointer edges either way with members (hub callees with more than HUB callers ignored,
             as in systems.build); the most edges wins;
@@ -27,7 +27,13 @@ calls 3, shared globals, adjacent neighbours 1; seed 1; resolution EXTRA_RESOLUT
 hundred functions into many tiny systems), not into call-connected clusters, which in a library chain into one huge
 group (TC's 313 engine functions: one of 239); each community becomes a new system (hint "extra").
 
-Pure: takes a workspace path. Writes systems.json (under its file lock) and records every placement in
+The one move: project.json "system_overrides" ({addr: system id}, e.g. {"8c03addc": "S11"}) puts a function into
+the named existing system, out of whichever system holds it now (or placing it when it is in none), before the
+evidence passes run (so its neighbours vote with its new system). Ids never change; a system an override empties
+keeps its id. An id that is not an existing system, or an address that is not a function in scope, is refused
+(ValueError) and nothing is written.
+
+Pure: takes a workspace path. Writes systems.json (under its file lock) and records every placement and move in
 state/systems_assigned.json.
 """
 import bisect
@@ -46,6 +52,7 @@ HUB = 25
 GLOBAL_USERS = 15
 EXTRA_HINT = "extra"
 EXTRA_RESOLUTION = 1.0
+OVERRIDES = "system_overrides"
 
 
 def unassigned(ws):
@@ -106,15 +113,53 @@ def _next_ids(systems, n):
     return [f"{prefix}{top + k:0{width}d}" for k in range(1, n + 1)]
 
 
+def overrides(ws, data):
+    """project.json "system_overrides" against systems.json data: {addr: {"system", "from"}} for each function not
+    already in its system ("from": the system holding it now, or None). Refuses (ValueError) an id that is not an
+    existing system and an address that is not a function in scope."""
+    want = (retire._read(ws, "project.json", {}) or {}).get(OVERRIDES) or {}
+    if not isinstance(want, dict):
+        raise ValueError(f"project.json {OVERRIDES} must be {{addr: system id}}, not {type(want).__name__}")
+    if not want:
+        return {}
+    ids = {s["id"] for s in data.get("systems") or []}
+    where = {a: s["id"] for s in data.get("systems") or [] for a in s.get("functions") or []}
+    mirror, known, out = retire.mirrors(ws), set(scope_functions(ws)), {}
+    for addr, sid in sorted(want.items()):
+        a = retire.canonical(str(addr).lower(), mirror)
+        if sid not in ids:
+            raise ValueError(f"project.json {OVERRIDES}: {addr} -> {sid}: {sid} is not a system in {SYSTEMS}")
+        if a not in known:
+            raise ValueError(f"project.json {OVERRIDES}: {addr} -> {sid}: {addr} is not a function in scope")
+        if where.get(a) != sid:
+            out[a] = {"system": sid, "from": where.get(a)}
+    return out
+
+
+def _moved(data, moves):
+    """systems.json data with each moved function out of every system and in its override's (ids unchanged)."""
+    if not moves:
+        return data
+    systems = []
+    for s in data.get("systems") or []:
+        fs = {a for a in s.get("functions") or [] if a not in moves}
+        fs |= {a for a, x in moves.items() if x["system"] == s["id"]}
+        systems.append({**s, "functions": sorted(fs, key=lambda a: int(a, 16))})
+    return {**data, "systems": systems}
+
+
 def plan(ws, attach=False):
-    """{"assign": {addr: {"system", "how"}}, "new": [{"id", "functions"}], "before": n unassigned,
-    "missing_graph": n, "systems": n existing, "extras": n of the unassigned that are extras} or None when the
-    project has no systems.json yet. Game functions first, then the extras (their own pass: module docstring)."""
+    """{"assign": {addr: {"system", "how"}}, "move": {addr: {"system", "from"}} (project.json system_overrides),
+    "new": [{"id", "functions"}], "before": n unassigned, "missing_graph": n, "systems": n existing, "extras": n of
+    the unassigned that are extras} or None when the project has no systems.json yet. The overrides first, then
+    game functions, then the extras (their own pass: module docstring)."""
     data = retire._read(ws, SYSTEMS)
     if not data:
         return None
-    out = {"assign": {}, "new": [], "before": 0, "missing_graph": 0, "systems": len(data.get("systems") or []),
-           "extras": 0}
+    move = overrides(ws, data)
+    data = _moved(data, move)
+    out = {"assign": {}, "move": move, "new": [], "before": 0, "missing_graph": 0,
+           "systems": len(data.get("systems") or []), "extras": 0}
     game = game_functions(ws)
     _pass(ws, data, game, game, attach, "", out)
     extras = scope.extra_functions(ws)
@@ -282,9 +327,9 @@ def apply(ws, attach=False):
     ws = pathlib.Path(ws)
     with filelock.locked(ws / SYSTEMS):
         p = plan(ws, attach)
-        if not p or not p["assign"]:
+        if not p or not (p["assign"] or p["move"]):
             return p
-        data = retire._read(ws, SYSTEMS)
+        data = _moved(retire._read(ws, SYSTEMS), p["move"])
         for s in data["systems"]:
             add = [a for a, x in p["assign"].items() if x["system"] == s["id"]]
             if add:
@@ -292,7 +337,9 @@ def apply(ws, attach=False):
         data["systems"] += p["new"]
         filelock.write_json(ws / SYSTEMS, data)
     at = datetime.datetime.now().isoformat(timespec="seconds")
-    filelock.update_json(ws / ASSIGNED, lambda d: d.update({a: {**x, "at": at} for a, x in p["assign"].items()}), {})
+    rec = {a: {**x, "how": "override", "at": at} for a, x in p["move"].items()}
+    rec.update({a: {**x, "at": at} for a, x in p["assign"].items()})
+    filelock.update_json(ws / ASSIGNED, lambda d: d.update(rec), {})
     return p
 
 
@@ -304,6 +351,9 @@ def report(p):
     if p.get("extras"):
         lines[0] = (f"{p['before'] - p['extras']} game function(s) and {p['extras']} extra function(s) "
                     f"(project.json extra_functions) in no system (of {p['systems']} existing systems)")
+    if p.get("move"):
+        lines.append(f"moved by project.json {OVERRIDES} ({len(p['move'])}): " + " ".join(
+            f"{a} {x['from'] or 'none'}->{x['system']}" for a, x in sorted(p["move"].items())))
     if not p["assign"]:
         return lines + ["nothing to assign"]
     how = collections.Counter(x["how"] for x in p["assign"].values())

@@ -109,10 +109,32 @@ def coverage_verdict(summary, gate, addr=None):
          "pct": round(100.0 * hit / total, 1) if total else 100.0, "allowed": allowed}
     if unc and unhit_blocks(summary):
         v["unhit"] = unhit_blocks(summary)
+    g = grade(summary)
+    if g:  # report only (TcDirs): the grade and the branch directions taken
+        v.update(grade=g["grade"], branch_dirs=g["branch_dirs"], branch_pct=g["branch_pct"])
+        if summary.get("branch_dirs_unhit"):
+            v["dirs_unhit"] = [str(x) for x in summary["branch_dirs_unhit"][:20]]
     why = gate["waive"].get(addr) if addr else None
     if not v["ok"] and why:
         v.update(ok=True, waived=why)
     return v
+
+
+FULL, TESTED = "fully proven", "proven where tested"
+
+
+def grade(summary):
+    """The coverage grade of a harness summary with branch directions (TcDirs, target "branch_coverage"): "fully
+    proven" when the valid vectors reach every block and take every branch direction, else "proven where tested";
+    {"grade", "blocks": [hit, total], "branch_dirs": [hit, total], "branch_pct"}. None without direction data (the
+    flag off, a harness from before it, or a refused one). Report only: no gate reads it."""
+    s = summary or {}
+    if s.get("branch_dirs_total") is None or s.get("blocks_total") is None or s.get("blocks_hit_all") is None:
+        return None
+    bt, bh = int(s["blocks_total"]), int(s["blocks_hit_all"])
+    dt, dh = int(s["branch_dirs_total"]), int(s.get("branch_dirs_hit_all") or 0)
+    return {"grade": FULL if bh >= bt and dh >= dt else TESTED, "blocks": [bh, bt], "branch_dirs": [dh, dt],
+            "branch_pct": round(100.0 * dh / dt, 1) if dt else 100.0}
 
 
 def mutation_flag(row, mset):
@@ -188,7 +210,9 @@ def figure(rows):
             "no_coverage_data": sum(1 for r in rows.values() if r["coverage"].get("ok") is None),
             "waived": sum(1 for r in rows.values() if r["coverage"].get("waived")),
             "weak_flag": sum(1 for r in rows.values() if r["mutation_flag"] == "weak"),
-            "mutation_records": sum(1 for r in rows.values() if r["mutation"])}
+            "mutation_records": sum(1 for r in rows.values() if r["mutation"]),
+            "graded": sum(1 for r in rows.values() if r["coverage"].get("grade")),
+            "fully_proven": sum(1 for r in rows.values() if r["coverage"].get("grade") == FULL)}
 
 
 def summary_line(f, gate=None):
@@ -198,6 +222,8 @@ def summary_line(f, gate=None):
     return (f"proof: {f[VERIFIED]}/{f['matched']} matched functions verified; {f[LOW]} matched_low_coverage ({rule})"
             + (f"; {f['waived']} waived" if f["waived"] else "")
             + (f"; {f['no_coverage_data']} without block data" if f["no_coverage_data"] else "")
+            + (f"; fully proven {f['fully_proven']} of {f['graded']} graded (every branch direction taken)"
+               if f.get("graded") else "")
             + f"; mutation records {f['mutation_records']}, weak harnesses {f['weak_flag']}"
             + (f", {f[WEAK]} not verified (enforce)" if f[WEAK] else ""))
 

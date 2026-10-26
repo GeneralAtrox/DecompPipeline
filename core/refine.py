@@ -12,8 +12,8 @@ import shutil
 import threading
 import time
 
-from . import agent, callee_drift, check, filelock, global_extents, header_snapshot, infra, paths, readable
-from . import lean_proof, readable_lean
+from . import agent, busylog, callee_drift, check, filelock, global_extents, header_snapshot, infra, paths, readable
+from . import lean_proof, readable_lean, verdict_memo
 from . import readable_check as rcheck
 from .readable_context import context_md, global_hint, pool_constants  # noqa: F401 (refine.py coverage uses them)
 from .readable_lean import own_pool  # noqa: F401
@@ -22,6 +22,11 @@ from .readable_sandbox import (CHECK_LAUNCHER, TASK, build_sandbox, check_launch
 
 LEDGER = paths.STATE / "readable.json"
 _LOCK = threading.Lock()
+
+
+def dump(led):
+    """readable.json's text: one line per function (filelock.dumps_rows): an update 72 ms on Toy Commander, not 150."""
+    return filelock.dumps_rows(led, None)
 
 
 
@@ -44,9 +49,13 @@ def update(addr, drop=(), **fields):
         return row
 
     with _LOCK:
-        return filelock.update_json(LEDGER, merge, {})[1]
+        return filelock.update_json(LEDGER, merge, {}, dump=dump)[1]
 
 
+# an adopted machine file's row says so (core/draft_run: readable_by machine); an agent then working on it is told
+MACHINE_NOTE = ("\n## No agent has named this file yet\n\nIt is a machine readable file (core/rtx): its locals are "
+                "n1, x1, ... and its numbers are as the code has them. Give them the names their meaning calls for "
+                "(the headers' constants for the numbers) while you work on it.\n")
 FILE_KEPT = ("readable", "stale")  # statuses that describe an existing readable/src file (set by a pass or verify)
 
 
@@ -128,16 +137,28 @@ def raw_missing(addr):
     return None
 
 
-def harness_stale(cfg, addr):
+def harness_stale(cfg, addr, on_pass=None, memo=None):
     """Why the function's harness cannot judge it, or None: the verified raw C (matched/) must still pass its own
     harness with check.py. One made by an older oracle fails it too, so a readable rewrite could never pass (and
-    agents would be paid to chase it): re-prepare the harness (decomp.py prepare ADDR, servers stopped)."""
+    agents would be paid to chase it): re-prepare the harness (decomp.py prepare ADDR, servers stopped).
+    on_pass(result): called with check.run_check's result when it passes (reprepare_stale --verdicts).
+    memo (core/verdict_memo.RawPass, the readable stage's): a PASS kept on the very inputs the judge would read now
+    is taken without judging again, and a new PASS is kept; never with on_pass, which needs the judge's result."""
     missing = raw_missing(addr)
     if missing:
         return missing
-    res = check.run_check(cfg, addr, str(paths.MATCHED / f"{addr}.c"), build_dir=paths.BUILD / addr / "rd_rawcheck")
+    src = paths.MATCHED / f"{addr}.c"
+    memo = None if on_pass else memo
+    key = memo.key_of(addr, src) if memo is not None else None  # before the judge reads its inputs
+    if key is not None and memo.passed(addr, key) is not None:
+        return None
+    res = check.run_check(cfg, addr, str(src), build_dir=paths.BUILD / addr / "rd_rawcheck")
     infra.check(res.get("build"), res.get("run_error"), what="raw check")  # a refused file is no stale harness
     if res["verdict"] == "PASS":
+        if on_pass:
+            on_pass(res)
+        if memo is not None:
+            memo.record(addr, key, res.get("total"))
         return None
     return (f"the matched raw C fails this harness too ({res['stage']}, {res.get('failing')}/{res.get('total')} "
             f"vectors): re-prepare it with `decomp.py prepare {addr}`")
@@ -148,6 +169,35 @@ def stale_callee_records(meta):
     of the callee, or the callee re-prepared since): readable C would be declared and placed by the record.
     [(addr, recorded, the callee's own)]."""
     return callee_drift.drift(meta, callee_drift.Signatures(paths.HARNESS))
+
+
+_RAW_PASSED = {}  # addr -> the verdict_memo key of the inputs harness_stale_kept saw pass
+_RAW_MEMO = {}  # state folder -> its verdict_memo.RawPass
+_MEMO_LOCK = threading.Lock()
+
+
+def raw_memo():
+    """This workspace's kept raw-judge PASSes (core/verdict_memo.RawPass), one per process."""
+    with _MEMO_LOCK:
+        return _RAW_MEMO.setdefault(paths.STATE, verdict_memo.RawPass())
+
+
+def harness_stale_kept(cfg, addr):
+    """harness_stale for draft_run.first, whose cycle (fn_claim.cycle) goes on to refine(), which checks the same
+    fact: a PASS is kept under the key of the inputs it was judged on (core/verdict_memo: every input run_check
+    reads, hashed before judging), for raw_pass_kept."""
+    key = verdict_memo.key(addr, paths.MATCHED / f"{addr}.c", verdict_memo.judge_stamp())
+    stale = harness_stale(cfg, addr, memo=raw_memo())
+    if stale is None:
+        _RAW_PASSED[addr] = key
+    return stale
+
+
+def raw_pass_kept(addr):
+    """True (once per kept PASS) when harness_stale_kept passed addr's raw C on the very inputs the judge would read
+    now; anything changed since (the C, a harness or packet file, the judge's code, the config) judges again."""
+    key = _RAW_PASSED.pop(addr, None)
+    return key is not None and key == verdict_memo.key(addr, paths.MATCHED / f"{addr}.c", verdict_memo.judge_stamp())
 
 
 def preflight(cfg, reg, addr, meta):
@@ -196,14 +246,15 @@ def refine(cfg, addr, model=None, max_attempts=3, log=print, stop_flag=None, eff
         return "raw_not_matched"
     reg = readable.Registry()
     meta = paths.read_json(paths.HARNESS / addr / "meta.json")
-    stale = harness_stale(cfg, addr)
+    stale = None if raw_pass_kept(addr) else harness_stale(cfg, addr, memo=raw_memo())  # the draft just judged them
     if stale:  # true of an old file too: verify records the same
         log(f"harness_stale: {stale}")
         update(addr, status="harness_stale", note=stale)
         return "harness_stale"
     old = load_ledger().get(addr, {})
     kept = kept_status(addr, old)  # a redo: the old file keeps its verdict unless an attempt passes
-    blocked = preflight(cfg, reg, addr, meta)
+    with busylog.busy(busylog.slot(), "j"):
+        blocked = preflight(cfg, reg, addr, meta)
     if blocked:
         log(f"blocked (tooling, no agent started): {blocked}")
         if kept:
@@ -219,6 +270,8 @@ def refine(cfg, addr, model=None, max_attempts=3, log=print, stop_flag=None, eff
                     "prototypes were updated since, or the harness now reaches paths it did not (new hints, a re-matched "
                     "raw.c). Bring work.c up to date and fix what the check reports; keep the rest. Current result: "
                     f"{old.get('note', '')}\n")
+    if kept and old.get("readable_by") == "machine":
+        previous += MACHINE_NOTE
     rec = update(addr, status="running", started=now(), model=model or cfg["model"],
                  **({"redo_of": kept} if kept else {}))
     attempts = rec.get("attempts", [])
@@ -226,21 +279,26 @@ def refine(cfg, addr, model=None, max_attempts=3, log=print, stop_flag=None, eff
     raw_path = paths.MATCHED / f"{addr}.c"  # batch 26: a large function's effort (missing: the attempt reports it)
     raw_bytes = raw_path.stat().st_size if raw_path.is_file() else None
     acfg = dict(cfg, model=model or cfg["model"], effort=agent.readable_effort(cfg, effort, raw_bytes),
-                output_cap=cfg.get("readable_output_cap"))
+                output_cap=cfg.get("readable_output_cap"), cache_ttl=cfg.get("readable_cache_ttl"))
     for _ in range(max_attempts):
         n = len(attempts) + 1
         box, task = build_sandbox(cfg, reg, addr, meta, prev_work, previous)
         before = tree_hashes(box)
         tdir = runs / f"attempt-{n:02d}"
         tdir.mkdir(parents=True, exist_ok=True)
-        info = agent.run_attempt(acfg, box, task, tdir / "transcript.jsonl", log, stop_flag or threading.Event())
+        t0 = time.time()
+        with busylog.busy(busylog.slot(), "a"):
+            info = agent.run_attempt(acfg, box, task, tdir / "transcript.jsonl", log, stop_flag or threading.Event())
+        duration_s = round(time.time() - t0, 1)  # the agent session, as core/job records a raw attempt's
         work = tdir / "work.c"
         shutil.copyfile(box / "work.c", work)
-        att = {"n": n, "model": acfg["model"], "headers": header_snapshot.active_hash(), **info}
+        att = {"n": n, "model": acfg["model"], "headers": header_snapshot.active_hash(), "duration_s": duration_s,
+               **info}
         if tree_hashes(box) != before:
             att.update(verdict="FAIL", tamper="a read-only sandbox file changed")
         else:
-            res = rcheck.check_readable(cfg, addr, str(work), paths.BUILD / addr / "readable", reg=reg)
+            with busylog.busy(busylog.slot(), "j"):
+                res = rcheck.check_readable(cfg, addr, str(work), paths.BUILD / addr / "readable", reg=reg)
             att.update(verdict=res["verdict"], stage=res["stage"], lint=res.get("lint"), failing=res.get("failing"),
                        total=res.get("total"), first_diffs=res.get("first_diffs", [])[:2], run_error=res.get("run_error"),
                        build=(res.get("build") or [])[:4] if res["stage"] == "build" else None)
@@ -248,7 +306,9 @@ def refine(cfg, addr, model=None, max_attempts=3, log=print, stop_flag=None, eff
         update(addr, attempts=attempts)
         infra.check(att.get("build"), att.get("run_error"), what=f"attempt {n} judge")  # recorded; run_one retries
         if att["verdict"] == "PASS":
+            readable.SRC.mkdir(parents=True, exist_ok=True)  # a fresh workspace has no readable/src yet
             shutil.copyfile(work, readable.SRC / f"{addr}.c")
+            update(addr, readable_by="agent")
             return record_pass(addr, header_snapshot.active_hash())
         if info.get("api_error"):
             if kept:

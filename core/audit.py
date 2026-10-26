@@ -4,7 +4,8 @@ The kinds are data: target.json "blocker_kinds", a list in priority order (the f
   {"id", "status": [ledger statuses it applies to], "fix": what unblocks it, and one or more conditions:
    "detail": regex searched in verdict_detail,
    "diff": regex searched in the last attempt's first-diff lines ("diff_all": true = every line must match),
-   "stage": regex on the last attempt's stage (lint, build, run, compare)}.
+   "stage": regex on the last attempt's stage (lint, build, run, compare),
+   and optionally "fixed_at": when its latest fix landed (core/stale_skips.py requeues the rows judged before)}.
 A kind matches when the status is listed and any of its conditions holds. A finished function (failed, skipped,
 error) that no kind matches is UNDECLARED: the exit code is then 2, so a new kind of blocker gets noticed and
 declared (or fixed) instead of hiding in a long tail. Functions still on their way (queued, running, stopped,
@@ -25,24 +26,28 @@ def norm(s):
     return re.sub(r"0x[0-9a-f]+|\b[0-9a-f]{6,8}\b|\d+(\.\d+)?", "#", s)
 
 
-def load(ws):
+def load(ws, ledger=None):
     """(project.json, blocker kinds, ledger functions, functions to decompile {addr: catalog entry + tier, "extra"}):
-    the game ranges plus project.json "extra_functions" (core/scope.py; "extra" marks those)."""
-    from . import scope
+    the game ranges plus project.json "extra_functions" (core/scope.py; "extra" marks those). ledger: the caller's
+    already-read ledger functions (the scorecard's), not a second parse of the same file."""
+    from . import hw_ops, scope
     from .orch import tier
     ws = pathlib.Path(ws)
     proj = json.loads((ws / "project.json").read_text(encoding="utf-8"))
     target = json.loads((TOOL / "targets" / proj["target"] / "target.json").read_text(encoding="utf-8"))
-    ledger = json.loads((ws / "state" / "ledger.json").read_text(encoding="utf-8"))["functions"]
+    if ledger is None:
+        ledger = json.loads((ws / "state" / "ledger.json").read_text(encoding="utf-8"))["functions"]
     cat = json.loads((ws / "state" / "catalog.json").read_text(encoding="utf-8"))["functions"]
     sc = scope.Scope(proj, ws)
-    game = {f["addr"]: dict(f, tier=tier(f), extra=sc.is_extra(f["addr"])) for f in cat if f["addr"] in sc}
+    listed = hw_ops.listed(dict(target, **proj))  # project.json "hw_ops" (target.json "hw_reads")
+    game = {f["addr"]: dict(f, tier=tier(f, listed=listed), extra=sc.is_extra(f["addr"]))
+            for f in cat if f["addr"] in sc}
     return proj, target.get("blocker_kinds") or [], ledger, game
 
 
 def last_attempt(rec):
     atts = rec.get("attempts") or []
-    own = [a for a in atts if a.get("model") != "import"]
+    own = [a for a in atts if a.get("model") not in ("import", "previous", "translated")]  # attempt 0: no agent
     return (own or atts or [{}])[-1]
 
 

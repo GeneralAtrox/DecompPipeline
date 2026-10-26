@@ -43,11 +43,12 @@ class Gate(unittest.TestCase):
         self.assertEqual(draft_gate.reasons(SHORT, draft_gate.named_values(self.d)), [])
 
     def test_long_and_named_numbers_refused(self):
-        got = draft_gate.reasons(CLOCK, draft_gate.named_values(self.d))
+        got = draft_gate.reasons(CLOCK, draft_gate.named_values(self.d), max_lines=6)
         self.assertEqual(got, ["8 lines (drafts are adopted up to 6)", "781250u is CLOCK_TIMER_HZ"])  # once; 1u, 0.5f ok
         self.assertEqual(draft_gate.reasons(ANIM, draft_gate.named_values(self.d)), ["200 is ANIM_REC_200"])
-        # the limit comes from the caller (config readable_draft_max_lines)
+        # the limit comes from the caller (config readable_draft_max_lines); none by default (readable-tx)
         self.assertEqual(draft_gate.reasons(CLOCK, {}, max_lines=8), [])
+        self.assertEqual(draft_gate.reasons(CLOCK, {}), [])
 
     def test_judge_applies_the_gate(self):
         """A draft that passes the judge but fails the gate is not adoptable; with --draft start it is the agent's
@@ -58,7 +59,7 @@ class Gate(unittest.TestCase):
                 mock.patch.object(draft_run, "draft_path", lambda a: path), \
                 mock.patch.object(draft_run.rcheck, "check_readable", lambda *a, **k: ok), \
                 mock.patch.object(draft_gate.readable, "INCLUDE", self.d):
-            _, res, gaps = draft_run.judge({}, None, "8c010000", {})
+            _, res, gaps = draft_run.judge({"readable_draft_max_lines": 6}, None, "8c010000", {})
             self.assertFalse(draft_run.adoptable(res, gaps))
             self.assertTrue(draft_run.why(res, gaps).startswith("passes; not adopted: 8 lines"))
             _, res, gaps = draft_run.judge({"readable_draft_max_lines": 12}, None, "8c010000", {})

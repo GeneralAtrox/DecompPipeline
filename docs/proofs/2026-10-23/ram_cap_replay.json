@@ -1,0 +1,22 @@
+{
+ "samples": 1779,
+ "minutes": 60.0,
+ "total_mb": 32213,
+ "cores": 24,
+ "peak_jvm_mb": 952,
+ "one_jvm_pct": 2.96,
+ "median_prepare_jvm_life_s": 8.4,
+ "real_ram_max": 83.9,
+ "real_ram_median": 72.0,
+ "jvms_running_median": 3,
+ "added_jvm_starts_upper_bound": 934,
+ "waiting_ticket_minutes": 278.7,
+ "waiting_ticket_minutes_served_sooner": 130.6,
+ "prepares_started_sooner": 933,
+ "share_at_cap_with_waiters_old": 0.755,
+ "jvms_running_mean_real": 2.44,
+ "jvms_running_mean_replay": 5.05,
+ "replay_ram_max": 85.81,
+ "samples_at_or_over_85": 2,
+ "samples_at_or_over_95": 0
+}

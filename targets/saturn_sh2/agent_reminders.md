@@ -1,0 +1,13 @@
+- An instruction whose mnemonic starts with `_` is in a delay slot. It executes BEFORE the branch above it takes effect, and that includes jsr, bsr, rts, bt/s and bf/s.
+- bt and bf test the T bit set by the last cmp/xx, tst, dt or other T-setting instruction. bt/s and bf/s have a delay slot. Plain bt and bf do not.
+- mov.b and mov.w loads sign-extend into the 32-bit register. extu.b and extu.w zero-extend.
+- `mov.l @(disp,rN)` shows the byte offset already scaled. `mov.l @(0x06...,pc),rN` (and `mov.w @(...,pc)`) loads a literal-pool constant at that address, and its value is in the annotation (`; = 0x...`).
+- Guest memory is big-endian. rd16/rd32 and wr16/wr32 already use the SH-2's byte order: never build a word from bytes or split one into bytes yourself (the byte at a word's address is its most significant byte).
+- Registers are 32-bit, so use u32 or s32 arithmetic with wraparound. shll/shlr/shar shift by one, shll2/8/16 and shlr2/8/16 by that many.
+- MACH and MACL are ordinary registers here: keep them in local variables. mul.l sets MACL to the low 32 bits of the product; muls.w/mulu.w set MACL to the signed/unsigned 16x16 product; dmuls.l/dmulu.l set MACH:MACL to the signed/unsigned 64-bit product (compute it in s64/u64 casts of the operands); sts macl,rN / sts mach,rN read them.
+- addc, subc and negc add or subtract the T bit as a carry/borrow and set T to the new carry; rotcl and rotcr rotate through T. Keep T in a local variable where the original chains them (64-bit adds and shifts).
+- div0u, div0s and div1 divide one quotient bit per div1, with the Q, M and T bits as state. Reproduce each step exactly as the SH-2 manual defines it (Q, M, T as local variables), or replace the whole sequence only when it is certain to give the same quotient and remainder for every input.
+- The return value is in r0 (r0 and r1 for a 64-bit result). Arguments are in r4-r7, more on the stack. There is no FPU: no float registers and no float arithmetic.
+- The game engine is called through pointer tables in RAM (`mov.l @rN,rM` then `jsr @rM`): the call target is the word read from memory. Read it with rd32 and pass it to tc_call, in the original's order of loads and calls.
+- r15 (the stack pointer) is 0x{entry_sp:08x} at entry. The original's stack frame is guest memory just below it: an
+  address the original computes from r15 (a local passed to a callee, a stack argument) is that guest address.

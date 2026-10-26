@@ -13,13 +13,14 @@ FIXED_MEMBERS = {"Vec", "niceFloat", "scrPtr", "word", "intArg", "scratchBytes",
 NEW_MEMBER_RE = re.compile(r"(gen|Gen)[A-Z0-9]\w*|GEN_[A-Z0-9_]+")
 TYPES = {"TcInputs", "TcBase", "Vec", "Proto", "Param", "List", "ArrayList", "Map", "HashMap", "TreeMap",
          "LinkedHashMap", "Set", "HashSet", "TreeSet", "Arrays", "Collections", "Math", "Float", "Integer", "Long",
-         "Short", "Byte", "Boolean", "Character", "String", "StringBuilder", "Iterator", "IllegalArgumentException"}
+         "Short", "Byte", "Double", "Boolean", "Character", "String", "StringBuilder", "Iterator", "IllegalArgumentException"}
 BASE_CONSTANTS = {"RAM_LO", "RAM_HI", "SCR", "SCR_SIZE", "SP", "SENTINEL", "STACK_LO", "STEP_LIMIT"}
 CALLS = {
     # random numbers (rnd is seeded by TcPrepare)
     "nextInt", "nextFloat", "nextLong", "nextBoolean", "nextDouble",
     # numbers and strings
-    "floatToIntBits", "intBitsToFloat", "floatToRawIntBits", "abs", "min", "max", "floorMod", "floorDiv",
+    "floatToIntBits", "intBitsToFloat", "floatToRawIntBits", "doubleToLongBits", "longBitsToDouble",
+    "doubleToRawLongBits", "abs", "min", "max", "floorMod", "floorDiv",
     "parseInt", "parseLong", "parseUnsignedLong", "decode", "valueOf", "intValue", "longValue", "toHexString",
     "charAt", "length", "matches", "substring", "startsWith", "endsWith", "split", "trim", "isEmpty", "equals",
     "toLowerCase", "indexOf", "append", "toString", "format",

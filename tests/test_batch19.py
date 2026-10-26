@@ -115,6 +115,24 @@ class FreshStamp(unittest.TestCase):
         self.assertNotEqual(via_memory, oracle_stamp.stamp_of(cfg, D1, {"TcA.java": d / "TcA.java"},
                                                               oracle_stamp.facts_hashed(body), None, 48, 48))
 
+    def test_shared_inputs_give_the_same_stamp(self):
+        """oracle_fresh.Stamper hashes the scripts, facts and catalog once (oracle_stamp.common) for a whole scan:
+        every function's stamp is the one stamp_of takes from the files itself."""
+        d = pathlib.Path(tempfile.mkdtemp(dir=TMP))
+        put(d / "TcA.java", "class A {}")
+        put(d / "TcB.java", "class B {}")
+        put(d / "hint.txt", "r4 0..10\n")
+        scripts = {"TcB.java": d / "TcB.java", "TcA.java": d / "TcA.java"}
+        facts = oracle_stamp.facts_hashed("ram 1 2\n")
+        shared = oracle_stamp.common(scripts, facts)
+        cfg = {"binary_sha256": "x", "ghidra_home": "g", "fsca_table": True,
+               "spin_waits": {D2: "waits on the vblank word 8cfe000c"}}
+        for addr, hints, ndev in ((D1, None, 48), (D2, d / "hint.txt", 12), (RAW, d / "hint.txt", 48)):
+            self.assertEqual(oracle_stamp.stamp_of(cfg, addr, scripts, facts, hints, ndev, 48),
+                             oracle_stamp.stamp_of(cfg, addr, scripts, facts, hints, ndev, 48, shared), addr)
+        self.assertNotEqual(oracle_stamp.stamp_of(cfg, D1, scripts, facts, None, 48, 48, shared),
+                            oracle_stamp.stamp_of(cfg, D2, scripts, facts, None, 48, 48, shared))
+
 
 AUDIT_RUNNER = """
 import os, runpy, sys

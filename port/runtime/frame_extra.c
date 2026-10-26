@@ -5,7 +5,8 @@
  * what the tick left, so the next tick runs exactly as it would have. A frame with no in-between frame (no time, or
  * none ready) is shown after the wait, as --present tick does.
  *
- *   --present tick|interp   one shown frame per rendered one (the default), or in-between frames too
+ *   --present tick|interp   one shown frame per rendered one (the kit's default; the checks use it), or in-between
+ *                           frames too (a play run's default, host/host_main.cpp)
  *   --interp-frames N       --fixed-clock runs: in-between frames per vertical blank waited for (default 1)
  *   --interp-verify 1       logs what in-between frames wrote in guest RAM, and checks that it all went back
  *   --fps N                 real time: at most N in-between frames a second (default 0: as many as the display takes
@@ -53,6 +54,7 @@ static u32 g_fps;                 /* --fps N: in-between frames at most N per se
 static u64 g_shown_us;            /* when the last in-between frame started */
 static u32 g_total;
 static u32 g_begun, g_no_time, g_not_shown; /* rendered frames that allowed in-between ones; waits skipped, why */
+static int g_starved;                       /* this rendered frame's wait skipped one for want of time */
 
 /* Guest RAM copies are memory-bound, and one core does not saturate the memory: a copy is split into slices, one
  * for this thread and one for each helper thread (--interp-copy-threads N: N - 1 helpers). Four threads copy 16 MB
@@ -197,6 +199,10 @@ int port_extra_begin(u32 vblanks)
     if (host_fixed_clock() && host_fast_until()) return 0; /* --fast-until: ticks only until real time starts */
     if (g_ready && !g_ready()) return 0;
     if (!g_inited && !init()) return 0;
+    /* the cost is only measured when one is drawn: one that was slow once (a load) would keep them all out, so a
+     * rendered frame that got none for want of time lowers it a little, and the next one that fits measures again */
+    if (g_starved && !g_count) g_cost_us -= g_cost_us / 16u;
+    g_starved = 0;
     g_wait = vblanks ? vblanks : 1u;
     g_count = g_fixed_done = 0;
     g_begun++;
@@ -290,12 +296,14 @@ int port_extra_idle(u64 deadline_us)
         return 1;
     }
     u64 now = host_ticks(1000000u), tick_us = (u64)g_wait * 1000000u / PORT_VBLANK_HZ;
-    if (now + g_cost_us + g_cost_us / 4u >= deadline_us) return g_no_time++, 0;
+    if (now + g_cost_us + g_cost_us / 4u >= deadline_us) return g_no_time++, g_starved = 1, 0;
     if (g_fps && now - g_shown_us < 1000000u / g_fps) return 0; /* --fps: not yet */
     if (!gfx_can_show()) return g_not_shown++, 0;               /* the display would not take it */
     f32 alpha = now - g_start_us >= tick_us ? 1.0f : (f32)(now - g_start_us) / (f32)tick_us;
     u64 cost = draw_one(alpha);
-    /* the first one is slow (the copy of guest RAM is new memory) and would keep the next ones from being tried */
+    /* the first one is slow (the copy of guest RAM is new memory) and would keep the next ones from being tried; a
+     * sample counts at most twice the estimate, so one hitch moves it little and a lasting change still comes through */
+    if (g_cost_us && cost > 2u * g_cost_us) cost = 2u * g_cost_us;
     if (g_total > 1u) g_cost_us = g_cost_us ? (g_cost_us * 7u + cost) / 8u : cost;
     g_shown_us = now;
     return 1;

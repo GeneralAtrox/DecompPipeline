@@ -173,7 +173,7 @@ class Wiring(unittest.TestCase):
         o, v, r = self.text("TcOracle.java"), self.text("TcVectors.java"), self.text("TcReach.java")
         self.assertIn("if (pc == watchPc && res.watched == null) TcReach.snap(res, calls, emu);", o)
         self.assertIn("long watchPc = -1;", o)
-        self.assertIn("if (facts.reachRuns > 0) seeds.add(TcReach.entry(this, v, r));", v)
+        self.assertIn("if (facts.reachRuns > 0 || facts.targetedVectors) seeds.add(TcReach.entry(this, v, r));", v)
         self.assertIn("s.seeds = t.seeds;", self.text("TcRescue.java"))  # a rescue pass that loses keeps its seeds
         self.assertIn("int id = g.valid[0] + g.valid[1];", r)  # added vectors follow the first pass's
         self.assertIn("if (g.facts.reachRuns <= 0) return null;", r)  # off: no "reach" key, the sites stay untried

@@ -15,7 +15,7 @@
 #include <windows.h>
 #include "rd_internal.h"
 
-static u32 g_rets[16];
+static u32 g_rets[TCRT_RETS];
 static u32 g_ncalls;
 static u32 g_call_log[RD_MAX_CALLS][RD_LOG_FIELDS];
 static u32 g_low[4]; /* r0..r3 at entry (line L), for a thunk passing a parameter there (tcrt_low) */
@@ -32,7 +32,7 @@ static u32 g_self_host, g_self_guest; /* the function under test: host and guest
 static f32 u2f(u32 u) { f32 f; memcpy(&f, &u, 4); return f; }
 static u32 f2u(f32 f) { u32 u; memcpy(&u, &f, 4); return u; }
 
-static u32 next_return(void) { return g_ncalls < 16 ? g_rets[g_ncalls] : 0; }
+static u32 next_return(void) { return g_ncalls < TCRT_RETS ? g_rets[g_ncalls] : 0; }
 
 /* In the verification game.h every other original function is a pointer to its guest address, but the function under
  * test is compiled here, so its own name is a host address. The thunk names it (rd_set_self), and a word it stores in
@@ -49,6 +49,7 @@ u32 rd_self_guest(u32 w) { return g_self_host && w == g_self_host ? g_self_guest
 /* lo: r0..r3 at the call (fields 25..28); fr12..fr15, r8..r14 and, with line Q, the FPU come from the state. */
 static void log_call(u32 target, const u32 r[4], const u32 fr[8], const u32 st[8], const u32 lo[4])
 {
+    tcrt_fpscr_call();
     if (g_ncalls < RD_MAX_CALLS) {
         u32 *rec = g_call_log[g_ncalls];
         memset(rec, 0, sizeof g_call_log[0]);
@@ -64,6 +65,51 @@ static void log_call(u32 target, const u32 r[4], const u32 fr[8], const u32 st[8
 
 static void out_copy(u32 call, u32 target, const u32 *rec);
 
+/* The stricter judge (tc_strict.h). A pointer into the host stack is a readable local's: its bytes directly. Any
+ * other is a guest one, in the oracle's bounds (TcBase.inRam), through a code page's guard; a write only where no
+ * byte is an instruction's (TcStrict.writable), and tcrt_report finds it as it finds the C's own. A fact's size is
+ * the callee's: a readable local smaller than it would be overrun, as a C mistake can overrun it. */
+static int host_stack(u32 p, u32 n)
+{
+    ULONG_PTR lo = 0, hi = 0;
+    GetCurrentThreadStackLimits(&lo, &hi);
+    return p >= lo && p + n <= hi && p + n > p;
+}
+
+static int guest_copy(u32 p, u32 n, u8 *out, const u8 *in)
+{
+    p = tcrt_fold(p);
+    if (p < TCRT_VALID_LO || p > TCRT_RAM_BASE + TCRT_RAM_SIZE - n) return 0;
+    for (u32 k = 0; in && k < n; k++)
+        if (rd_is_code(p + k)) return 0;
+    u32 first = p & ~(RD_PAGE - 1), last = (p + n - 1) & ~(RD_PAGE - 1);
+    int g0 = rd_page_guarded(first), g1 = last != first && rd_page_guarded(last);
+    if (g0) rd_page_open(first);
+    if (g1) rd_page_open(last);
+    if (in) memcpy((void *)(uintptr_t)p, in, n);
+    else memcpy(out, (const void *)(uintptr_t)p, n);
+    if (g0) rd_page_close(first);
+    if (g1) rd_page_close(last);
+    return 1;
+}
+
+static int tcs_read(u32 p, u32 n, u8 *out)
+{
+    if (!host_stack(p, n)) return guest_copy(p, n, out, NULL);
+    memcpy(out, (const void *)(uintptr_t)p, n);
+    return 1;
+}
+
+static void tcs_write(u32 p, u32 n, const u8 *in)
+{
+    if (!host_stack(p, n)) (void)guest_copy(p, n, NULL, in);
+    else memcpy((void *)(uintptr_t)p, in, n);
+}
+
+static void tcs_scratch(int i, u32 bits) { rd_sh4_scratch(i, bits); }
+
+#include "tc_strict.h"
+
 /* The raw-C call API (runs raw matched C through this runtime, for its own regression, and for the original's bytes
  * at out-pointer calls: vectors line B). */
 u32 tc_call(u32 target, const TcArgs *args)
@@ -77,6 +123,7 @@ u32 tc_call(u32 target, const TcArgs *args)
     log_call(tcrt_fold(target), r, fr, st, lo);
     if (g_ncalls <= RD_MAX_CALLS) out_copy(g_ncalls - 1, tcrt_fold(target), g_call_log[g_ncalls - 1]);
     if (rd_tracing && g_ncalls <= RD_MAX_CALLS) rd_trace_call(g_ncalls - 1, tcrt_fold(target), g_call_log[g_ncalls - 1]);
+    if (g_ncalls <= RD_MAX_CALLS) tcs_call(g_ncalls - 1, tcrt_fold(target), g_call_log[g_ncalls - 1]); /* tc_strict.h */
     rd_sh4_result(rv); /* the oracle's mocked callee leaves its result in r0 and fr0 */
     return rv;
 }
@@ -136,8 +183,9 @@ static char guess_ret(const u8 *p)
  * prototype, SIZE bytes):
  *  - B, run on the matched raw C (the original's own code, passing GUEST): the runner paints [GUEST, GUEST + SIZE)
  *    with rd_canary ^ FLIP (B's optional 6th field) before the vector's M lines, and prints the SIZE bytes there as
- *    they are at the call, line "OB N TARGET FIELD hex" (core/readable_outptr.py runs two paints and tells the bytes
- *    the original wrote before the call from the paints and the vector's own bytes);
+ *    they are at the call and which of them the original stored to, line "OB N TARGET FIELD hex 0101.." (core/
+ *    readable_outptr.py runs two paints and tells the bytes the original wrote before the call from its stores, the
+ *    paints and the vector's own bytes);
  *  - D (the vector's bytes where the original did not write, "xx" where it did), run on readable C: copied at the
  *    call to the host address the readable call passed in FIELD, except the "xx" bytes, which keep what the readable
  *    code wrote there (it must have written what the original did): the readable local then holds what the
@@ -215,6 +263,8 @@ static void out_copy(u32 call, u32 target, const u32 *rec)
         if (!g_outs[i].data && h == g && guest_ok && g_out_log) { /* the raw run: the original's bytes at the call */
             fprintf(g_out_log, "OB %u %08x %u ", call, target, g_outs[i].field);
             for (u32 k = 0; k < n; k++) fprintf(g_out_log, "%02x", ((const u8 *)g)[k]);
+            fputc(' ', g_out_log); /* which of them it stored to itself (rd_trace.c rd_written) */
+            for (u32 k = 0; k < n; k++) fputc(rd_written((u32)g + k) ? '1' : '0', g_out_log);
             fprintf(g_out_log, "\n");
             continue;
         }
@@ -239,7 +289,7 @@ static LONG call_trap(CONTEXT *c)
     if (sp[0] < g_mod_lo || sp[0] >= g_mod_hi) return EXCEPTION_CONTINUE_SEARCH;
     u32 target = tcrt_fold(c->Eip), r[4] = {0}, fr[8] = {0}, st[8] = {0}, lo[4] = {0}; /* 0x0c... form too */
     const RdProto *p = find_proto(target);
-    char ret = p ? p->ret : guess_ret((const u8 *)(uintptr_t)sp[0]);
+    char ret = p && p->ret != '?' ? p->ret : guess_ret((const u8 *)(uintptr_t)sp[0]);
     int ni = 0, nf = 0, ns = 0;
     for (int k = 0; p && p->params[k]; k++) {
         if (p->params[k] == '*') { /* variadic: the caller's remaining cdecl words follow the named stack words */
@@ -282,6 +332,7 @@ static LONG call_trap(CONTEXT *c)
     g_ret_bits = next_return();
     log_call(target, r, fr, st, lo);
     if (g_nouts && g_ncalls <= RD_MAX_CALLS) out_copy(g_ncalls - 1, target, g_call_log[g_ncalls - 1]);
+    if (g_ncalls <= RD_MAX_CALLS) tcs_call(g_ncalls - 1, target, g_call_log[g_ncalls - 1]); /* after out_copy */
     rd_sh4_result(g_ret_bits);
     if (ret == 'f') c->Eip = (DWORD)(uintptr_t)ret_f32;
     else if (ret == 'L') c->Eip = (DWORD)(uintptr_t)ret_u64;
@@ -321,7 +372,7 @@ int rd_veh_install(void)
     return AddVectoredExceptionHandler(1, handler) != NULL;
 }
 
-void rd_calls_reset(const u32 rets[16])
+void rd_calls_reset(const u32 rets[TCRT_RETS])
 {
     memcpy(g_rets, rets, sizeof g_rets);
     g_ncalls = 0;
@@ -342,6 +393,7 @@ void rd_abi_reset(void)
     g_self_host = 0;
     g_self_guest = 0;
     rd_trace_reset();
+    tcrt_strict_reset(); /* not in rd_calls_reset: E sets the returns after N and W */
 }
 
 u32 rd_code_read(void) { return g_code_read; }
@@ -355,4 +407,5 @@ void rd_calls_report(FILE *out)
         fputc('\n', out);
     }
     if (g_ncalls > RD_MAX_CALLS) fprintf(out, "FAULT too-many-calls\n");
+    tcrt_strict_report(out); /* CS lines (tc_strict.h) */
 }

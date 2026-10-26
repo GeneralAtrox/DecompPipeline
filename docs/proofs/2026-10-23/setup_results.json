@@ -1,0 +1,211 @@
+{
+ "Toy Commander": {
+  "target": "dreamcast_sh4",
+  "new_command": {
+   "disc_s": 0.1,
+   "ghidra_setup_s": 108.7,
+   "decode_check_s": 18.2,
+   "total_s": 127.0,
+   "decode_check": {
+    "passes": true,
+    "functions": 4052,
+    "instructions": 283493,
+    "gap": 0,
+    "bytes": 0,
+    "name": 0,
+    "empty_functions": 1,
+    "no_instruction": [
+     "8c099470"
+    ]
+   }
+  },
+  "hand_steps": {
+   "commands_s": {
+    "gdrom.py info": 0.19,
+    "gdrom.py scan": 38.4,
+    "gdrom.py extract": 0.18
+   },
+   "decomp_py_setup_s": 115.9,
+   "machine_total_s": 154.7,
+   "decode_check": null
+  },
+  "vs_hand_step_rerun": {
+   "binary": true,
+   "project_json": {},
+   "TcInputs": true,
+   "state_differ": [],
+   "state_only_a": [],
+   "state_only_b": [],
+   "state_files": 13
+  },
+  "vs_live_workspace": {
+   "binary": true,
+   "project_json": {},
+   "TcInputs": true,
+   "state_differ": [
+    "catalog.json",
+    "code_ranges.txt",
+    "dead_functions.tsv",
+    "function_bodies.txt",
+    "orphan_functions.tsv",
+    "pr_continuations.tsv",
+    "run_functions.tsv"
+   ],
+   "state_only_b": [],
+   "state_files": 13,
+   "state_only_live": 8093
+  }
+ },
+ "Dragon Force 2 (0.BIN + BTL_MAIN.BIN)": {
+  "target": "saturn_sh2",
+  "new_command": {
+   "disc_s": 0.0,
+   "ghidra_setup_s": 70.8,
+   "decode_check_s": 23.4,
+   "total_s": 94.2,
+   "decode_check": {
+    "passes": true,
+    "functions": 1675,
+    "instructions": 127117,
+    "gap": 0,
+    "bytes": 0,
+    "name": 0,
+    "empty_functions": 2,
+    "no_instruction": [
+     "0603e328",
+     "060fc000"
+    ]
+   }
+  },
+  "hand_steps": {
+   "commands_s": {
+    "satdisc.py info": 0.18,
+    "satdisc.py scan": 3.4,
+    "satdisc.py extract": 0.18,
+    "overlay_image.py": 0.2
+   },
+   "decomp_py_setup_s": 71.8,
+   "machine_total_s": 75.8,
+   "decode_check": null
+  },
+  "vs_hand_step_rerun": {
+   "binary": true,
+   "project_json": {
+    "references": [
+     null,
+     []
+    ]
+   },
+   "TcInputs": true,
+   "state_differ": [],
+   "state_only_a": [],
+   "state_only_b": [],
+   "state_files": 13
+  },
+  "vs_live_workspace": {
+   "binary": true,
+   "project_json": {
+    "references": [
+     null,
+     []
+    ]
+   },
+   "TcInputs": true,
+   "state_differ": [],
+   "state_only_b": [],
+   "state_files": 13,
+   "state_only_live": 2
+  }
+ },
+ "Skies of Arcadia Legends (GEAE8P)": {
+  "target": "gamecube_ppc",
+  "new_command": {
+   "disc_s": 2.0,
+   "ghidra_setup_s": 105.1,
+   "decode_check_s": 27.9,
+   "total_s": 135.0,
+   "decode_check": {
+    "passes": true,
+    "functions": 6751,
+    "instructions": 689141,
+    "gap": 0,
+    "bytes": 0,
+    "name": 0,
+    "empty_functions": 0,
+    "no_instruction": []
+   }
+  },
+  "hand_steps": {
+   "commands_s": {
+    "gcdisc.py setup": 1.1
+   },
+   "decomp_py_setup_s": 111.9,
+   "machine_total_s": 113.0,
+   "decode_check": null
+  },
+  "vs_hand_step_rerun": {
+   "binary": true,
+   "project_json": {
+    "fixed_regs": [
+     {
+      "r2": "80350000",
+      "r13": "8034e720",
+      "GQR0": "00000000",
+      "GQR1": "00000000",
+      "GQR2": "00040004",
+      "GQR3": "00050005",
+      "GQR4": "00060006",
+      "GQR5": "00070007"
+     },
+     {
+      "r2": "80350000",
+      "r13": "8034e720",
+      "GQR0": "00000000",
+      "GQR1": "08040804",
+      "GQR2": "00040004",
+      "GQR3": "00050005",
+      "GQR4": "00060006",
+      "GQR5": "00070007"
+     }
+    ]
+   },
+   "TcInputs": true,
+   "state_differ": [],
+   "state_only_a": [],
+   "state_only_b": [],
+   "state_files": 3
+  },
+  "vs_live_workspace": {
+   "binary": true,
+   "project_json": {
+    "fixed_regs": [
+     {
+      "r2": "80350000",
+      "r13": "8034e720",
+      "GQR0": "00000000",
+      "GQR1": "00000000",
+      "GQR2": "00040004",
+      "GQR3": "00050005",
+      "GQR4": "00060006",
+      "GQR5": "00070007"
+     },
+     {
+      "r2": "80350000",
+      "r13": "8034e720",
+      "GQR0": "00000000",
+      "GQR1": "08040804",
+      "GQR2": "00040004",
+      "GQR3": "00050005",
+      "GQR4": "00060006",
+      "GQR5": "00070007"
+     }
+    ]
+   },
+   "TcInputs": true,
+   "state_differ": [],
+   "state_only_b": [],
+   "state_files": 3,
+   "state_only_live": 9
+  }
+ }
+}

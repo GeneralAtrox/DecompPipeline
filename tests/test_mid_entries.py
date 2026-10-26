@@ -1,0 +1,101 @@
+"""core/mid_entries.py: second entry points folded into another function's body (r15; TC 8c05f40c).
+
+A synthetic game: F1 (8c010000) branches to its second body range 8c010100, which starts with its own prologue;
+F2 (8c010040) calls into that range and stores a pointer to it; a table of functions holds it. Guards for the false
+flags found on TC, Spawn and Power Stone 2: a function's own long jump through its literal pool, a literal pool that
+looks like a table, a switch table of one function's labels, and a branch to a block the branching function's packet
+lists although the body file gives it to another function.
+Run: python -W error tests/test_mid_entries.py
+"""
+import pathlib
+import struct
+import sys
+import unittest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from core import mid_entries as me, sh4_asm  # noqa: E402
+
+BASE = 0x8C010000
+F1, F2, F3 = 0x8C010000, 0x8C010040, 0x8C010080
+BODIES = "8c010000 8c010000 8c010010\n8c010000 8c010100 8c010140\n8c010040 8c010040 8c010080\n" \
+         "8c010080 8c010080 8c0100c0\n"
+LISTINGS = {
+    F1: """
+  8c010000  mov.l r4,@-r15
+  8c010002  bra 0x8c010100
+  8c010004  _nop
+  8c010100  mov.l r14,@-r15
+  8c010102  mov.l 0x8c010288,r0                  ; = 0x8c01010c  (code)
+  8c010104  jmp @r0
+  8c010106  _nop
+  8c01010c  rts
+  8c01010e  _nop
+""",
+    F2: """
+  8c010040  bsr 0x8c010104                       ; call 8c010104
+  8c010042  _nop
+  8c010044  mov.l 0x8c010070,r2                  ; = 0x8c010108  (global x)
+  8c010046  mov.l r2,@r4
+""",
+    F3: """
+  8c010080  bra 0x8c010130
+  8c010082  _nop
+  8c010130  rts
+  8c010132  _nop
+""",
+}
+
+
+def image(table=True):
+    img = bytearray(0x400)
+
+    def put(at, *words):
+        struct.pack_into(f"<{len(words)}I", img, at - BASE, *words)
+    struct.pack_into("<H", img, 0x100, 0x2FE6)  # 8c010100: mov.l r14,@-r15
+    if table:  # a table of functions, one entry in P2 form
+        put(0x8C010200, F1, F2, 0xAC010100, F3)
+    put(0x8C010280, F1, F2, 0x8C01010C, F3)  # 8c010288 is F1's literal-pool word: not a table
+    put(0x8C010300, 0x8C010044, 0x8C010048, 0x8C01004C, 0x8C010050)  # a switch table inside F2
+    return bytes(img)
+
+
+def setup(table=True):
+    listings = {k: sh4_asm.parse(v) for k, v in LISTINGS.items()}
+    return listings, me.Bodies(BODIES, [F1, F2, F3]), image(table)
+
+
+class MidEntries(unittest.TestCase):
+    def test_rules(self):
+        listings, bodies, img = setup()
+        hits = me.find(listings, bodies, img, BASE)
+        self.assertEqual(sorted(hits), [0x8C010100, 0x8C010104, 0x8C010108])
+        self.assertEqual(hits[0x8C010104], ["call from 8c010040 at 8c010040"])
+        self.assertEqual(hits[0x8C010108], ["pool word loaded by 8c010040 at 8c010044"])
+        self.assertEqual(hits[0x8C010100], ["body range of 8c010000 with its own prologue, branched to at 8c010002",
+                                            "table word 8c010208 (a table of 4 code addresses at 8c010200)"])
+        self.assertTrue(all(me.needs_override(ev) for ev in hits.values()))
+
+    def test_merged_body_alone_needs_nothing(self):
+        listings, bodies, img = setup(table=False)
+        hits = me.find(listings, bodies, img, BASE)
+        self.assertFalse(me.needs_override(hits[0x8C010100]))
+        self.assertTrue(me.needs_override(hits[0x8C010104]))
+
+    def test_decided_left_out(self):
+        listings, bodies, img = setup()
+        self.assertNotIn(0x8C010104, me.find(listings, bodies, img, BASE, decided={"8c010104"}))
+
+    def test_pool_is_no_table(self):
+        listings, bodies, img = setup()
+        self.assertEqual(me.pool_words(listings), {0x8C010288, 0x8C010070})
+        self.assertIn(0x8C01010C, me.from_tables(img, BASE, bodies))  # without the pools it would be one
+
+    def test_folding_and_owner(self):
+        _, bodies, img = setup()
+        self.assertEqual((me.p1(0x0C010100), me.p1(0xAC010100), me.p1(0x7C010100)), (0x8C010100, 0x8C010100, None))
+        self.assertEqual((bodies.owner(0x8C010120), bodies.owner(0x8C010140), bodies.owner(0x8C010010)),
+                         (F1, None, None))
+
+
+if __name__ == "__main__":
+    unittest.main()

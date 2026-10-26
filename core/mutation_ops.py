@@ -36,7 +36,7 @@ STORE_CALL = re.compile(r"(wr(8|16|32|64|f32|f64)\w*|memcpy|memset|memmove|sh4_s
 #             registers the callee's signature declares only, so a slot no callee reads is not behaviour
 #   stack     a store to the guest stack (wr32(sp + 4, ...), wr32(0x8cffdff4, ...), wr32(fb + 8, ...) with fb set from
 #             a 0x8cffXXXX address: stack_names) or a stack pointer variable:
-#             writes at or above compare.STACK_LO are scratch, never compared
+#             writes in the original's own frame (readable_stack.frame_lo() up) are scratch, never compared
 #   logic     everything else: a survivor here is a real harness weakness
 ARG_SLOT = re.compile(r"^\s*\w+\s*(\.|->)\s*(r|fr|s|rlo)\s*\[[^\]]*\]\s*=(?!=)|\btc_args\w*\s*\(")
 STACK_NAMES = ("sp", "frame", "r15", "fp")

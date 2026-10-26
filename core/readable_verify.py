@@ -16,7 +16,7 @@ the redo list state/redo.txt (`refine.py run @state/redo.txt --redo`) and is rec
 """
 import concurrent.futures
 
-from . import fn_claim, header_snapshot, infra, paths, readable, refine
+from . import build_prune, fn_claim, header_snapshot, infra, paths, readable, refine
 from . import readable_check as rcheck
 
 
@@ -34,6 +34,7 @@ def judge(cfg, reg, addr, lean=False, tag="rd_verify"):
                 sha = paths.sha256_file(src)
                 res = rcheck.check_readable(cfg, addr, str(src), paths.BUILD / addr / (tag + ("_lean" if lean else "")),
                                             reg=reg, lean=lean)
+                build_prune.after_job(cfg, addr)  # under the claim: its build outputs
             if res["verdict"] != "PASS" and infra.is_infra(res.get("build"), res.get("run_error")):
                 raise infra.InfraError(why(res))
             return dict(res, src_sha=sha)

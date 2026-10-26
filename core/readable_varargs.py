@@ -14,7 +14,7 @@ stack, or written by the function under test) makes it compare all of s0..s7: a 
 """
 import re
 
-from .compare import STACK_LO, Memory
+from .compare import FRAME_LO, Memory
 
 RULES = ("printf", "null")
 STACK_WORD = 13  # REG_INDEX["s0"]
@@ -47,10 +47,10 @@ def printf_words(fmt):
     return n
 
 
-def _read_cstr(mem, exp, ptr, limit=512):
+def _read_cstr(mem, exp, ptr, limit=512, frame_lo=FRAME_LO):
     """The NUL-terminated bytes at ptr in the initial memory, or None (in the stack, written by the function, or
     longer than limit)."""
-    if ptr >= STACK_LO:
+    if ptr >= frame_lo:  # the own frame: built at run time (a global below it is memory)
         return None
     out = bytearray()
     for a in range(ptr, ptr + limit):

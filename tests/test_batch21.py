@@ -171,7 +171,7 @@ class Cycle(unittest.TestCase):
                         mock.patch.object(paths, "RUNS", self.d / "runs"),
                         mock.patch.object(fn_claim, "LOCKS", self.d / "locks"),
                         mock.patch.object(refine, "raw_missing", lambda a: None),
-                        mock.patch.object(refine, "harness_stale", lambda cfg, a: None),
+                        mock.patch.object(refine, "harness_stale", lambda cfg, a, **k: None),
                         mock.patch.object(refine, "preflight", lambda cfg, reg, a, meta: None),
                         mock.patch.object(refine, "build_sandbox", lambda *a: (self.d / "box", "task")),
                         mock.patch.object(refine, "tree_hashes", lambda box: {}),

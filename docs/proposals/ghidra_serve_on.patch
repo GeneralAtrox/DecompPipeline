@@ -1,0 +1,18 @@
+Turn on the slot servers (finding 7) for every run: one line in config.json.
+Proof: docs/proofs/2026-10-22/PROOFS.md section 2: 50 TC prepares, servers on and off, the same 353 harness
+and packet files byte for byte; median prepare 10.7 s -> 1.4 s. Cost: one JVM per served slot (slots 1..
+ghidra_parallel-1), kept up to idle_s 120 s after its last prepare; the broker counts them (jvm_up).
+Apply: git apply docs/proposals/ghidra_serve_on.patch   Undo: git apply -R docs/proposals/ghidra_serve_on.patch
+
+diff --git a/config.json b/config.json
+index 3a61474..8e014de 100644
+--- a/config.json
++++ b/config.json
+@@ -37,6 +37,7 @@
+   "max_workers": 56,
+   "ghidra_parallel": 4,
+   "ghidra_broker": {"slots": 2},
++  "ghidra_serve": {"enabled": true},
+   "prefetch": true,
+   "harness_reuse": false,
+   "translate_first": true,

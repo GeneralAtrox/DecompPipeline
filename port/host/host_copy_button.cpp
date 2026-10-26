@@ -1,7 +1,8 @@
-// The menu bar's "Copy game context" icon, after Phantom Crash's desktop_copy_button and Lodoss's
+// The menu bar's "Copy agent prompt" icon, after Phantom Crash's desktop_copy_button and Lodoss's
 // desktop_copy_context_button (MIT, the user's own): an owner-drawn item (two sheets) at the end of the bar, with a
-// tooltip while the pointer is on it. A click asks for a scene dump (runtime/scene_dump.c) after the next frame;
-// nothing pops up. Full screen hides the bar, so F9 (host_window.cpp) does the same there.
+// tooltip ("Copy agent prompt (F9)") while the pointer is on it. A click asks for a scene dump
+// (runtime/scene_dump.c) after the next frame; nothing pops up. The Help menu's "Copy agent prompt" entry
+// (host_menu.cpp) is the same command, and F9 (host_window.cpp) does it in full screen too, where the bar is hidden.
 #include <windows.h>
 #include <commctrl.h>
 #include "host.h"
@@ -9,7 +10,7 @@
 
 namespace {
 
-constexpr UINT kCopy = 0x7207;
+constexpr UINT kCopy = host::kCopyAgentPrompt;
 HWND g_tip;
 TOOLINFOW g_tool;
 bool g_tip_shown;
@@ -47,9 +48,9 @@ void tip_track(HWND hwnd, POINT screen)
     g_tip_shown = true;
 }
 
-void draw(const DRAWITEMSTRUCT &d)
+// For a menu item hwndItem is the menu, not a window: the scale comes from the window the bar is on.
+void draw(HWND hwnd, const DRAWITEMSTRUCT &d)
 {
-    HWND hwnd = d.hwndItem ? d.hwndItem : WindowFromDC(d.hDC);
     bool hot = (d.itemState & (ODS_HOTLIGHT | ODS_SELECTED)) != 0;
     COLORREF bg = GetSysColor(COLOR_MENUBAR), hi = GetSysColor(COLOR_MENUHILIGHT);
     if (hot)
@@ -91,7 +92,7 @@ void copy_button_attach(void *hwnd_ptr, void *bar)
     g_tool.cbSize = sizeof g_tool;
     g_tool.uFlags = TTF_TRACK | TTF_ABSOLUTE;
     g_tool.hwnd = hwnd;
-    g_tool.lpszText = const_cast<wchar_t *>(L"Copy game context");
+    g_tool.lpszText = const_cast<wchar_t *>(L"Copy agent prompt (F9)");
     SendMessageW(g_tip, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&g_tool));
 }
 
@@ -110,7 +111,7 @@ bool copy_button_message(void *hwnd_ptr, unsigned msg, uintptr_t wp, intptr_t lp
     case WM_DRAWITEM: {
         auto *d = reinterpret_cast<DRAWITEMSTRUCT *>(lp);
         if (d->CtlType != ODT_MENU || d->itemID != kCopy) return false;
-        draw(*d);
+        draw(hwnd, *d);
         *result = TRUE;
         return true;
     }

@@ -1,0 +1,265 @@
+diff --git a/core/readable_check.py b/core/readable_check.py
+index 16bd5a1..de23361 100644
+--- a/core/readable_check.py
++++ b/core/readable_check.py
+@@ -53,33 +53,44 @@ def protos_c(protos):
+             f"const int rd_nprotos = {len(protos)};\n")
+ 
+ 
+-def runtime_rd_objs(cl, env, include_dirs):
+-    """{runtime source: (object, listing)} of the readable runtime (RUNTIME_SOURCES), compiled once per content into
++def runtime_rd_objs(cl, env, include_dirs, rd=None, sources=None):
++    """{runtime source: (object, listing)} of the readable runtime (sources, default RUNTIME_SOURCES, in folder rd,
++    default RUNTIME_RD: a target with its own build passes its own, targets/gamecube_ppc), compiled once per content into
+     build/runtime_rd_obj/KEY/ and linked by every readable build after: compiling them was ~1.9 s of every readable
+     check (TC, 3 runs: 1.82-2.09 s). KEY: the compiler (path, size, mtime), its INCLUDE, C_FLAGS and every file of
+     runtime_rd/ and runtime/. Compiled with only those two folders on the include path and /showIncludes: the
+     headers it opened are kept in headers.txt. None, so the build compiles the runtime itself as before, when they
+     do not compile, or when a folder of include_dirs (the game's headers, searched first) holds a file named like
+-    one of those headers: only then could the game's folders change what the runtime compiles to."""
++    one of those headers: only then could the game's folders change what the runtime compiles to. A source whose
++    listing has x87 float arithmetic or SSE min/max (_x87_or_minmax) is kept compiled unoptimized, as _build would
++    recompile it in every build (GameCube tc_ppc.c at /O1: an fsub; 1.3-1.4 s a build to recompile and relink)."""
++    rd = RUNTIME_RD if rd is None else rd
++    sources = RUNTIME_SOURCES if sources is None else sources
++
+     def ident(p):
+         st = os.stat(p)
+         return p, st.st_size, st.st_mtime_ns
+-    h = hashlib.sha256(repr((C_FLAGS, ident(cl), next((v for k, v in env.items() if k.upper() == "INCLUDE"), ""))
+-                            ).encode())
+-    for folder in (RUNTIME_RD, paths.RUNTIME):
++    h = hashlib.sha256(repr(("od 1", C_FLAGS, ident(cl), next((v for k, v in env.items() if k.upper() == "INCLUDE"), ""),
++                             [s.name for s in sources])).encode())
++    for folder in (rd, paths.RUNTIME):
+         for f in sorted(folder.iterdir()):
+             if f.is_file():
+                 h.update(folder.name.encode() + b"/" + f.name.encode() + b"\0" + f.read_bytes() + b"\0")
+     d = paths.BUILD / "runtime_rd_obj" / h.hexdigest()[:16]  # build_prune passes it by (not a function folder)
+-    out = {str(s): (d / f"{s.stem}.obj", d / f"{s.stem}.asm") for s in RUNTIME_SOURCES}
++    out = {str(s): (d / f"{s.stem}.obj", d / f"{s.stem}.asm") for s in sources}
+     names = d / "headers.txt"
+     if not (names.is_file() and all(o.is_file() and a.is_file() for o, a in out.values())):
+         tmp = d.with_name(f"{d.name}.tmp{os.getpid()}_{threading.get_ident()}")
+         shutil.rmtree(tmp, ignore_errors=True)
+         tmp.mkdir(parents=True)
+-        cmd = [cl, "/nologo", "/c", "/O1", *C_FLAGS, f"/I{RUNTIME_RD}", f"/I{paths.RUNTIME}", "/showIncludes",
+-               f"/Fo{tmp}\\", "/FA", f"/Fa{tmp}\\", *map(str, RUNTIME_SOURCES)]
++        cmd = [cl, "/nologo", "/c", "/O1", *C_FLAGS, f"/I{rd}", f"/I{paths.RUNTIME}", "/showIncludes",
++               f"/Fo{tmp}\\", "/FA", f"/Fa{tmp}\\", *map(str, sources)]
+         rc, log, reason = paths.run_bounded(cmd, 180, cwd=tmp, env=env)
++        slow = [s for s in sources if _x87_or_minmax(tmp / f"{s.stem}.asm")] if rc == 0 and not reason else []
++        if slow:  # unoptimized, as _build would (its x87 check then finds these clean, or refuses them as before)
++            rc, more, reason = paths.run_bounded([*cmd[:3], "/Od", *cmd[4:-len(sources)], *map(str, slow)], 180,
++                                                 cwd=tmp, env=env)
++            log += "\n" + more
+         if rc != 0 or reason:
+             shutil.rmtree(tmp, ignore_errors=True)
+             return None
+@@ -107,27 +118,31 @@ def runtime_rd_objs(cl, env, include_dirs):
+ RUNNERS_KEPT = check.RUNNERS_KEPT  # runner builds kept per folder (build/ADDR/rd_runners): the latest
+ 
+ 
+-def _runner_key(cl, env, names, include_dirs, link):
++def _runner_key(cl, env, names, include_dirs, link, rd=None, code=()):
+     """The sha256 of everything a readable build reads: the compiler (path, size, mtime), its INCLUDE and LIB, the
+     flags and link options, every source as copied (the C under test, thunk.c, protos.c), every file of each include
+-    folder (by position, name and content: the generated game.h, the project's readable/include) and of runtime_rd/
+-    and runtime/, and the judge's own build code (this file, pch_warnings: the PCH pass, check: MINMAX)."""
++    folder (by position, name and content: the generated game.h, the project's readable/include) and of rd (default
++    runtime_rd/) and runtime/, and the judge's own build code (this file, pch_warnings: the PCH pass, check: MINMAX;
++    and code, a target build's own file)."""
++    rd = RUNTIME_RD if rd is None else rd
+     st = os.stat(cl)
+     h = hashlib.sha256(repr(("rd_runner 1", C_FLAGS, (cl, st.st_size, st.st_mtime_ns), link,
+                              *(next((v for k, v in env.items() if k.upper() == n), "") for n in ("INCLUDE", "LIB")))
+                             ).encode())
+     for p in [*map(pathlib.Path, names), *(pathlib.Path(__file__).parent / f for f in
+-                                           ("readable_check.py", "pch_warnings.py", "check.py"))]:
++                                           ("readable_check.py", "pch_warnings.py", "check.py")), *code]:
+         h.update(b"file " + p.name.encode() + b"\0" + p.read_bytes() + b"\0")
+-    for k, d in enumerate((*include_dirs, RUNTIME_RD, paths.RUNTIME)):
++    for k, d in enumerate((*include_dirs, rd, paths.RUNTIME)):
+         d = pathlib.Path(d)
+         for f in sorted((f for f in d.rglob("*") if f.is_file()), key=lambda f: f.relative_to(d).as_posix()):
+             h.update(f"inc {k} {f.relative_to(d).as_posix()}".encode() + b"\0" + f.read_bytes() + b"\0")
+     return h.hexdigest()
+ 
+ 
+-def build(cfg, sources, thunk_text, protos, build_dir, include_dirs=()):
+-    """Compile sources + generated thunk and prototype table + the readable runtime into rd_runner.exe.
++def build(cfg, sources, thunk_text, protos, build_dir, include_dirs=(), runtime=None):
++    """Compile sources + generated thunk and prototype table + the readable runtime into rd_runner.exe. runtime:
++    (folder, sources, the target build's own code files) of a target's own readable runtime (targets/gamecube_ppc),
++    else RUNTIME_RD and RUNTIME_SOURCES.
+     A clean build (no message) is kept by the key of all it read (_runner_key) in build_dir's parent, rd_runners/:
+     a build of the very same inputs (the official judge of the work.c the agent's last check built, with the same
+     header snapshot) takes that runner instead of compiling again (~2-3 s). The vectors always run afresh."""
+@@ -145,8 +160,9 @@ def build(cfg, sources, thunk_text, protos, build_dir, include_dirs=()):
+     cl = shutil.which("cl.exe", path=env_path)
+     if not cl:
+         raise RuntimeError("cl.exe not found in the 32-bit Visual Studio environment")
++    rd, rt_sources, code = runtime or (RUNTIME_RD, RUNTIME_SOURCES, ())
+     key = _runner_key(cl, env, [*names, build_dir / "thunk.c", build_dir / "protos.c"], include_dirs,
+-                      link_flags(cfg))
++                      link_flags(cfg), rd, code)
+     kept = build_dir.parent / "rd_runners" / key[:24]
+     if (kept / "rd_runner.exe").is_file():
+         shutil.copyfile(kept / "rd_runner.exe", build_dir / "rd_runner.exe")
+@@ -155,7 +171,7 @@ def build(cfg, sources, thunk_text, protos, build_dir, include_dirs=()):
+         except OSError:
+             pass
+         return True, []
+-    ok, msgs = _build(cfg, names, build_dir, include_dirs, env, cl)
++    ok, msgs = _build(cfg, names, build_dir, include_dirs, env, cl, *(runtime[:2] if runtime else ()))
+     if ok and not msgs:
+         keep_runner(build_dir, kept)
+     return ok, msgs
+@@ -166,11 +182,13 @@ def keep_runner(build_dir, kept):
+     check.keep_runner(build_dir, kept, "rd_runner.exe")
+ 
+ 
+-def _build(cfg, names, build_dir, include_dirs, env, cl):
+-    incs = [f"/I{d}" for d in (*include_dirs, RUNTIME_RD, paths.RUNTIME)]
++def _build(cfg, names, build_dir, include_dirs, env, cl, rd=None, sources=None):
++    rd = RUNTIME_RD if rd is None else rd
++    sources = RUNTIME_SOURCES if sources is None else sources
++    incs = [f"/I{d}" for d in (*include_dirs, rd, paths.RUNTIME)]
+     flags = [*C_FLAGS, *incs, f"/Fo{build_dir}\\"]
+     link = link_flags(cfg)
+-    rt = runtime_rd_objs(cl, env, include_dirs)  # None: the runtime is compiled here, as before
++    rt = runtime_rd_objs(cl, env, include_dirs, rd, sources)  # None: the runtime is compiled here, as before
+     own = [*names, str(build_dir / "thunk.c"), str(build_dir / "protos.c")]
+     if rt:  # compile (C_FLAGS' /TC would take an .obj for C source), then link with the cached runtime's objects
+         cmd = [cl, "/nologo", "/c", "/O1", *flags, "/FA", f"/Fa{build_dir}\\", *own]
+@@ -178,12 +196,12 @@ def _build(cfg, names, build_dir, include_dirs, env, cl):
+         if rc == 0 and not reason:
+             objs = [str(build_dir / f"{pathlib.Path(s).stem}.obj") for s in own]
+             cmd = [cl, "/nologo", f"/Fe{build_dir / 'rd_runner.exe'}", *objs,
+-                   *(str(rt[str(s)][0]) for s in RUNTIME_SOURCES), *link]
++                   *(str(rt[str(s)][0]) for s in sources), *link]
+             rc, more, reason = paths.run_bounded(cmd, 180, cwd=build_dir, env=env)
+             out += more
+     else:
+         cmd = [cl, "/nologo", "/O1", *flags, "/FA", f"/Fa{build_dir}\\", f"/Fe{build_dir / 'rd_runner.exe'}", *own,
+-               *map(str, RUNTIME_SOURCES), *link]
++               *map(str, sources), *link]
+         rc, out, reason = paths.run_bounded(cmd, 180, cwd=build_dir, env=env)
+     keep = [ln for ln in out.splitlines() if ("error" in ln or "warning" in ln)]
+     if rc != 0 or reason:
+@@ -191,7 +209,7 @@ def _build(cfg, names, build_dir, include_dirs, env, cl):
+     if pch := pch_warnings.check(cl, [*C_FLAGS, *incs], names, build_dir, env):  # C4505, as the port's build
+         return False, pch
+     # Every source of this build, as compiled: the C under test, the generated files and the runtime's own.
+-    srcs = [*names, str(build_dir / "thunk.c"), str(build_dir / "protos.c"), *map(str, RUNTIME_SOURCES)]
++    srcs = [*names, str(build_dir / "thunk.c"), str(build_dir / "protos.c"), *map(str, sources)]
+     listing = {s: build_dir / f"{pathlib.Path(s).stem}.asm" for s in srcs}
+     obj = {s: build_dir / f"{pathlib.Path(s).stem}.obj" for s in srcs}
+     for s, (o, a) in (rt or {}).items():  # the cached runtime's own objects and listings
+diff --git a/targets/gamecube_ppc/ppc_readable.py b/targets/gamecube_ppc/ppc_readable.py
+index 8e21c3e..bf69fc5 100644
+--- a/targets/gamecube_ppc/ppc_readable.py
++++ b/targets/gamecube_ppc/ppc_readable.py
+@@ -45,56 +45,13 @@ def protos_c(protos):
+ 
+ 
+ def build(cfg, sources, thunk_text, protos, build_dir, include_dirs=()):
+-    """Compile sources + generated thunk and prototype table + the readable runtime into rd_runner.exe: the judge's
+-    flags and checks of core/readable_check.build (zero warnings at /W4, the port-form C4505 pass, no x87 float
+-    arithmetic or SSE min/max)."""
+-    shutil.rmtree(build_dir, ignore_errors=True)
+-    build_dir.mkdir(parents=True)
+-    names = []
+-    for i, src in enumerate(sources):
+-        dst = build_dir / ("work.c" if i == 0 else f"src{i}.c")
+-        shutil.copyfile(src, dst)
+-        names.append(str(dst))
+-    (build_dir / "thunk.c").write_text(thunk_text, encoding="utf-8")
+-    (build_dir / "protos.c").write_text(protos_c(protos), encoding="utf-8")
+-    env = rc.msvc_env_x86(cfg)
+-    env_path = next((v for k, v in env.items() if k.upper() == "PATH"), "")
+-    cl = shutil.which("cl.exe", path=env_path)
+-    if not cl:
+-        raise RuntimeError("cl.exe not found in the 32-bit Visual Studio environment")
+-    incs = [f"/I{d}" for d in (*include_dirs, RUNTIME_RD, paths.RUNTIME)]
+-    flags = [*rc.C_FLAGS, *incs, f"/Fo{build_dir}\\"]
+-    link = rc.link_flags(cfg)
+-    cmd = [cl, "/nologo", "/O1", *flags, "/FA", f"/Fa{build_dir}\\", f"/Fe{build_dir / 'rd_runner.exe'}", *names,
+-           str(build_dir / "thunk.c"), str(build_dir / "protos.c"), *map(str, RUNTIME_SOURCES), *link]
+-    rc_, out, reason = paths.run_bounded(cmd, 180, cwd=build_dir, env=env)
+-    keep = [ln for ln in out.splitlines() if ("error" in ln or "warning" in ln)]
+-    if rc_ != 0 or reason:
+-        return False, [re.sub(r"^.*\\work\.c", "work.c", e) for e in (keep or out.splitlines()[-15:])][:20]
+-    if pch := pch_warnings.check(cl, [*rc.C_FLAGS, *incs], names, build_dir, env):
+-        return False, pch
+-    srcs = [*names, str(build_dir / "thunk.c"), str(build_dir / "protos.c"), *map(str, RUNTIME_SOURCES)]
+-    listing = {s: build_dir / f"{pathlib.Path(s).stem}.asm" for s in srcs}
+-    # As core/readable_check.build: a 32-bit build returns floats in st(0), and the optimizer may then compute on
+-    # the x87 stack (extended precision, its own control word), where the PowerPC (and the raw judge's 64-bit SSE
+-    # build) computes in IEEE double or single. Such a source is recompiled unoptimized, which keeps the arithmetic
+-    # in SSE registers, and refused if it still has any.
+-    slow = [s for s in srcs if rc._x87_or_minmax(listing[s])]
+-    if slow:
+-        cmd = [cl, "/nologo", "/c", "/Od", *flags, "/FA", f"/Fa{build_dir}\\", *slow]
+-        rc_, out, reason = paths.run_bounded(cmd, 180, cwd=build_dir, env=env)
+-        if rc_ == 0 and not reason:
+-            objs = [build_dir / f"{pathlib.Path(s).stem}.obj" for s in srcs]
+-            cmd = [cl, "/nologo", f"/Fe{build_dir / 'rd_runner.exe'}", *map(str, objs), *link]
+-            rc_, out, reason = paths.run_bounded(cmd, 180, cwd=build_dir, env=env)
+-        if rc_ != 0 or reason:
+-            return False, ["build without optimization (x87 float code or float min/max) failed:",
+-                           *out.splitlines()[-15:]]
+-        still = [pathlib.Path(s).name for s in slow if rc._x87_or_minmax(listing[s])]
+-        if still:
+-            return False, [f"{', '.join(still)}: x87 float arithmetic or SSE min/max even unoptimized (32-bit build); "
+-                           "the readable runtime cannot judge this float code bit-exactly"]
+-    return True, [re.sub(r"^.*\\work\.c", "work.c", e) for e in keep][:20]
++    """Compile sources + generated thunk and prototype table + the readable runtime into rd_runner.exe: core's
++    readable build (core/readable_check.build) with this target's runtime, so the same flags and checks (zero warnings
++    at /W4, the port-form C4505 pass, no x87 float arithmetic or SSE min/max) and the same caches: the runtime compiled
++    once per content (tc_ppc.c kept unoptimized: at /O1 it has x87 code) and a clean runner kept by the key of all it
++    read. Each was rebuilt in every judgement: 1.6-1.7 s a build."""
++    return rc.build(cfg, sources, thunk_text, protos, build_dir, include_dirs,
++                    runtime=(RUNTIME_RD, RUNTIME_SOURCES, (pathlib.Path(__file__),)))
+ 
+ 
+ def run(cfg, harness, build_dir, sets=("dev", "hidden")):
+diff --git a/targets/gamecube_ppc/runtime_rd/rd_mem.c b/targets/gamecube_ppc/runtime_rd/rd_mem.c
+index ec794bc..fb07a68 100644
+--- a/targets/gamecube_ppc/runtime_rd/rd_mem.c
++++ b/targets/gamecube_ppc/runtime_rd/rd_mem.c
+@@ -25,6 +25,7 @@ static u8 *g_pristine;
+ static u8 *g_snapshot;
+ static u8 *g_code; /* 1 bit per guest byte that belongs to an instruction */
+ static u8 g_page[NPAGES];
++static u8 g_dirty[NPAGES]; /* tcrt_report: the page differs from the snapshot */
+ static int g_armed;
+ static char g_faults[MAX_FAULTS][64];
+ static u32 g_nfaults;
+@@ -158,11 +159,26 @@ void tcrt_report(FILE *out, u32 r3, u64 f1_bits, u32 r4)
+     disarm();
+     fprintf(out, "RET %08x %016llx %08x\n", rd_self_guest(r3), (unsigned long long)f1_bits, r4);
+     u32 hi = TCRT_STACK_LO - TCRT_RAM_BASE;
++    /* Only the pages that differ from the snapshot hold writes: each page is compared whole (memcmp) and the word and
++     * byte walks below skip an equal one, the same report as walking all of MEM1 (~30 ms a vector over 24 MB). The
++     * word rewrite changes only words that differ, so a page equal before it is still equal after. */
++    for (u32 p = 0; p < hi; p += RD_PAGE) {
++        u32 n = hi - p < RD_PAGE ? hi - p : RD_PAGE;
++        g_dirty[p / RD_PAGE] = memcmp(RAM + p, g_snapshot + p, n) != 0;
++    }
+     for (u32 o = 0; o + 4 <= hi; o += 4) { /* a stored host address of the function under test: its guest one */
++        if ((o & (RD_PAGE - 1)) == 0 && !g_dirty[o / RD_PAGE]) {
++            o += RD_PAGE - 4;
++            continue;
++        }
+         u32 w = _byteswap_ulong(*(u32 *)(RAM + o)), s = _byteswap_ulong(*(u32 *)(g_snapshot + o));
+         if (w != s && rd_self_guest(w) != w) *(u32 *)(RAM + o) = _byteswap_ulong(rd_self_guest(w));
+     }
+     for (u32 o = 0; o < hi;) {
++        if ((o & (RD_PAGE - 1)) == 0 && !g_dirty[o / RD_PAGE]) {
++            o += RD_PAGE;
++            continue;
++        }
+         if (RAM[o] == g_snapshot[o]) {
+             o++;
+             continue;

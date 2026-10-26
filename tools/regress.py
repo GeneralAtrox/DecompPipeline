@@ -6,7 +6,7 @@ functions per project, with the CURRENT working-tree code, against harnesses pre
 
 usage: python tools/regress.py [--projects KEY,KEY|all] [--only RX] [--sample N] [--seed S] [--jobs N]
                                [--catalog] [--reuse] [--timeout S] [--json OUT] [--set KEY=JSON ...]
-                               [--parity] [--list FILE]
+                               [--parity] [--list FILE] [--targeted [BASE]] [--dry-run] [--cache DIR]
   --projects  keys from tests/patterns.json "projects" (default: the "default_projects" list there; all = every key);
               each key's workspace path comes from tests/patterns.local.json (git-ignored, this machine's paths)
   --only      regex on fixture id or pattern; with --only the sample defaults to 0
@@ -24,6 +24,16 @@ usage: python tools/regress.py [--projects KEY,KEY|all] [--only RX] [--sample N]
               reuses harnesses by oracle stamp as --reuse does
   --list      the matched functions to judge instead of a random sample (one project; a file of addresses, # comments):
               the full readable-parity run is --parity --list over every matched function, in bounded chunks
+  --targeted  only what the change from BASE (default master: its merge base -> the working tree) can affect
+              (tools/regress_targets.py classes each changed file by the gate's import graph): a project whose target
+              the change does not reach is skipped; one it reaches always runs its catalog step (--catalog), and is
+              judged in full with every harness prepared afresh (a change to the oracle, the gate or an unknown file),
+              in full on cached harnesses (the raw judge or runtime), or only its readable items on cached harnesses
+              (the readable judge or runtime). A change that reaches nothing the gate runs exits 0 at once;
+              --dry-run prints that selection and stops (no Ghidra)
+  --cache     the harness cache (default: "harness_cache" in tests/patterns.local.json, else tests/.work/cache):
+              harnesses prepared by this run are kept there by oracle stamp and prepare code hash, and a --targeted
+              run of a judge-only change reuses them; a gate run without --targeted fills it too when DIR is given
 An item judged on no vector at all (0/0) reads ORACLE, never FAIL: an oracle problem, not a verdict. A group with
 ORACLE or an out-of-time refusal is prepared once more, alone, after the parallel run (the oracle's deadline is
 wall-clock, so load can cause it); the alone result is recorded, the first one kept as first_run.
@@ -46,6 +56,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))  # also under p
 from bounded import kill_tree  # noqa: E402
 sys.path.insert(0, str(TOOL))
 from core import toolcfg  # noqa: E402  (patterns.json + the git-ignored patterns.local.json paths)
+import regress_targets  # noqa: E402
 
 TESTS = TOOL / "tests"
 WORK = TESTS / ".work"
@@ -117,6 +128,13 @@ def select(spec, a):
     return plan
 
 
+def readable_items(fixtures, parity):
+    """Whether a readable-mode project has an item to judge: tools/regress_project.py keeps only the fixtures on a
+    readable runtime and, with --parity, the sample's parity items. Without one its run judged 0 items after a full
+    setup (R1: 28 of 29 projects, about 33 s each)."""
+    return bool(parity) or any(f.get("runtime") in ("readable", "readable-src") for f in fixtures)
+
+
 def ok(r):
     return r.get("got") == r.get("expect")
 
@@ -146,7 +164,12 @@ def main():
     ap.add_argument("--set", action="append", default=[], metavar="KEY=JSON")
     ap.add_argument("--parity", action="store_true")
     ap.add_argument("--list")
+    ap.add_argument("--targeted", nargs="?", const="master", metavar="BASE")
+    ap.add_argument("--cache")
+    ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
+    if a.dry_run and not a.targeted:
+        sys.exit("--dry-run needs --targeted")
     listed = []
     if a.list:
         with open(a.list.lstrip("@"), encoding="utf-8-sig") as fh:
@@ -165,6 +188,35 @@ def main():
             if f.get(side) and not (TOOL / f[side]).exists():
                 sys.exit(f"fixture {f['id']}: missing {f[side]}")
     plan = select(spec, a)
+    modes, cache, skipped = {}, None, []
+    if a.targeted:
+        cache = pathlib.Path(a.cache or spec.get("harness_cache") or WORK / "cache")
+        mb, files, old_text = regress_targets.changed_files(a.targeted)
+        rows = regress_targets.classify(files, old_text=old_text)
+        print(f"--targeted {a.targeted} (merge base {mb[:10]}): {len(files)} changed file(s)", flush=True)
+        for f, kind, t in rows:
+            print(f"  {kind:8} {t or '*':14} {f}", flush=True)
+        by_target = regress_targets.plan(rows, sorted(p.name for p in (TOOL / "targets").iterdir()
+                                                      if (p / "target.json").exists()))
+        for k in list(plan):
+            target = json.loads((pathlib.Path(spec["projects"][k]) / "project.json").read_text(
+                encoding="utf-8")).get("target")
+            modes[k] = by_target.get(target, "gate")  # a target this tree does not know: the full gate
+            if modes[k] == "none":
+                del plan[k]
+            elif modes[k] == "readable" and not readable_items(plan[k], a.parity):
+                del plan[k]  # nothing the readable judge judges: no setup, no Ghidra copy or catalog (~33 s each)
+                skipped.append(k)
+        print("projects: " + (", ".join(f"{k} {modes[k]}" for k in plan) or "none"), flush=True)
+        if skipped:
+            print(f"skipped, no readable item: {', '.join(skipped)}", flush=True)
+        if not plan:
+            print("the change reaches nothing the gate runs: no gate items (exit 0)")
+            return 0
+        if a.dry_run:
+            return 0
+    elif a.cache:
+        cache = pathlib.Path(a.cache)
     over = {}
     for kv in a.set:
         k, _, v = kv.partition("=")
@@ -172,25 +224,34 @@ def main():
             over[k] = json.loads(v)
         except ValueError:
             over[k] = v
-    if not plan:
+    if not plan and not a.targeted:
         sys.exit("nothing selected")
     t0 = time.time()
     if not a.jobs:
         a.jobs = auto_jobs()
         print(f"--jobs {a.jobs} (cores {os.cpu_count()}, free RAM {(free_ram() or 0) / 2 ** 30:.1f} GB)", flush=True)
-    rows, secs, failed_projects, harn = [], {}, [], {"reused": 0, "prepared": 0, "retried_alone": 0}
+    rows, secs, failed_projects, harn = [], {}, [], {"reused": 0, "prepared": 0, "retried_alone": 0, "cached": 0}
+    hashes = {}
     for k, fixtures in plan.items():
         work = WORK / k
         work.mkdir(parents=True, exist_ok=True)
         pf, out = work / "plan.json", work / "result.json"
+        mode = modes.get(k)
         pf.write_text(json.dumps({"key": k, "fixtures": fixtures, "sample": a.sample, "seed": a.seed, "config": over,
-                                  "list": listed, "parity": a.parity}, indent=1), encoding="utf-8")
+                                  "list": listed, "parity": a.parity, "reuse_cache": mode in ("judge", "readable"),
+                                  "items": "readable" if mode == "readable" else "all"}, indent=1), encoding="utf-8")
         out.unlink(missing_ok=True)
         cmd = [sys.executable, str(TOOL / "tools" / "regress_project.py"), "--project", spec["projects"][k],
                "--work", str(work), "--ghidra-work", str(GHIDRA_WORK / k), "--plan", str(pf), "--out", str(out), "--jobs", str(a.jobs)]
-        cmd += ["--reuse"] * a.reuse + ["--catalog"] * a.catalog
+        cmd += ["--reuse"] * a.reuse + ["--catalog"] * (a.catalog or bool(a.targeted))
+        if cache:
+            target = json.loads((pathlib.Path(spec["projects"][k]) / "project.json").read_text(
+                encoding="utf-8")).get("target")
+            if target not in hashes:
+                hashes[target] = regress_targets.prepare_hash(target)
+            cmd += ["--cache", str(cache / k), "--prepare-hash", hashes[target]]
         print(f"== {k}: {len(fixtures)} fixture(s), sample {a.sample}  ({spec['projects'][k]})"
-              + (f"  config {over}" if over else ""), flush=True)
+              + (f"  config {over}" if over else "") + (f"  targeted: {mode}" if mode else ""), flush=True)
         t = time.time()
         rc = run_child(cmd, a.timeout, f"[{k}]")
         secs[k] = time.time() - t
@@ -207,7 +268,8 @@ def main():
     print(f"\n{len(rows)} item(s), {len(bad)} unexpected; " +
           ", ".join(f"{k} {s / 60:.1f} min" for k, s in secs.items()) + f"; total {(time.time() - t0) / 60:.1f} min")
     again = harn["retried_alone"]
-    print(f"harnesses: {harn['reused']} reused (oracle stamp current), {harn['prepared']} prepared"
+    print(f"harnesses: {harn['reused']} reused (oracle stamp current; {harn['cached']} from the cache), "
+          f"{harn['prepared']} prepared"
           + (f" ({again} of them a second time, alone, after oracle trouble under load)" if again else ""))
     oracle = [r["id"] for _, r in rows if r.get("got") == "ORACLE"]
     if oracle:

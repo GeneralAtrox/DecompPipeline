@@ -16,7 +16,7 @@ endif()
 # PORT_SDK_SOURCES (the kit's sdk/ modules game.json chose), PORT_GAME_SOURCES (game.json sources)
 include("${PORT_GEN}/port_files.cmake")
 file(GLOB PORT_GENERATED CONFIGURE_DEPENDS "${PORT_GEN}/stubs_*.c" "${PORT_GEN}/dispatch_*.c"
-     "${PORT_GEN}/scene_map.c")
+     "${PORT_GEN}/scene_map.c" "${PORT_GEN}/fsca_table.c")
 file(GLOB PORT_RUNTIME CONFIGURE_DEPENDS runtime/*.c runtime/gfx/*.c pvr/*.c)
 # The desktop host (C++20): entry, data folder, settings, crash reports. Laid out after Lodoss's port (MIT, the
 # user's own); the guest runtime, the renderer and the SDK modules stay C.
@@ -41,9 +41,34 @@ else()
   list(APPEND PORT_CXX_FLAGS /O2)
 endif()
 
+# A game before its readable stage (a bring-up) has no readable files yet: every function is a logging stub, and the
+# library gets one declaration so that it still has a source (an empty file is warning C4206 at /W4).
+if(NOT PORT_READABLE)
+  set(PORT_NO_READABLE "${CMAKE_CURRENT_BINARY_DIR}/no_readable.c")
+  file(WRITE "${PORT_NO_READABLE}" "/* No readable C yet: every game function is a logging stub. */
+typedef int port_no_readable;
+")
+  set(PORT_READABLE "${PORT_NO_READABLE}")
+endif()
 add_library(readable STATIC ${PORT_READABLE})
 target_include_directories(readable BEFORE PRIVATE "${PORT_GEN}/include" "${PORT_READABLE_INCLUDE}" "${PORT_RD_RT}")
 target_compile_options(readable PRIVATE ${PORT_C_FLAGS} /TC)
+# game.h, precompiled once: every readable file starts with it, and it is most of each file's compile time. A file
+# that starts otherwise, or has game.json wrap defines, compiles without it (gen_port.py no_pch).
+option(PORT_PCH "precompile game.h for the readable C" ON)
+if(PORT_PCH)
+  target_precompile_headers(readable PRIVATE "${PORT_GEN}/include/game.h")
+  if(PORT_READABLE_NO_PCH)
+    set_source_files_properties(${PORT_READABLE_NO_PCH} PROPERTIES SKIP_PRECOMPILE_HEADERS ON)
+  endif()
+endif()
+# Zeroed stack frames for the readable C (runtime/stack_zero.c): /Gh calls _penter at every function's entry, so a
+# local the original leaves partly unset reads 0, not host stack leftovers (the /GS cookie differs run to run): runs
+# repeat exactly. Off by default: 0 is not what the console leaves either, and the frames cost about 15% speed.
+option(PORT_STACK_ZERO "zero each readable C function's stack frame on entry" OFF)
+if(PORT_STACK_ZERO)
+  target_compile_options(readable PRIVATE /Gh)
+endif()
 set_property(TARGET readable PROPERTY C_STANDARD 11)
 
 # The PowerVR renderer's shaders: fxc (Windows SDK) compiles pvr/pvr.hlsl into headers at build time.
@@ -86,3 +111,5 @@ target_link_libraries(port PRIVATE readable legacy_stdio_definitions SDL3::SDL3 
 # addresses (0x0c000000, 0x8c000000, 0xac000000).
 target_link_options(port PRIVATE /WX /LARGEADDRESSAWARE /NXCOMPAT /DYNAMICBASE:NO /BASE:0x5a000000
                     /MAP:${CMAKE_CURRENT_BINARY_DIR}/port.map /STACK:8388608)
+# The game's overlays (tools/gen_overlays.py from <game>/overlays.json), each compiled as its own library.
+include("${PORT_GEN}/overlays/overlays.cmake" OPTIONAL)

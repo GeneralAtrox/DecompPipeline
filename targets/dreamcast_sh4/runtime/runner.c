@@ -19,6 +19,28 @@ static int hexval(int c)
     return -1;
 }
 
+/* Line N after V is one of two lines: the stricter judge's key "N seed vid" (TcStrict, two fields) or the entry FPSCR
+ * "N fpscr" (TcFpscr, one field). Told apart by the second field, so neither shadows the other (Toy Commander
+ * 8c0611d8 and Spawn's fpscr_state functions had FS never printed while every N went to the strict judge). */
+static int strict_key(const char *line)
+{
+    char *p;
+    strtoull(line + 1, &p, 16);
+    while (*p == ' ') p++;
+    return hexval(*p) >= 0;
+}
+
+/* Fills the stack the function will run on with one pattern before each vector, as the GameCube runner does. A
+ * TcArgs slot the C never sets (Grandia 0605a282's mutants without `a.r[1] = 0`) then reads the same bits on every
+ * run and machine, with the strict flags on or off, not what the last vector or the runner's own code left there:
+ * with the flags on, that happened to be the expected 0 and two mutants passed by luck. */
+#define TC_PAINT 0xa5a5a5a5a5a5a5a5ull
+static __declspec(noinline) void paint_stack(void)
+{
+    volatile unsigned long long pad[1 << 13];
+    for (int i = 0; i < (1 << 13); i++) pad[i] = TC_PAINT;
+}
+
 static int run_one(const u32 *r, const f32 *fr, u32 *r0, f32 *fr0)
 {
     if (setjmp(tcrt_halt_jmp)) return 0; /* tc_halt: the original's endless loop (TcExit), reported as HALT */
@@ -56,7 +78,7 @@ int main(int argc, char **argv)
     static char line[1 << 16];
     static u8 buf[1 << 15];
     int id = -1, active = 0;
-    u32 r[4] = {0}, xf[16] = {0}, rets[16] = {0};
+    u32 r[4] = {0}, xf[16] = {0}, rets[TCRT_RETS] = {0};
     /* fr12..fr15 from line H (reported at exit as FH only when the vector had H). Static, like line and buf:
      * main's frame stays the size it was, so C that reads an uninitialized local behaves as before. */
     static u32 fh[4];
@@ -76,6 +98,14 @@ int main(int argc, char **argv)
             tcrt_add_live(t, reg, n, d);
         } else if (line[0] == 'S') { /* a state pointer into the store-queue window, before the first vector (TcSq) */
             tcrt_set_sq_window();
+        } else if (line[0] == 'Y') { /* a listed hardware register and its value, before the first vector (TcHw) */
+            char *p = line + 1;
+            u32 reg = (u32)strtoul(p, &p, 16);
+            tcrt_add_hw(reg, (u32)strtoul(p, &p, 16));
+        } else if (line[0] == 'Z') { /* GBR is state, before the first vector (TcHw): reported at exit as GB */
+            tcrt_set_gbr_state();
+        } else if (line[0] == 'J' || line[0] == 'U') { /* the stricter judge's flags and facts (tc_strict.h) */
+            tcrt_strict_line(line);
         } else if (line[0] == 'V') {
             char set[16] = {0};
             sscanf_s(line + 2, "%d %15s", &id, set, (unsigned)sizeof set);
@@ -92,6 +122,8 @@ int main(int argc, char **argv)
             }
         } else if (!active) {
             continue;
+        } else if ((line[0] == 'N' && strict_key(line)) || line[0] == 'W') { /* after V's reset: tc_strict.h */
+            tcrt_strict_line(line);
         } else if (line[0] == 'R') {
             sscanf_s(line + 1, "%x %x %x %x", &r[0], &r[1], &r[2], &r[3]);
         } else if (line[0] == 'F') {
@@ -117,13 +149,18 @@ int main(int argc, char **argv)
             u32 dr[16];
             for (int i = 0; i < 16; i++) dr[i] = (u32)strtoul(p, &p, 16);
             tcrt_set_draws(dr);
+        } else if (line[0] == 'I') { /* after V's reset: the entry SR mask (TcSr) */
+            tcrt_set_sr((u32)strtoul(line + 2, NULL, 16));
+        } else if (line[0] == 'N') { /* after V's reset: the entry FPSCR, FPSCR is state (TcFpscr) */
+            tcrt_set_fpscr_state((u32)strtoul(line + 1, NULL, 16));
         } else if (line[0] == 'Q') {
             char *p = line + 1;
             for (int i = 0; i < 16; i++) fq[i] = (u32)strtoul(p, &p, 16);
             has_fq = 1;
         } else if (line[0] == 'C') {
             char *p = line + 1;
-            for (int i = 0; i < 16; i++) rets[i] = (u32)strtoul(p, &p, 16);
+            memset(rets, 0, sizeof rets); /* 16 words in older harnesses */
+            for (int i = 0; i < TCRT_RETS && hexval(*(p += strspn(p, " "))) >= 0; i++) rets[i] = (u32)strtoul(p, &p, 16);
         } else if (line[0] == 'M') {
             char *p = line + 2;
             u32 addr = (u32)strtoul(p, &p, 16);
@@ -143,11 +180,15 @@ int main(int argc, char **argv)
             tcrt_set_call_returns(rets);
             u32 r0 = 0;
             f32 fr0 = 0.0f;
+            paint_stack();
             int code = run_one(r, fr, &r0, &fr0);
             if (code) fprintf(out, "CRASH %08x\n", (u32)code);
             u32 frbits;
             memcpy(&frbits, &fr0, 4);
             tcrt_report(out, r0, frbits);
+            tcrt_report_sr(out);
+            tcrt_report_gbr(out);
+            tcrt_report_fpscr(out);
             if (has_fh) tcrt_report_fh(out);
             if (has_gs) tcrt_report_gs(out);
             if (has_fq) tcrt_report_fq(out);

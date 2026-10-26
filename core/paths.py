@@ -12,7 +12,7 @@ import subprocess
 import threading
 import time
 
-from . import filelock
+from . import filelock, fsca
 from . import scope as scope_mod
 from . import toolcfg
 
@@ -34,6 +34,7 @@ os.environ["DECOMP_PROJECT"] = str(ROOT)  # inherited by every child process (ag
 PROJECT = json.loads((ROOT / "project.json").read_text(encoding="utf-8"))
 TARGET = TARGETS / PROJECT["target"]  # the CPU/platform: locked oracle scripts, Ghidra language, C runtime
 TARGET_SCRIPTS = TARGET / "ghidra_scripts"
+SHARED_SCRIPTS = TOOL / "core" / "ghidra_shared"  # oracle scripts several targets use (target.json "shared_scripts")
 RUNTIME = TARGET / "runtime"
 
 STATE = ROOT / "state"
@@ -43,6 +44,7 @@ GHIDRA_PROJECT = _GHIDRA_BASE / "ghidra"
 GHIDRA_NAME = PROJECT["ghidra_name"]
 INPUTS = ROOT / "oracle" / "TcInputs.java"  # this game's input generator (evolved only through the watcher gate)
 HINTS = ROOT / "oracle" / "hints"  # per-function input hints (written only through the watcher gate)
+AGENT_NOTES = ROOT / "agent_notes"  # ADDR.md: a reviewer's note on a known fault, added to every agent's TASK.md
 SCRIPTS = STATE / "ghidra_scripts"  # what Ghidra compiles: the target's scripts plus INPUTS (sync_scripts)
 GHIDRA_SLOTS = _GHIDRA_BASE / "ghidra_slots"  # read-only copies of the project for parallel preparation
 PACKETS = ROOT / "packets"
@@ -58,7 +60,7 @@ IMPORTS = ROOT / "import"  # relocated C from an earlier project (xproject.py), 
 CATALOG = STATE / "catalog.json"
 CODE_RANGES = STATE / "code_ranges.txt"
 FUNCTION_BODIES = STATE / "function_bodies.txt"  # "entry lo hi" per body range (TcCatalog; tools/completeness.py)
-FSCA_TABLE = STATE / "fsca_table.bin"
+FSCA_TABLE = STATE / "fsca" / f"{fsca.FILE_SHA256[:16]}.bin"  # content-named, written once: fsca_table()
 LEDGER = STATE / "ledger.json"
 MARKS = STATE / "ghidra_marks.tsv"
 MSVC_ENV = STATE / "msvc_env.json"
@@ -97,19 +99,76 @@ def copy_if_changed(src, dst):
         shutil.copyfile(src, dst)  # a fresh mtime, so Ghidra recompiles the bundle
 
 _SYNC = threading.Lock()
+UNUSED_S = 7 * 86400  # a content folder or file no checkout used for this long is removed
+
+def content_name(parts):
+    """16 hex digits naming content: sha256 over (name, bytes) pairs in name order."""
+    h = hashlib.sha256()
+    for name, data in sorted(parts.items()):
+        h.update(f"{name} {len(data)}\n".encode() + data)
+    return h.hexdigest()[:16]
+
+def prune_unused(folder, keep):
+    """Remove the content entries (16-hex names, and .tmp- leftovers) in folder that nobody used for UNUSED_S,
+    except keep."""
+    cut = time.time() - UNUSED_S
+    for p in folder.iterdir() if folder.is_dir() else ():
+        ours = p.name.startswith(".tmp-") or (len(p.stem) == 16 and all(c in "0123456789abcdef" for c in p.stem))
+        if ours and p.name != keep and p.stat().st_mtime < cut:
+            shutil.rmtree(p, ignore_errors=True) if p.is_dir() else p.unlink(missing_ok=True)
+
+def target_scripts():
+    """{file name: path} of the target's oracle scripts: its ghidra_scripts/*.java and the *.java of each
+    SHARED_SCRIPTS folder its target.json "shared_scripts" names (one implementation of a rule that holds on more
+    than one CPU: ppc/TcSingle.java for the PowerPC targets). A missing folder or a name in two places is an error."""
+    out = {p.name: p for p in TARGET_SCRIPTS.glob("*.java")}
+    for d in json.loads((TARGET / "target.json").read_text(encoding="utf-8")).get("shared_scripts") or []:
+        if not (SHARED_SCRIPTS / d).is_dir():
+            raise RuntimeError(f"target.json shared_scripts: no folder {SHARED_SCRIPTS / d}")
+        for p in (SHARED_SCRIPTS / d).glob("*.java"):
+            if p.name in out:
+                raise RuntimeError(f"oracle script {p.name} is in both {out[p.name].parent} and {p.parent}")
+            out[p.name] = p
+    return out
 
 def sync_scripts():
-    """Assemble SCRIPTS from the target's locked scripts and this project's TcInputs.java; returns the folder."""
+    """Assemble the target's scripts (target_scripts) and this project's TcInputs.java into SCRIPTS/<content_name>/;
+    returns that folder. Written once, never changed: a checkout with other scripts gets another folder, so no
+    checkout rewrites the scripts another checkout's Ghidra compiles and runs (one shared folder did: any checkout's
+    sync changed every other's prepares). Each use refreshes the folder's mtime; prune_unused drops old ones."""
+    want = target_scripts()
+    want["TcInputs.java"] = INPUTS
+    data = {name: src.read_bytes() for name, src in want.items()}
+    name = content_name(data)
+    out = SCRIPTS / name
     with _SYNC:
-        SCRIPTS.mkdir(parents=True, exist_ok=True)
-        want = {p.name: p for p in TARGET_SCRIPTS.glob("*.java")}
-        want["TcInputs.java"] = INPUTS
-        for name, src in want.items():
-            copy_if_changed(src, SCRIPTS / name)
-        for p in SCRIPTS.glob("*.java"):
-            if p.name not in want:
-                p.unlink()
-    return SCRIPTS
+        if not out.is_dir():
+            tmp = SCRIPTS / f".tmp-{name}-{os.getpid()}-{threading.get_ident()}"
+            shutil.rmtree(tmp, ignore_errors=True)
+            tmp.mkdir(parents=True)
+            for n, b in data.items():
+                (tmp / n).write_bytes(b)
+            try:
+                os.replace(tmp, out)
+            except OSError:  # another process made it meanwhile: the same content
+                shutil.rmtree(tmp, ignore_errors=True)
+        os.utime(out)
+        prune_unused(SCRIPTS, name)
+    return out
+
+def fsca_table():
+    """FSCA_TABLE made the current table (core/fsca.ensure) and returned. Named by its content (state/fsca/<the first
+    16 hex of its SHA-256>.bin) and written once, so no checkout rewrites the table another checkout's prepares and
+    judges read: one state/fsca_table.bin did (a checkout of another table format rewrote it and every other
+    checkout's readers refused it). An older checkout's state/fsca_table.bin is left as it is. Each use refreshes
+    the mtime; prune_unused drops tables of other contents nobody used for UNUSED_S."""
+    fsca.ensure(FSCA_TABLE)
+    try:
+        os.utime(FSCA_TABLE)
+    except OSError:
+        pass  # a reader holds it: the next use refreshes it
+    prune_unused(FSCA_TABLE.parent, FSCA_TABLE.name)
+    return FSCA_TABLE
 
 def norm_addr(addr):
     a = addr.lower().removeprefix("0x")
@@ -183,9 +242,21 @@ def run_bounded(cmd, timeout, cwd=None, env=None, stdin_text=None, on_line=None,
             reason = "stopped"
             kill_tree(proc)
             break
-        time.sleep(0.2)
+        try:  # the same 0.2 s checks, but back as soon as the process ends (a sleep cost 0.1 s per command)
+            proc.wait(timeout=0.2)
+        except subprocess.TimeoutExpired:
+            pass
     t.join(timeout=10)
     if not t.is_alive():  # the pipe is drained: close it (a descendant still holding it keeps it open instead)
         proc.stdout.close()
     rc = proc.poll() if reason is None else None
     return rc, "".join(lines), reason
+
+
+def agent_note(addr):
+    """agent_notes/ADDR.md as a TASK.md section ("" when there is none): what a reviewer found wrong in an earlier
+    version that the judge cannot see (e.g. a host local read past its end), for the raw and the readable agents."""
+    f = AGENT_NOTES / f"{addr}.md"
+    if not f.is_file():
+        return ""
+    return "\n## Reviewer's note (a fault the check cannot see; follow it)\n\n" + f.read_text(encoding="utf-8").strip() + "\n"

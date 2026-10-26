@@ -100,6 +100,36 @@ void port_set_vblank_hook(PortVblankFn fn, void *arg)
     g_vblank_arg = arg;
 }
 
+/* Sleep(1) wakes on the system timer's tick (15.6 ms unless something raised its resolution), so the vertical blank
+ * came 0 to 16 ms late. The game times its step from the TMU, so its moves were uneven from tick to tick (a judder that
+ * in-between frames show). A high-resolution waitable timer wakes within about half a millisecond, and the rest spins.
+ * With in-between frames it naps 1 ms at most, so they are still tried through the wait. */
+#ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
+#define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
+#endif
+#define NAP_MAX_US 1000u
+#define SPIN_US 500u
+static HANDLE g_nap_timer;
+
+static void nap_until(u64 deadline_us, int extra)
+{
+    u64 now = host_ticks(1000000u), until = deadline_us;
+    LARGE_INTEGER due;
+    if (extra && until > now + NAP_MAX_US) until = now + NAP_MAX_US;
+    if (now + SPIN_US >= until) {
+        SwitchToThread();
+        return;
+    }
+    if (!g_nap_timer)
+        g_nap_timer = CreateWaitableTimerExW(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+    due.QuadPart = -(LONGLONG)((until - now - SPIN_US) * 10u); /* relative, in 100 ns */
+    if (!g_nap_timer || !SetWaitableTimer(g_nap_timer, &due, 0, NULL, NULL, FALSE)) {
+        Sleep(1); /* before Windows 10 1803: no high-resolution timer */
+        return;
+    }
+    WaitForSingleObject(g_nap_timer, (DWORD)((until - now) / 1000u) + 2u);
+}
+
 /* Waits for the next 1/60 s boundary of the host clock (a 60 Hz display's vertical blank) and counts it; with
  * --fixed-clock it moves the virtual clock there instead. Window events are handled here too, so the window stays
  * responsive in loops that wait without rendering. extra: in-between frames are drawn while it waits. */
@@ -110,9 +140,9 @@ static void wait_vblank(int extra)
         if (extra) port_extra_idle(0);
         g_virt = (g_virt / VIRT_PER_VBLANK + 1u) * VIRT_PER_VBLANK;
     } else {
-        u64 next = host_ticks(PORT_VBLANK_HZ) + 1u;
+        u64 next = host_ticks(PORT_VBLANK_HZ) + 1u, due_us = next * 1000000u / PORT_VBLANK_HZ;
         while (host_ticks(PORT_VBLANK_HZ) < next)
-            if (!extra || !port_extra_idle(next * 1000000u / PORT_VBLANK_HZ)) Sleep(1);
+            if (!extra || !port_extra_idle(due_us)) nap_until(due_us, extra);
     }
     g_vblanks++;
     if (g_fixed_clock && g_fast_until && g_vblanks >= g_fast_until) {

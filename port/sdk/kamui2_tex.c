@@ -209,7 +209,8 @@ s32 Km_ReadSurface(void *dst, KMSURFACEDESC *surface)
     return K2_OK;
 }
 
-/* The displayed frame buffer: 640x480, RGB565. */
+/* The displayed frame buffer: 640 wide, RGB565, as many lines as the line mode gives it (480, or a PAL line mode's
+ * 496..560: a game that reads it back sizes its copy by those, as a pause screen's backdrop may). */
 s32 Km_GetFrameBufferSurface(KMSURFACEDESC *surface)
 {
     K2Surface *s = (K2Surface *)surface;
@@ -217,8 +218,8 @@ s32 Km_GetFrameBufferSurface(KMSURFACEDESC *surface)
     s->bit_depth = BITDEPTH_16;
     s->pixel_format = 0;
     s->width = 640;
-    s->height = 480;
-    s->size = FRAME_BUFFER_BYTES;
+    s->height = k2_frame_lines();
+    s->size = 640u * s->height * 2u;
     s->flags = 0;
     s->address = 0;
     return K2_OK;

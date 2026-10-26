@@ -5,7 +5,9 @@ does not apply; everything else from lint.py does (one exported function, static
 no inline assembly, no lookup tables, ...). Added:
 - RR1: the only include is "game.h".
 - RR2: no raw guest-memory or call API (rd32, wr32, tc_call, ...): use pointers, structs and function calls.
-- RR3: no guest RAM addresses as numbers (0x8c000000..0x8cffffff): use the named globals and functions.
+- RR3: no guest RAM addresses as numbers (0x8c000000..0x8cffffff): use the named globals and functions. Nor a mirror
+  form (target.json address_mirrors, 0x0c206130 for 0x8c206130) of a named function or global: the judge treats both
+  forms as one address, so the name is safe (PS2 S20 stored `(T)(uintptr_t)0x0c16ca90u` callbacks and passed).
 - RR4 (raw_name_lint, needs the registry): a named function called by its raw name fn_ADDR where the raw arguments do
   not map onto its prototype.
 - RR5 (pointer_bytes_lint, needs raw.c and the image): the bytes stored at a pointer raw.c passes, written as a number
@@ -18,12 +20,15 @@ no inline assembly, no lookup tables, ...). Added:
 import re
 
 from . import lint
+from .compare import RAM
 
 RAW_API = ("rd8", "rd16", "rd32", "rdf32", "wr8", "wr16", "wr32", "wrf32", "tc_call", "tc_callf", "TcArgs",
            "RdProto", "rd_protos", "rd_nprotos")
 
 
-def readable_lint(src, name, proto):
+def readable_lint(src, name, proto, named=None, mirror=None):
+    """named(v): the core/raw_consts.resolve answer for a canonical address (int), else None; mirror: target.json
+    address_mirrors. Both given: RR3 also refuses a mirror-form number that names a symbol."""
     code = lint.strip_comments(src)
     errors = []
     includes = [ln.strip() for ln in code.splitlines() if ln.strip().startswith("#")]
@@ -38,8 +43,13 @@ def readable_lint(src, name, proto):
             errors.append(f"RR2: '{ident}' is the raw runtime API; use pointers, structs and calls by name")
     for lit in re.findall(r"\b0[xX]([0-9a-fA-F]+)", code):
         v = int(lit, 16)
-        if 0x8C000000 <= v < 0x8D000000:
+        if RAM[0] <= v < RAM[1]:
             errors.append(f"RR3: guest address 0x{v:08x} written as a number; name it in the registry")
+        elif named and mirror and f"{v >> 24:02x}" in mirror:
+            from .raw_consts import describe, fold
+            res = named(fold(v, mirror))
+            if res:
+                errors.append(f"RR3: 0x{v:08x} is the mirror form of 0x{fold(v, mirror):08x}, {describe(res)}")
     return sorted(set(errors))
 
 
@@ -112,7 +122,7 @@ def raw_name_lint(src, reg, allowed):
     addresses whose raw name still fits, readable_abi.raw_alias_ok): call it by its name and prototype."""
     from .readable import parse_proto
     errors = []
-    for raw in sorted(set(re.findall(r"\bfn_(8c[0-9a-f]{6})\b", lint.strip_comments(src)))):
+    for raw in sorted(set(re.findall(r"\bfn_([0-9a-f]{8})\b", lint.strip_comments(src)))):
         e = reg.functions.get(raw)
         if e and raw not in allowed and parse_proto(e["proto"])[1] != f"fn_{raw}":
             errors.append(f"RR4: fn_{raw} is named now; call it by its name with its prototype's arguments: "

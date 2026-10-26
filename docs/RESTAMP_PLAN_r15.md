@@ -47,6 +47,14 @@ function there is named.
 | PS2 | 981 | 297 | 736 | 690 | 270 | 296 | 0 | 7.8 | 5.9 |
 | **all** | **2,184** | **602** | **1,314** | **1,233** | **547** | **515** | **46** | **19.8** | **15.0** |
 
+**Added 2026-10-19 (helper ABI, `tools/helper_abi.py`, docs/PROOF_GATES.md section 5):**
+- TC's re-stamp gains 8c03a4b0, making 599.
+- TC's requeue gains 5: 8c03a4b0, 8c0248e0, 8c0253f8, 8c03a134, 8c04cb68. After the must phase, 3 more join it
+  (8c0344a4, 8c090b1c, 8c09cebc; their raw C fails on the re-stamped harness), making 32.
+- Spawn main's requeue gains 2, making 108: 8c0393ac, 8c0396e0.
+- 8c03a4b0 and 8c0248e0 crashed TC's port. Each gets an `oracle/hints` file so that its re-stamp reaches the
+  8c067c64 call. Haiku is allowed for these two only, after TC's must phase.
+
 **How the hours are worked out:**
 
 - Each prepare is 26 s. That is item 3's L0 measurement: 0.72 prep-h per 100 functions, about 10–16 s of it JVM
@@ -161,3 +169,25 @@ are taken from all harnesses, prepared, then requeued when they are unmatched.
   2. Spawn main, then ovl: Spawn runs them.
   3. PS2: PS2 runs it.
 - Each game's rejudge and requeue follow as soon as its re-stamp finishes.
+
+## 5. TC requeue result (2026-10-19)
+
+The 32 of `tc/requeue.txt` were seeded from their matched C (`requeue.py --seed`) and run on TC's server with one
+Ghidra slot (every requeued job re-prepares) and Haiku workers. TC commits 802d13e and b8a8a70.
+
+| | count | functions |
+|---|---:|---|
+| matched | 29 | 13 passed their seed; 15 by Haiku (8c09b164 newly matched); 8c09cebc after escalation to Opus (`state/escalate.json`) |
+| readable | 29/29 | 11 rewritten by Opus, 8c03a4b0 and 8c0248e0 among them; the other 18 passed as they were |
+| skipped | 3 | 8c09acc4, 8c09ae88, 8c09af40: the oracle reads machine code through R8 |
+
+- **f32 returns:** 8c05dd10, 8c0611c8, 8c061ba4 and 8c061c88 failed first. The new harness compares fr0, and they
+  return f32 while their signatures said void. The fix was `"raw_ret": "f32"` in readable/names, applied with
+  `sig_override.py --apply` (their 16 callers were re-recorded and all pass). Haiku then re-matched them.
+  Xmtrx_Determinant's prototype now returns f32.
+- **Seeds can hide a wrong call:** a seed passes unchanged when the wrong call is still unreached. That happened to
+  the helper-ABI flags 8c0253f8, 8c03a134 and 8c04cb68. They were requeued unseeded, so Haiku wrote them again from
+  the new context.md, which lists r0/r1 as compared. helper_abi now flags 0 in TC. Function C is never edited by
+  hand.
+- The two hinted functions, 8c03a4b0 and 8c0248e0, reached their division call and were re-matched.
+- The raw recount after the first pass was 2675/2675. All 32 harnesses are current.

@@ -3,7 +3,8 @@
 //   port.exe, the defaults, the saved settings, the command line
 // The kit parses it in order and a later option wins, so the command line overrides the settings, which override the
 // defaults. A scripted run (--fixed-clock other than 0, or --headless) reads no settings and gets no defaults, so
-// its result depends on its command line alone; --settings none does the same for a play run.
+// its result depends on its command line alone; --settings none leaves out the saved settings of a play run. A play
+// run's defaults: in-between frames (--present interp: the game's 30 Hz tick, drawn at the display's rate).
 //
 // The launcher contract (Lodoss's, port/README.md) is handled here, before the kit starts:
 //   --version                       prints the build's identity and exits
@@ -87,6 +88,7 @@ int main(int argc, char **argv)
     if (data) args.insert(args.end(), {"--save-dir", (host::data_dir() / "saves").string(), "--dump-dir",
                                        (host::data_dir() / "dumps").string()});
     if (!scripted) {
+        args.insert(args.end(), {"--present", "interp"});
         if (!settings || std::strcmp(settings, "none") != 0) {
             std::filesystem::path file = settings ? std::filesystem::path(settings) : host::data_dir() / "settings.txt";
             std::vector<std::string> saved = host::settings_args(file);

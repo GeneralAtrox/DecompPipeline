@@ -110,8 +110,7 @@ int tcrt_init(const char *image, const char *code_ranges, const char *fsca_table
         }
     }
     fclose(f);
-    if (!rd_sh4_init(fsca_table) || !rd_veh_install()) return 0;
-    rd_p4_init();
+    if (!rd_sh4_init(fsca_table) || !rd_veh_install() || !rd_p4_init()) return 0;
     tcrt_reset();
     return 1;
 }
@@ -130,6 +129,12 @@ int tcrt_halted;
 void tc_halt(void)
 {
     tcrt_halted = 1;
+    longjmp(tcrt_halt_jmp, 1);
+}
+
+void tc_spin(void)
+{
+    tcrt_halted = 2;
     longjmp(tcrt_halt_jmp, 1);
 }
 
@@ -164,7 +169,7 @@ void tcrt_poke(u32 addr, const u8 *data, u32 len)
     memcpy(RAM + (addr - TCRT_RAM_BASE), data, len);
 }
 
-void tcrt_set_call_returns(const u32 rets[16]) { rd_calls_reset(rets); }
+void tcrt_set_call_returns(const u32 rets[TCRT_RETS]) { rd_calls_reset(rets); }
 
 /* Just before the run: remember memory, then make every page holding machine code fault on access. */
 void rd_arm(void)
@@ -185,8 +190,9 @@ void tcrt_report(FILE *out, u32 r0, u32 fr0_bits)
     disarm();
     fprintf(out, "RET %08x %08x\n", rd_self_guest(r0), fr0_bits);
     rd_report_retx(out);
-    if (tcrt_halted) fprintf(out, "HALT\n");
-    u32 lo = TCRT_VALID_LO - TCRT_RAM_BASE, hi = TCRT_STACK_LO - TCRT_RAM_BASE;
+    if (tcrt_halted) fprintf(out, tcrt_halted == 2 ? "HALT SPIN\n" : "HALT\n");
+    /* all of RAM, the guest stack window too (globals below the frame): core/compare.judged leaves out the frame */
+    u32 lo = TCRT_VALID_LO - TCRT_RAM_BASE, hi = TCRT_RAM_SIZE;
     for (u32 o = lo; o + 4 <= hi; o += 4) { /* a stored host address of the function under test: its guest one */
         u32 w, s;
         memcpy(&w, RAM + o, 4);
@@ -242,17 +248,17 @@ f32 rdf32(u32 a)
 /* A store to the P4 operand-cache address array is logged, not made (tc_rt.c, tc_p4.c). */
 void wr8(u32 a, u8 v)
 {
-    if (rd_tracing) rd_trace_write(a, 1);
+    if (rd_tracing || rd_writes) rd_trace_write(a, 1);
     if (!tcrt_p4_store(a, v, 1)) *(volatile u8 *)(uintptr_t)a = v;
 }
 void wr16(u32 a, u16 v)
 {
-    if (rd_tracing) rd_trace_write(a, 2);
+    if (rd_tracing || rd_writes) rd_trace_write(a, 2);
     if (!tcrt_p4_store(a, v, 2)) *(volatile u16 *)(uintptr_t)a = v;
 }
 void wr32(u32 a, u32 v)
 {
-    if (rd_tracing) rd_trace_write(a, 4);
+    if (rd_tracing || rd_writes) rd_trace_write(a, 4);
     if (!tcrt_p4_store(a, v, 4)) *(volatile u32 *)(uintptr_t)a = v;
 }
 void wrf32(u32 a, f32 v)

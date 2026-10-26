@@ -170,8 +170,10 @@ s32 Km_GetTextureStatus(s32 id)
     return K2_RENDER_DONE;
 }
 
+/* The y edges are in frame buffer lines (a PAL line mode has more than the 480 the scene is drawn in). */
 s32 Km_SetClipRect(u32 x0, u32 y0, u32 x1, u32 y1)
 {
-    pvr_set_clip(x0, y0, x1, y1);
+    u32 lines = k2_frame_lines(), half = lines / 2u;
+    pvr_set_clip(x0, (y0 * 480u + half) / lines, x1, ((y1 + 1u) * 480u + half) / lines - 1u);
     return K2_OK;
 }

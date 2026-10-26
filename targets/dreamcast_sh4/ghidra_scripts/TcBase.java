@@ -26,10 +26,18 @@ public abstract class TcBase extends GhidraScript {
     static final long SCR = 0x8cc00000L, SCR_SIZE = 0x1000L;
     static final long SP = 0x8cffe000L, SENTINEL = 0x8cfff000L;
     static final long STACK_LO = 0x8cff0000L;
+    // The function's own frame: from frameLo (the entry r15 less "readable_frame_max", default FRAME_MAX: facts
+    // frame_lo, core/compare.FRAME_LO) up to SP. [STACK_LO, frameLo) is ordinary memory (Spawn's save data at
+    // 0x8cff9000): loads there are inputs (TcProvenance, TcReach, TcCount) and stores are logged (TcExit).
+    static final long FRAME_MAX = 0x1000L;
+    static long frameLo = SP - FRAME_MAX;  // TcPrepare sets the facts' value
     // P4 operand-cache address array: a store there is no RAM write and no fault; it is logged as a W line and compared
     // (TcOracle.collect, runtime tc_p4.c). Toy Commander 8c04c230 invalidates the cache this way. A load there is a
     // fault in both (TcFold.p4Read): it returns cache state, never the bytes stored.
     static final long P4_OCA_LO = 0xf4000000L, P4_OCA_HI = 0xf5000000L;
+    // QACR0/1, the store queues' area registers (Spawn 8c05fec2 sets them from a TA list pointer before its sends):
+    // a store there is logged and compared as the OCA's are; the window still maps onto RAM (TcSq, port.h).
+    static final long P4_QACR_LO = 0xff000038L, P4_QACR_HI = 0xff000040L;
     static final int STEP_LIMIT = 500000;
 
     Memory mem;
@@ -37,9 +45,10 @@ public abstract class TcBase extends GhidraScript {
     FunctionManager fm;
     Function fn;
     AddressSetView body;
-    int[] fscaSin = new int[65536], fscaCos = new int[65536];
+    int[][] fscaSin = new int[2][65536], fscaCos = new int[2][65536]; // [0] round to nearest, [1] toward zero
     Map<Integer, Integer> angleToFraction = new HashMap<>();
     Random rnd; // seeded by TcPrepare per vector set; TcInputs draws from it but must never reassign it
+    Set<Long> namedWords = new HashSet<>();  // the words of the globals meta.json names: logged anywhere (TcExit)
 
     // ---------- small helpers ----------
     // Main RAM is also visible at 0x0c... (P0); with the MMU off it is the same bytes. Some games are linked to run
@@ -52,6 +61,11 @@ public abstract class TcBase extends GhidraScript {
         v &= 0xffffffffL;
         if (sqWindow && TcSq.in(v)) return TcSq.ram(v);
         return (v >= 0x0c000000L && v < 0x0d000000L) ? (v | 0x80000000L) : v;
+    }
+
+    // [a, a+size) lies in RAM (after fold): Saturn's TcBase has the same test over its two work RAM banks (TcStrict).
+    static boolean inRam(long a, long size) {
+        return a >= RAM_LO && a + size <= RAM_HI;
     }
 
     static String hex(long v) {
@@ -170,6 +184,9 @@ public abstract class TcBase extends GhidraScript {
     TcSig sig;
     TcLive live; // TcPrepare: the callees' changes of r8..r14, applied at mocked calls (TcOracle), or null
     TcSq sq;     // TcPrepare: the store queues, for a function sending a state pointer's queue (pref @rN), or null
+    TcSr sr;     // TcPrepare: the status register, for a function reading or writing SR, or null
+    boolean spinWait; // TcPrepare: the project lists this function in "spin_waits" (script arg 10): TcSpin applies
+    Set<Long> spinWords = new HashSet<>(); // and the words its evidence names (folded), "spin:w_..." (TcSpin)
 
     Proto prototypeOf(DecompInterface di, Function f) {
         return prototypeOf(di, f, PASS_DEPTH);

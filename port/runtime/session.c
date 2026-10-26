@@ -1,7 +1,7 @@
 /* The session recording: everything a play run takes from outside the game, from boot, so the run can be replayed
  * exactly (the scene dump, runtime/scene_dump.c, saves it). The game runs one simulation step per vertical blank it
  * waits for, so it sees the same things in the same order if it gets the same inputs:
- *   - the pad, per read (host_pad_read): kept only when it changes;
+ *   - player 1's pad, per read (host_pads_read): kept only when it changes;
  *   - the SDK timer (Sy_TimerGetCount), the game's own clock: every value, as zigzag varint deltas;
  *   - the RTC (host_local_time) and the save files read (host_save_read), whole.
  * In-between frames (--present interp) are undone afterwards, so what they read is not kept.

@@ -9,6 +9,7 @@ SH-4 only for now (16-bit instructions, PC-relative literal pools).
 """
 import collections
 import difflib
+import heapq
 import json
 import pathlib
 import struct
@@ -114,8 +115,14 @@ def shingles(words, n=4):
     return {words[i:i + n] for i in range(max(1, len(words) - n + 1))}
 
 
-def match(earlier, current, near_min=0.6):
-    """-> {current addr: {"from": addr, "kind": "exact"|"near", "ratio": r, "pairs": {hex: hex}}}."""
+def match(earlier, current, near_min=0.6, prefer=frozenset()):
+    """-> {current addr: {"from": addr, "kind": "exact"|"near", "ratio": r, "pairs": {hex: hex}}}.
+    Of several exact candidates, those in prefer (the earlier project's matched functions: the ones with C to stage)
+    are tried first: Spawn ovl's division helper twins 8c5f621c (skipped) and 8c94aeec (matched) share their code,
+    and the first in address order left gend 8c564b14 with no import. Matching a project against itself never pairs
+    a function with itself."""
+    ws = getattr(earlier, "ws", None), getattr(current, "ws", None)
+    same = None not in ws and ws[0].resolve() == ws[1].resolve()
     prior = {}
     by_key = collections.defaultdict(list)
     index = collections.defaultdict(set)
@@ -133,7 +140,9 @@ def match(earlier, current, near_min=0.6):
         if n is None or not n[0]:
             continue
         exact = None
-        for cand in by_key.get((n[0], n[1]), []):
+        for cand in sorted(by_key.get((n[0], n[1]), []), key=lambda c: c not in prefer):  # stable: then address order
+            if same and cand == a:
+                continue
             pairs = pair_slots(prior[cand][2], n[2])
             if pairs is not None:
                 exact = (cand, pairs)
@@ -146,15 +155,38 @@ def match(earlier, current, near_min=0.6):
         votes = collections.Counter()
         for s in mine:
             for c in index.get(s, ()):
-                votes[c] += 1
-        best = None
-        for c, _ in votes.most_common(5):
-            r = difflib.SequenceMatcher(None, prior[c][0], n[0], autojunk=False).ratio()
-            if best is None or r > best[1]:
-                best = (c, r)
-        if best and best[1] >= near_min:
+                votes[c] += not (same and c == a)
+        # the 5 most voted, and every candidate tied with the 5th: most_common(5) cut a tie by set order, which follows
+        # the per-process hash seed, so near matches changed between runs. The highest ratio wins; of equal ratios,
+        # the earlier in rank (more votes, then the lower address).
+        ranked = sorted(((v, c) for c, v in votes.items() if v), key=lambda vc: (-vc[0], int(vc[1], 16)))
+        ranked = [c for v, c in ranked if v >= ranked[min(4, len(ranked) - 1)][0]]
+        best = best_near(prior, ranked, n[0], near_min)
+        if best:
             out[a] = {"from": best[0], "kind": "near", "ratio": round(best[1], 3), "pairs": {}}
     return out
+
+
+def best_near(prior, ranked, words, near_min):
+    """-> (addr, ratio) of the highest difflib ratio >= near_min among ranked (equal ratios: the earlier one), or None.
+    Same answer as computing every ratio: real_quick_ratio() >= quick_ratio() >= ratio() (one formula, one length
+    sum), so a heap of bounds refines only the candidates that could still win; the first exact one out wins."""
+    sm = difflib.SequenceMatcher(None, autojunk=False)
+    sm.set_seq2(words)  # indexed once
+    heap = []
+    for i, c in enumerate(ranked):
+        sm.set_seq1(prior[c][0])
+        heap.append((-sm.real_quick_ratio(), i, 0))
+    heapq.heapify(heap)
+    while heap:
+        r, i, level = heapq.heappop(heap)
+        if -r < near_min:
+            return None
+        if level == 2:
+            return ranked[i], -r
+        sm.set_seq1(prior[ranked[i]][0])
+        heapq.heappush(heap, (-(sm.quick_ratio() if level == 0 else sm.ratio()), i, level + 1))
+    return None
 
 
 def address_map(matches):

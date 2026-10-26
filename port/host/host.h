@@ -55,7 +55,7 @@ const char *input_device_desc(int i);   /* one of them: name, VID:PID, kind */
 /* host/host_data.cpp: the data folder (settings, saves, logs, scene dumps) */
 const char *host_data_folder(void);
 
-/* runtime/scene_dump.c: "Copy game context" (the menu bar's icon, F9) after the next presented frame */
+/* runtime/scene_dump.c: "Copy agent prompt" (the menu bar's icon, Help menu, F9) after the next presented frame */
 void scene_dump_request(void);
 
 #ifdef __cplusplus

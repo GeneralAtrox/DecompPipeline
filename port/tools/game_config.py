@@ -19,7 +19,7 @@ ADDR = re.compile(r"[0-9a-f]{8}")
 NAME = re.compile(r"[A-Za-z_]\w*")
 REQUIRED = ("name", "decomp", "entry", "image_base")
 KNOWN = set(REQUIRED) | {"boot_file", "disc", "fsca_table", "must_work", "sdk", "sources", "hardware", "wrap",
-                         "console", "id", "boot_sha256", "arrows"}
+                         "console", "id", "boot_sha256", "arrows", "widescreen", "kamui1", "lockstep_sample_pcs"}
 CONSOLE = ("country", "language", "broadcast")
 
 
@@ -41,9 +41,18 @@ def _int(value, what):
         raise ConfigError(f"game.json {what}: {value!r} is not a number") from None
 
 
+def toolchain():
+    """The pipeline's config (config.json with config.local.json over it): its "vcvars_args" (the Windows SDK and the
+    toolset) go after vcvars32() in the kit's environment load (core/toolcfg.vcvars_command)."""
+    sys.path.insert(0, str(PIPELINE))
+    from core import toolcfg  # noqa: E402  (no imports from the rest of core)
+    return toolcfg.load(PIPELINE)
+
+
 def vcvars32():
     """The 32-bit MSVC environment script: $VCVARS32, else vcvars32.bat next to the pipeline's configured vcvars
-    (config.local.json "vcvars"); None when neither exists (no Visual Studio on this machine)."""
+    (config.local.json "vcvars"); None when neither exists (no Visual Studio on this machine). The script alone: its
+    "vcvars_args" come from toolchain(), as for the judge's vcvars32.bat (core/readable_check)."""
     if os.environ.get("VCVARS32"):
         given = pathlib.Path(os.environ["VCVARS32"])
         return given if given.is_file() else None
@@ -52,6 +61,14 @@ def vcvars32():
     vc = toolcfg.load(PIPELINE).get("vcvars")
     found = pathlib.Path(vc).with_name("vcvars32.bat") if vc else None
     return found if found and found.is_file() else None
+
+
+def oplog():
+    """core/oplog, the manual operator steps record (docs/DEFINITION_OF_DONE.md gate 2): the port tools' runs write it
+    into the game folder's state/."""
+    sys.path.insert(0, str(PIPELINE))
+    from core import oplog as log  # noqa: E402  (no imports from the rest of core)
+    return log
 
 
 def vcpkg_root():
@@ -121,6 +138,20 @@ def load(game_dir):
     arrows = raw.get("arrows", "both")
     if arrows not in ("both", "stick"):
         raise ConfigError(f'game.json arrows: {arrows!r} ("both": the d-pad and the stick; "stick": the stick only)')
+    widescreen = raw.get("widescreen", False)
+    if not isinstance(widescreen, bool):
+        raise ConfigError(f"game.json widescreen: {widescreen!r} "
+                          "(true: the game widens its culling by port_widescreen())")
+    k1 = raw.get("kamui1", {})
+    if not isinstance(k1, dict) or set(k1) - {"list_word"}:
+        raise ConfigError('game.json kamui1: {"list_word": the guest address of the Kamui 1 list table word}')
+    kamui1 = {"list_word": _addr(k1["list_word"], "kamui1.list_word")} if "list_word" in k1 else {}
+    # where the port's vertical blank comes (the SDK's render and vsync-wait entries): tools/lockstep_emu.lua samples
+    # the emulator there, not at a vertical blank inside the frame's draw
+    pcs = raw.get("lockstep_sample_pcs", [])
+    if not isinstance(pcs, list) or len(pcs) > 8:
+        raise ConfigError("game.json lockstep_sample_pcs: up to 8 guest addresses (the port's sample points)")
+    pcs = [_addr(a, "lockstep_sample_pcs") for a in pcs]
     sha = [str(h).lower() for h in raw.get("boot_sha256", [])]
     if not all(re.fullmatch(r"[0-9a-f]{64}", h) for h in sha):
         raise ConfigError("game.json boot_sha256: a list of the accepted boot files' SHA-256 (64 hex digits each)")
@@ -129,7 +160,8 @@ def load(game_dir):
             "image_base": _addr(raw["image_base"], "image_base"), "boot_file": boot, "disc": path("disc"),
             "fsca_table": path("fsca_table"), "must_work": path("must_work"),
             "sdk": [mods[m] for m in sdk], "sources": sources, "hardware": hardware, "wrap": wrap,
-            "console": console, "arrows": arrows}
+            "console": console, "arrows": arrows, "widescreen": widescreen, "kamui1": kamui1,
+            "lockstep_sample_pcs": pcs}
 
 
 def c_string(s):
@@ -148,8 +180,11 @@ def port_config_h(cfg):
              "#define PORT_BOOT_SHA256 {" + ", ".join(c_string(h) for h in cfg["boot_sha256"] + [""]) + "}"]
     stick = int(cfg.get("arrows") == "stick")
     lines.append(f"#define PORT_ARROWS_STICK {stick} /* 1: the arrow keys move only the stick (game.json arrows) */")
+    lines.append(f"#define PORT_WIDESCREEN {int(bool(cfg.get('widescreen')))} /* 1: Hor+ in play runs (game.json) */")
     if cfg["console"]:
         lines += [f"#define PORT_CONSOLE_{k.upper()} 0x{v:x}" for k, v in cfg["console"].items()]
+    if cfg.get("kamui1", {}).get("list_word"):  # sdk/kamui1_scene.c: where the game reads Kamui 1's list table word
+        lines.append(f"#define PORT_KAMUI1_LIST_WORD 0x{cfg['kamui1']['list_word']}u")
     return "\n".join(lines + ["", "#endif"]) + "\n"
 
 
@@ -181,10 +216,12 @@ def cmake_list(var, items):
     return [f"set({var}"] + [f'  "{pathlib.Path(x).as_posix()}"' for x in items] + [")"]
 
 
-def port_files_cmake(cfg, readable_src, readable_files, readable_include, rd_rt_dir, defines=None):
-    """defines: {readable file stem: ["Name=Wrapper", ...]}, the game.json wraps of the functions that file calls."""
+def port_files_cmake(cfg, readable_src, readable_files, readable_include, rd_rt_dir, defines=None, no_pch=()):
+    """defines: {readable file stem: ["Name=Wrapper", ...]}, the game.json wraps of the functions that file calls.
+    no_pch: the readable files compiled without the precompiled game.h (CMakeLists.txt)."""
     lines = ["# Generated by port/tools/gen_port.py: what the kit's CMakeLists.txt compiles for this game."]
     lines += cmake_list("PORT_READABLE", [readable_src / f"{x}.c" for x in readable_files])
+    lines += cmake_list("PORT_READABLE_NO_PCH", [readable_src / f"{x}.c" for x in no_pch])
     lines += [f'set(PORT_READABLE_INCLUDE "{readable_include.as_posix()}")', f'set(PORT_RD_RT "{rd_rt_dir.as_posix()}")']
     lines += cmake_list("PORT_SDK_SOURCES", cfg["sdk"]) + cmake_list("PORT_GAME_SOURCES", cfg["sources"])
     for x, defs in sorted((defines or {}).items()):

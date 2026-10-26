@@ -36,18 +36,20 @@ def matched_functions():
 
 
 class Stamper:
-    """today(addr): the oracle stamp a prepare of addr would record now."""
+    """today(addr): the oracle stamp a prepare of addr would record now (the scripts, facts and catalog as they were
+    when this Stamper was made: one per scan)."""
 
     def __init__(self, cfg):
         self.cfg = cfg
-        self.scripts = {p.name: p for p in paths.TARGET_SCRIPTS.glob("*.java")}
+        self.scripts = paths.target_scripts()
         self.scripts["TcInputs.java"] = paths.INPUTS
         self.facts = oracle_stamp.facts_hashed(ghidra.facts_body(cfg))
+        self.shared = oracle_stamp.common(self.scripts, self.facts)  # the scripts and catalog as of this Stamper
 
     def today(self, addr):
         hints = paths.HINTS / f"{addr}.txt"
         return oracle_stamp.stamp_of(self.cfg, addr, self.scripts, self.facts, hints if hints.exists() else None,
-                                     ghidra.dev_vectors(self.cfg, addr), self.cfg["vectors_hidden"])
+                                     ghidra.dev_vectors(self.cfg, addr), self.cfg["vectors_hidden"], self.shared)
 
 
 def scan(cfg, addrs):
@@ -68,13 +70,16 @@ def scan(cfg, addrs):
     return out
 
 
-def judge_one(cfg, addr, root):
-    """The raw judge's verdict on matched/ADDR.c with its own harness: (verdict, detail)."""
+def judge_one(cfg, addr, root, memo=None):
+    """The raw judge's verdict on matched/ADDR.c with its own harness: (verdict, detail). memo (core/verdict_memo,
+    the wave's step 5 only): a PASS recorded earlier in the same wave on exactly these inputs is taken as it is."""
     src = paths.MATCHED / f"{addr}.c"
     if not src.exists():
         return "MISSING", "no matched/ADDR.c"
     if not (paths.HARNESS / addr / "meta.json").exists():
         return "MISSING", "no harness"
+    if memo is not None and (total := memo.passed(addr, src)) is not None:
+        return "PASS", f"{total} vectors"
     bd = pathlib.Path(tempfile.mkdtemp(prefix=f"{addr}_", dir=root))
     try:
         res = check.run_check(cfg, addr, str(src), build_dir=bd)
@@ -89,13 +94,15 @@ def judge_one(cfg, addr, root):
     return "FAIL", f"{res.get('stage')}: {why}"
 
 
-def recount(cfg, addrs, workers=4, log=print):
-    """{addr: (verdict, detail)} for every addr, judged in parallel (workers threads, each a bounded build and run)."""
+def recount(cfg, addrs, workers=4, log=print, memo=None):
+    """{addr: (verdict, detail)} for every addr, judged in parallel (workers threads, each a bounded build and run).
+    memo: see judge_one (only tools/wave.py's step 5 passes one)."""
     root = pathlib.Path(tempfile.mkdtemp(prefix="fresh_oracle_"))
     out, done = {}, 0
     try:
         with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, workers)) as ex:
-            futs = {ex.submit(judge_one, cfg, a, root): a for a in addrs}
+            kw = {"memo": memo} if memo is not None else {}
+            futs = {ex.submit(judge_one, cfg, a, root, **kw): a for a in addrs}
             for f in concurrent.futures.as_completed(futs):
                 out[futs[f]] = f.result()
                 done += 1

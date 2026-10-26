@@ -1,0 +1,74 @@
+{
+ "tc": {
+  "functions": 2698,
+  "stages": {
+   "gate": 864,
+   "pass": 876,
+   "lift": 853,
+   "judge": 40,
+   "gaps": 65
+  },
+  "adopted": 876,
+  "adopted_share": 0.3247,
+  "agent_paid_functions": 2674,
+  "agent_usd_total": 156.08,
+  "agent_tokens_total": 914893497,
+  "mean_usd_per_function": 0.05837,
+  "mean_tokens_per_function": 342144,
+  "adopted_agent_did": 868,
+  "adopted_agent_usd": 8.48,
+  "adopted_agent_tokens": 116081789,
+  "adopted_not_done": 8,
+  "adopted_not_done_usd_est": 0.47,
+  "adopted_not_done_tokens_est": 2737153,
+  "start_pass_judge": 864
+ },
+ "ps2": {
+  "functions": 6516,
+  "stages": {
+   "lift": 2605,
+   "gate": 966,
+   "pass": 418,
+   "gaps": 2465,
+   "judge": 62
+  },
+  "adopted": 418,
+  "adopted_share": 0.0641,
+  "agent_paid_functions": 2357,
+  "agent_usd_total": 34.57,
+  "agent_tokens_total": 328083498,
+  "mean_usd_per_function": 0.01467,
+  "mean_tokens_per_function": 139195,
+  "adopted_agent_did": 336,
+  "adopted_agent_usd": 1.49,
+  "adopted_agent_tokens": 19887922,
+  "adopted_not_done": 82,
+  "adopted_not_done_usd_est": 1.2,
+  "adopted_not_done_tokens_est": 11414021,
+  "start_pass_judge": 966
+ },
+ "spawn": {
+  "functions": 1875,
+  "stages": {
+   "lift": 978,
+   "pass": 202,
+   "gaps": 459,
+   "gate": 228,
+   "judge": 8
+  },
+  "adopted": 202,
+  "adopted_share": 0.1077,
+  "agent_paid_functions": 421,
+  "agent_usd_total": 4.06,
+  "agent_tokens_total": 39989147,
+  "mean_usd_per_function": 0.00964,
+  "mean_tokens_per_function": 94986,
+  "adopted_agent_did": 85,
+  "adopted_agent_usd": 0.29,
+  "adopted_agent_tokens": 4051472,
+  "adopted_not_done": 117,
+  "adopted_not_done_usd_est": 1.13,
+  "adopted_not_done_tokens_est": 11113373,
+  "start_pass_judge": 228
+ }
+}

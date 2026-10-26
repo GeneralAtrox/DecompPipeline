@@ -186,9 +186,11 @@ types.h is bimodal: 0.2-3 KB for most functions, 17-33 KB for functions on the p
 
 | knob | where | default | effect |
 |---|---|---|---|
-| effort (raw) | config `effort` | `high` | `--effort` of raw attempts; null = the CLI's adaptive default |
+| effort (raw) | config `effort` | `medium` | `--effort` of raw attempts; null = the CLI's adaptive default. medium: attempt-1 pass unchanged against high (120/120 in both; r15 A/B on 60 + 60 Toy Commander functions), -28% $ and -25% agent time per verified function |
 | effort (readable) | config `readable_effort`, `refine.py run --effort` | null: falls back to `effort` | readable only; `--effort` wins for that run (A/B) |
 | effort (large readable) | config `readable_large_bytes`, `readable_effort_large` | 4096, `medium` | a raw.c over that size (0/null: off) uses this effort, and TASK.md gets "A long function" (work top-down, write as you go, check early); `--effort` still wins |
+| prompt cache lifetime | config `cache_ttl`, `readable_cache_ttl` | `5m`, null | CLAUDE_CODE_PROMPT_CACHE_TTL of raw attempts / readable sessions; null = the CLI's choice (1 h on a subscription). 5m: -20% per verified raw function ($0.0139 -> $0.0112) at the same attempt-1 pass rate (60/60; r15 A/B) |
+| shared prompt prefix (raw) | config `shared_prefix` | true | the generic task text (goal, files, rules R1-R12, SH-4 reminders, procedure) and tc_rt.h go into the system prompt (`--system-prompt-file`, beside the transcript), the same for every session, so they are a cached prefix; TASK.md keeps the per-function part. Lean system prompt and targets without a build_sandbox hook only. -13% base-rate cost per function at the same verdicts and attempt-1 pass rate (60/60; r15 A/B) |
 | attempts (raw) | config `max_attempts`, `stall_limit` | 8, 2 | sessions per function; stop after 2 without progress |
 | attempts (readable) | `refine.py run --attempts` | 3 | sessions per function; each sees the last work.c and its result |
 | workers (raw) | config `workers` / `max_workers` | 4 / 10 | parallel sessions in the server |
@@ -197,8 +199,9 @@ types.h is bimodal: 0.2-3 KB for most functions, 17-33 KB for functions on the p
 | output cap (raw) | config `output_cap` | none | same, for raw attempts |
 | time cap | config `attempt_timeout_s` | 900 | session killed (process tree) after this |
 | budget cap | config `attempt_budget_usd` | 1.0 | the CLI's `--max-budget-usd` (notional on a subscription) |
+| killed sessions' spend | config `agent_rates` | haiku rates | a session that ends with no result event (timeout, output cap, stop) has no total_cost_usd; its cost_usd is then estimated from the requests it made (usage plus thinking deltas, x5 over 100k), marked `cost_estimated`, instead of $0. Reads 0.77-0.98 of the CLI total on finished sessions. A model with no rates keeps None |
 | system prompt | config `agent_system_prompt` | `lean` | `cli` restores the CLI's prompt |
-| machine draft (readable) | config `readable_draft`, `refine.py run --draft` | `start` | `off`; `adopt`: a draft that passes the judge, reads as named C and passes the adoption gate (at most `readable_draft_max_lines` lines, default 6; no literal a header names) is adopted, no agent; `start`: also a failing draft is the agent's starting work.c |
+| machine readable file (readable) | config `readable_draft`, `refine.py run --draft`; `readable_machine` | `start`; `true` | `off`; `adopt`: the readable pass's machine file (core/rtx), else the draft, that passes the judge, reads as named C and passes the adoption gate (no literal a header names; any length unless `readable_draft_max_lines` is set) is adopted (`readable_by: machine`), no agent; `start`: a file not adopted is the agent's starting work.c; `readable_machine: false`: drafts only |
 | header wait (readable) | config `readable_header_wait_s`, `readable_header_retry_s` | 900, 60 | how long `run` waits for live headers that do not validate before it uses the last good snapshot |
 
 There is no turn cap: turns of passing and failing attempts have the same p90 (19), so a turn cap cannot tell them

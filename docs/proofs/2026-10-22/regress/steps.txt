@@ -1,0 +1,21 @@
+new-A_catalog_fresh: [sst00] [     3s] copied Ghidra project from <sst00 Ghidra project> (0 s)
+new-A_catalog_fresh: [sst00] [    50s] catalog fixups (TcPools ... TcCont) and TcCatalog on the private copy (47 s)
+new-A_catalog_fresh: 9 item(s), 0 unexpected; sst00 2.3 min; total 2.3 min
+new-B_plain_fresh: [sst00] [     0s] copied Ghidra project from <sst00 Ghidra project> (0 s)
+new-B_plain_fresh: 9 item(s), 0 unexpected; sst00 1.8 min; total 1.8 min
+new-C_catalog_after_switch: [sst00] [     0s] catalog of the private copy: kept from its catalog step (catalog_out)
+new-C_catalog_after_switch: 9 item(s), 0 unexpected; sst00 2.1 min; total 2.1 min
+new-D_plain_after_switch: 9 item(s), 0 unexpected; sst00 1.8 min; total 1.8 min
+new-E_catalog_fresh_again: [sst00] [     0s] copied Ghidra project from <sst00 Ghidra project> (0 s)
+new-E_catalog_fresh_again: [sst00] [    51s] catalog fixups (TcPools ... TcCont) and TcCatalog on the private copy (51 s)
+new-E_catalog_fresh_again: 9 item(s), 0 unexpected; sst00 2.7 min; total 2.7 min
+new-F_plain_fresh_again: [sst00] [     0s] copied Ghidra project from <sst00 Ghidra project> (0 s)
+new-F_plain_fresh_again: 9 item(s), 0 unexpected; sst00 2.2 min; total 2.2 min
+old-A_catalog_fresh: [sst00] [     6s] copied Ghidra project from <sst00 Ghidra project> (1 s)
+old-A_catalog_fresh: [sst00] [    85s] catalog fixups (TcPools ... TcCont) and TcCatalog on the private copy (78 s)
+old-A_catalog_fresh: 9 item(s), 0 unexpected; sst00 3.7 min; total 3.7 min
+old-B_plain_after_switch: [sst00] [     0s] copied Ghidra project from <sst00 Ghidra project> (0 s)
+old-B_plain_after_switch: 9 item(s), 0 unexpected; sst00 2.2 min; total 2.2 min
+old-C_catalog_after_switch: [sst00] [     0s] copied Ghidra project from <sst00 Ghidra project> (0 s)
+old-C_catalog_after_switch: [sst00] [    56s] catalog fixups (TcPools ... TcCont) and TcCatalog on the private copy (56 s)
+old-C_catalog_after_switch: 9 item(s), 0 unexpected; sst00 2.6 min; total 2.6 min

@@ -1,0 +1,129 @@
+{
+ "where": "laptop2, 14.44 / laptop2 (no judging here: Ghidra prepares only)",
+ "identity": {
+  "p1ws live ph2 vs cold ph1": {
+   "files": 140,
+   "same": 140,
+   "cold_files": 140,
+   "differ": []
+  },
+  "p1ws live ph2 vs cold ph3": {
+   "files": 140,
+   "same": 140,
+   "cold_files": 140,
+   "differ": []
+  },
+  "p2ws live ph3 vs cold ph1": {
+   "files": 213,
+   "same": 213,
+   "cold_files": 213,
+   "differ": []
+  },
+  "p2ws live ph3 vs cold ph2": {
+   "files": 213,
+   "same": 213,
+   "cold_files": 213,
+   "differ": []
+  }
+ },
+ "timing": {
+  "p1ws cold_ph1": {
+   "wall_s": 332.1,
+   "n": 20,
+   "median_prepare_s": 16.23,
+   "median_wait_s": 0.04
+  },
+  "p1ws cold_ph3": {
+   "wall_s": 361.3,
+   "n": 20,
+   "median_prepare_s": 17.25,
+   "median_wait_s": 0.05
+  },
+  "p1ws live_ph2": {
+   "wall_s": 56.8,
+   "n": 20,
+   "median_prepare_s": 1.49,
+   "median_wait_s": 0.0
+  },
+  "p2ws cold_ph1": {
+   "wall_s": 636.4,
+   "n": 30,
+   "median_prepare_s": 14.725000000000001,
+   "median_wait_s": 0.04
+  },
+  "p2ws cold_ph2": {
+   "wall_s": 593.2,
+   "n": 30,
+   "median_prepare_s": 13.02,
+   "median_wait_s": 0.03
+  },
+  "p2ws live_ph3": {
+   "wall_s": 313.5,
+   "n": 30,
+   "median_prepare_s": 1.41,
+   "median_wait_s": 0.0
+  }
+ },
+ "queue_wait": [
+  {
+   "phase": 1,
+   "beside": "p1ws cold",
+   "of": "p2ws cold",
+   "window_s": 334,
+   "tickets": 1,
+   "median_s": 0.32,
+   "p90_s": 0.32,
+   "max_s": 0.32
+  },
+  {
+   "phase": 1,
+   "beside": "p2ws cold",
+   "of": "p1ws cold",
+   "window_s": 334,
+   "tickets": 3,
+   "median_s": 0.01,
+   "p90_s": 0.01,
+   "max_s": 0.04
+  },
+  {
+   "phase": 2,
+   "beside": "p1ws live",
+   "of": "p2ws cold",
+   "window_s": 58,
+   "tickets": 0,
+   "median_s": null,
+   "p90_s": null,
+   "max_s": null
+  },
+  {
+   "phase": 2,
+   "beside": "p2ws cold",
+   "of": "p1ws live",
+   "window_s": 58,
+   "tickets": 1,
+   "median_s": 0.19,
+   "p90_s": 0.19,
+   "max_s": 0.19
+  },
+  {
+   "phase": 3,
+   "beside": "p1ws cold",
+   "of": "p2ws live",
+   "window_s": 363,
+   "tickets": 1,
+   "median_s": 0.17,
+   "p90_s": 0.17,
+   "max_s": 0.17
+  },
+  {
+   "phase": 3,
+   "beside": "p2ws live",
+   "of": "p1ws cold",
+   "window_s": 363,
+   "tickets": 1,
+   "median_s": 0.03,
+   "p90_s": 0.03,
+   "max_s": 0.03
+  }
+ ]
+}

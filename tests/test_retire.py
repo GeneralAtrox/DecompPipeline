@@ -202,7 +202,7 @@ class RedoStatus(unittest.TestCase):
                         mock.patch.object(refine.readable, "Registry", lambda: None),
                         mock.patch.object(paths, "RUNS", self.d / "runs"),
                         mock.patch.object(refine, "raw_missing", lambda a: None),
-                        mock.patch.object(refine, "harness_stale", lambda cfg, a: None),
+                        mock.patch.object(refine, "harness_stale", lambda cfg, a, **k: None),
                         mock.patch.object(refine, "preflight", lambda cfg, reg, a, meta: None),
                         mock.patch.object(refine, "build_sandbox", lambda *a: (self.d / "box", "task")),
                         mock.patch.object(refine, "tree_hashes", lambda box: {}),
@@ -262,6 +262,20 @@ class RedoStatus(unittest.TestCase):
         refine.update(B, status="running")
         refine.record_error(B, "boom")
         self.assertEqual(refine.load_ledger()[B]["status"], "error")
+
+    def test_fresh_workspace_pass_creates_src(self):
+        """A workspace's first readable pass: no readable/src yet (Spawn's first runs ended as infra_error)."""
+        (self.d / "src").rmdir()
+        with mock.patch.object(refine.rcheck, "check_readable", lambda *a, **k: {"verdict": "PASS", "stage": "compare"}):
+            out, row = self.run_redo("queued", with_file=False)
+        self.assertEqual((out, row["status"]), ("readable", "readable"))
+        self.assertEqual((self.d / "src" / f"{A}.c").read_text(), "/* attempt */")
+
+    def test_fresh_workspace_draft_adopt_creates_src(self):
+        from core import draft_run
+        (self.d / "src").rmdir()
+        self.assertEqual(draft_run.adopt(A, self.d / "box" / "work.c", {"stage": "compare"}), "readable")
+        self.assertEqual((self.d / "src" / f"{A}.c").read_text(), "/* attempt */")
 
 
 if __name__ == "__main__":

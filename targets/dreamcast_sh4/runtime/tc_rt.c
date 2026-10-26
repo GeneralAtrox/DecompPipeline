@@ -2,6 +2,7 @@
  * and their helpers are in tc_fpu.c). */
 #include <math.h>
 #include <stdio.h>
+#include <emmintrin.h>
 #include <xmmintrin.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,13 +26,13 @@ static u32 g_gs[7]; /* r8..r14 */
 static u32 g_low[4]; /* r0..r3 at entry (vectors.txt line L) */
 static u32 g_retx;   /* the extra result word (a nonstandard result register, a u64's high word) */
 static int g_has_retx;
-static u32 g_rets[16];
+static u32 g_rets[TCRT_RETS];
 static u32 g_ncalls;
 static u32 g_call_log[MAX_CALLS][LOG_FIELDS];
 static char g_faults[MAX_FAULTS][64];
 static u32 g_nfaults;
 static u32 g_code_read;
-static u32 g_fsca[65536][2];
+static u32 g_fsca[2][65536][2]; /* fsca_table.bin: {sin, cos} bits per angle, round to nearest, then toward zero */
 static u32 g_mxcsr_rc; /* MXCSR rounding control for FPSCR.RM (vectors.txt line P): 0 nearest, 0x6000 toward zero */
 
 static int bit_get(const u8 *bits, u32 off) { return (bits[off >> 3] >> (off & 7)) & 1; }
@@ -58,6 +59,15 @@ static int check(u32 addr, u32 size, int write)
     return 1;
 }
 
+/* A 2-byte access at an odd address or a 4-byte one off a multiple of 4 is an SH-4 address error: no run of the
+ * original makes one (the oracle drops such a vector, TcFold), so the C making one is wrong, whatever the bytes. */
+static int aligned(u32 addr, u32 size, int write)
+{
+    if (!(addr & (size - 1))) return 1;
+    fault(write ? "write-misaligned" : "read-misaligned", addr);
+    return 0;
+}
+
 static void mark(u32 addr, u32 size)
 {
     for (u32 i = 0; i < size; i++) {
@@ -78,7 +88,7 @@ u8 rd8(u32 a)
 u16 rd16(u32 a)
 {
     a = tcrt_fold(a);
-    if (!check(a, 2, 0)) return 0;
+    if (!aligned(a, 2, 0) || !check(a, 2, 0)) return 0;
     const u8 *p = g_ram + (a - TCRT_RAM_BASE);
     return (u16)(p[0] | (p[1] << 8));
 }
@@ -86,7 +96,7 @@ u16 rd16(u32 a)
 u32 rd32(u32 a)
 {
     a = tcrt_fold(a);
-    if (!check(a, 4, 0)) return 0;
+    if (!aligned(a, 4, 0) || !check(a, 4, 0)) return 0;
     const u8 *p = g_ram + (a - TCRT_RAM_BASE);
     return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);
 }
@@ -104,7 +114,7 @@ void wr8(u32 a, u8 v)
 void wr16(u32 a, u16 v)
 {
     a = tcrt_fold(a);
-    if (tcrt_p4_store(a, v, 2) || !check(a, 2, 1)) return;
+    if (!aligned(a, 2, 1) || tcrt_p4_store(a, v, 2) || !check(a, 2, 1)) return;
     u8 *p = g_ram + (a - TCRT_RAM_BASE);
     p[0] = (u8)v;
     p[1] = (u8)(v >> 8);
@@ -114,7 +124,7 @@ void wr16(u32 a, u16 v)
 void wr32(u32 a, u32 v)
 {
     a = tcrt_fold(a);
-    if (tcrt_p4_store(a, v, 4) || !check(a, 4, 1)) return;
+    if (!aligned(a, 4, 1) || tcrt_p4_store(a, v, 4) || !check(a, 4, 1)) return;
     u8 *p = g_ram + (a - TCRT_RAM_BASE);
     p[0] = (u8)v;
     p[1] = (u8)(v >> 8);
@@ -125,7 +135,7 @@ void wr32(u32 a, u32 v)
 
 void wrf32(u32 a, f32 v) { wr32(a, f2u(v)); }
 
-static u32 next_return(void) { return g_ncalls < 16 ? g_rets[g_ncalls] : 0; }
+static u32 next_return(void) { return g_ncalls < TCRT_RETS ? g_rets[g_ncalls] : 0; }
 
 int tcrt_sq_window; /* header line S (TcSq): tcrt_fold maps the store-queue window onto RAM */
 
@@ -163,6 +173,7 @@ static void live_apply(u32 target, u32 k)
 
 static void log_call(u32 target, const TcArgs *args)
 {
+    tcrt_fpscr_call();
     if (g_ncalls < MAX_CALLS) {
         g_call_log[g_ncalls][0] = target;
         for (int i = 0; i < 4; i++) g_call_log[g_ncalls][1 + i] = args ? args->r[i] : 0;
@@ -173,6 +184,30 @@ static void log_call(u32 target, const TcArgs *args)
     }
 }
 
+/* The stricter judge (tc_strict.h): guest RAM in the oracle's bounds (TcBase.inRam: from TCRT_VALID_LO); a write
+ * only where no byte is an instruction's (TcStrict.writable), logged like the C's own. */
+static int tcs_read(u32 p, u32 n, u8 *out)
+{
+    p = tcrt_fold(p);
+    if (p < TCRT_VALID_LO || p > 0x8d000000u - n) return 0;
+    memcpy(out, g_ram + (p - TCRT_RAM_BASE), n);
+    return 1;
+}
+
+static void tcs_write(u32 p, u32 n, const u8 *in)
+{
+    p = tcrt_fold(p);
+    if (p < TCRT_VALID_LO || p > 0x8d000000u - n) return;
+    for (u32 k = 0; k < n; k++)
+        if (bit_get(g_code, p + k - TCRT_RAM_BASE)) return;
+    memcpy(g_ram + (p - TCRT_RAM_BASE), in, n);
+    mark(p, n);
+}
+
+static void tcs_scratch(int i, u32 bits) { tcrt_fpu_scratch(i, bits); }
+
+#include "tc_strict.h"
+
 jmp_buf tcrt_halt_jmp;
 int tcrt_halted;
 
@@ -182,11 +217,18 @@ void tc_halt(void)
     longjmp(tcrt_halt_jmp, 1);
 }
 
+void tc_spin(void)
+{
+    tcrt_halted = 2;
+    longjmp(tcrt_halt_jmp, 1);
+}
+
 u32 tc_call(u32 target, const TcArgs *args)
 {
     u32 rv = next_return();
     log_call(tcrt_fold(target), args);
     live_apply(tcrt_fold(target), g_ncalls); /* after the record: the callee saw the old rN */
+    if (g_ncalls < MAX_CALLS) tcs_call(g_ncalls, tcrt_fold(target), g_call_log[g_ncalls]); /* tc_strict.h */
     g_ncalls++;
     tcrt_fpu_result(rv); /* the oracle's mocked callee leaves its result in r0 and fr0 */
     return rv;
@@ -211,6 +253,35 @@ f32 sh4_fsrra(f32 x)
     return one / sqrtf(x);
 }
 
+/* fmac FR0,FRm,FRn: fr0 * frm + frn rounded once, as the SH-4 does (software manual 6.4: "Rounding is performed once
+ * in FMAC"; 9.36 normal_fmac: the exact product, one conversion), by MXCSR.RC (FPSCR.RM) with DAZ|FTZ (FPSCR.DN).
+ * SSE2 intrinsics only (no fmaf, no x87): the double product of two floats is exact. Toward zero, the double sum
+ * truncated and then truncated to float is the exact sum truncated once. To nearest, the double sum is made
+ * round-to-odd (TwoSum gives its exact error; an inexact sum gets an odd last bit), which then rounds to float as the
+ * exact sum would (53 >= 24 + 2 bits). The oracle's is TcRound.fma (tests/test_fmac.py checks both exactly). */
+f32 sh4_fmac(f32 fr0, f32 frm, f32 frn)
+{
+    __m128d z = _mm_setzero_pd(), p, c, s, t, e;
+    double sd, ed;
+    unsigned long long bits;
+    p = _mm_mul_sd(_mm_cvtss_sd(z, _mm_set_ss(fr0)), _mm_cvtss_sd(z, _mm_set_ss(frm)));
+    c = _mm_cvtss_sd(z, _mm_set_ss(frn));
+    s = _mm_add_sd(p, c);
+    if ((_mm_getcsr() & 0x6000u) == 0u) {
+        t = _mm_sub_sd(s, p); /* TwoSum: s + e == p + c exactly (round to nearest) */
+        e = _mm_add_sd(_mm_sub_sd(p, _mm_sub_sd(s, t)), _mm_sub_sd(c, t));
+        sd = _mm_cvtsd_f64(s);
+        ed = _mm_cvtsd_f64(e);
+        memcpy(&bits, &sd, 8);
+        if (ed != 0.0 && (bits & 0x7ff0000000000000ull) != 0x7ff0000000000000ull && !(bits & 1u)) {
+            bits += (ed < 0.0) == (sd < 0.0) ? 1u : ~0ull; /* the odd neighbour on the exact sum's side */
+            memcpy(&sd, &bits, 8);
+            s = _mm_set_sd(sd);
+        }
+    }
+    return _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(), s));
+}
+
 /* fsqrt: the SSE root (sqrtss), so MXCSR decides it exactly as FPSCR does on the SH-4: RC from FPSCR.RM (TcRound: the
  * correctly rounded root, toward zero when RM=1), DAZ|FTZ from FPSCR.DN. A negative operand gives a NaN (the judge
  * compares NaNs as equal). */
@@ -219,11 +290,22 @@ f32 sh4_fsqrt_rm(f32 x)
     return _mm_cvtss_f32(_mm_sqrt_ss(_mm_set_ss(x)));
 }
 
+/* Double precision (FPSCR.PR=1) on fr pairs: sh4_double.h, shared with the readable and port runtimes; PR is
+ * tc_fpu.c's mode word, and fcnvsd/fcnvds with PR=0 (undefined) report a fault. */
+#define SH4D_PR() tcrt_fpu_pr()
+#define SH4D_UNDEFINED(s) fault(s, 0u)
+#include "sh4_double.h"
+
+/* fsca: the table of the FPU's rounding, MXCSR.RC (FPSCR.RM: line P, xemu's lds); the SH-4 rounds no way up or down */
 void sh4_fsca(u32 fpul, f32 *s, f32 *c)
 {
-    u32 i = fpul & 0xffffu;
-    *s = u2f(g_fsca[i][0]);
-    *c = u2f(g_fsca[i][1]);
+    u32 rc = _mm_getcsr() & 0x6000u, i = fpul & 0xffffu;
+    if (rc != 0u && rc != 0x6000u) {
+        fprintf(stderr, "fsca: MXCSR.RC %04x rounds up or down, no FPSCR.RM does: no fsca table for it\n", rc);
+        exit(3);
+    }
+    *s = u2f(g_fsca[rc != 0u][i][0]);
+    *c = u2f(g_fsca[rc != 0u][i][1]);
 }
 
 u32 sh4_r(int i) { return (i >= 8 && i < 15) ? g_gs[i - 8] : 0; }
@@ -231,6 +313,60 @@ u32 sh4_r(int i) { return (i >= 8 && i < 15) ? g_gs[i - 8] : 0; }
 void sh4_set_r(int i, u32 v)
 {
     if (i >= 8 && i < 15) g_gs[i - 8] = v;
+}
+
+/* SR (TcSr): set from line I, its interrupt mask reported at exit (line IM); 0 and not reported without a line I. */
+static u32 g_sr;
+static int g_has_sr;
+
+u32 sh4_stc_sr(void) { return g_sr; }
+
+void sh4_ldc_sr(u32 v) { g_sr = v & 0x700083f3u; }
+
+void tcrt_set_sr(u32 imask)
+{
+    g_sr = 0x40000000u | (imask & 15u) << 4;
+    g_has_sr = 1;
+}
+
+void tcrt_report_sr(FILE *out)
+{
+    if (g_has_sr) fprintf(out, "IM %x\n", g_sr >> 4 & 15u);
+}
+
+/* Listed hardware (TcHw): the registers and values of header lines Y, and GBR as state after a header line Z (0 at
+ * each vector's entry, reported at exit as GB). A read of any other register is a fault, as in the original's run. */
+#define TCRT_MAX_HW 16
+static struct { u32 reg, value; } g_hw[TCRT_MAX_HW];
+static u32 g_nhw;
+static u32 g_gbr;
+static int g_has_gbr;
+
+void tcrt_add_hw(u32 reg, u32 value)
+{
+    if (g_nhw < TCRT_MAX_HW) {
+        g_hw[g_nhw].reg = reg;
+        g_hw[g_nhw++].value = value;
+    }
+}
+
+void tcrt_set_gbr_state(void) { g_has_gbr = 1; }
+
+u32 tc_hw_read32(u32 reg)
+{
+    for (u32 i = 0; i < g_nhw; i++)
+        if (g_hw[i].reg == reg) return g_hw[i].value;
+    fault("read", reg);
+    return 0;
+}
+
+u32 sh4_stc_gbr(void) { return g_gbr; }
+
+void sh4_ldc_gbr(u32 v) { g_gbr = v; }
+
+void tcrt_report_gbr(FILE *out)
+{
+    if (g_has_gbr) fprintf(out, "GB %08x\n", g_gbr);
 }
 
 /* ---------------- runner-only ---------------- */
@@ -280,7 +416,11 @@ int tcrt_init(const char *image, const char *code_ranges, const char *fsca_table
     }
     fclose(f);
     u8 *tab = read_file(fsca_table, &size);
-    if (!tab || size != (long)sizeof g_fsca) return 0;
+    if (!tab || size != (long)sizeof g_fsca) {
+        fprintf(stderr, "fsca table %s: %ld bytes, not %u (both tables: python -m core.fsca)\n", fsca_table, size,
+                (unsigned)sizeof g_fsca);
+        return 0;
+    }
     memcpy(g_fsca, tab, sizeof g_fsca);
     free(tab);
     tcrt_reset();
@@ -302,6 +442,7 @@ void tcrt_reset(void)
     g_nfaults = 0;
     g_code_read = 0;
     tcrt_fpu_reset();
+    tcrt_strict_reset();
     memset(g_gs, 0, sizeof g_gs);
     memset(g_low, 0, sizeof g_low);
     memset(g_rets, 0, sizeof g_rets);
@@ -309,6 +450,9 @@ void tcrt_reset(void)
     g_retx = 0;
     g_has_retx = 0;
     tcrt_halted = 0;
+    g_sr = 0;
+    g_has_sr = 0;
+    g_gbr = 0;
     /* FPSCR.DN=1, as the game runs (TcOracle sets FPSCR 0x00040001; TcFpu models it): denormal operands count as
      * zero (DAZ) and denormal results are flushed to zero (FTZ). FPSCR.RM=1 (line P, only when the oracle models
      * it: TcRound) rounds toward zero (RC=11). Here, not in the runner: main's frame is unchanged. */
@@ -346,7 +490,7 @@ void tcrt_set_retx(u32 v)
     g_has_retx = 1;
 }
 
-void tcrt_set_call_returns(const u32 rets[16]) { memcpy(g_rets, rets, sizeof g_rets); }
+void tcrt_set_call_returns(const u32 rets[TCRT_RETS]) { memcpy(g_rets, rets, sizeof g_rets); }
 
 static int cmp_u32(const void *a, const void *b)
 {
@@ -358,7 +502,7 @@ void tcrt_report(FILE *out, u32 r0, u32 fr0_bits)
 {
     fprintf(out, "RET %08x %08x\n", r0, fr0_bits);
     if (g_has_retx) fprintf(out, "RETX %08x\n", g_retx);
-    if (tcrt_halted) fprintf(out, "HALT\n");
+    if (tcrt_halted) fprintf(out, tcrt_halted == 2 ? "HALT SPIN\n" : "HALT\n");
     if (g_woverflow) fprintf(out, "FAULT too-many-writes\n");
     qsort(g_wlist, g_wcount, sizeof(u32), cmp_u32);
     u32 i = 0;
@@ -369,9 +513,7 @@ void tcrt_report(FILE *out, u32 r0, u32 fr0_bits)
             end++;
         }
         i++;
-        u32 addr = start + TCRT_RAM_BASE;
-        if (addr >= TCRT_STACK_LO) continue;
-        if (end + TCRT_RAM_BASE > TCRT_STACK_LO) end = TCRT_STACK_LO - TCRT_RAM_BASE;
+        u32 addr = start + TCRT_RAM_BASE;  /* all of RAM: core/compare.judged leaves out the original's own frame */
         fprintf(out, "W %08x ", addr);
         for (u32 o = start; o < end; o++) fprintf(out, "%02x", g_ram[o]);
         fputc('\n', out);
@@ -384,6 +526,13 @@ void tcrt_report(FILE *out, u32 r0, u32 fr0_bits)
         fputc('\n', out);
     }
     if (g_ncalls > MAX_CALLS) fprintf(out, "FAULT too-many-calls\n");
+    tcrt_strict_report(out); /* CS lines; XR: the exit frame of a run that returned (tc_strict.h) */
+    if ((tcrt_strict_flags() & 8) && !tcrt_halted) {
+        fprintf(out, "XR %08x", TCRT_SP); /* r15: the C keeps no stack pointer, its frames balance */
+        for (int k = 0; k < 7; k++) fprintf(out, " %08x", g_gs[k]);
+        for (int k = 12; k < 16; k++) fprintf(out, " %08x", tcrt_fr_bits(k));
+        fputc('\n', out);
+    }
     tcrt_report_xf(out);
     for (u32 k = 0; k < g_nfaults && k < MAX_FAULTS; k++) fprintf(out, "FAULT %s\n", g_faults[k]);
     if (g_code_read) fprintf(out, "CODEREAD %08x\n", g_code_read);

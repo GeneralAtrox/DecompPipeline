@@ -1,0 +1,44 @@
+##### base:configured t28:pin
+  60 judgements compared, 0 differ (2 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+  DIFF raw 801f6120: ['build']
+    build: ["work.c(3): error C2220: the following warning is treated as an error", "work.c(3): warning C4100: 'param_1': unreferenced formal parameter"]  ->  ["work.c(3): error C2220: the following warning is treated as an error", "work.c(3): warning C4100: 'param_1': unreferenced parameter"]
+  40 judgements compared, 1 differ (0 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+DIFFERENCES FOUND
+##### t28:pin t28b:pin
+  60 judgements compared, 0 differ (2 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+ALL IDENTICAL
+##### t28:pin l2a:configured
+  60 judgements compared, 0 differ (2 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+ALL IDENTICAL
+##### t28b:pin l2b:configured
+  60 judgements compared, 0 differ (2 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+ALL IDENTICAL
+##### l2a:configured l2b:configured
+  60 judgements compared, 0 differ (2 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+ALL IDENTICAL
+##### base:configured base2:configured
+  60 judgements compared, 0 differ (2 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+ALL IDENTICAL
+##### base:configured today2114:configured
+  60 judgements compared, 0 differ (2 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+  40 judgements compared, 0 differ (0 more differ only in masked noise)
+ALL IDENTICAL

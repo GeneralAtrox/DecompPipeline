@@ -65,12 +65,23 @@ def api(port, path, body=None, timeout=60):
         return json.load(r)
 
 
+def port_bound(port):
+    """False only when no TCP socket on this machine has local port `port` (so no server can answer there); True
+    when one has, or when the sockets cannot be listed. It spares server_state the refused connect, which Windows
+    retries for 2 s."""
+    try:
+        import psutil
+        return any(c.laddr and c.laddr.port == int(port) for c in psutil.net_connections("tcp"))
+    except Exception:  # noqa: BLE001  (no psutil, or not allowed to list: ask the port as before)
+        return True
+
+
 def server_state(ws, timeout=5):
     """The /api/state of the server running this workspace, or None when none answers on its port (or a
     different project does)."""
     cfg = project_json(ws)
     port = cfg.get("port")
-    if not port:
+    if not port or not port_bound(port):
         return None
     try:
         st = api(port, "/api/state", timeout=timeout)

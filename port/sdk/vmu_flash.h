@@ -4,7 +4,8 @@
  * the console's BIOS writes, so a card image is the file an emulator keeps.
  *
  * Root block: 0x00 sixteen 0x55 (formatted), 0x10 the 32 volume bytes (the custom colour), 0x30 the format time (BCD),
- * 0x46 the FAT's block, 0x4a the directory's, 0x4e the icon, 0x50 the user block count.
+ * 0x40 the last block, 0x44 the root's own, 0x46 the FAT's, 0x4a the directory's, 0x4e the icon, 0x50 the user
+ * block count, 0x52 31 and 0x56 0x80. Without 0x44, 0x52 and 0x56 the game on Flycast finds no save on the card.
  * Directory entry (32 bytes): 0x00 type (0: free, 0x33 data, 0xcc a game), 0x01 copy flag, 0x02 first block, 0x04 the
  * name (12 bytes, padded with NULs or spaces), 0x10 the time (BCD: century, year, month, day, hour, minute, second,
  * day of week), 0x18 size in blocks, 0x1a header offset in blocks. */
@@ -31,6 +32,7 @@ void vmfs_copy(u8 *dst, const u8 *src, u32 n);
 
 void vmfs_format(u8 *img);              /* a blank formatted card, dated now */
 int vmfs_formatted(const u8 *img);
+int vmfs_fix_root(u8 *img);             /* a card from the kit before 0x44 was right (0x42 held 255): 1 if fixed */
 const u8 *vmfs_root(const u8 *img);
 u32 vmfs_free(const u8 *img);           /* free user blocks */
 u32 vmfs_free_from_start(const u8 *img); /* free user blocks from block 0 on (room for a game) */

@@ -19,7 +19,8 @@ pointer or a raw-named callee's u32) whose register the original set to a guest 
   a call is passed: Gd_GetToc's `u32 *toc` is a 408-byte TOC (8c049bfc), Grid_CellOfPoint's `s32 *out_cell` three
   words (8c021cba).
 The matched raw C runs twice with those lines (`B`: the region painted, two different paints) and prints the bytes
-there at the call (the vector's, plus what the original wrote there before the call); they become `D` lines, and at
+there at the call (the vector's, plus what the original wrote there before the call) and which of them it stored to
+(r15: a stored value computed from the paint can keep it, TC 8c0117f4); they become `D` lines, and at
 that call the readable run copies them to the host address the readable call passed in the same register (rd_veh.c
 out_copy). The readable local then holds what the original's holds after the mocked call, whatever the readable code
 wrote into it before (`= {0}`, which MSVC's C4701 often forces). Without the raw run (no matched raw C) the O lines
@@ -31,14 +32,17 @@ call that passes another pointer, or none, gets other bytes or none, and the vec
 the vector's own, so nothing the judge saw before is hidden.
 """
 import collections
+import hashlib
+import json
+import os
+import pathlib
 import re
 import threading
 
 from . import readable_abi
-from .compare import REG_INDEX, SP, STACK_LO
+from .compare import FRAME_LO, REG_INDEX, SP, STACK_HI
 from .readable import RegistryError, is_variadic, parse_proto
 
-STACK_HI = 0x8D000000
 MAX_OUT = 0x2000  # rd_veh.c out_add, rd_trace.c
 _SIZES, _LOCK = {}, threading.Lock()
 SIZE_NAME = re.compile(r"(?:\w*_)?(?:size|len|length|n?bytes)", re.I)
@@ -120,7 +124,7 @@ def out_params(reg, meta, storage_of):
     return out
 
 
-def paired(meta, exp, specs):
+def paired(meta, exp, specs, frame_lo=FRAME_LO):
     """(specs, meta to compare with): a spec whose register the callee record does not compare is kept, and that
     register compared, when every recorded call to the callee passes a guest stack address there; else dropped."""
     keep, add = [], {}
@@ -130,7 +134,7 @@ def paired(meta, exp, specs):
             keep.append(s)
             continue
         calls = [rec for res in exp.values() for rec in res.get("calls") or [] if rec[0] == int(s.addr, 16)]
-        if calls and all(STACK_LO <= rec[s.field] < STACK_HI for rec in calls):
+        if calls and all(frame_lo <= rec[s.field] < STACK_HI for rec in calls):
             keep.append(s)
             add.setdefault(s.addr, []).append(s.reg)
     if not add:
@@ -140,7 +144,7 @@ def paired(meta, exp, specs):
     return keep, dict(meta, callees=callees)
 
 
-def lines_for(exp, specs, size_of, extents=None):
+def lines_for(exp, specs, size_of, extents=None, frame_lo=FRAME_LO):
     """{vector id: ["O n target field guest size", ...]} for the original's calls (exp: parse_results) whose spec
     field holds a guest stack address. size_of: pointee type -> size or None (an unknown size copies nothing);
     extents: {(vector, call, target, field): bytes the original reads there after the call} (trace_lines' run)."""
@@ -159,12 +163,12 @@ def lines_for(exp, specs, size_of, extents=None):
                     size = rec[s.size[1]]
                 elif s.size == "trace":
                     size = max(size or 0, (extents or {}).get((vid, n, f"{rec[0]:08x}", s.field), 0))
-                if STACK_LO <= g < STACK_HI and size and size <= MAX_OUT and g + size <= STACK_HI:
+                if frame_lo <= g < STACK_HI and size and size <= MAX_OUT and g + size <= STACK_HI:
                     out.setdefault(vid, []).append(f"O {n} {rec[0]:08x} {s.field} {g:08x} {size}")
     return out
 
 
-def trace_lines(exp, specs):
+def trace_lines(exp, specs, frame_lo=FRAME_LO):
     """{vector id: ["T n target field guest span"]} for the "trace" specs' calls: span up to the next guest stack
     address any call of the vector passes (another object), at most the entry r15 and MAX_OUT."""
     want = {}
@@ -175,11 +179,11 @@ def trace_lines(exp, specs):
     out = {}
     for vid, res in exp.items():
         calls = res.get("calls") or []
-        passed = {v for rec in calls for v in rec[1:21] if STACK_LO <= v < STACK_HI}
+        passed = {v for rec in calls for v in rec[1:21] if frame_lo <= v < STACK_HI}
         for n, rec in enumerate(calls):
             for field in want.get(rec[0], ()):
                 g = rec[field]
-                if not STACK_LO <= g < SP:
+                if not frame_lo <= g < SP:
                     continue
                 end = min([v for v in passed if v > g] + [SP, g + MAX_OUT])
                 out.setdefault(vid, []).append(f"T {n} {rec[0]:08x} {field} {g:08x} {end - g}")
@@ -198,17 +202,66 @@ def parse_ot(text):
     return out
 
 
+SIZES_KEPT = 8  # probe results kept per function (build/ADDR/type_sizes.json): the latest
+
+
+def _sizes_key(cfg, types, include_dirs):
+    """The sha256 of everything the size probe reads: the type names, every file of each include folder (by
+    position, name and content), the 32-bit compiler (path, size, mtime) and its environment, the flags, and the
+    probe's code (global_extents, this file)."""
+    import shutil
+    from . import readable_check as rcheck
+    env = rcheck.msvc_env_x86(cfg)
+    cl = shutil.which("cl.exe", path=next((v for k, v in env.items() if k.upper() == "PATH"), "")) or ""
+    st = os.stat(cl) if cl else None
+    h = hashlib.sha256(repr(("type sizes 1", rcheck.C_FLAGS, sorted(types), (cl, st and st.st_size,
+                                                                              st and st.st_mtime_ns),
+                             *(next((v for k, v in env.items() if k.upper() == n), "") for n in ("INCLUDE", "LIB")))
+                            ).encode())
+    core = pathlib.Path(__file__).parent
+    for p in (core / "global_extents.py", core / "readable_outptr.py"):
+        h.update(b"file " + p.name.encode() + b"\0" + p.read_bytes() + b"\0")
+    for k, d in enumerate(include_dirs):
+        d = pathlib.Path(d)
+        for f in sorted((f for f in d.rglob("*") if f.is_file()), key=lambda f: f.relative_to(d).as_posix()):
+            h.update(f"inc {k} {f.relative_to(d).as_posix()}".encode() + b"\0" + f.read_bytes() + b"\0")
+    return h.hexdigest()
+
+
 def type_sizes(cfg, types, build_dir, include_dirs):
     """{type: sizeof} for C type names, by one probe compile (core/global_extents.sizes) with the build's headers;
-    a type the compiler refuses (incomplete, unknown) is left out. Cached per include tree in this process."""
-    from . import global_extents
-    key = (tuple(map(str, include_dirs)), tuple(sorted(types)))
+    a type the compiler refuses (incomplete, unknown) is left out. Kept by the key of all the probe reads
+    (_sizes_key) in this process and in the function's build/ADDR/type_sizes.json (build_dir's parent, shared by its
+    build folders and later runs): the official judge of the headers the agent's last check built, and verify, take
+    the sizes instead of compiling the probe again."""
+    from . import global_extents, paths
+    key = _sizes_key(cfg, types, include_dirs)
     with _LOCK:
-        if key not in _SIZES:
-            got, _ = global_extents.sizes(cfg, [(t, f"{t} rdo_value") for t in sorted(types)], build_dir,
-                                          include_dirs)
-            _SIZES[key] = {t: n for t, n in got.items() if n}
-        return _SIZES[key]
+        if key in _SIZES:
+            return dict(_SIZES[key])
+    cache_file = pathlib.Path(build_dir).parent / "type_sizes.json"
+
+    def kept():
+        try:
+            return paths.read_json(cache_file, {}) or {}
+        except (OSError, ValueError):  # a file cut short by a kill: probed again
+            return {}
+    sizes = kept().get(key)
+    if sizes is None:
+        got, _ = global_extents.sizes(cfg, [(t, f"{t} rdo_value") for t in sorted(types)], build_dir, include_dirs)
+        sizes = {t: n for t, n in got.items() if n}
+        cache = {k: v for k, v in kept().items() if k != key}  # another folder's sizes too
+        cache[key] = sizes
+        cache = dict(list(cache.items())[-SIZES_KEPT:])
+        tmp = cache_file.with_name(f"{cache_file.name}.{os.getpid()}_{threading.get_ident()}")
+        try:
+            tmp.write_text(json.dumps(cache), encoding="utf-8")
+            os.replace(tmp, cache_file)  # whole: a reader never sees half a file
+        except OSError:  # Windows refused (a reader has it open): not kept, probed again next time
+            tmp.unlink(missing_ok=True)
+    with _LOCK:
+        _SIZES[key] = sizes
+    return dict(sizes)
 
 
 def with_lines(src, extra, dst, after_v=False):
@@ -236,20 +289,26 @@ FLIPS = (0x00, 0x5A)  # the raw runs' paints: canary(a) ^ flip (two, so a write 
 
 
 def deliver(runs, guest, mem):
-    """A D line's bytes from the raw runs' bytes at guest (runs: [(hex, flip)]; each run painted the region with
+    """A D line's bytes from the raw runs' bytes at guest (runs: [(ob, flip)], ob a parse_ob value: the hex, or
+    (hex, stores) with the runtime's mask of the bytes the original stored to; each run painted the region with
     canary ^ flip before the vector's M lines): a byte that still holds the paint in every run (a byte the vector
     leaves alone) or the vector's byte (one it pokes) the original did not write before the call, and reads as the
     vector has it (mem.initial: 0 where the vector leaves it alone). Any other byte the original wrote: "xx" (the
     readable code's byte stays). One paint alone cannot tell a write of the paint's own value (TC 8c04d900 copies a
     vector's random rodata byte into the buffer, once equal to the paint); the original writes the same in both runs,
     so it differs from one of the two paints. A write equal to the byte the vector poked there reads as not written
-    (the same byte either way)."""
+    (the same byte either way). A byte the original stored to is written whatever it holds: a value computed from the
+    painted bytes themselves keeps the paint where the arithmetic leaves it (TC 8c0117f4: yaw = the first
+    CamAngles_FromDir output + a lag of -2 keeps the paint's upper bytes in both runs, and read as unwritten, the
+    readable's yaw got the vector's zeros there)."""
+    runs = [((ob, None) if isinstance(ob, str) else ob, flip) for ob, flip in runs]
     out = []
-    n = min(len(h) for h, _ in runs) // 2
+    n = min(len(h) for (h, _), _ in runs) // 2
     for k in range(n):
         a = guest + k
         init, poked = mem.initial(a), mem_poked(mem, a)
-        unwritten = all(int(h[2 * k:2 * k + 2], 16) == (init if poked else canary(a) ^ flip) for h, flip in runs)
+        unwritten = all(int(h[2 * k:2 * k + 2], 16) == (init if poked else canary(a) ^ flip)
+                        and not (st and st[k:k + 1] == "1") for (h, st), flip in runs)
         out.append(f"{init:02x}" if unwritten else "xx")
     return "".join(out)
 
@@ -259,12 +318,13 @@ def mem_poked(mem, a):
 
 
 def parse_ob(text):
-    """{vector id: {(call, target, field): hex}} from a raw run's OB lines."""
+    """{vector id: {(call, target, field): hex, or (hex, stores)}} from a raw run's OB lines (stores: one 0/1 per
+    byte, 1 where the original stored to it; rd_veh.c out_copy)."""
     out, cur = {}, None
     for line in text.splitlines():
         t = line.split()
         if t[:1] == ["V"]:
             cur = int(t[1])
-        elif t[:1] == ["OB"] and len(t) == 5 and cur is not None:
-            out.setdefault(cur, {})[(int(t[1]), t[2], int(t[3]))] = t[4]
+        elif t[:1] == ["OB"] and len(t) in (5, 6) and cur is not None:
+            out.setdefault(cur, {})[(int(t[1]), t[2], int(t[3]))] = t[4] if len(t) == 5 else (t[4], t[5])
     return out

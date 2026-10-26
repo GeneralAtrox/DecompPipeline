@@ -88,8 +88,18 @@ stats = function(tag)
   end
 end
 
-function hw_start()
+local function subscribe()
   prims = flycast.research.subscribe({event = "pvr-primitive", payload = "sha256", queue_capacity = 65536}, on_prim)
+end
+
+function hw_start()
+  if not LS_HW_FROM then subscribe() end
+end
+
+-- LS_HW_FROM (hw_check.py --hw-from): renders from that vertical blank on; until then the emulator runs at lockstep's
+-- pace (hashing each primitive's texture is what slows it)
+function hw_vblank(v)
+  if not prims and LS_HW_FROM and v >= LS_HW_FROM then subscribe() end
 end
 
 function hw_close()

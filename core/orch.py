@@ -10,7 +10,8 @@ import threading
 import time
 import traceback
 
-from . import brief, filelock, job, paths, proof, retire, systems, usage, watcher
+from . import (brief, build_prune, busylog, filelock, hw_ops, idle_guard, job, oplog, paths, proof, retire, systems,
+               usage, watcher)
 
 ACTIVE = ("waiting", "preparing", "running")
 
@@ -20,11 +21,43 @@ def score(f):
             + 25 * f["indirect_calls"] + 10 * f["callees"] + 3 * f["globals"])
 
 
-def tier(f):
-    if f["hw_refs"] or f["sys_ops"]:
+def tier(f, matched=False, listed=None):
+    """listed: core/hw_ops.listed(cfg); a function whose every hardware op it lists is judged on the rest (TcHw)."""
+    if (f["hw_refs"] or f["sys_ops"]) and not matched and not hw_ops.covered((listed or {}).get(f.get("addr")), f):
         return "excluded"
+    if f.get("sr_ops") or f.get("sq_refs"):  # SR and the store queues only: modelled (TcSr, TcSq), hard
+        return "hard"
     s = score(f)
     return "easy" if s < 80 else ("medium" if s < 250 else "hard")
+
+
+def keep_matched(functions, ledger, listed=None):
+    """A function matched before the catalog flagged it hardware keeps a normal tier, its ledger row and its verdict:
+    the flag only keeps functions not matched yet out of the queue (core/coverage.excluded_functions)."""
+    for a, f in functions.items():
+        if f["tier"] == "excluded" and (ledger["functions"].get(a) or {}).get("status") == "matched":
+            f["tier"] = tier(f, matched=True, listed=listed)
+
+
+def scoped_functions(catalog, sc, cfg=None):
+    """The catalog's functions in scope (core/scope), each given its score and tier: the queue's candidates. cfg:
+    paths.config(), for project.json "hw_ops" (None: nothing listed)."""
+    out, listed = {}, hw_ops.listed(cfg or {})
+    for f in catalog["functions"]:
+        if f["addr"] in sc:
+            f["score"], f["tier"] = score(f), tier(f, listed=listed)
+            out[f["addr"]] = f
+    return out
+
+
+def open_order(functions, rows, priority):
+    """Eligible functions not yet taken, easiest first (priority list first): what claim() picks from. rows: the
+    ledger's functions."""
+    taken = {a for a, r in rows.items() if r.get("status") not in (None, "queued", "stopped")}
+    pri = [a for a in priority if a in functions and a not in taken]
+    rest = sorted((f for a, f in functions.items() if a not in taken and f["tier"] != "excluded"
+                   and a not in pri), key=lambda f: (f["score"], f["addr"]))
+    return pri + [f["addr"] for f in rest]
 
 
 class Worker:
@@ -34,6 +67,30 @@ class Worker:
         self.stop_reason = "stopped by user"
         self.current, self.system, self.cost, self.done = None, None, 0.0, 0
         self.thread = None
+        self.next = None  # config "prefetch": the next function's job.Prefetch
+        self.claimed_prev = None  # the status of the function claim() last reserved, before it did
+
+    def prefetch_next(self):
+        """Config "prefetch" (job.investigate calls it when its agent starts): reserve the next function now and
+        prepare it on another thread while this agent works. One deep, and only while the loop goes on."""
+        o = self.o
+        if not o.cfg.get("prefetch") or self.next or self.stop_flag.is_set() or not o.ledger.get("loop"):
+            return
+        addr = o.claim(self, current=False)
+        if addr is not None:
+            self.next = job.Prefetch(o, self, addr, self.claimed_prev)
+
+    def _drop_next(self):
+        """The worker ends before it gets to its prefetched function: wait for that prepare (bounded by its own
+        Ghidra timeout; a stop ends it sooner), then give the function back to the queue."""
+        pre, self.next = self.next, None
+        if pre is None:
+            return
+        pre.thread.join(float(self.o.cfg.get("ghidra_timeout_s", 600)) + 60)
+        with self.o.lock:
+            r = self.o.ledger["functions"].get(pre.addr)
+            if r and r.get("status") in ACTIVE:
+                r["status"] = pre.prev_status or "queued"
 
     def set_phase(self, addr, phase, attempt=None):
         with self.o.lock:
@@ -47,10 +104,17 @@ class Worker:
 
     def run(self):
         o = self.o
+        busylog.event(busylog.of(self), "+")  # its busy/idle record (core/busylog)
         try:
             addr = self.first
             while not self.stop_flag.is_set():
-                target = o.claim(self, addr)
+                pre, self.next = self.next, None
+                if pre is not None:  # reserved and prepared while the last agent worked
+                    target = pre.addr
+                    self.system = o.system_of.get(target)
+                    self.set_phase(target, "claimed (prefetched)")
+                else:
+                    target = o.claim(self, addr)
                 addr = None
                 if target is None:
                     o.log(f"[W{self.id}] queue is empty" + (
@@ -58,18 +122,24 @@ class Worker:
                         "(tools/retire.py)" if o.retire_pending else ""))
                     return
                 self.cost = 0.0
-                status = job.investigate(o, self, target)
+                status = job.investigate(o, self, target, pre=pre)
+                build_prune.after_job(o.cfg, target, o.log, o.ledger["functions"])  # its build outputs
                 self.done += 1
                 if self.stop_flag.is_set() or not o.ledger.get("loop"):
                     return
                 o.log(f"[W{self.id}] loop: {target} ended {status}, continuing")
         except job.Fatal as e:
+            if not self.stop_flag.is_set():  # the first worker to hit it: one stop for the person to clear
+                oplog.record([paths.ROOT], "orch", "stop", f"all workers stopped: {e}")
             o.log(f"STOPPING ALL WORKERS: {e}")
             o.stop_all(str(e))
         except Exception as e:  # noqa: BLE001 - surfaced in the UI
             o.log(f"[W{self.id}] ERROR " + str(e).splitlines()[0])
+            oplog.record([paths.ROOT], "orch", "stop", f"worker W{self.id} stopped on an error: {e}")
             (paths.STATE / "last_error.txt").write_text(traceback.format_exc(), encoding="utf-8")
         finally:
+            busylog.event(busylog.of(self), "-")
+            self._drop_next()
             with o.lock:
                 if self.current and o.ledger["functions"].get(self.current["addr"], {}).get("status") in ACTIVE:
                     o.ledger["functions"][self.current["addr"]]["status"] = "stopped"
@@ -86,19 +156,17 @@ class Orchestrator:
         self.log_lines = collections.deque(maxlen=600)
         self.workers, self.next_id = {}, 1
         self.usage = usage.Usage()
+        idle_guard.end_job(paths.STATE, self.log)  # an idle prepare (tools/idle_prepare.py) gives Ghidra back
         catalog = paths.read_json(paths.CATALOG)
         if not catalog:
             raise RuntimeError(f"no catalog: run  python {paths.TOOL / 'decomp.py'} --project {paths.ROOT} setup  first")
         sc = paths.scope()  # the game ranges plus project.json "extra_functions" (core/scope.py)
-        self.functions = {}
-        for f in catalog["functions"]:
-            if f["addr"] in sc:
-                f["score"], f["tier"] = score(f), tier(f)
-                self.functions[f["addr"]] = f
+        self.functions = scoped_functions(catalog, sc, self.cfg)
         self.extras = {a for a in self.functions if sc.is_extra(a)}
         self.sdk_count = len(catalog["functions"]) - len(self.functions)
         self.system_of, self.systems = systems.load()
         self.ledger = paths.read_json(paths.LEDGER, {"loop": False, "functions": {}})
+        keep_matched(self.functions, self.ledger, hw_ops.listed(self.cfg))
         for rec in self.ledger["functions"].values():
             if rec.get("status") in ACTIVE:
                 rec["status"] = "stopped"
@@ -126,7 +194,7 @@ class Orchestrator:
         """The server owns the ledger (tools that rewrite it refuse while it runs); the file lock still keeps an
         offline tool's locked read-modify-write and this write from interleaving."""
         with self.lock, filelock.locked(paths.LEDGER):
-            paths.write_json(paths.LEDGER, self.ledger)
+            filelock.write_atomic(paths.LEDGER, filelock.dumps_rows(self.ledger))  # one line per function
 
     def log(self, msg):
         line = f"{time.strftime('%H:%M:%S')}  {msg}"
@@ -151,17 +219,14 @@ class Orchestrator:
     # ---------- queue ----------
     def _open(self):
         """Eligible functions not yet taken, easiest first (priority list first)."""
-        taken = {a for a, r in self.ledger["functions"].items() if r.get("status") not in (None, "queued", "stopped")}
-        pri = [a for a in self.cfg["priority"] if a in self.functions and a not in taken]
-        rest = sorted((f for a, f in self.functions.items() if a not in taken and f["tier"] != "excluded"
-                       and a not in pri), key=lambda f: (f["score"], f["addr"]))
-        return pri + [f["addr"] for f in rest]
+        return open_order(self.functions, self.ledger["functions"], self.cfg["priority"])
 
-    def claim(self, w, addr=None):
+    def claim(self, w, addr=None, current=True):
         """Atomically pick (and reserve) the next function for worker w.
 
         Preference: the priority list, then the worker's current system, then a system no other worker is in,
-        then anything. Within each group, easiest first."""
+        then anything. Within each group, easiest first. current=False (a prefetch): the worker keeps showing the
+        function it works on; w.claimed_prev keeps the reserved function's status from before."""
         with self.lock:
             if addr is None:
                 cands = self._open()
@@ -173,8 +238,10 @@ class Orchestrator:
                 free = [a for a in cands if self.system_of.get(a) not in busy]
                 addr = (pri or mine or free or cands)[0]
             w.system = self.system_of.get(addr)
+            w.claimed_prev = self.ledger["functions"].get(addr, {}).get("status")
             self.rec(addr)["status"] = "waiting"
-            w.set_phase(addr, "claimed")
+            if current:
+                w.set_phase(addr, "claimed")
         self.save()
         return addr
 
@@ -194,6 +261,7 @@ class Orchestrator:
     def start(self, count=1, addr=None):
         """Start `count` new workers (or one worker on a specific address)."""
         cap = int(self.cfg.get("max_workers", 8))
+        build_prune.maybe_sweep(self.cfg, self.log)  # by age and size, when due (a daemon thread)
         with self.lock:
             if addr:
                 addr = paths.norm_addr(addr)
@@ -229,13 +297,21 @@ class Orchestrator:
                 r["status"] = "queued"
                 r.pop("matched_file", None)
                 m = paths.MATCHED / f"{a}.c"
-                if m.exists():  # kept for reference; matched/ only holds C that passes the current checker
+                if m.exists():  # matched/ only holds C that passes the current checker; the job judges this first
                     (paths.ROOT / "matched_stale").mkdir(exist_ok=True)
                     os.replace(m, paths.ROOT / "matched_stale" / f"{a}.c")
                 done.append(a)
         self.save()
         self.log(f"requeued {len(done)} function(s): {note}")
         return done
+
+    def requeue_stale_skips(self):
+        """At `serve`: requeue the finished functions whose blocker kind a landing fixed after they were judged
+        (target.json blocker_kinds "fixed_at", core/stale_skips.py). Returns the addresses requeued."""
+        from . import stale_skips
+        ok = {a for a, f in self.functions.items() if f["tier"] != "excluded"}  # never hardware or system ops
+        notes = stale_skips.stale(self.ledger["functions"], self.cfg.get("blocker_kinds") or [], ok)
+        return [a for note, addrs in stale_skips.by_note(notes).items() for a in self.requeue(addrs, note)]
 
     def stop_worker(self, wid):
         w = self.workers.get(int(wid))
@@ -253,9 +329,14 @@ class Orchestrator:
         """Synchronous single investigation (CLI)."""
         w = Worker(self, 0)
         self.workers[0] = w
+        busylog.event(busylog.of(w), "+")
         try:
-            return job.investigate(self, w, self.claim(w, addr))
+            addr = self.claim(w, addr)
+            status = job.investigate(self, w, addr)
+            build_prune.after_job(self.cfg, addr, self.log, self.ledger["functions"])
+            return status
         finally:
+            busylog.event(busylog.of(w), "-")
             self.workers.pop(0, None)
 
     # ---------- reporting ----------

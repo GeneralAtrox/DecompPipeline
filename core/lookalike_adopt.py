@@ -190,7 +190,7 @@ def record(t, work, s_addr, key, res):
         return row
 
     with refine._LOCK:
-        filelock.update_json(refine.LEDGER, merge, {})
+        filelock.update_json(refine.LEDGER, merge, {}, dump=refine.dump)
 
 
 def scratch_snapshot(cfg, rep):

@@ -1,4 +1,4 @@
-"""The adoption gate for machine drafts (batch 24): only short drafts with no unnamed constants are adopted.
+"""The adoption gate for machine files (batch 24; readable-tx): no unnamed constants.
 
 Batch 23 adopted every draft that passed the judge and read as named C. A spot-check on TC showed that the short ones
 read as well as Haiku's files, while longer ones keep bare numbers the headers already name (`781250u` for
@@ -9,6 +9,10 @@ adopted only when:
 - none of its integer literals (other than 0 and 1) has a value that an integer #define or explicit enum value in
   readable/include names.
 Otherwise the draft is not adopted: with `--draft start` it is the agent's starting work.c (it already passes).
+
+readable-tx (the user's decision, 2026-10-23): no length limit by default. A machine file of any length that passes the
+judge, reads as named C and names its constants is adopted; an agent reviews it when it next works on the function
+(the ledger's readable_by: machine). Config readable_draft_max_lines sets a limit again.
 """
 import functools
 import re
@@ -16,7 +20,7 @@ import re
 from . import readable
 from .raw_names import mask
 
-MAX_LINES = 6
+MAX_LINES = None  # any length (batch 24's limit was 6)
 TRIVIAL = {0, 1}
 _NUM = r"(-?(?:0[xX][0-9a-fA-F]+|\d+))[uUlL]*"
 _DEFINE = re.compile(r"^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)[ \t]+\(?[ \t]*" + _NUM + r"[ \t]*\)?[ \t]*$", re.M)
@@ -62,7 +66,7 @@ def reasons(text, values=None, max_lines=MAX_LINES):
     """Why a passing draft is not adopted ([] when it is): too long, or a literal the headers name."""
     out = []
     n = lines(text)
-    if n > max_lines:
+    if max_lines is not None and n > max_lines:
         out.append(f"{n} lines (drafts are adopted up to {max_lines})")
     values = named_values() if values is None else values
     seen = set()

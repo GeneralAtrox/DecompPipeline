@@ -305,6 +305,176 @@ The cause is matched C that mixes the views: PS2 has 297 files that write 0x0c53
 - 20 random requeue rows read by hand: 18 keep the pointer as a value. The other 2 are a helper that returns the
   address, and a `q < lim` over one table in one view.
 
+## 5. Helper ABI: runtime helpers called without r0..r3 (r15, 2026-10-19)
+
+**What slipped through:** two Toy Commander crashes in the port (missions Convoi and Lapd) and a wrong menu list.
+- 8c03a4b0 (Unit_UpdateBeams) calls the SHC division 8c067c64, which takes r0 (divisor) and r1 (dividend). The
+  matched C passed r4/r5 with rlo empty, and readable copied it as `Shc_DivS32(player_num - 1, ext)`.
+- 8c0248e0 (the menu viewer list) did the same through `call_plain`.
+- The judge compares a call only where a vector reaches it. 8c03a4b0's call site was unreached (15 of 31 blocks
+  hit), and 8c0248e0 hit 7 of 224 blocks. Both passed.
+
+**The check (`tools/helper_abi.py --project WS --write`):** static and text only (packets, harness meta, matched/ C);
+no Ghidra, no runner.
+- The helpers: every callee that the game's harness metas measure reading r0..r3.
+- In the asm, at each jsr to a helper, it finds the instruction in the block that last sets each register the
+  helper takes (the delay slot first). That is either a constant or something else.
+- In the C, each call whose arguments hold the helper's address takes its rlo values from tc_call's TcArgs: the
+  initializer or builder, then the file's setters (`set_rlo(&a, ..)`; `clear_args` zeroes it), then
+  `a.rlo[i] = ...`. A wrapper's values come from its parameters. The target may also be a local or the pool word
+  holding it, in either RAM view.
+- **missing:** a call passes no value for a register the helper takes. This is the class of both functions.
+- **value:** the asm sets a constant, and every call passes a different constant expression. A variable is not
+  judged.
+- A register holding the helper's own address is the jsr's register, not an argument (PS2's 8c187958 reads r3).
+  Calls it cannot follow (a TcArgs passed in) are counted, not listed.
+- It writes `state/helper_abi/` (`requeue.txt`, `summary.json`) and requeues nothing.
+
+| workspace | helpers | callers | asm calls | C calls found (not followed) | listed | missing | value |
+|---|---|---|---|---|---|---|---|
+| TC | 13 | 118 | 236 | 200 (1) | 5 | 5 | 0 |
+| Spawn main | 10 | 75 | 158 | 139 (0) | 2 | 2 | 0 |
+| Spawn ovl | 14 | 108 | 293 | 235 (0) | 0 | 0 | 0 |
+| PS2 | 10 | 1,263 | 3,220 | 2,657 (26) | 0 | 0 | 0 |
+
+- TC lists 8c03a4b0 and 8c0248e0 (the claim), plus three more:
+  - 8c0253f8 calls the copy helper 8c067e88 through `call_i`, with r4 only.
+  - 8c03a134 passes r4 = g2 - t3 to 8c067d18, but the asm sets r0 = r11.
+  - 8c04cb68 passes the destination 0x8c0df504 in r5, but the asm has it in r0.
+- Spawn main lists 8c0393ac and 8c0396e0, both with rlo unset. 8c0393ac's asm sets r0 = 0x0c2ecb24 and
+  r1 = 0x0c2de65c; the C passes 0x0c2de65c in r4.
+- **False flags: 0 of the 7 listed, all read by hand.** Earlier drafts listed 31 false rows, and each form now has
+  a control in tests/test_helper_abi.py:
+  - Spawn's setters `set_rlo`/`fill_args` (1);
+  - ovl's local target used by two calls (1);
+  - PS2's own jsr register r3 (23 value rows);
+  - PS2's setters (`clear_args` loops, `init_args` + `set_rlo`) (6).
+- Fewer C calls than asm calls is mostly a wrapper called several times, whose address literal appears once in
+  its body. The (function, helper) pairs with no C call found at all: TC 3, Spawn main 0, ovl 6, PS2 27. Those
+  are not checked.
+
+## 6. Host stack locals in readable C (r15, 2026-10-19)
+
+**What slipped through:** two Toy Commander port faults from readable C that hands the port host stack garbage.
+Both made boot nondeterministic, and the judge passed both.
+- 8c017382 (Projectile_Sweep) passed `&hit_pos`, a lone Vec3, to Projectile_Hit. Three calls down,
+  Explosion_HitEntity (8c0479bc) reads `center + 1`, which is q.dir in the original's frame. The port read the
+  host stack there (boot frame 4500 differed between runs).
+- 8c06fc14 (Lib_PoseMixerInit) let Anim_ReadFrame fill a local LibAnimPoseBuf in part, then `Shc_BlockCopy`d
+  the whole pose array into guest RAM (6 words differed per run; aire6Boss hung in 7 of 9 runs).
+- The judge cannot see either. Callees are mocked, so a callee's read of its caller's local never runs. Raw C
+  keeps locals in the guest frame, so this is a readable-only fault. The asm check `uninit_stack` counts a frame
+  address passed to a call as the whole frame written.
+
+**The check (`tools/stack_overread.py --project WS --write`):** static, readable C only, whole program; no Ghidra,
+no runner (core/stack_overread.py).
+- Every readable file goes through `cl /EP` against the library's game.h (stub stdint/stdarg headers) and is
+  parsed by pycparser. Types are laid out as MSVC x86 does.
+- **R1 overread:** a local's address, at a known offset, reaches an access or a callee chain that goes past the
+  local's end.
+  - A function's extent through a pointer parameter is the furthest byte that it, or any callee it passes the
+    pointer on to at a constant offset, accesses. It is a fixpoint over the call graph.
+  - A body-less copy helper reaches its constant size argument. Copy helpers are memcpy/memset, or a prototype
+    with a size/len/count/bytes parameter.
+  - An unknown offset is not judged: a variable index, or a cursor stepped in a loop (a pointer local or
+    parameter that is reassigned or incremented).
+- **R2 copied out half written:** a struct or array local without an initializer is copied out while some of the
+  copied bytes are not written on every path before the copy.
+  - The copies: a copy helper's source, or the whole local as a value (assigned, passed, returned).
+  - The writes: assignments, zeroing and copy helpers with a constant size, and each callee's definite writes
+    through a parameter (outside loops, on every path to its end, switch cases included).
+  - A member's copy is a field read, as a scalar's is, and is not checked: `if (q.hit) *out = q.hit_pos;`.
+    Padding is not required.
+- Unknown callees, function pointers and unknown offsets count as "no overread" and "fully written", so a hit is
+  either a fault or a pattern the readable agent must make explicit.
+- It writes `state/stack_overread/` (`requeue.txt`, `summary.json`) and requeues nothing. Exit 0 with no hits,
+  1 with hits, 2 when a file cannot be read. `--src DIR` checks other versions of files (old or candidate).
+
+| workspace | readable files | functions | not read | R1 | R2 | seconds |
+|---|---|---|---|---|---|---|
+| TC, with 802d13e's 8c017382/8c06fc14 | 2,567 | 3,514 | 0 | 1 (8c017382) | 2 (8c06fc14, 8c03ec88) | 224 |
+| TC, current (49f49d3) | 2,567 | 3,516 | 0 | 0 | 1 (8c03ec88) | 201 |
+| Spawn main, ovl (and stage overlays) | 0 | - | - | 0 | 0 | - |
+| PS2 | 0 | - | - | 0 | 0 | - |
+
+- **Both claims are flagged.** 8c017382 is flagged at line 109: `hit_pos` (12 bytes) reaches 24 bytes through
+  Projectile_Hit, Explosion_ApplyDesc and Explosion_HitEntity. 8c06fc14 is flagged at line 22: Shc_BlockCopy reads
+  bytes 8..752 of `frame`, and none of them is written on every path (Anim_ReadFrame fills the joints in loops). The agent-made fixes
+  (`Vec3 hit_pos[2]`; `LibAnimPoseBuf frame = {0}`) are not flagged.
+- **The one other hit, 8c03ec88 (Viewport_UpdateCamera), is the same class.** It copies `mount_xf` whole after
+  `Entity_GetCamMount(followed, &mount_xf, ...)`. That function returns 0 without writing `out` when the entity
+  has no mount set or the mode's flag is clear, and the caller ignores the result. Whether a camera reaches that
+  path is not known. In the port it would read host garbage.
+- **False flags: 0 of the 3 left, all read by hand.** An earlier draft had 8 false flags in 3 forms, and each form
+  now has a control in tests/test_stack_overread.py:
+  - a chunked File_Read loop (4 rows);
+  - a word-at-a-time strcpy's alignment branch (1);
+  - a member copy guarded by another field (Grid_Raycast 1, and 8c017382's `q.hit_pos` 2) (3).
+
+## 7. Parameters the readable never reads (r15, 2026-10-19)
+
+**What slipped through:** TC 8c0117f4 (Camera_UpdateKind10) takes the mount transform as 12 f32 stack arguments
+(stack+0 .. +44). Its readable C discarded all of them (`(void)cam_r0x; ...`) and started from `Transform cam = {0}`.
+The kind-10 follow camera was wrong from the first mission frame (h2n1, h3n1), and the judge passed it 96/96:
+- the raw harness models 8 stack words, so stack+32 .. +44 (rotation z, position) were 0 in every vector;
+- the rotation reached only mocked callees through pointers to host locals, and the judge does not compare a
+  pointer argument's contents.
+The same blind spot hides Draw_TexturedRect below: a vertex UV goes to the callee through a local's address.
+
+**The check (`tools/param_unread.py --project WS [targets] [--write]`):** static, text only, no Ghidra or runner
+(core/param_unread.py).
+- Readable side: each parameter of the file's own function and its storage (core/readable_abi.own_storages). A
+  parameter is unread when the body names it only in `(void)name;` (comments stripped).
+- Original side, from the packet's asm: a register (r4..r7, fr4..fr11) or entry stack word is read when its value
+  reaches a use on some path. The value is followed through moves, frame spills, FPUL and arithmetic into a
+  register. A use is:
+  - an address, a store outside the frame, or a compare or arithmetic whose T a branch reads;
+  - a call whose meta record ("regs") reads it (a callee without a record reads every argument register; a call
+    through a pointer reads none), or the call is passed the address of the frame slot holding it;
+  - a return in r0/fr0 (r1/fr1 for 64-bit).
+  A call writes r0..r7, fr0..fr11 and FPUL; frchg drops the fr values. A stack word whose address (or one below
+  it) goes to a call is read.
+- Correlated tests: paths are kept apart by the zero tests of memory words they took (`tst rX,rX`, rX loaded from
+  outside the frame). A branch on a word the path already tested takes only its side, until a store outside the
+  frame, a call or a write to the base register. At most 16 such paths per instruction; past that a path keeps no
+  facts and prunes nothing.
+- A hit is an unread parameter whose storage the original reads: its argument value is lost in the port.
+- project.json `"param_unread": {"waive": {"ADDR param": "reason"}}` takes a hit judged by hand; it is listed as
+  waived. `--write` writes `state/param_unread/` (`summary.json`, `requeue.txt`) and requeues nothing. Exit 0
+  with no hits, 1 with hits.
+
+| workspace | readable files | parameters | unread | hits | functions | asm not followed | seconds |
+|---|---|---|---|---|---|---|---|
+| TC, before 8c0117f4's requeue | 2,567 | 4,982 | 249 | 15 | 4 | 13 | 3 |
+| Spawn main, ovl (and stage overlays) | 0 | - | - | 0 | - | - | - |
+| PS2 | 0 | - | - | 0 | - | - | - |
+
+- **Kind10 is flagged on all 12:** each word is copied into the camera object at r8+0x184 (8c011b0e ..).
+- **Three more real hits, each read by hand:**
+  - 8c0516b8 Draw_TexturedRect drops `u1` (fr10). The original reloads its spill and writes it into the vertex
+    passed to 8c0583a6; the readable's strip vertices take other values. No direct caller in the binary.
+  - 8c062938 Vec3_Magnitude passes `(const Vec3 *)0` to Vec3_LengthSq; the original passes r4 on. Its harness
+    signature is `f32 fn_8c062938(void)`, so the judge never varied it. No caller in the binary.
+  - 8c0611d8 Fpu_EnableExceptions drops `enable`: the FPSCR exception enables, which have no host equivalent.
+- **No false hits.** The last one, 8c050984 Anim_SeekTime's r6, is read at 8c050a12 only when +0x930 (the blend
+  motion) is set, and on that same condition 8c0509bc has replaced it; the correlated-tests rule removes it.
+- **False hits removed while building it (each with a control in tests/test_param_unread.py):**
+  - a compare whose T nobody reads (UnitDefs_Get's `tst r5`);
+  - frchg (Xmtrx_LoadScale);
+  - arguments spilled and passed on to callees that do not read them (Mem_Calloc, Screen_CaptureRgbAlloc);
+  - a call through a pointer (Debug_Alert);
+  - a counter stepped and stored back, never read otherwise (fn_8c070bbe, fn_8c071742, fn_8c072ae8's r5);
+  - dead prologue spills above a local whose address goes to a call (Screen_SaveCapture's r5/r6).
+- **Known misses:** a value deeper in a passed struct (only the slot at the passed address counts), and the 13
+  functions whose asm flow is not followed (jump tables or unknown jumps: 8 `unused_xf`/`ctx`, 5 others).
+
+## 8. Open gaps (not built)
+
+**The asm uninitialized-stack check still counts a frame address passed to a call as the whole frame written
+(2026-10-19).** `uninit_stack` (meta.json) cannot see 8c06fc14's fault, because the read happens in the callee
+`Shc_BlockCopy`. Section 6 covers readable C, where the fault lives (raw C keeps locals in the guest frame). The asm
+check would need each callee's definite writes through its parameters.
+
 ## Read-only results (2026-10-17, harnesses as they were; PS2 mid re-stamp)
 
 Full reports are in the monitor's notes folder (`proof-gates/coverage_gate.*`, `proof-gates/mutation_*.*`).

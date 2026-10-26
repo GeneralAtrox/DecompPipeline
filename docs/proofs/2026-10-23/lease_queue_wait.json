@@ -1,0 +1,92 @@
+{
+ "baseline": {
+  "secs": 601,
+  "others": {
+   "n": 86,
+   "median": 7.1,
+   "p90": 12.7,
+   "max": 35.8
+  },
+  "mine": {
+   "n": 0,
+   "median": null,
+   "p90": null,
+   "max": null
+  }
+ },
+ "p1ws_cold": {
+  "secs": 583,
+  "others": {
+   "n": 53,
+   "median": 16.4,
+   "p90": 34.8,
+   "max": 62.4
+  },
+  "mine": {
+   "n": 20,
+   "median": 18.0,
+   "p90": 37.3,
+   "max": 53.8
+  }
+ },
+ "p1ws_served": {
+  "secs": 119,
+  "others": {
+   "n": 9,
+   "median": 30.6,
+   "p90": 31.8,
+   "max": 32.2
+  },
+  "mine": {
+   "n": 3,
+   "median": 21.3,
+   "p90": 21.3,
+   "max": 36.9
+  }
+ },
+ "p2ws_served": {
+  "secs": 202,
+  "others": {
+   "n": 25,
+   "median": 13.8,
+   "p90": 33.2,
+   "max": 38.0
+  },
+  "mine": {
+   "n": 3,
+   "median": 20.4,
+   "p90": 20.4,
+   "max": 20.4
+  }
+ },
+ "p2ws_cold": {
+  "secs": 653,
+  "others": {
+   "n": 110,
+   "median": 12.3,
+   "p90": 20.8,
+   "max": 28.8
+  },
+  "mine": {
+   "n": 29,
+   "median": 11.3,
+   "p90": 20.0,
+   "max": 25.1
+  }
+ },
+ "after": {
+  "secs": 601,
+  "others": {
+   "n": 123,
+   "median": 7.0,
+   "p90": 14.3,
+   "max": 18.8
+  },
+  "mine": {
+   "n": 0,
+   "median": null,
+   "p90": null,
+   "max": null
+  }
+ }
+}

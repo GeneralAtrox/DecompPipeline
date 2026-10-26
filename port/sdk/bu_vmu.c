@@ -139,6 +139,8 @@ s32 buInit(s32 capacity, s32 drive, void *work, SdkProc func)
             port_log("vmu: %c%d: a blank card%s\n", 'A' + d / 2, 1 + d % 2,
                      got < 0 ? " (not kept: a --fixed-clock run without --save-dir)" : "");
             vmfs_format(c->image);
+        } else if (vmfs_fix_root(c->image)) {
+            port_log("vmu: %c%d: its root block fixed (kept at the next save)\n", 'A' + d / 2, 1 + d % 2);
         }
         port_log("vmu: %c%d: %u of %u blocks free\n", 'A' + d / 2, 1 + d % 2, vmfs_free(c->image), VMFS_USER_BLOCKS);
         request(d, OP_MOUNT, NULL, ERR_OK, 0, 0);

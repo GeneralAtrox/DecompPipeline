@@ -30,12 +30,14 @@ registers); for a texture, each texture memory write that covers it up to that f
 are named from the build's port.map (lockstep_watch.py).
 
     python tools/hw_check.py run --game DIR --input START@900,A@1500+10 --seconds 900
-        [--out DIR] [--build-dir x86-agent] [--no-watch] [--baseline FILE]
+        [--out DIR] [--build-dir x86-agent] [--no-watch] [--baseline FILE] [--vmu IMAGE] [--hw-from VBLANK]
 
 `run` records the emulator (OUT/emu.txt with lockstep's frames and draws, OUT/hw_emu.txt; an existing recording is
 reused: the emulator is deterministic for the same input), runs the port twice (the lists, then the textures they
 pair; each run ends with the emulator's frames) and compares. `emu` only records. The recording serves
-tools/lockstep.py too (--emu OUT/emu.txt).
+tools/lockstep.py too (--emu OUT/emu.txt). --vmu IMAGE: both sides start from copies of that memory card image
+(tools/emu_card.py), e.g. one with every level open, instead of Flycast's own card and none in the port. --hw-from
+VBLANK: the emulator records renders from that vertical blank on, so the way through the menus runs at lockstep's pace.
 """
 import argparse
 import bisect
@@ -45,6 +47,7 @@ import re
 import struct
 import sys
 
+import emu_card
 import lockstep as L
 from lockstep_frames import build_frames, draws_path, read_draws
 from lockstep_watch import report_hits
@@ -329,6 +332,10 @@ def main(argv=None):
     ap.add_argument("--flycast", default=None)
     ap.add_argument("--no-watch", action="store_true", help="do not run the port again to name the writers")
     ap.add_argument("--baseline", default=None, help="a reference build's hw_port file: its divergences are shared")
+    ap.add_argument("--vmu", default=None, help="a memory card image both sides start from (only read)")
+    ap.add_argument("--hw-from", type=int, default=None, help="the emulator's renders from this vertical blank on")
+    ap.add_argument("--sample-pcs", default=None, help="ADDR,..: where the emulator samples (default: game.json "
+                    "lockstep_sample_pcs; empty: at the vertical blank)")
     a, extra = ap.parse_known_args(argv)
     game = pathlib.Path(a.game).resolve()
     spec = pathlib.Path(a.spec or game / "lockstep.spec").resolve()
@@ -336,7 +343,12 @@ def main(argv=None):
     out.mkdir(parents=True, exist_ok=True)
     emu_path, hw_emu = out / "emu.txt", out / "hw_emu.txt"
     if a.step == "emu" or not hw_emu.exists():
-        wall = L.emu_run(game, spec, emu_path, a.seconds, L.parse_input(a.input), a.flycast, hw=hw_emu)
+        card = emu_card.emu_entries(L.load_game(game)["disc"], a.vmu, out) if a.vmu else ()
+        lua_vars = {"LS_HW_FROM": a.hw_from} if a.hw_from else {}
+        if a.sample_pcs is not None:
+            lua_vars["LS_SAMPLE_PCS"] = "{%s}" % ",".join("0x" + x for x in a.sample_pcs.split(",") if x)
+        wall = L.emu_run(game, spec, emu_path, a.seconds, L.parse_input(a.input), a.flycast, hw=hw_emu,
+                         lua_vars=lua_vars, entries=card)
         emu = L.read_frames(emu_path)
         print(f"emulator: {len(emu)} frames, {(emu[-1][1] / 59.94) if emu else 0:.0f} s played in {wall:.0f} s")
         if a.step == "emu":
@@ -350,7 +362,8 @@ def main(argv=None):
     extra = [x for x in extra if x != "--"]
 
     def run(more):
-        return L.port_run(game, a.build_dir, spec, drive, trace, played, extra + more)
+        card = emu_card.port_args(a.vmu, out) if a.vmu else []
+        return L.port_run(game, a.build_dir, spec, drive, trace, played, extra + card + more)
 
     L.drive_file(items=L.parse_spec(spec), emu=emu, frames=frames, out=drive)
     rc, wall, log = run(["--hw-out", str(hw_port)])

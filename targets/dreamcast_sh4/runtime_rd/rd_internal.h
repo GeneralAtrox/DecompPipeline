@@ -14,7 +14,8 @@
 
 /* Generated per build (thunk.c): prototypes of known original functions, for logging their arguments.
  * params: one letter per parameter: i = 32-bit int or pointer, c/C = s8/u8, h/H = s16/u16, f = f32.
- * ret: 'f' for f32, 'L' for a 64-bit result (edx:eax), anything else is returned in eax.
+ * ret: 'f' for f32, 'L' for a 64-bit result (edx:eax), '?' guessed at the call as for an unknown target (a function
+ * pointer's, core/readable_check.pointer_protos), anything else is returned in eax.
  * regs: "" (every parameter where the SH-4 C convention puts it), or one character per parameter: '0'..'7' = that
  * parameter is in r0..r7 (a callee outside the convention, such as an SHC runtime helper taking r0..r2, or a float
  * passed in r7), 'a'..'h' = in fr4..fr11 (an int there too: its bits), 's' = the next stack word, 'S'..'Z' = the
@@ -41,7 +42,7 @@ void rd_arm(void);
 
 /* rd_veh.c */
 int rd_veh_install(void);
-void rd_calls_reset(const u32 rets[16]);
+void rd_calls_reset(const u32 rets[TCRT_RETS]);
 void rd_calls_report(FILE *out);
 void rd_abi_reset(void);        /* r0..r3 at entry (line L) and the extra result word, cleared per vector */
 void rd_report_retx(FILE *out); /* line RETX: the extra result word, when the thunk set one (tcrt_set_retx); line
@@ -67,9 +68,13 @@ void rd_trace_read(u32 a, u32 n);
 void rd_trace_write(u32 a, u32 n);
 void rd_trace_report(FILE *out);
 void rd_trace_reset(void);
+/* line B (raw C only): watch the original's stores alone, for out_copy's OB lines (rd_written: 1, it stored there) */
+extern int rd_writes;
+void rd_writes_on(void);
+int rd_written(u32 a);
 
 /* rd_p4.c (stores to the P4 operand-cache address array; the log itself is runtime/tc_p4.c) */
-void rd_p4_init(void);
+int rd_p4_init(void);
 int rd_p4_fault(u32 addr, int is_write, void *context); /* CONTEXT *: 1 = a store there, single-stepped */
 int rd_p4_step(void);                                 /* 1: a store was pending and is now logged */
 void rd_p4_reset(void);
@@ -77,7 +82,8 @@ void rd_p4_reset(void);
 /* rd_sh4.c */
 int rd_sh4_init(const char *fsca_table);
 void rd_sh4_reset(void);
-void rd_sh4_report(FILE *out);
+void rd_sh4_report(FILE *out);         /* XF, and XR (the exit frame) with exit_frame (tc_strict.h) */
+void rd_sh4_scratch(int i, u32 bits);  /* mock_junk: fri (1..11) after a trapped call (tc_strict.h) */
 void rd_sh4_log(u32 *rec, const u32 fr_args[8]); /* call record fields 5..12, 21..24, 29..35 and, with line Q, 36..56 */
 int rd_sh4_fpu_state(void);             /* line Q was given: the whole FPU is state */
 void rd_sh4_result(u32 bits); /* a trapped call's result, in fr0 as in r0 */

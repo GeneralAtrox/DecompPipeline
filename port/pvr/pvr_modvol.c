@@ -102,12 +102,13 @@ static void draw_batches(const PvrScene *s, u32 first, u32 end, u32 state, UINT 
 static f32 min3(f32 a, f32 b, f32 c) { return a < b ? (a < c ? a : c) : (b < c ? b : c); }
 static f32 max3(f32 a, f32 b, f32 c) { return a > b ? (a > c ? a : c) : (b > c ? b : c); }
 
-/* A triangle's screen box, clipped to 640x480; 0 if it is off screen. */
+/* A triangle's screen box, clipped to the frame (640x480, widescreen wider); 0 if it is off screen. */
 static int tri_box(const PvrVtx *v, f32 box[4])
 {
-    box[0] = max3(min3(v[0].x, v[1].x, v[2].x), 0.0f, 0.0f);
+    f32 side = 320.0f * (port_widescreen() - 1.0f);
+    box[0] = max3(min3(v[0].x, v[1].x, v[2].x), -side, -side);
     box[1] = max3(min3(v[0].y, v[1].y, v[2].y), 0.0f, 0.0f);
-    box[2] = min3(max3(v[0].x, v[1].x, v[2].x), 640.0f, 640.0f);
+    box[2] = min3(max3(v[0].x, v[1].x, v[2].x), 640.0f + side, 640.0f + side);
     box[3] = min3(max3(v[0].y, v[1].y, v[2].y), 480.0f, 480.0f);
     return box[0] < box[2] && box[1] < box[3];
 }
@@ -115,7 +116,7 @@ static int tri_box(const PvrVtx *v, f32 box[4])
 int pvr_modvol_trans_needed(const PvrScene *s, u32 pass)
 {
     const u32 *tr = s->range[pass][PVRX_LIST_TRANSLUCENT], *r = s->range[pass][PVRX_LIST_TRANS_MOD];
-    f32 vol[4] = {640.0f, 480.0f, 0.0f, 0.0f}, b[4];
+    f32 vol[4] = {1.0e9f, 480.0f, -1.0e9f, 0.0f}, b[4];
     for (u32 i = r[0]; i < r[1]; i++)
         for (u32 k = 0; k + 3u <= s->batch[i].count; k += 3u)
             if (tri_box(&s->vtx[s->batch[i].first + k], b)) {

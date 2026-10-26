@@ -1,7 +1,10 @@
 """The Dreamcast port kit (port/): game.json loading, the generated per-game files, stub replacement by defined
 names, the kit holding no game material, and (only where Visual Studio's 32-bit tools are found) the runtime
-compiling at /W4 /WX. Synthetic data; no Ghidra, no game workspace.
-Run: python -W error tests/test_port_kit.py (also from tests/test_tooling.py)
+compiling at /W4 /WX and its lockstep check in behaviour (tests/test_lockstep.py). Synthetic data; no Ghidra, no
+game workspace. The Visual Studio tools come from config.local.json "vcvars" or $VCVARS32; a git worktree has no
+config.local.json, so set VCVARS32 there. Without them those tests skip and stderr says so (*** no 32-bit ...).
+Run: python -W error tests/test_port_kit.py, or python -W error -m unittest tests.test_port_kit from the repo root
+(also from tests/test_tooling.py)
 """
 import json
 import os
@@ -16,9 +19,12 @@ import unittest
 TOOL = pathlib.Path(__file__).resolve().parents[1]
 KIT = TOOL / "port"
 sys.path.insert(0, str(KIT / "tools"))
+sys.path.insert(0, str(TOOL / "tests"))  # its sibling test modules, also when run from the repo root
 
 import game_config  # noqa: E402
 import gen_port  # noqa: E402
+from test_lockstep import HAVE_VC, NO_VC, LockstepCompare, LockstepCounter, LockstepTimer  # noqa: E402,F401
+from test_overlays import OverlayBuilt, OverlayGroups, OverlayWindows  # noqa: E402,F401  (overlays)
 
 GAME = {"name": "Fixture Game", "decomp": "../decomp", "entry": {"name": "Fx_Main", "addr": "8c011000"},
         "image_base": "8c010000", "sdk": ["sy_heap"], "sources": ["src/own.c"], "hardware": {"0x8C012000": "Fx_Hw"},
@@ -29,6 +35,45 @@ GUEST_CODE = re.compile(r"(?<![0-9a-fA-F])[08]c[0-9a-f]{6}(?![0-9a-fA-F])", re.I
 ALLOWED_ADDRS = {"8c000000", "0c000000"}  # guest RAM and its P0 mirror
 GAME_WORDS = ("Toy Commander", "ToyCommander", "1GUTH", "Spawn", "Game_Main")
 CODE = {".c", ".h", ".cpp", ".hpp", ".hlsl", ".py", ".txt"}
+# test_guest_crt_links: readable C and a dispatch row calling the registry's malloc/free, and a host main on the CRT
+FX_USE_C = """#include "game.h"
+void *g_got[2];
+void Fx_Use(FxPool *pool)
+{
+    g_got[0] = malloc(64);
+    free(g_got[0]);
+    g_got[1] = malloc(pool->free);
+}
+"""
+FX_ROW_C = """#include "game.h"
+typedef void (*FxFn)(void);
+const FxFn g_row = (FxFn)malloc;
+"""
+FX_MAIN_C = r"""#include <stdlib.h>
+#include <stdio.h>
+typedef struct FxPool { unsigned int free; } FxPool;
+typedef void (*FxFn)(void);
+void syMallocInit(void *heap, unsigned int size);
+void Fx_Use(FxPool *pool);
+void *sy_guest_malloc(unsigned int size);
+extern const FxFn g_row;
+extern void *g_got[2];
+static unsigned char g_guest[0x10000];
+void port_log(const char *fmt, ...) { (void)fmt; }
+static int in_guest(const void *p) { return (const unsigned char *)p >= g_guest && (const unsigned char *)p < g_guest + sizeof g_guest; }
+int main(void)
+{
+    FxPool pool = {128};
+    void *host;
+    syMallocInit(g_guest, sizeof g_guest);
+    Fx_Use(&pool);
+    host = malloc(16);
+    printf("%d %d %d %d %d\n", in_guest(g_got[0]), in_guest(g_got[1]), g_got[0] == g_got[1],
+           g_row == (FxFn)sy_guest_malloc, host != NULL && !in_guest(host));
+    free(host);
+    return 0;
+}
+"""
 
 
 def kit_files(kit=KIT):
@@ -98,9 +143,28 @@ class GameConfig(unittest.TestCase):
         self.assertIn(f'  "{(KIT / "sdk" / "sy_heap.c").as_posix()}"', cm)
         self.assertIn(f'  "{(self.dir / "src" / "own.c").resolve().as_posix()}"', cm)
         cm = game_config.port_files_cmake(cfg, pathlib.Path("W:/r/src"), ["8c011000"], pathlib.Path("W:/r/include"),
-                                          pathlib.Path("W:/rt"), {"8c011000": ["Fx_Draw=Fx_DrawWrap"]})
+                                          pathlib.Path("W:/rt"), {"8c011000": ["Fx_Draw=Fx_DrawWrap"]}, ["8c011000"])
+        self.assertIn('set(PORT_READABLE_NO_PCH\n  "W:/r/src/8c011000.c"\n)', cm)
         self.assertIn('set_source_files_properties("W:/r/src/8c011000.c" PROPERTIES COMPILE_DEFINITIONS '
                       '"Fx_Draw=Fx_DrawWrap")', cm)
+
+    def test_kamui1(self):
+        self.assertNotIn("PORT_KAMUI1", game_config.port_config_h(self.load()))
+        cfg = self.load(kamui1={"list_word": "0x8C380E74"})
+        self.assertEqual(cfg["kamui1"], {"list_word": "8c380e74"})
+        self.assertIn("#define PORT_KAMUI1_LIST_WORD 0x8c380e74u", game_config.port_config_h(cfg))
+        for over in ({"kamui1": {"list_word": "8c38"}}, {"kamui1": {"other": 1}}, {"kamui1": 5}):
+            with self.subTest(over=over), self.assertRaises(SystemExit):
+                self.load(**over)
+
+    def test_lockstep_sample_pcs(self):
+        self.assertEqual(self.load()["lockstep_sample_pcs"], [])
+        self.assertEqual(self.load(lockstep_sample_pcs=["0x8C06CC48", "8c06c090"])["lockstep_sample_pcs"],
+                         ["8c06cc48", "8c06c090"])
+        for over in ({"lockstep_sample_pcs": "8c06cc48"}, {"lockstep_sample_pcs": ["8c06"]},
+                     {"lockstep_sample_pcs": ["8c06cc48"] * 9}):
+            with self.subTest(over=over), self.assertRaises(SystemExit):
+                self.load(**over)
 
     def test_wrap(self):
         self.assertEqual(self.load(wrap={"0x8C011800": "Fx_DrawWrap"})["wrap"], {"8c011800": "Fx_DrawWrap"})
@@ -120,6 +184,17 @@ class GameConfig(unittest.TestCase):
             gen_port.wrap_defines(src, files, {"8c011800": "Fx_DrawWrap"}, names, set())
         self.assertEqual(gen_port.wrapper_proto("void Fx_Draw(void);", "Fx_Draw", "Fx_DrawWrap"),
                          "void Fx_DrawWrap(void);")
+        (src / "8c011a00.c").write_text('#include "game.h"\nvoid Fx_Four(void) {}\n', encoding="utf-8")
+        self.assertEqual(gen_port.no_pch(src, files + ["8c011a00"], got), files)  # wrap defines, or not game.h first
+
+    def test_guest_crt(self):
+        """The guest C library's heap names map onto the kit's (game.h #defines), apart from the host CRT's."""
+        self.assertEqual(gen_port.guest_crt_lines(["Fx_Main", "strlen"]), [])
+        lines = gen_port.guest_crt_lines(["malloc", "Fx_Main", "free", "free"])
+        self.assertEqual(lines[1:], ["#define free sy_guest_free", "#define malloc sy_guest_malloc"])
+        self.assertFalse(set(gen_port.GUEST_CRT) & gen_port.CRT)
+        heap = gen_port.defined_names([KIT / "sdk" / "sy_heap.c"])
+        self.assertTrue({gen_port.GUEST_CRT["malloc"], gen_port.GUEST_CRT["free"]} <= heap)
 
     def test_defined_names(self):
         f = self.dir / "src" / "defs.c"
@@ -152,16 +227,20 @@ class KitIsGameFree(unittest.TestCase):
         self.assertEqual([p.name for p in kit_files() if len(p.read_text(encoding="utf-8").splitlines()) > 400], [])
 
 
-@unittest.skipUnless(os.name == "nt" and game_config.vcvars32(), "no 32-bit Visual Studio tools on this machine")
+@unittest.skipUnless(HAVE_VC, NO_VC)
 class RuntimeCompiles(unittest.TestCase):
     def test_runtime_w4_wx(self):
-        """Every runtime file compiles at the port's flags with zero warnings (a synthetic port_config.h)."""
+        """Every runtime file and the generated fsca_table.c compile at the port's flags with zero warnings (a synthetic
+        port_config.h)."""
         d = pathlib.Path(tempfile.mkdtemp(dir=TOOL / "tests" / ".work" if (TOOL / "tests" / ".work").is_dir() else None))
         try:
             (d / "port_config.h").write_text(game_config.port_config_h(
                 {"name": "Fixture", "entry": {"name": "Fx_Main", "addr": "8c011000"}, "image_base": "8c010000",
                  "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}), encoding="utf-8")
-            srcs = " ".join(f'"{p}"' for p in sorted((KIT / "runtime").glob("*.c")))
+            sys.path.insert(0, str(TOOL))
+            from core import fsca  # gen_port.py's fsca_table.c, which sh4_rt.c reads
+            (d / "fsca_table.c").write_text(fsca.table_c(), encoding="utf-8")
+            srcs = " ".join(f'"{p}"' for p in sorted((KIT / "runtime").glob("*.c")) + [d / "fsca_table.c"])
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
             cl = (f'cl /nologo /c /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
                   f'/I"{KIT / "host"}" /I"{rd}" {srcs}')
@@ -170,6 +249,39 @@ class RuntimeCompiles(unittest.TestCase):
                                errors="replace", timeout=300)
             self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-1000:])
             self.assertNotIn("warning", r.stdout.lower())
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_guest_crt_links(self):
+        """A registry naming malloc/free: readable calls and a dispatch row reach sy_heap's guest-RAM allocator, and
+        the program links against the static host CRT (whose own malloc still works) with zero warnings."""
+        d = pathlib.Path(tempfile.mkdtemp(dir=TOOL / "tests" / ".work" if (TOOL / "tests" / ".work").is_dir() else None))
+        try:
+            (d / "port_config.h").write_text(game_config.port_config_h(
+                {"name": "Fixture", "entry": {"name": "Fx_Main", "addr": "8c011000"}, "image_base": "8c010000",
+                 "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}), encoding="utf-8")
+            game_h = (["#ifndef GAME_H", "#define GAME_H", '#include "rd_rt.h"']
+                      + gen_port.guest_crt_lines(["malloc", "free", "Fx_Use"])
+                      + ["typedef struct FxPool { u32 free; } FxPool;", "void *malloc(u32 size);",
+                         "void free(void *ptr);", "void syMallocInit(void *heap, u32 size);",
+                         "void Fx_Use(FxPool *pool);", "#endif", ""])
+            (d / "game.h").write_text("\n".join(game_h), encoding="utf-8")
+            (d / "fx_use.c").write_text(FX_USE_C, encoding="utf-8")    # readable C: the registry's names
+            (d / "fx_row.c").write_text(FX_ROW_C, encoding="utf-8")    # a dispatch row names the registry function
+            (d / "fx_main.c").write_text(FX_MAIN_C, encoding="utf-8")  # the host side: no game.h, the CRT's heap
+            rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
+            srcs = " ".join(f'"{p}"' for p in [KIT / "sdk" / "sy_heap.c", KIT / "runtime" / "heap.c",
+                                                d / "fx_use.c", d / "fx_row.c", d / "fx_main.c"])
+            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /MT /I"{d}" /I"{KIT / "runtime"}" '
+                  f'/I"{rd}" {srcs} /Fe:fx.exe')
+            vc = str(game_config.vcvars32()).replace("/", "\\")
+            r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
+                               errors="replace", timeout=300)
+            self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-1000:])
+            self.assertNotIn("warning", r.stdout.lower())
+            run = subprocess.run([str(d / "fx.exe")], capture_output=True, text=True, timeout=60)
+            # both guest blocks in guest RAM (the freed one reused), the row is the kit's, the host heap separate
+            self.assertEqual((run.returncode, run.stdout.split()), (0, ["1", "1", "1", "1", "1"]))
         finally:
             shutil.rmtree(d, ignore_errors=True)
 

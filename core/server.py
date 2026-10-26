@@ -5,10 +5,13 @@ import socket
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from . import paths
+from . import oplog, paths
 
 UI = paths.UI / "index.html"
 USAGE_STALE_S = 1800  # while the page is open and no worker is running, re-read usage this often
+# a person's hand on the run (core/oplog "act"): these buttons, pressed in the page (a browser sends an Origin; the
+# tools that call the API, tools/requeue.py and the drivers, send none)
+ACTS = ("/api/start", "/api/investigate", "/api/watcher", "/api/loop", "/api/requeue", "/api/stop")
 
 
 def port_taken(port, name):
@@ -74,6 +77,8 @@ def serve(orch, port):
                 return self.send(403, {"error": "cross-origin request refused"})
             n = int(self.headers.get("Content-Length") or 0)
             body = json.loads(self.rfile.read(n) or b"{}")
+            if self.path in ACTS and self.headers.get("Origin"):
+                oplog.record([paths.ROOT], "monitor", "act", f"{self.path} {json.dumps(body)[:200]}")
             if self.path == "/api/watcher/tool":  # wtool.py, authenticated by the session token
                 try:
                     return self.send(200, orch.watcher.tool(body.get("token"), body.get("kind")))

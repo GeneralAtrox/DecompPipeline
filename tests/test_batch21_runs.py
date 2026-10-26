@@ -47,8 +47,8 @@ def build_sandbox(cfg, reg, addr, meta, prev_work, previous):  # what the real o
 lock = threading.Lock()
 
 
-def note(*words):
-    with lock, open(log_path, "a") as f:
+def note(*words):  # one log per process: two processes appending to one file tear lines on Windows
+    with lock, open(f"{log_path}.{os.getpid()}", "a") as f:
         f.write(" ".join(map(str, words)) + "\n")
 
 
@@ -62,7 +62,7 @@ def run_attempt(cfg, box, task, transcript, log, stop):
 
 
 header_snapshot.acquire = lambda cfg, log=None, **k: Snap()
-refine.harness_stale = lambda cfg, a: None
+refine.harness_stale = lambda cfg, a, **k: None
 refine.preflight = lambda cfg, reg, a, meta: None
 readable.Registry = lambda: None
 refine.tree_hashes = lambda box: {}
@@ -123,7 +123,9 @@ def run_pair(ws, mode):
             if p.poll() is None:
                 p.kill()
                 p.communicate(timeout=30)
-    return [p.returncode for p in procs], outs, log.read_text().splitlines()
+    lines = [ln for f in sorted(log.parent.glob(log.name + ".*")) if f.suffix[1:].isdigit()
+             for ln in f.read_text().splitlines()]  # each driver's own log (DRIVER note)
+    return [p.returncode for p in procs], outs, lines
 
 
 def intervals(lines):

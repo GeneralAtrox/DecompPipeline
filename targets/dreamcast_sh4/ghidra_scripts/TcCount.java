@@ -158,7 +158,7 @@ public class TcCount {
             long addr = ld[1];
             int size = (int) ld[2];
             if ((size != 1 && size != 2) || cuts.words.containsKey(addr) || addr < TcBase.RAM_LO
-                || addr + size > TcBase.STACK_LO) continue;
+                || addr + size > TcBase.frameLo) continue;  // not the own frame or the stack above it
             int[] p = patchAt(v, addr, size);
             if ((ld[3] & (size == 1 ? 0xffL : 0xffffL)) > 1) continue;  // what the run read there
             if (p == null) {  // not an input yet: give the bytes a patch of their own

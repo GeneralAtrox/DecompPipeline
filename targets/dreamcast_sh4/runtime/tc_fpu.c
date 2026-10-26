@@ -72,6 +72,7 @@ void sh4_fschg(void)
 }
 
 void sh4_fpchg(void) { g_mode ^= MODE_PR; }
+int tcrt_fpu_pr(void) { return (g_mode & MODE_PR) != 0; }
 
 void sh4_ftrv_fv(int n)
 {
@@ -93,6 +94,47 @@ void sh4_fipr_fv(int m, int n)
     g_fr[n + 3] = f2u(sh4_fipr(a, b));
 }
 
+/* FPSCR as state (TcFpscr): its fields other than FR, SZ and PR (g_mode), from line N; reported at exit (FS) and at
+ * each call (FC). */
+#define FPSCR_BITS 0x003fffffu
+#define MODES (MODE_FR | MODE_SZ | MODE_PR)
+#define MAX_FC 4096 /* TcOracle.CALL_LIMIT */
+
+static u32 g_fpscr;
+static int g_fs; /* line N given */
+static u32 g_fc[MAX_FC], g_nfc;
+
+u32 sh4_sts_fpscr(void) { return (g_fpscr & ~MODES) | g_mode; }
+
+void sh4_lds_fpscr(u32 value)
+{
+    value &= FPSCR_BITS;
+    g_fpscr = value & ~MODES;
+    g_mode = value & MODES;
+}
+
+void tcrt_set_fpscr_state(u32 fpscr)
+{
+    sh4_lds_fpscr(fpscr);
+    g_fs = 1;
+}
+
+void tcrt_fpscr_call(void)
+{
+    if (g_nfc < MAX_FC) g_fc[g_nfc] = sh4_sts_fpscr();
+    g_nfc++;
+}
+
+void tcrt_report_fpscr(FILE *out)
+{
+    if (!g_fs) return;
+    fprintf(out, "FS %08x\n", sh4_sts_fpscr());
+    if (!g_nfc) return;
+    fprintf(out, "FC");
+    for (u32 k = 0; k < g_nfc && k < MAX_FC; k++) fprintf(out, " %08x", g_fc[k]);
+    fputc('\n', out);
+}
+
 /* ---------------- runner-only ---------------- */
 
 void tcrt_fpu_reset(void)
@@ -101,6 +143,9 @@ void tcrt_fpu_reset(void)
     memset(g_xf, 0, sizeof g_xf);
     g_mode = 0;
     g_fpu = 0;
+    g_fpscr = 0;
+    g_fs = 0;
+    g_nfc = 0;
 }
 
 void tcrt_set_xf(const u32 bits[16]) { memcpy(g_xf, bits, sizeof g_xf); }
@@ -118,6 +163,10 @@ void tcrt_set_fq(const u32 bits[16])
 int tcrt_fpu_state(void) { return g_fpu; }
 
 void tcrt_fpu_result(u32 bits) { g_fr[0] = bits; }
+
+void tcrt_fpu_scratch(int i, u32 bits) { g_fr[i & 15] = bits; }
+
+u32 tcrt_fr_bits(int i) { return g_fr[i & 15]; }
 
 void tcrt_fpu_log(u32 *rec, const TcArgs *args)
 {

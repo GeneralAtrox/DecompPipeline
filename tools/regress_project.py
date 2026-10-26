@@ -6,7 +6,7 @@ is written: its Ghidra project is copied (fresh slot1, else the master), state/ 
 copied, and every path the pipeline writes to (state logs, slots, packets, harnesses, builds) points into WORK.
 
 usage: regress_project.py --project DIR --work DIR --ghidra-work DIR --plan PLAN.json --out RESULT.json
-       [--jobs N] [--reuse] [--catalog]
+       [--jobs N] [--reuse] [--catalog] [--cache DIR --prepare-hash H]
   --ghidra-work  where the Ghidra project copies go: Ghidra refuses a project path with a '.'-element (tests/.work)
   PLAN.json   {"fixtures": [{id, pattern, addr, pass, fail[, vectors_dev][, config]}], "sample": N, "seed": S,
                "key": KEY, "config": {key: value} (regress.py --set: over the project's config, for this run only),
@@ -32,6 +32,14 @@ usage: regress_project.py --project DIR --work DIR --ghidra-work DIR --plan PLAN
   --catalog   also re-run the catalog fixups (TcPools, TcDead, TcRuns, TcOrphans, TcPrune, TcSwitch, TcCont) and
               TcCatalog on the private copy (after changing those scripts: a change of the scripts makes a new copy);
               again for a new WORK whose state has no catalog yet
+  --cache     the harness cache (tools/regress.py --targeted): every harness prepared here, with its packet, is kept
+              in DIR/GROUP/STAMP-H (H: --prepare-hash, tools/regress_targets.prepare_hash, the hash of the Python
+              that makes a harness, which the oracle stamp does not cover), unless its items show oracle trouble.
+              With plan "reuse_cache": true, a group whose entry for today's stamp and H exists is judged on a copy
+              of it instead of being prepared (callee records checked as with --reuse). Entries are written once
+              (a temporary folder renamed into place) and never changed; each group keeps its two newest
+  plan "items": "readable" judges only the readable items (fixtures with "runtime": "readable" or "readable-src",
+              parity items): a change to the readable judge alone
 """
 import argparse
 import hashlib
@@ -67,6 +75,16 @@ def copy_tree_if_stale(src, dst, stamp):
     return True
 
 
+def fsca_table(live_state, dst):
+    """The private state's FSCA table: the current file (core/fsca.file(), as `decomp.py setup` writes it) when the
+    live project has one (state/fsca/, or the state/fsca_table.bin of before). The live file may be of a format
+    before (the one-table 512 KB file), which every reader refuses: copied, it failed every preparation and judge
+    until the live project ran setup again."""
+    if (live_state / "fsca").is_dir() or (live_state / "fsca_table.bin").exists():
+        from core import fsca
+        fsca.ensure(dst)  # a new work dir has none; a kept one is rewritten only when the current file changed
+
+
 def setup(a):
     """Redirect core.paths into WORK; copy what the checker reads. Returns (paths, ghidra, check, cfg, live)."""
     os.environ["DECOMP_PROJECT"] = str(pathlib.Path(a.project).resolve())
@@ -86,11 +104,12 @@ def setup(a):
     paths.GHIDRA_PROJECT, paths.GHIDRA_SLOTS = gwork / "master", gwork / "slots"
     paths.CATALOG, paths.CODE_RANGES = state / "catalog.json", state / "code_ranges.txt"
     paths.FUNCTION_BODIES = state / "function_bodies.txt"  # TcCatalog writes it with the catalog
-    paths.FSCA_TABLE, paths.MSVC_ENV = state / "fsca_table.bin", state / "msvc_env.json"
-    for name in ("fsca_table.bin", "msvc_env.json", "msvc_env_x86.json", "code_ranges.txt", "catalog.json",
-                 "vectors.json", "fr0_results.txt"):
+    paths.FSCA_TABLE, paths.MSVC_ENV = state / "fsca" / paths.FSCA_TABLE.name, state / "msvc_env.json"
+    for name in ("msvc_env.json", "msvc_env_x86.json", "code_ranges.txt", "catalog.json", "vectors.json",
+                 "fr0_results.txt"):
         if (live["state"] / name).exists() and not (a.catalog and name in ("code_ranges.txt", "catalog.json")):
             shutil.copyfile(live["state"] / name, state / name)
+    fsca_table(live["state"], paths.FSCA_TABLE)
     for p in (paths.STATE, paths.HARNESS, paths.PACKETS, paths.BUILD, paths.SCRIPTS, paths.GHIDRA_PROJECT,
               paths.GHIDRA_SLOTS, paths.CODE_RANGES, paths.FUNCTION_BODIES, paths.FSCA_TABLE, paths.MSVC_ENV,
               paths.MARKS):
@@ -101,27 +120,65 @@ def setup(a):
     return paths, ghidra, check, cfg, live
 
 
+CATALOG_OUT = ("CATALOG", "CODE_RANGES", "FUNCTION_BODIES")  # what ghidra.catalog writes into the private state
+
+
 def ghidra_copies(paths, ghidra, cfg, live, jobs, rebuild_catalog, log):
-    """Private master + `jobs` read-only slot copies, refreshed when the live catalog changes."""
+    """Private master + `jobs` read-only slot copies, refreshed when the live catalog changes.
+    Each mode has its own copies (gwork/master, slots; with the catalog step: master_catalog, slots_catalog): the
+    catalog step changes its master, so one set of copies made a gate run after a --targeted run (or the other way
+    round) copy the whole project again (~80 s a project). The catalog step's files (catalog, code ranges, function
+    bodies) are kept with its master (catalog_out/, marked with the master's copied_from.txt) and put back into the
+    work state on a reused master: the work state is shared by both modes, and a plain run copies the live catalog
+    over it."""
+    if rebuild_catalog:
+        paths.GHIDRA_PROJECT = paths.GHIDRA_PROJECT.with_name("master_catalog")
+        paths.GHIDRA_SLOTS = paths.GHIDRA_SLOTS.with_name("slots_catalog")
     stamp = stamp_of(live["catalog"])
     slot1 = live["slots"] / "slot1"
     fresh = (slot1 / "copied_from.txt").exists() and (slot1 / "copied_from.txt").read_text(encoding="utf-8") == stamp
     src = slot1 if fresh and (slot1 / (paths.GHIDRA_NAME + ".gpr")).exists() else live["ghidra"]
     t = time.time()
     # A rebuilt catalog is only as fresh as the scripts that made it: changed scripts make a new copy and catalog.
-    scripts = hashlib.sha256(b"".join(q.read_bytes() for q in sorted(paths.SCRIPTS.glob("*.java")))).hexdigest()[:12]
+    files = sorted(paths.sync_scripts().glob("*.java"))
+    scripts = hashlib.sha256(b"".join(q.read_bytes() for q in files)).hexdigest()[:12]
     copied = copy_tree_if_stale(src, paths.GHIDRA_PROJECT, stamp + (f":catalog:{scripts}" if rebuild_catalog else ""))
     if copied:
         log(f"copied Ghidra project from {src} ({time.time() - t:.0f} s)")
-    # A new --work dir on a master already fixed: the catalog and code ranges are written to the work state, not kept
-    # with the master, so they are made again (else the runner starts without code_ranges.txt).
-    if rebuild_catalog and (copied or not paths.CATALOG.exists() or not paths.CODE_RANGES.exists()):
-        t = time.time()
-        ghidra.catalog(cfg)  # on the private master only (paths are redirected)
-        log(f"catalog fixups (TcPools ... TcCont) and TcCatalog on the private copy ({time.time() - t:.0f} s)")
     mstamp = (paths.GHIDRA_PROJECT / "copied_from.txt").read_text(encoding="utf-8")
+    if rebuild_catalog:
+        out = paths.GHIDRA_PROJECT.with_name("catalog_out")
+        if not copied and catalog_kept(paths, out, mstamp):
+            log("catalog of the private copy: kept from its catalog step (catalog_out)")
+        else:  # a new copy, or no kept catalog: the fixups and TcCatalog run on the private master
+            t = time.time()
+            ghidra.catalog(cfg)  # on the private master only (paths are redirected)
+            log(f"catalog fixups (TcPools ... TcCont) and TcCatalog on the private copy ({time.time() - t:.0f} s)")
+            keep_catalog(paths, out, mstamp)
     for i in range(1, jobs + 1):
         copy_tree_if_stale(paths.GHIDRA_PROJECT, paths.GHIDRA_SLOTS / f"slot{i}", mstamp)
+
+
+def keep_catalog(paths, out, mstamp):
+    """Keep the catalog step's files with the master they were made on (mstamp: its copied_from.txt)."""
+    shutil.rmtree(out, ignore_errors=True)
+    out.mkdir(parents=True)
+    for name in CATALOG_OUT:
+        shutil.copyfile(getattr(paths, name), out / getattr(paths, name).name)
+    (out / "made_on.txt").write_text(mstamp, encoding="utf-8")  # last: a cut-short copy is never taken
+
+
+def catalog_kept(paths, out, mstamp):
+    """Put the kept catalog step's files back into the work state when they were made on this very master copy
+    (unchanged since: the copy is made again when its stamp changes). False: none kept, so the step runs."""
+    mark = out / "made_on.txt"
+    if not mark.exists() or mark.read_text(encoding="utf-8") != mstamp:
+        return False
+    if not all((out / getattr(paths, name).name).exists() for name in CATALOG_OUT):
+        return False
+    for name in CATALOG_OUT:
+        shutil.copyfile(out / getattr(paths, name).name, getattr(paths, name))
+    return True
 
 
 def plan_items(plan, live):
@@ -186,6 +243,44 @@ def oracle_note(res, meta_path):
     return f"oracle problem, not a verdict: {why or 'no valid vectors'}"[:200]
 
 
+def cache_get(cache, group, key, harness, packet):
+    """Copy the cache entry GROUP/KEY into harness and packet; False when there is none (or it went meanwhile)."""
+    src = cache / group / key
+    try:
+        if not (src / "harness" / "meta.json").exists():
+            return False
+        for d, sub in ((harness, "harness"), (packet, "packet")):
+            shutil.rmtree(d, ignore_errors=True)
+            if (src / sub).exists():
+                shutil.copytree(src / sub, d)
+        return True
+    except OSError:
+        return False
+
+
+def cache_put(cache, group, key, harness, packet, keep=2):
+    """Keep harness and packet as the cache entry GROUP/KEY (written once: a temporary folder renamed into place);
+    the group keeps its `keep` newest entries."""
+    gdir = cache / group
+    dst = gdir / key
+    if dst.exists():
+        return
+    tmp = gdir / f".tmp-{key}-{os.getpid()}-{threading.get_ident()}"
+    try:
+        shutil.rmtree(tmp, ignore_errors=True)
+        shutil.copytree(harness, tmp / "harness")
+        if packet.exists():
+            shutil.copytree(packet, tmp / "packet")
+        os.replace(tmp, dst)
+    except OSError:
+        shutil.rmtree(tmp, ignore_errors=True)
+        return
+    old = sorted((d for d in gdir.iterdir() if d.is_dir() and not d.name.startswith(".tmp-")),
+                 key=lambda d: d.stat().st_mtime, reverse=True)[keep:]
+    for d in old:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 def main():
     ap = argparse.ArgumentParser()
     for opt in ("--project", "--work", "--ghidra-work", "--plan", "--out"):
@@ -193,7 +288,10 @@ def main():
     ap.add_argument("--jobs", type=int, default=3)
     ap.add_argument("--reuse", action="store_true")
     ap.add_argument("--catalog", action="store_true")
+    ap.add_argument("--cache")
+    ap.add_argument("--prepare-hash")
     a = ap.parse_args()
+    assert bool(a.cache) == bool(a.prepare_hash), "--cache needs --prepare-hash"
     t0 = time.time()
     lock = threading.Lock()
 
@@ -215,6 +313,13 @@ def main():
         assert vj.resolve().is_relative_to(work), vj
         vj.write_text(json.dumps((paths.read_json(vj) or {}) | over, indent=1), encoding="utf-8")
     items = plan_items(plan, live)
+    readable_ids = {f"{f['id']}.{side}" for f in plan["fixtures"] if f.get("runtime") == "readable"
+                    for side in ("pass", "fail")} | {it[0] for it in items if it[1] == "parity"}
+    source_ids = {f"{f['id']}.{side}": f.get("names") for f in plan["fixtures"] if f.get("runtime") == "readable-src"
+                  for side in ("pass", "fail")}
+    if plan.get("items") == "readable":  # a change to the readable judge alone: only what it judges
+        items = [it for it in items if it[0] in readable_ids or it[0] in source_ids]
+        log(f"readable items only: {len(items)}")
     groups = list(dict.fromkeys(i[6] for i in items))
     jobs = max(1, min(a.jobs, len(groups)))
     ghidra_copies(paths, ghidra, cfg, live, jobs, a.catalog, log)
@@ -223,11 +328,7 @@ def main():
         by_group.setdefault(it[6], []).append(it)
     for f in plan["fixtures"]:
         if f.get("config"):
-            group_cfg[f"{f['addr']}@{f['id']}"] = dict(cfg, **f["config"], _facts_tag=f["id"])
-    readable_ids = {f"{f['id']}.{side}" for f in plan["fixtures"] if f.get("runtime") == "readable"
-                    for side in ("pass", "fail")} | {it[0] for it in items if it[1] == "parity"}
-    source_ids = {f"{f['id']}.{side}": f.get("names") for f in plan["fixtures"] if f.get("runtime") == "readable-src"
-                  for side in ("pass", "fail")}
+            group_cfg[f"{f['addr']}@{f['id']}"] = dict(cfg, **f["config"])  # its own facts file: content-named
     if readable_ids or source_ids:  # the 32-bit environment, once, into the private state (like check.msvc_env)
         from core import readable_check as rcheck
         assert rcheck.MSVC_ENV_X86.resolve().is_relative_to(work), rcheck.MSVC_ENV_X86
@@ -278,7 +379,11 @@ def main():
                 "got": "REFUSED" if ok else "PREPARED", "detail": (why or "not refused")[:200]}
 
     reuse = a.reuse or bool(plan.get("parity"))  # keep a harness whose oracle stamp is current
-    counts = {"reused": 0, "prepared": 0, "retried_alone": 0}
+    cache = pathlib.Path(a.cache).resolve() if a.cache else None
+    from_cache = bool(cache and plan.get("reuse_cache"))
+    counts = {"reused": 0, "prepared": 0, "retried_alone": 0, "cached": 0}
+
+    scripts = paths.sync_scripts()  # this checkout's scripts, in their own content-named folder
 
     def one_group(group, slot, fresh=False):
         """Prepare (or reuse) one group's harness and judge its items."""
@@ -288,23 +393,32 @@ def main():
         prep = {}
         try:
             hints = live["hints"] / f"{addr}.txt"
-            now = oracle_stamp.stamp(gcfg, addr, paths.SCRIPTS, ghidra.write_facts(gcfg), hints,
+            now = oracle_stamp.stamp(gcfg, addr, scripts, ghidra.write_facts(gcfg), hints,
                                      ghidra.dev_vectors(gcfg, addr), gcfg["vectors_hidden"])
             old = paths.read_json(harness / "meta.json") if reuse and not fresh else None
+            key = f"{now}-{a.prepare_hash}" if cache else None
+            if from_cache and not fresh and cache_get(cache, group, key, harness, work / "packets" / group):
+                old = paths.read_json(harness / "meta.json")
+                prep["cached"] = True
             if old and not oracle_stamp.current(old, now, live["harness"]):  # stamp and callee records current
                 prep["reused"] = True
             else:
-                staging = {"scripts": paths.SCRIPTS, "packet": work / "packets" / group, "harness": harness,
+                prep.pop("cached", None)
+                staging = {"scripts": scripts, "packet": work / "packets" / group, "harness": harness,
                            "hints": hints, "callees": live["harness"]}  # callee records from the live harnesses
                 meta, summary = ghidra.prepare(gcfg, addr, slot_index=slot, staging=staging)
                 prep = {"unsupported": meta.get("unsupported"), "reused": False,
                         "valid": f"{(summary or {}).get('dev_valid')}+{(summary or {}).get('hidden_valid')}"}
             with lock:
                 counts["reused" if prep["reused"] else "prepared"] += 1
+                counts["cached"] += bool(prep.get("cached"))
             prep["prep_secs"] = round(time.time() - t, 1)
             prep["same_as_live"] = same_as_live(live, harness, addr)
             out = [dict(refused(it, harness) if it[4] == "REFUSED" else judge(it, harness, gcfg), **prep)
                    for it in by_group[group]]
+            if cache and not prep["reused"] and not any(oracle_trouble(r) for r in out):
+                if (paths.read_json(harness / "meta.json") or {}).get("oracle_stamp") == now:
+                    cache_put(cache, group, key, harness, work / "packets" / group)
         except Exception as e:  # noqa: BLE001
             err = f"prepare: {str(e).splitlines()[0][:200]}"
             out = [{"id": it[0], "kind": it[1], "addr": addr, "pattern": it[5], "expect": it[4], "got": "ERROR",
@@ -340,7 +454,8 @@ def main():
         for r in out:
             r["first_run"] = f"{first[r['id']].get('got')}: {first[r['id']].get('detail', '')}"[:200]
         results[:] = [r for r in results if r["id"] not in first] + out
-    log(f"harnesses: {counts['reused']} reused (oracle stamp current), {counts['prepared']} prepared"
+    log(f"harnesses: {counts['reused']} reused (oracle stamp current; {counts['cached']} from the cache), "
+        f"{counts['prepared']} prepared"
         + (f", {counts['retried_alone']} prepared again alone" if again else ""))
     order = {it[0]: n for n, it in enumerate(items)}
     results.sort(key=lambda r: order.get(r["id"], 1 << 30))

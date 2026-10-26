@@ -151,6 +151,25 @@ class VariadicOwn(unittest.TestCase):
         shifted = {"calls": [[0x8C0683F0, 0x00190000, 0x8C0A0000, 0x00190404] + [0] * 30]}
         self.assertTrue(map_stack_args(meta, exp, shifted, stack))
 
+    def test_pointer_call_pairs_its_ca_registers(self):
+        """A call through a function pointer (a target meta's callees do not list) is judged on the original's CA
+        registers (judge hole 5); a local's address among them pairs one to one, as for a listed callee (TC
+        8c05cc8c: &color to g_meshLightFn)."""
+        from core.readable_check import map_stack_args
+        meta = {"callees": []}
+        exp = {"calls": [[0x8CC01900, 0x8CFFDFD8] + [0] * 32, [0x8CC01900, 0x8CFFDFD8] + [0] * 32],
+               "call_args": {0: ["r4"], 1: ["r4"]}}
+        stack = (0x00100000, 0x00200000, None)
+        good = {"calls": [[0x8CC01900, 0x001AFC8C] + [0] * 32, [0x8CC01900, 0x001AFC8C] + [0] * 32]}
+        self.assertEqual(map_stack_args(meta, exp, good, stack), [])
+        self.assertEqual([c[1] for c in good["calls"]], [0x8CFFDFD8, 0x8CFFDFD8])
+        two = {"calls": [[0x8CC01900, 0x001AFC8C] + [0] * 32, [0x8CC01900, 0x001AFC90] + [0] * 32]}
+        self.assertTrue(map_stack_args(meta, exp, two, stack))  # one guest slot, two host slots: no pairing
+        self.assertEqual(two["calls"][1][1], 0x001AFC90)
+        bare = {"calls": [[0x8CC01900, 0x001AFC8C] + [0] * 32]}
+        self.assertEqual(map_stack_args(meta, {"calls": exp["calls"][:1]}, bare, stack), [])
+        self.assertEqual(bare["calls"][0][1], 0x001AFC8C)  # no CA: nothing judged, nothing paired
+
 
 EXTENT_NAMES = {"functions": {}, "globals": {"8c0d0000": {"decl": "Vec3 g_points[2]"},
                                              "8c0d0010": {"decl": "u32 g_inside"},

@@ -56,6 +56,9 @@ typedef struct K2SysConfig {
 extern K2SysConfig *g_k2_config; /* from kmSetSystemConfiguration */
 s32 kmSetSystemConfiguration(void *config); /* the documented call; a game's display set-up calls it */
 
+/* kamui2_misc.c */
+u32 k2_frame_lines(void); /* the frame buffer's lines: 480, or a PAL line mode's 496..560 (the line-mode callback) */
+
 /* kamui2_tex.c */
 void k2_tex_init(const K2SysConfig *config);
 

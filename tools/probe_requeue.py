@@ -122,7 +122,8 @@ def main():
             launcher.write_text(LAUNCHER.format(me=pathlib.Path(__file__).resolve(), project=a.project, tag=a.tag,
                                                 addr=addr, work=box / "work.c"), encoding="utf-8")
             os.chmod(launcher, stat.S_IREAD)
-            sess = agent.run_attempt(cfg, box, task, run_dir / "transcript.jsonl", lambda m: None, threading.Event())
+            sess = agent.run_attempt(cfg, box, task, run_dir / "transcript.jsonl", lambda m: None, threading.Event(),
+                                     system=agent.raw_system_prompt(cfg))
             spent += sess.get("cost_usd") or 0
             wf = run_dir / "work.c"
             wf.write_bytes((box / "work.c").read_bytes() if (box / "work.c").exists() else b"")

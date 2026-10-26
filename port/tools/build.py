@@ -2,7 +2,7 @@
 time-bounded and a step that times out is killed with its whole process tree.
 
     python port/tools/build.py [--game DIR] [--engine | --no-gen] [--jobs N] [--checked] [--run [--seconds N]]
-                               [--regress] [--build-dir NAME]
+                               [--regress] [--build-dir NAME] [--progress]
                                [-- PORT ARGS...]   (passed to port.exe, e.g. -- --fixed-clock 1)
 
 --game: the folder with game.json (default: the current folder). Writes into <game>/build: gen (gen_port.py),
@@ -12,6 +12,10 @@ x86 or x86chk (CMake + Ninja, the kit's CMakeLists.txt) and, with --run, run/por
 --build-dir NAME: a build of its own, so an agent's builds and runs never touch the user's (build/x86 belongs to
 the game's Start Game.bat and the launcher): build/NAME (CMake), build/NAME_gen, build/NAME.log, build/NAME_run.
 Two builds in one folder at once break Ninja's log ("Permission denied").
+--jobs: compile jobs (default: the machine's logical processors).
+--progress: the launcher's view (a game's Start Game.bat): one line counting the compiles as they finish, rewritten
+in place, warnings and errors in full as they come, "Game is up to date." when nothing changed; the generator's and
+the compiler's full output go to the build log only.
 """
 import argparse
 import json
@@ -21,6 +25,8 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
+import time
 
 TOOLS = pathlib.Path(__file__).resolve().parent
 KIT = TOOLS.parent
@@ -48,20 +54,114 @@ def run(cmd, timeout, env=None, cwd=None, log=None):
     return p.returncode, out
 
 
+def run_live(cmd, timeout, env=None, on_line=print):
+    """run, with each output line handed to on_line as it comes."""
+    p = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+    expired = []
+
+    def kill():
+        expired.append(1)
+        subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"], capture_output=True, timeout=60)
+
+    timer = threading.Timer(timeout, kill)
+    timer.start()
+    out = []
+    try:
+        for line in p.stdout:
+            out.append(line)
+            on_line(line)
+        p.wait()
+    finally:
+        timer.cancel()
+    if expired:
+        out.append(f"\nTIMEOUT after {timeout} s: process tree killed\n")
+        p.returncode = -1
+    return p.returncode, "".join(out)
+
+
+class Progress:
+    """--progress: Ninja's [finished/total] compile and link lines become one status line rewritten in place; the
+    compiler's, linker's and CMake's diagnostics are printed whole as they come; everything else (CMake re-running
+    after a file was added or removed, vcpkg, the failed command lines) is left to the log."""
+    STEP = re.compile(r"^\[(\d+)/(\d+)\] (Building|Linking)")
+    SHOWN = re.compile(r"error|warning|: note:|fatal|ninja: build stopped|CMake Error", re.I)
+
+    def __init__(self):
+        self.total, self.width, self.t0 = 0, 0, time.monotonic()
+
+    def status(self, text):
+        sys.stdout.write("\r" + text.ljust(self.width))
+        sys.stdout.flush()
+        self.width = len(text)
+
+    def clear(self):
+        if self.width:
+            sys.stdout.write("\r" + " " * self.width + "\r")
+            self.width = 0
+
+    def line(self, ln):
+        m = self.STEP.match(ln)
+        if m:
+            done, total = int(m.group(1)), int(m.group(2))
+            if not self.total:
+                self.clear()
+                print(f"Updating the game: {total} files to build...")
+            self.total = total
+            self.status(f"  {done}/{total} built, {time.monotonic() - self.t0:.0f} s")
+        elif re.match(r"\[\d+/\d+\] Re-running CMake", ln):
+            self.status("Updating the build's file list (files were added or removed)...")
+        elif self.SHOWN.search(ln) and not ln.startswith("FAILED: "):
+            self.clear()
+            print(ln.rstrip("\n"))
+
+    def finish(self, rc):
+        self.clear()
+        if rc == 0:
+            print(f"  built in {time.monotonic() - self.t0:.0f} s" if self.total else "Game is up to date.")
+
+
+# What the cache keeps, as core/check.CAPTURED (tests/test_ghidra_broker.py keeps the two the same): the compiler's,
+# linker's, Visual Studio's, the Windows SDK's and the Windows variables a process needs; nothing else is written.
+CAPTURED = ("PATH", "INCLUDE", "LIB", "LIBPATH", "EXTERNAL_INCLUDE", "CL", "_CL_", "LINK", "_LINK_",
+            "SYSTEMROOT", "WINDIR", "SYSTEMDRIVE", "COMSPEC", "PATHEXT", "TEMP", "TMP", "OS", "NUMBER_OF_PROCESSORS",
+            "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER", "PROCESSOR_LEVEL", "PROCESSOR_REVISION",
+            "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432", "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(X86)",
+            "COMMONPROGRAMW6432", "PROGRAMDATA", "ALLUSERSPROFILE", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
+            "PLATFORM", "COMMANDPROMPTTYPE", "DEVENVDIR", "EXTENSIONSDKDIR", "HTMLHELPDIR", "NETFXSDKDIR",
+            "UCRTVERSION", "UNIVERSALCRTSDKDIR", "VCIDEINSTALLDIR", "VCINSTALLDIR", "VCTOOLSINSTALLDIR",
+            "VCTOOLSREDISTDIR", "VCTOOLSVERSION", "VSINSTALLDIR", "VISUALSTUDIOVERSION", "WINDOWSLIBPATH",
+            "VCPKG_ROOT")  # the port build's vcpkg toolchain
+CAPTURED_RE = re.compile(r"VS\d+COMNTOOLS|VSCMD_\w+|__VSCMD_\w+|__DOTNET_\w+|FRAMEWORK\w*|WINDOWSSDK\w*", re.I)
+
+
+def kept(name):
+    return name.upper() in CAPTURED or bool(CAPTURED_RE.fullmatch(name))
+
+
 def msvc_env(cache):
-    if cache.exists():
-        return json.loads(cache.read_text(encoding="utf-8"))
+    cfg = game_config.toolchain()
+    from core import toolcfg  # noqa: E402  (game_config put the pipeline on sys.path)
     found = game_config.vcvars32()
+    vc = str(found).replace("/", "\\") if found else None
+    if cache.exists():
+        env = json.loads(cache.read_text(encoding="utf-8"))
+        if not all(kept(k) for k in env):  # a cache written before that rule: cleaned in place
+            env = {k: v for k, v in env.items() if kept(k)}
+            cache.write_text(json.dumps(env), encoding="utf-8")
+        if vc and toolcfg.cache_current(cache, env, vc, cfg):  # another vcvars, toolset or cl: loaded again
+            return env
     if not found:
         raise SystemExit("no 32-bit Visual Studio environment: set VCVARS32, or \"vcvars\" in DecompPipeline/"
                          "config.local.json (vcvars32.bat is looked for beside it)")
-    vc = str(found).replace("/", "\\")
-    rc, out = run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && set"', 180)
-    if rc != 0:
-        raise SystemExit("could not load the 32-bit Visual Studio environment (vcvars32.bat)")
-    env = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
+    rc, out = run(toolcfg.vcvars_command(vc, cfg), 180)
+    env = {k: v for k, v in (line.split("=", 1) for line in out.splitlines() if "=" in line) if kept(k)}
+    try:
+        toolcfg.loaded(rc, env, vc, cfg)  # its exit code and the pin decide, not how the variables look
+    except RuntimeError as e:
+        raise SystemExit(str(e)) from None
     cache.parent.mkdir(parents=True, exist_ok=True)
     cache.write_text(json.dumps(env), encoding="utf-8")
+    toolcfg.write_key(cache, env, vc, cfg)
     return env
 
 
@@ -85,7 +185,7 @@ def main():
     ap.add_argument("--game", default=None, help="the folder with game.json (default: the current folder)")
     ap.add_argument("--no-gen", action="store_true")
     ap.add_argument("--engine", action="store_true", help="compile the engine's readable files too (gen_port.py --engine)")
-    ap.add_argument("--jobs", type=int, default=8)
+    ap.add_argument("--jobs", type=int, default=os.cpu_count() or 8)
     ap.add_argument("--run", action="store_true")
     ap.add_argument("--checked", action="store_true", help="unoptimised /RTC1 build in build/x86chk")
     ap.add_argument("--seconds", type=int, default=20)
@@ -93,21 +193,38 @@ def main():
     ap.add_argument("--must-work", default=None, help="stop at the first listed stub ('' off; default: game.json)")
     ap.add_argument("--regress", action="store_true", help="then run the game's tests/*.script (tools/regress.py)")
     ap.add_argument("--build-dir", default=None, help="a build of its own in build/NAME (agents: not build/x86)")
+    ap.add_argument("--progress", action="store_true", help="the launcher's view: a live count")
     ap.add_argument("port_args", nargs=argparse.REMAINDER, help="after --: arguments for port.exe")
     a = ap.parse_args()
     cfg = game_config.load(game_config.find_game(a.game))
+    game_config.oplog().begin("port build.py", [cfg["dir"]])
     game, build = cfg["dir"], cfg["dir"] / "build"
     own = a.build_dir
     if own and (own in ("x86", "x86chk", "gen", "run", "regress") or not re.fullmatch(r"[\w.-]+", own)):
         raise SystemExit(f"--build-dir {own}: give a plain name of its own (x86 is the user's build)")
     gen = build / (f"{own}_gen" if own else "gen")
     blog = build / (f"{own}.log" if own else "build.log")
+    gen_out, view = "", Progress() if a.progress else None
     if not a.no_gen:
-        rc, out = run([sys.executable, str(TOOLS / "gen_port.py"), "--game", str(game), "--out", str(gen)]
-                      + (["--engine"] if a.engine else []), 600)
-        print(out, end="")
+        if view:
+            view.status("Checking the game's files...")
+        rc, gen_out = run([sys.executable, str(TOOLS / "gen_port.py"), "--game", str(game), "--out", str(gen)]
+                          + (["--engine"] if a.engine else []), 600)
+        if view:
+            view.clear()
+        if not view or rc:
+            print(gen_out, end="")
         if rc:
             raise SystemExit(f"gen_port.py failed ({rc})")
+        if (game / "overlays.json").is_file():  # the overlays, compiled side by side (gen_overlays.py)
+            rc, out = run([sys.executable, str(TOOLS / "gen_overlays.py"), "--game", str(game), "--out",
+                           str(gen / "overlays")], 1200)
+            if not view or rc:
+                print(out, end="")
+            if rc:
+                raise SystemExit(f"gen_overlays.py failed ({rc})")
+        else:
+            (gen / "overlays" / "overlays.cmake").unlink(missing_ok=True)
     env = msvc_env(build / "msvc_env_x86.json")
     bdir = build / (own or ("x86chk" if a.checked else "x86"))
     vcpkg = game_config.vcpkg_root()
@@ -115,6 +232,8 @@ def main():
         raise SystemExit("no vcpkg for the kit's host libraries (vcpkg.json): set VCPKG_ROOT, or \"vcpkg\" in "
                          "DecompPipeline/config.local.json (a vcpkg checkout)")
     if not configured_from_kit(bdir):
+        if a.progress:
+            print("Setting up the build folder (the first time takes a few minutes)...", flush=True)
         # vcpkg installs vcpkg.json's libraries for x86-windows into the build folder at the first configure
         rc, out = run(["cmake", "-G", "Ninja",
                        f"-DCMAKE_TOOLCHAIN_FILE={(vcpkg / 'scripts' / 'buildsystems' / 'vcpkg.cmake').as_posix()}",
@@ -123,19 +242,31 @@ def main():
                        f"-DPORT_CHECKED={'ON' if a.checked else 'OFF'}", f"-DPORT_GEN={gen.as_posix()}",
                        "-S", str(KIT), "-B", str(bdir)],
                       2400, env=env)
-        print(out[-3000:], end="")
+        if not a.progress or rc:
+            print(out[-3000:], end="")
         if rc:
             raise SystemExit(f"cmake configure failed ({rc})")
-    rc, out = run(["cmake", "--build", str(bdir), "--", "-k", "0", f"-j{a.jobs}"], 3000, env=env,
-                  log=blog)
+    cmd = ["cmake", "--build", str(bdir), "--", "-k", "0", f"-j{a.jobs}"]
+    if view:
+        view.t0 = time.monotonic()
+        rc, out = run_live(cmd, 3000, env=env, on_line=view.line)
+        view.finish(rc)
+    else:
+        rc, out = run(cmd, 3000, env=env)
+    blog.write_text(gen_out + out, encoding="utf-8")
     lines = out.splitlines()
     diags = [ln for ln in lines if " error " in ln or " warning " in ln or ": error" in ln or ": warning" in ln]
-    print(f"build: exit {rc}; {len(diags)} diagnostic line(s); full log {blog}")
-    for ln in diags[:60]:
-        print("  " + ln[:300])
-    if rc:
-        print("\n".join(lines[-15:]))
-        raise SystemExit(1)
+    if a.progress:
+        if rc:
+            print(f"The build failed (exit {rc}): the errors are above; the full log is {blog}")
+            raise SystemExit(1)
+    else:
+        print(f"build: exit {rc}; {len(diags)} diagnostic line(s); full log {blog}")
+        for ln in diags[:60]:
+            print("  " + ln[:300])
+        if rc:
+            print("\n".join(lines[-15:]))
+            raise SystemExit(1)
     if a.run:
         disc = a.disc or (str(cfg["disc"]) if cfg["disc"] else None)
         if not disc:
@@ -166,4 +297,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    game_config.oplog().main(main)

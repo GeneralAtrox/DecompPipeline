@@ -147,8 +147,9 @@ class Watcher:
         old_hints = paths.HINTS / f"{addr}.txt"
         (WS / "hints" / f"{addr}.txt").write_text(
             old_hints.read_text(encoding="utf-8") if old_hints.exists() else f"# hints for fn_{addr}\n", encoding="utf-8")
+        scripts = paths.target_scripts()
         for n in gate.locked():
-            shutil.copyfile(paths.TARGET_SCRIPTS / n, WS / n)
+            shutil.copyfile(scripts[n], WS / n)
         for p in ghidra.packet_files(paths.PACKETS / addr):
             shutil.copyfile(p, WS / "target" / p.name)
         summary = paths.read_json(paths.HARNESS / addr / "oracle_summary.json") or {}

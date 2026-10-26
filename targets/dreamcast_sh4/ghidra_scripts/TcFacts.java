@@ -9,6 +9,7 @@ public class TcFacts {
     int intArgs, floatArgs, extraInputs, calleeSaved;
     String retInt = "r0", retFloat = "fr0", retInt64Hi = "r1";
     long ramLo, ramHi, entrySp, stackLo, sentinel, scrLo, scrHi;
+    long frameLo;  // the own frame's bottom ("frame_lo": entry r15 less readable_frame_max; TcBase.frameLo)
     List<long[]> mmio = new ArrayList<>();
     BitSet code = new BitSet(); // bit (addr - ramLo): an instruction byte
     boolean haveCode;
@@ -17,16 +18,24 @@ public class TcFacts {
     long fpscrEntry = 0x00040001L;
     boolean fpscrModel;
     boolean paramSummaries; // "param_summaries": callee summaries decide compared callee registers (TcSum, TcSig)
+    boolean targetedVectors; // "targeted_vectors": boundary-value vectors for untaken branch directions (TcBound)
+    boolean branchCoverage; // "branch_coverage": record branch directions (TcDirs; report only)
     boolean coverageInputs; // "coverage_inputs": constant-guided inputs (TcGuide) in about a third of the vectors
-    long oracleDeadlineS;   // seconds after the JVM started by which vector generation must end (0: none; TcVectors)
+    long oracleBudgetS;     // vector generation's budget, in seconds of work at workPerS (0: none; TcBudget)
+    long workPerS;          // "oracle_work_per_s": the oracle's work per second as measured (TcBudget.of)
     int minValid;           // valid vectors per set the checker needs; fewer starts TcVectors' rescue pass (0: never)
-    long oracleRescueS;     // seconds an out-of-time first pass gets for its overtime rescue (TcCount; 0: none)
+    long oracleRescueS;     // seconds of work an out-of-budget first pass gets for its overtime rescue (0: none)
     int reachRuns;          // "reach_calls": the reach pass's run budget per function (TcReach; 0: off)
-    long reachS;            // and its wall-clock limit in seconds
+    long reachS;            // and its work budget in seconds at workPerS
     // "fpu_state": a function that switches FPU modes (fschg, frchg, fpchg) is tested with every float register,
     // XMTRX and the FPSCR mode bits as state (TcSig.fpuProto, TcVectors line Q, TcOracle), and 64-bit fmov pairs move
     // as the hardware does (TcPair).
     boolean fpuState;
+    // The stricter judge (TcStrict; target.json "mock_junk", "mock_writes", "call_snapshots", "exit_frame"): bits
+    // 1, 2, 4 and 8 of strict (0: all off), and the callees known to write through a pointer argument (project.json
+    // "mock_write_facts", lines "mock_write callee field size": TcStrict.facts).
+    int strict;
+    List<String[]> mockWrites = new ArrayList<>();
 
     // The values the scripts were written with (TcBase constants); a facts file must agree with them.
     static TcFacts defaults() {
@@ -39,6 +48,7 @@ public class TcFacts {
         f.ramHi = TcBase.RAM_HI;
         f.entrySp = TcBase.SP;
         f.stackLo = TcBase.STACK_LO;
+        f.frameLo = TcBase.SP - TcBase.FRAME_MAX;
         f.sentinel = TcBase.SENTINEL;
         f.scrLo = TcBase.SCR;
         f.scrHi = TcBase.SCR + TcBase.SCR_SIZE;
@@ -74,6 +84,7 @@ public class TcFacts {
                 case "ram": f.ramLo = num(w[0]); f.ramHi = num(w[1]); break;
                 case "entry_sp": f.entrySp = num(w[0]); break;
                 case "stack_lo": f.stackLo = num(w[0]); break;
+                case "frame_lo": f.frameLo = num(w[0]); break;
                 case "return_sentinel": f.sentinel = num(w[0]); break;
                 case "scratch": f.scrLo = num(w[0]); f.scrHi = num(w[1]); break;
                 case "mmio": f.mmio.add(new long[] {num(w[0]), num(w[1])}); break;
@@ -81,12 +92,20 @@ public class TcFacts {
                 case "fpscr_entry": f.fpscrEntry = num(w[0]); break;
                 case "fpscr_model": f.fpscrModel = v.equals("1") || v.equals("true"); break;
                 case "param_summaries": f.paramSummaries = v.equals("1") || v.equals("true"); break;
+                case "targeted_vectors": f.targetedVectors = v.equals("1") || v.equals("true"); break;
+                case "branch_coverage": f.branchCoverage = v.equals("1") || v.equals("true"); break;
                 case "coverage_inputs": f.coverageInputs = v.equals("1") || v.equals("true"); break;
-                case "oracle_deadline_s": f.oracleDeadlineS = Long.parseLong(v); break;
+                case "oracle_budget_s": f.oracleBudgetS = Long.parseLong(v); break;
+                case "oracle_work_per_s": f.workPerS = Long.parseLong(v); break;
                 case "min_valid": f.minValid = Integer.parseInt(v); break;
                 case "oracle_rescue_s": f.oracleRescueS = Long.parseLong(v); break;
                 case "reach_calls": f.reachRuns = Integer.parseInt(w[0]); f.reachS = Long.parseLong(w[1]); break;
                 case "fpu_state": f.fpuState = v.equals("1") || v.equals("true"); break;
+                case "mock_junk": f.strict |= v.equals("1") || v.equals("true") ? 1 : 0; break;
+                case "mock_writes": f.strict |= v.equals("1") || v.equals("true") ? 2 : 0; break;
+                case "call_snapshots": f.strict |= v.equals("1") || v.equals("true") ? 4 : 0; break;
+                case "exit_frame": f.strict |= v.equals("1") || v.equals("true") ? 8 : 0; break;
+                case "mock_write": f.mockWrites.add(w); break;
                 default: throw new IllegalArgumentException("unknown target fact: " + line);
             }
         }
@@ -103,6 +122,12 @@ public class TcFacts {
                 throw new IllegalStateException("target.json memory map disagrees with TcBase constants: "
                     + Long.toHexString(p[0]) + " vs " + Long.toHexString(p[1]));
             }
+        }
+        if (frameLo < TcBase.STACK_LO || frameLo > TcBase.SP) {
+            throw new IllegalStateException("frame_lo " + Long.toHexString(frameLo) + " is outside the stack window");
+        }
+        if (oracleBudgetS > 0 && workPerS <= 0) {
+            throw new IllegalStateException("oracle_budget_s without oracle_work_per_s");
         }
         if (!retInt.equals("r0") || !retFloat.equals("fr0")) throw new IllegalStateException("unsupported return registers");
     }

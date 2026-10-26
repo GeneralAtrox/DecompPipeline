@@ -1,7 +1,9 @@
 """Put every game function that is in no system into one (core/sysassign.py): by calls with members, then shared
 globals, then being enclosed by one system's functions in address order; ties go to the system with the nearest
 member. Never renumbers or moves an existing id or member; functions with no affinity at all become new systems
-(one per address-contiguous or call-connected cluster), numbered after the highest id.
+(one per address-contiguous or call-connected cluster), numbered after the highest id. The one move: project.json
+"system_overrides" {addr: "SNN"} puts each listed function into that existing system first (an unknown system or
+function is refused, and nothing is written).
 
 usage: python tools/assign_systems.py --project DIR [--dry] [--attach]
   --dry     report what would be added, per system and per rule; change nothing
@@ -24,7 +26,7 @@ def run(ws, dry=False, attach=False, log=print):
     p = sysassign.plan(ws, attach) if dry else sysassign.apply(ws, attach)
     for line in sysassign.report(p):
         log(line)
-    if p and p["assign"]:
+    if p and (p["assign"] or p["move"]):
         log("dry run: nothing changed" if dry else f"written: {sysassign.SYSTEMS}, {sysassign.ASSIGNED}")
     return p
 
@@ -37,7 +39,10 @@ def main():
     a = ap.parse_args()
     ws = workspace(a.project)
     print(f"== {ws}")
-    run(ws, dry=a.dry, attach=a.attach)
+    try:
+        run(ws, dry=a.dry, attach=a.attach)
+    except ValueError as e:  # a refused system_overrides entry
+        sys.exit(f"refused: {e}")
 
 
 if __name__ == "__main__":

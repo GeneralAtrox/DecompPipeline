@@ -2,7 +2,8 @@
  * address array (Toy Commander 8c04c230: 512 stores of 0 at a stride of 0x20). Such a store changes no RAM; the
  * oracle (TcOracle.collect) logs each address written with its last value as W lines, and so does the runner here,
  * so the stores are compared like memory writes. Reads stay faults (what they return is cache state, not modelled);
- * the oracle faults on them too (TcFold.p4Read), also on a read of bytes the run stored there. */
+ * the oracle faults on them too (TcFold.p4Read), also on a read of bytes the run stored there. Stores to QACR0/1
+ * (0xFF000038..0xFF00003F, the store queues' area: Spawn 8c05fec2) are logged the same way (TcExit.p4). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -19,9 +20,8 @@ static P4Byte g_p4[MAX_P4];
 static u32 g_np4;
 static int g_p4_overflow;
 
-int tcrt_p4_store(u32 addr, u32 value, u32 size)
+static void p4_log(u32 addr, u32 value, u32 size)
 {
-    if (addr < TCRT_P4_OCA_LO || addr > TCRT_P4_OCA_HI - size) return 0;
     for (u32 b = 0; b < size; b++) {
         u32 a = addr + b, k = 0;
         u8 v = (u8)(value >> (8 * b));
@@ -35,8 +35,27 @@ int tcrt_p4_store(u32 addr, u32 value, u32 size)
         }
         g_p4[k].value = v;
     }
+}
+
+int tcrt_p4_store(u32 addr, u32 value, u32 size)
+{
+    if (!tcrt_p4_logged(addr, size)) return 0;
+    p4_log(addr, value, size);
     return 1;
 }
+
+/* A store to a hardware register the project lists for the function (tc_rt.h, rd_rt.h; TcHw): logged as the P4
+ * stores are, so it is compared as the oracle's W line for it (TcExit.p4). */
+void tc_hw_write32(u32 reg, u32 value) { p4_log(reg, value, 4); }
+
+void tc_hw_write16(u32 reg, u16 value) { p4_log(reg, value, 2); }
+
+/* Listed cache block ops (TcHw): no-ops, memory is coherent in the test run as in the oracle's. */
+void sh4_ocbi(u32 addr) { (void)addr; }
+
+void sh4_ocbp(u32 addr) { (void)addr; }
+
+void sh4_ocbwb(u32 addr) { (void)addr; }
 
 void tcrt_p4_reset(void)
 {

@@ -1,0 +1,60 @@
+{
+ "_doc": "docs/DEFINITION_OF_DONE.md. Every number tools/scorecard.py judges against lives here. Paths are relative: roots and own_translator (the user's own translator not yet imported into targets/<target>/translator/: partial until it is) to the projects folder (config key projects_dir, else DecompPipeline's parent folder), probes to the DecompPipeline checkout.",
+ "consoles": {
+  "dreamcast": {"name": "Dreamcast", "target": "dreamcast_sh4", "cpu": "sh4",
+                "roots": ["DreamCast/ToyCommander", "DreamCast/Spawn In the Demon's Hand", "DreamCast/PowerStone2"],
+                "own_translator": null},
+  "saturn": {"name": "Saturn", "target": "saturn_sh2", "cpu": "sh2", "roots": ["SegaSaturn/Dragon Force", "SegaSaturn/Dragon Force 2",
+                                                                     "SegaSaturn/SaturnBomberman", "SegaSaturn/Robopit"],
+             "own_translator": null},
+  "gamecube": {"name": "GameCube", "target": "gamecube_ppc", "cpu": "ppc", "roots": ["GameCube"],
+               "own_translator": null},
+  "xbox": {"name": "Xbox", "target": "xbox_x86", "cpu": "x86", "roots": ["Xbox"], "own_translator": null},
+  "xbox360": {"name": "Xbox 360", "target": "xbox360_ppc", "cpu": "xenon", "roots": ["TooHuman"],
+              "own_translator": null}
+ },
+ "stages": [
+  {"id": "extract", "name": "disc extraction",
+   "any": ["targets/{target}/tools/*disc*.py", "targets/{target}/tools/gdrom.py", "targets/{target}/tools/*gcm*.py",
+           "targets/{target}/tools/*iso*.py", "targets/{target}/tools/*xex*.py", "targets/{target}/tools/*xbe*.py"]},
+  {"id": "catalog", "name": "catalog", "all": ["targets/{target}/ghidra_scripts/TcCatalog.java"]},
+  {"id": "oracle", "name": "oracle and harness",
+   "all": ["targets/{target}/ghidra_scripts/TcPrepare.java", "targets/{target}/ghidra_scripts/TcOracle.java",
+           "targets/{target}/runtime/runner.c"]},
+  {"id": "translator", "name": "own translator", "all": ["targets/{target}/translator/*"], "external": "own_translator"},
+  {"id": "judge", "name": "judge",
+   "all": ["targets/{target}/target.json", "targets/{target}/runtime/tc_rt.c", "core/check.py", "core/compare.py"]},
+  {"id": "agent_on_fail", "name": "agent only on translator FAIL",
+   "all": ["core/translate_stage.py"], "json_key": ["targets/{target}/target.json", "translator"]},
+  {"id": "readable", "name": "readable C", "all": ["targets/{target}/runtime_rd/rd_runner.c"]},
+  {"id": "port", "name": "port build", "any": ["port/runtime/{cpu}_rt.c", "targets/{target}/port/*"]},
+  {"id": "lockstep", "name": "lockstep divergence finder",
+   "all": ["port/tools/lockstep.py", "port/tools/divergence.py"], "requires": "port"}
+ ],
+ "prewave_items": [
+  {"name": "item 1 targeted vectors", "all": ["targets/{target}/ghidra_scripts/TcBound.java"]},
+  {"name": "item 2 stricter judge", "all": ["core/strict_judge.py", "targets/{target}/runtime/tc_strict.h"]},
+  {"name": "item 3 coverage in verdicts + mutation audit",
+   "all": ["targets/{target}/ghidra_scripts/TcDirs.java", "tools/mutation_audit.py", "tools/mutation_audit/baseline.json"]}
+ ],
+ "mutation_keys": {"tc": "dreamcast", "spawn-main": "dreamcast", "ps2": "dreamcast",
+                   "skies": "gamecube"},
+ "thresholds": {
+  "verified_pct": 100.0,
+  "readable_pct": 100.0,
+  "agent_tokens_per_fn": 20000,
+  "agent_usd_per_fn": 0.005,
+  "agent_s_per_fn": 10.0,
+  "prepare_median_s": 2.0,
+  "idle_share_pct": 10.0,
+  "mutation_kill_pct": 85.0,
+  "divergent_scenarios": 0
+ },
+ "baseline": {
+  "name": "Too Human (Xbox 360)", "console": "xbox360",
+  "functions_source": {"path": "External/xenon-dp/DESIGN.md", "regex": "boundary\\s+errors\\):\\s+([\\d,]+)\\s+functions"},
+  "budget_hours": 72,
+  "budget_usd": 500,
+  "scope": "disc to 100% verified raw C and readable C (the port and lockstep are not projected)"
+ }
+}

@@ -132,13 +132,14 @@ public class TcLoads {
         return out;
     }
 
-    // The first address outside RAM the step at pca is about to store to (cache address array stores aside, which
-    // TcOracle.collect logs), or -1; base[0] gets the operand's base register value (the register other than r0
+    // The first address outside RAM the step at pca is about to store to (cache address array stores and listed
+    // hardware registers aside, which TcOracle.collect logs: TcHw), or -1; base[0] gets the operand's base register value (the register other than r0
     // in @(r0,rN)).
     long storeOutside(EmulatorHelper emu, Address pca, long[] base) {
         for (Operand o : writesAt(pca)) {
             long ea = address(emu, o);
             if (ea >= TcBase.RAM_LO && ea < TcBase.RAM_HI || ea >= TcBase.P4_OCA_LO && ea < TcBase.P4_OCA_HI) continue;
+            if (TcHw.written(ea, ea + 1)) continue;
             String b = o.regB != null && "r0".equals(o.regA) ? o.regB : o.regA;
             base[0] = b != null ? reg(emu, b) : -1;
             return ea;

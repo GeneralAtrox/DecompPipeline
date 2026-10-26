@@ -1,0 +1,214 @@
+{
+ "cold": {
+  "mode": "cold",
+  "wall_s": 582.1,
+  "fns": {
+   "80090a20": {
+    "slot": 0,
+    "wait_s": 19.19,
+    "prepare_s": 10.46
+   },
+   "80091228": {
+    "slot": 0,
+    "wait_s": 4.59,
+    "prepare_s": 7.06
+   },
+   "80096260": {
+    "slot": 0,
+    "wait_s": 26.1,
+    "prepare_s": 7.84
+   },
+   "80097294": {
+    "slot": 0,
+    "wait_s": 8.52,
+    "prepare_s": 7.74
+   },
+   "800c5530": {
+    "slot": 0,
+    "wait_s": 17.77,
+    "prepare_s": 8.8
+   },
+   "800c7f64": {
+    "slot": 0,
+    "wait_s": 17.04,
+    "prepare_s": 9.63
+   },
+   "800cf6a8": {
+    "slot": 0,
+    "wait_s": 37.74,
+    "prepare_s": 6.96
+   },
+   "800d07f8": {
+    "slot": 0,
+    "wait_s": 32.0,
+    "prepare_s": 7.57
+   },
+   "800d1b5c": {
+    "slot": 0,
+    "wait_s": 18.78,
+    "prepare_s": 11.03
+   },
+   "800dcb78": {
+    "slot": 0,
+    "wait_s": 8.23,
+    "prepare_s": 8.03
+   },
+   "80118368": {
+    "slot": 0,
+    "wait_s": 7.69,
+    "prepare_s": 7.82
+   },
+   "801f58b8": {
+    "slot": 0,
+    "wait_s": 7.98,
+    "prepare_s": 7.31
+   },
+   "801fe21c": {
+    "slot": 0,
+    "wait_s": 14.89,
+    "prepare_s": 7.07
+   },
+   "802019f8": {
+    "slot": 0,
+    "wait_s": 37.08,
+    "prepare_s": 7.37
+   },
+   "80207130": {
+    "slot": 0,
+    "wait_s": 21.83,
+    "prepare_s": 7.02
+   },
+   "80213920": {
+    "slot": 0,
+    "wait_s": 40.6,
+    "prepare_s": 7.19
+   },
+   "80214994": {
+    "slot": 0,
+    "wait_s": 16.0,
+    "prepare_s": 7.21
+   },
+   "80214dfc": {
+    "slot": 0,
+    "wait_s": 7.06,
+    "prepare_s": 7.28
+   },
+   "8021507c": {
+    "slot": 0,
+    "wait_s": 26.92,
+    "prepare_s": 7.14
+   },
+   "802229f8": {
+    "slot": 0,
+    "wait_s": 54.05,
+    "prepare_s": 7.48
+   }
+  }
+ },
+ "served": {
+  "mode": "served",
+  "wall_s": 118.3,
+  "fns": {
+   "80090a20": {
+    "slot": 1,
+    "wait_s": 0.04,
+    "prepare_s": 45.18
+   },
+   "80091228": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 27.85
+   },
+   "80096260": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 1.32
+   },
+   "80097294": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 0.5
+   },
+   "800c5530": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 0.65
+   },
+   "800c7f64": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 0.95
+   },
+   "800cf6a8": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 0.61
+   },
+   "800d07f8": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 0.81
+   },
+   "800d1b5c": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 3.6
+   },
+   "800dcb78": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 1.26
+   },
+   "80118368": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 28.63
+   },
+   "801f58b8": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 0.88
+   },
+   "801fe21c": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 0.77
+   },
+   "802019f8": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 1.0
+   },
+   "80207130": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 0.76
+   },
+   "80213920": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 0.68
+   },
+   "80214994": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 0.57
+   },
+   "80214dfc": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 0.75
+   },
+   "8021507c": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 0.54
+   },
+   "802229f8": {
+    "slot": 1,
+    "wait_s": 0.0,
+    "prepare_s": 0.72
+   }
+  }
+ }
+}
