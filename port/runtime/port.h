@@ -17,6 +17,13 @@
  * through the cached form (XOR 0x6c000000). */
 #define GUEST_SQ_BASE 0xe0000000u
 #define GUEST_SQ_VIEWS 4u
+/* The SH-4's P4 control registers at 0xff000000..0xff00ffff (CCN: CCR, QACR0/1, TEA, EXPEVT, ...): plain read/write
+ * memory, so a register reads as the last value written (0 before any write). Readable C writes them as stores
+ * (a display mode set writes QACR0/1 = 12, area 3). QACR0/1 do not route the store-queue window: it stays area 3, as the
+ * oracle (TcSq) and xemu model it; guest_p4_report says when the game left another area in them. */
+#define GUEST_P4_CCN 0xff000000u
+#define GUEST_P4_QACR0 0xff000038u
+#define GUEST_P4_QACR1 0xff00003cu
 
 /* port_log.c: one log, stdout and port.log */
 extern FILE *g_port_log;
@@ -30,6 +37,7 @@ int guest_mem_init(void);
 int guest_is_ram(u32 addr);
 u32 guest_fold(u32 addr); /* 0x0c... -> 0x8c... */
 int guest_load(u32 addr, const u8 *data, u32 size);
+void guest_p4_report(void); /* QACR0/1 at exit, and whether they leave area 3 */
 
 /* gdi.c: a Dreamcast disc image (.gdi or Redump .cue), read-only */
 typedef struct PortDisc PortDisc;
@@ -54,6 +62,7 @@ void sh4_rt_extra_state(void);            /* registers the register file with fr
 /* port_libm.c */
 void port_libm_extra_state(void); /* registers rand's state with frame_extra.c */
 u32 port_rand_state(void);         /* rand's state (lockstep.c) */
+volatile u32 *port_rand_word(void); /* where rand keeps it (the write watch on @rand, lockstep_spec.c) */
 
 /* frame_extra.c: --present tick|interp, --interp-frames N, --interp-verify 1; 0 if not ours */
 int extra_option(const char *arg, const char *value);
@@ -63,6 +72,11 @@ int dispatch_install(void);
 int dispatch_count(void);
 void dispatch_report(void); /* the calls through guest pointers, most called first */
 void dispatch_thunks(u32 lo, u32 hi); /* jump thunks at the function starts of guest code lo..hi (P1) */
+
+/* diag.c: --diag-skip FILE, --diag-cover FILE (tools/bu_sweep.py; off by default); 0 if not ours */
+int diag_option(const char *arg, const char *value);
+void diag_install(void);         /* after dispatch_install */
+void diag_fault_chain(u32 esp); /* at a fault, with a switch on: the host return addresses up the stack */
 
 /* rom_read.c: finishes a read of the boot ROM area as if the ROM held zeros; 0 if it cannot */
 struct _EXCEPTION_POINTERS;

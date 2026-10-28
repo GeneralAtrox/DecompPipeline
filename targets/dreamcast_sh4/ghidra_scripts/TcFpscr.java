@@ -153,4 +153,76 @@ final class TcFpscr {
         }
         return s.toString();
     }
+
+    // FPSCR.SZ from the callers' code (core/sz_entry.py; TcPrepare script arg 13, "sz:MODES[:CALLEE.XY_...]"): the
+    // oracle runs a function in the mode the game calls it in, and a mocked call returns with SZ as the callee would.
+    // - MODES: the SZ each of its callers runs it with ("1", "01"; "0" with callees only). A vector draws one of them
+    //   (pick: a hash of its id, so its repairs and replays keep it); with SZ=1 among them the FPU is state (TcSig
+    //   fpuProto: line Q in, QH and the mode word out) and vectors.txt line z gives the entry mode word, which the C
+    //   runners and xemu take before the call (runner.c: sh4_fschg after the vector's reset).
+    // - CALLEE.XY: a callee that does not return with SZ as it found it, X its SZ at return entered with 0, Y with 1
+    //   (0, 1; u unknown, n never returns): after its mocked call the oracle sets SZ to it, as the translator does
+    //   (`if (sh4_sz() != X) sh4_fschg();` after the call) and xemu do. An unknown one keeps SZ, as before
+    //   (core/sz_entry.py reports those call sites).
+    // Without the arg (every other function) nothing changes: no line z, FPSCR.SZ 0 at entry, a call keeps it.
+    static class Sz {
+        static Sz on;  // the function being prepared has the fact, or null
+
+        final boolean zero, one;
+        final Map<Long, String> exits = new HashMap<>();
+        int cur;  // the drawn vector's entry SZ
+
+        Sz(boolean zero, boolean one) {
+            this.zero = zero;
+            this.one = one;
+        }
+
+        static Sz parse(String a) {
+            if (a == null || !a.startsWith("sz:")) return null;
+            String[] p = a.substring(3).split(":");
+            Sz s = new Sz(p[0].contains("0"), p[0].contains("1"));
+            if (!s.zero && !s.one) throw new IllegalArgumentException("TcFpscr.Sz: no entry mode in " + a);
+            if (p.length > 1) for (String c : p[1].split("_")) {
+                String[] kv = c.split("\\.");
+                if (kv.length != 2 || kv[1].length() != 2) throw new IllegalArgumentException("TcFpscr.Sz: bad callee " + c);
+                s.exits.put(Long.parseLong(kv[0], 16), kv[1]);
+            }
+            return s;
+        }
+
+        // TcSig: SZ=1 at entry makes the whole FPU state (fpuProto), as a mode switch in the body does.
+        static boolean wide() {
+            return on != null && on.one;
+        }
+
+        // TcVectors.attempt: vector id's entry SZ.
+        static void draw(int id) {
+            if (on != null) on.cur = !on.zero ? 1 : !on.one ? 0 : (int) ((id * 0x9e3779b97f4a7c15L) >>> 63);
+        }
+
+        // TcOracle.setEntry, after FPSCR: the drawn SZ, in the field register the SLEIGH reads and in FPSCR.
+        static void enter(EmulatorHelper emu) {
+            if (on == null) return;
+            long fp = emu.readRegister("FPSCR").longValue() & ~(1L << 20) | (long) on.cur << 20;
+            emu.writeRegister("FPSCR", BigInteger.valueOf(fp & 0xffffffffL));
+            emu.writeRegister("FPSCR_SZ", BigInteger.valueOf(on.cur));
+        }
+
+        // TcOracle, at a mocked call to pc (after its record): the callee's SZ at return.
+        static void call(EmulatorHelper emu, long pc) {
+            String x = on == null ? null : on.exits.get(pc);
+            if (x == null) return;
+            char c = x.charAt((int) (emu.readRegister("FPSCR_SZ").longValue() & 1));
+            if (c != '0' && c != '1') return;
+            long fp = emu.readRegister("FPSCR").longValue() & ~(1L << 20) | (long) (c - '0') << 20;
+            emu.writeRegister("FPSCR", BigInteger.valueOf(fp & 0xffffffffL));
+            emu.writeRegister("FPSCR_SZ", BigInteger.valueOf(c - '0'));
+        }
+
+        // TcVectors.writeVector: line z (every capital letter is taken), the entry mode word (FPSCR bit 20), for a
+        // function some caller runs with SZ=1.
+        static String line() {
+            return wide() ? "\nz "+ TcBase.hex((long) on.cur << 20) : "";
+        }
+    }
 }

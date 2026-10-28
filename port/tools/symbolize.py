@@ -7,17 +7,18 @@ import re
 import sys
 
 
-def load_map(path):
-    """[(rva, symbol)] sorted, from the map's "Publics by Value" and static-symbol sections."""
+def load_map(path, objects=False):
+    """[(rva, symbol)] sorted, from the map's "Publics by Value" and static-symbol sections; objects: (rva, symbol,
+    object file) instead (tools/bu_sweep.py)."""
     base, syms = 0, []
     for ln in open(path, encoding="utf-8", errors="replace"):
         m = re.match(r"\s*Preferred load address is ([0-9a-fA-F]+)", ln)
         if m:
             base = int(m.group(1), 16)
             continue
-        m = re.match(r"\s*[0-9a-fA-F]{4}:[0-9a-fA-F]{8}\s+(\S+)\s+([0-9a-fA-F]{8})\s+f?\s", ln)
+        m = re.match(r"\s*[0-9a-fA-F]{4}:[0-9a-fA-F]{8}\s+(\S+)\s+([0-9a-fA-F]{8})\s+f?\s+(\S*)", ln)
         if m and int(m.group(2), 16) >= base:
-            syms.append((int(m.group(2), 16) - base, m.group(1)))
+            syms.append((int(m.group(2), 16) - base, m.group(1)) + ((m.group(3),) if objects else ()))
     syms.sort()
     return syms
 

@@ -1,4 +1,5 @@
 """Rebuilds the SH-4 FSCA ROM and its 65,536-entry sine table from first principles.
+Also published on its own, with the C0 rule's write-up: https://github.com/GeneralAtrox/sh4-fsca-rom
 
     python fsca_rom.py                   print the ROM and the table's SHA-256
     python fsca_rom.py --table OUT.bin   also write the table

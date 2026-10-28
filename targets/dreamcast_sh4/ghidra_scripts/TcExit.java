@@ -32,6 +32,7 @@ public class TcExit {
         for (int i = 0; i < 16; i++) res.xf[i] = (int) o.reg(emu, "xf" + i);
         for (int i = 0; i < 4; i++) res.fh[i] = (int) o.reg(emu, "fr" + (12 + i));
         for (int i = 0; i < 7; i++) res.gi[i] = o.reg(emu, "r" + (8 + i));
+        for (int i = 0; i < 4; i++) res.ro[i] = o.reg(emu, "r" + (4 + i));  // TcOut
         for (int i = 0; i < 16; i++) res.fq[i] = (int) o.reg(emu, "fr" + i);
         res.mode = o.modeWord(emu);
         if (o.sr != null) res.imask = TcSr.exitMask(emu);  // SR.IMASK, compared (TcSr)

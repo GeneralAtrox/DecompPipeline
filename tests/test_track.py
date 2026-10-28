@@ -12,9 +12,10 @@ Pass and fail controls:
    CA; an unlisted one gets the registers set, in order up to the first gap (SH-4 floats by pairs), its own
    parameters set at entry, nothing carried past a call (GameCube: r3 and f1, the callee's results); NaN patterns;
    the SH-4 register split (drN, fvN); float bits through the integer registers (TcTrackBitsStub, TcTrackPpcBitsStub:
-   sts FPUL, mov and mov.l; mr and stw), none left in a register a call clobbers; the fmov store encodings; an SH-4
+   sts FPUL, mov and mov.l, and/or/xor into float bits; mr and stw), none left in a register a call clobbers; the fmov store encodings; an SH-4
    step's set registers from the p-code path its FPSCR SZ/PR bits take (TcTrackPathStub: fmov.s @r0,fr6 with SZ 0
-   sets fr6, not dr6's fr7), every output where a condition reads anything else; the GameCube step's own word
+   sets fr6, not dr6's fr7; a bt/s or bf/s delay slot's form too, past the branch on T), every output where a
+   condition inside the instruction reads anything else; the GameCube step's own word
    reads past the bank's load log (TcTrackPpcBankStub);
 2. the judges (core/compare.py, ppc_compare.py): CA and FN parsed; an integer NaN pattern compared exactly, a listed
    float NaN tolerant; CA registers compared, none without CA (as before);
@@ -156,9 +157,19 @@ S fce7                         # fmov fr14,@(r0,r12)
 S ff3b                         # fmov.s fr3,@-r15
 S f758                         # fmov.s @r5,fr7: a load
 S 4f52                         # sts.l: flow's
+F 035a r3                      # sts FPUL,r3
+F 23cb r3                      # or r12,r3: a flag bit set in float bits (Spawn 8c01bf94): still float bits
+F 2632 -                       # mov.l r3,@r6: a float store
+F 6033 r0                      # mov r3,r0
+F cb01 r0                      # or #1,r0: r0 keeps float bits
+F 0e36 -                       # mov.l r3,@(r0,r14)
+F 7301 r3                      # add #1,r3: an integer now
+F 2309 r3                      # and r0,r3 into an integer: stays one
 """, main="TcTrackBitsStub")
         self.assertEqual(got, ["-1 r3", "-1 r3,r5", "0 r3,r5", "0 r3,r5", "1 r3,r5", "10 r3,r5", "-1 r3", "-1 r3",
-                               "0 r3", "-1 r0,r3", "-1 r0,r3,r9", "r9", "5", "28", "15", "-1", "-1"])
+                               "0 r3", "-1 r0,r3", "-1 r0,r3,r9", "r9", "5", "28", "15", "-1", "-1",
+                               "-1 r3,r9", "-1 r3,r9", "0 r3,r9", "-1 r0,r3,r9", "-1 r0,r3,r9", "1 r0,r3,r9",
+                               "-1 r0,r9", "-1 r0,r9"])
 
     def test_sh4_mode_paths(self):
         got = self.run_stub("dc", """
@@ -171,11 +182,13 @@ P next 0 0
 P next 0 1                     # goto inst_next: nothing
 P const 0 1                    # the double form's decode-time condition is false: fr5 even with PR 1
 P const 0 0
-P other 0 0                    # a branch on T: null (every output counts, as before)
+P other 0 0                    # a branch on T inside the instruction: null (every output counts, as before)
 P plain 1 1                    # no branch: r4, fv8 split
+P slot 0 0                     # bt/s, fmov fr14,fr4 in the slot with SZ 0: fr4 only (was fr4 and dr4's fr5)
+P slot 1 0                     # SZ 1: dr4
 """, main="TcTrackPathStub")
         self.assertEqual(got, ["fr6", "fr6,fr7", "fr6", "fr4", "", "fr8", "", "fr5", "fr5", "null",
-                               "fr10,fr11,fr8,fr9,r4"])
+                               "fr10,fr11,fr8,fr9,r4", "fr4", "fr4,fr5"])
 
     def test_ppc_float_bits(self):
         got = self.run_stub("gc", """
@@ -345,6 +358,64 @@ class Wiring(unittest.TestCase):
             self.assertIn("A call through a function pointer (a target\n * context.md does not list)"
                           if tgt is GC else "A call through a function pointer (a target context.md does not list)",
                           text(tgt / "runtime" / "tc_rt.h"), tgt.name)
+
+
+class DslotCandidates(unittest.TestCase):
+    """selective_restamp --change dslot: the harnesses the bt/s, bf/s delay-slot change can alter."""
+
+    def fn(self, root, addr, asm, ca):
+        (root / "packets" / addr).mkdir(parents=True)
+        (root / "packets" / addr / "asm.txt").write_text("".join("  %08x  %s\n" % (0x8c010000 + 2 * i, ln)
+                                                                 for i, ln in enumerate(asm)), encoding="utf-8")
+        (root / "harness" / addr).mkdir(parents=True)
+        (root / "harness" / addr / "expected.txt").write_text("V 0 dev\nCALL 8cc00864\n" + ca + "E\n",
+                                                              encoding="utf-8")
+
+    def test_scan(self):
+        sys.path.insert(0, str(ROOT / "tools"))
+        import selective_restamp as sr
+        with tempfile.TemporaryDirectory() as t:
+            r = pathlib.Path(t)
+            slot = ["bf/s 0x8c010008", "_fmov fr14,fr4", "jsr @r3", "_nop"]
+            self.fn(r, "8c000100", slot, "CA r4 fr4 fr5\n")                       # PS2 8c08b8d8's shape
+            self.fn(r, "8c000200", slot, "CA r4\n")                               # no fr in any CA: cannot change
+            self.fn(r, "8c000300", ["bt/s 0x8c010008", "_fldi0 fr4", "jsr @r3", "_nop"], "CA fr4\n")  # no double form
+            self.fn(r, "8c000400", ["bt/s 0x8c010008", "_fmov fr12,fr3", "jsr @r3", "_nop"], "CA fr4\n")  # dr2
+            self.fn(r, "8c000500", ["bra 0x8c010008", "_fmov fr14,fr4", "jsr @r3", "_nop"], "CA fr4\n")  # no T
+            self.fn(r, "8c000600", ["bt/s 0x8c010008", "_fadd fr1,fr6", "bsr 0x8c020000", "_nop"], "CA fr6\n")
+            self.fn(r, "8c000700", ["bt/s 0x8c010008", "_fadd fr1,fr6", "jmp @r1", "_nop"], "CA fr6 fr7\n")
+            self.assertEqual(sr.dslot_candidates(r / "harness", r / "packets"), {"8c000100", "8c000700"})
+
+
+class FnrmwCandidates(unittest.TestCase):
+    """selective_restamp --change fnrmw: the harnesses the and/or/xor float-bits change can alter."""
+
+    def test_scan(self):
+        sys.path.insert(0, str(ROOT / "tools"))
+        import selective_restamp as sr
+        cases = {
+            "8c000100": "V 0 dev\nW 8cc00100 0100c07f\nE\n",                       # a NaN word, no FN (8c01bf94)
+            "8c000200": "V 0 dev\nW 8cc00100 0100c07f\nFN 8cc00100\nE\n",          # in FN already
+            "8c000300": "V 0 dev\nW 8cc00100 0000803f\nE\nV 1 dev\nE\n",          # 1.0f: no NaN
+            "8c000400": "V 0 dev\nW 8cc00100 0000807f\nE\n",                       # +inf: no NaN
+            "8c000500": "V 0 dev\nW 8cc00102 c07f\nE\n",                           # exponent bytes only: may be one
+            "8c000600": "V 0 dev\nW 8cc00100 0100c07f\nFN 8cc00100\nE\nV 1 dev\nW 8cc00104 ffffffff\nE\n",
+            "8c000700": "V 0 dev\nW 8cc00100 ffffffff\nE\nV 1 dev\nFN 8cc00100\nE\n",  # FN is per vector
+        }
+        rmw = ["fmov.s fr3,@r6", "mov.l @r6,r3", "or r12,r3", "mov.l r3,@r6"]
+        with tempfile.TemporaryDirectory() as t:
+            h, k = pathlib.Path(t) / "harness", pathlib.Path(t) / "packets"
+            for a, text in dict(cases, **{"8c000900": cases["8c000100"], "8c000a00": cases["8c000100"]}).items():
+                (h / a).mkdir(parents=True)
+                (h / a / "expected.txt").write_text(text, encoding="utf-8")
+                asm = {"8c000900": rmw[1:], "8c000a00": rmw[:3] + ["rts", "_nop"]}.get(a, rmw)  # no float store;
+                (k / a).mkdir(parents=True)                                                # the or is not stored
+                (k / a / "asm.txt").write_text("".join("  %08x  %s\n" % (0x8c010000 + 2 * i, ln)
+                                                       for i, ln in enumerate(asm)), encoding="utf-8")
+            (h / "8c000800").mkdir()  # no expected.txt yet
+            self.assertEqual(sr.fnrmw_candidates(h, k), {"8c000100", "8c000500", "8c000600", "8c000700"})
+            self.assertTrue(sr.logic_store(["  8c010000  sts fpul,r3", "  8c010002  or #0x1,r0",
+                                            "  8c010004  mov.l r0,@(0x4,r5)"]))
 
 
 if __name__ == "__main__":

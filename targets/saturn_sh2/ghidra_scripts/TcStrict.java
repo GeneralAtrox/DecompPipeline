@@ -1,9 +1,9 @@
 // The stricter judge, the oracle's side (target.json "mock_junk", "mock_writes", "call_snapshots", "exit_frame", the
 // facts lines of core/ghidra.py: TcFacts.strict). All four are off by default: then of() returns null, nothing here
 // runs and every harness byte is as before. TcOracle calls it at three points of a run: of() after setEntry, call() at
-// each mocked call right after its record (before the halt check: a callee that never returns had them too, as the
-// C's tc_call did before its tc_halt), exit() after TcExit.collect. At a call, in this order (runtime/tc_strict.h
-// keeps it): the snapshots, the junk, the writes.
+// each mocked call right after its record (before the halt check: a callee that never returns had them too, as the C's
+// tc_call did before its tc_halt), exit() after TcExit.collect. At a call, in this order (runtime/tc_strict.h keeps
+// it): the snapshots, the junk, the writes.
 //  - mock_junk: the mocked callee leaves junk in the scratch registers it may change but its result: of r1..r7 and
 //    fr1..fr11, those its TcSum summary writes (r0 and fr0 keep the result; r8..r14 and TcLive's deltas are the
 //    callee-saved ones). A callee the summary says keeps one keeps it, as the real one does (Toy Commander 8c061aac
@@ -11,52 +11,44 @@
 //    direct callee (a computed call: the compiler knew nothing of it), an opaque or unsolved summary, or a target
 //    without param_summaries leaves all of them junk, as the ABI allows. A C that reads a scratch value back after a
 //    call can then only match by chance. But no r1..r7 the function itself reads back (readsAfter: some path from the
-//    return address reads it before writing): the C has no r1..r7, so junk there could only end the run or differ
-//    where no C follows it, while hand-written code keeps values there across its own callees (Toy Commander
-//    8c061698 its return address in r2 for the final `jmp @r2`, 8c06161c its next call target in r1; every run of
-//    both called junk). The value is TcJunk.at(seed, vid, call, slot): r1..r7 slot 1..7, fr1..fr11 16 + i (as
-//    TcJunk.fr, a normal float). MACH, MACL, FPUL and T stay as they are: TcSum does not track them, no C reads them.
-//    The C models fr1..fr11 only (sh4_fr, with the whole FPU as state), and so junks only them, by the same masks
-//    (header lines "U callee 0 mask"); it cannot read r1..r7. The SH-2 has no FPU (TcEmu drops the FPU registers).
-//    A compared argument that still holds a callee's junk at a later call (the function never set it: Power Stone 2
-//    8c05e598 hands its entry r6 to 8c05e75c after 8c05e5b8) may also be the value it had without junk, the one the
-//    mocks keep (expected.txt "CJ call field hex"): C that passes it on is as right as C that leaves the register,
-//    and no junk-free run tells them apart.
+//    return address reads it before writing): the C has no r1..r7, so junk there could only end the run or differ where
+//    no C follows it, while hand-written code keeps values there across its own callees (Toy Commander 8c061698 its
+//    return address in r2 for the final `jmp @r2`, 8c06161c its next call target in r1; every run of both called junk).
+//    The value is TcJunk.at(seed, vid, call, slot): r1..r7 slot 1..7, fr1..fr11 16 + i (as TcJunk.fr, a normal float).
+//    MACH, MACL, FPUL and T stay as they are: TcSum does not track them, no C reads them. The C models fr1..fr11 only
+//    (sh4_fr, with the whole FPU as state), and so junks only them, by the same masks (header lines "U callee 0 mask");
+//    it cannot read r1..r7. The SH-2 has no FPU (TcEmu drops the FPU registers). A compared argument that still holds a
+//    callee's junk at a later call (the function never set it: Power Stone 2 8c05e598 hands its entry r6 to 8c05e75c
+//    after 8c05e5b8) may also be the value it had without junk, the one the mocks keep (expected.txt "CJ call field
+//    hex"): C that passes it on is as right as C that leaves the register, and no junk-free run tells them apart.
 //  - mock_writes: a callee the project lists (project.json "mock_write_facts", evidence required: core/ghidra.py)
 //    writes SIZE bytes through a pointer argument (record field r4..r7 = 1..4, s0..s7 = 13..20): byte k is
 //    TcJunk.at8(seed, vid, call, 0x10000 * (1 + field), k). Only a range wholly in RAM (TcBase.inRam) with no
-//    instruction byte (TcFacts.isCode) is written; the runtimes test the same. TcExit logs it like any write.
+//    instruction byte (TcFacts.isCode) is written; the runtimes test the same. TcExit logs it like any write. An
+//    advance fact ("aA.B:op.a.s:...", core/strict_judge.advance) moves the cursor word there instead (advance()).
 //  - call_snapshots: for each pointer argument p (r4..r7, and the fields a fact names), the bytes this run's own
 //    instructions stored at [p, p + extent) before the call (Stored: not the vector's patches, not mock_writes' bytes;
 //    a filter sees every write into the emulator's state after it is added, EmulatorHelper.writeMemory's too, so
-//    write() mutes it around its own): extent the fact's size, else the run of stored bytes from p, at most
-//    RUN_MAX. A pointer into the stack
-//    window gets only a fact's extent: past a local, the stored bytes are saved registers and spills the C does not
-//    have. expected.txt "CS call field hex", "xx" for a byte it did not store; vectors.txt "W call field size" asks
-//    the runtime for the bytes, at most MAX_SNAPS per vector. The judge compares the stored bytes, only for a field
-//    the callee's compared registers name (core/strict_judge.py).
-//  - exit_frame: r15, r8..r14 and fr12..fr15 at the exit (expected.txt "XR"; the SH-2's fr are 0 on both sides), for
-//    a run that reached the sentinel (a halted one stops wherever its frame is).
-// The key (TcJunk): seed the function seed (TcPrepare sets it), vid the oracle's run number (workRuns: unique per
-// run, so a repaired run or a vector TcReach renumbers keeps the key it ran with); vectors.txt "N seed vid" (hex).
+//    write() mutes it around its own): extent the fact's size, else the run of stored bytes from p, at most RUN_MAX. A
+//    pointer into the stack window gets only a fact's extent: past a local, the stored bytes are saved registers and
+//    spills the C does not have. expected.txt "CS call field hex", "xx" for a byte it did not store; vectors.txt "W
+//    call field size" asks the runtime for the bytes, at most MAX_SNAPS per vector. The judge compares the stored
+//    bytes, only for a field the callee's compared registers name (core/strict_judge.py).
+//  - exit_frame: r15, r8..r14 and fr12..fr15 at the exit (expected.txt "XR"; the SH-2's fr are 0 on both sides), for a
+//    run that reached the sentinel (a halted one stops wherever its frame is).
+// The key (TcJunk): seed the function seed (TcPrepare sets it), vid the oracle's run number (workRuns: unique per run,
+// so a repaired run or a vector TcReach renumbers keeps the key it ran with); vectors.txt "N seed vid" (hex).
 // Header lines (TcPrepare): "J flags"; with mock_junk "U callee 0 mask" per direct callee that keeps some of fr1..fr11
 // (mask: bit i set for an fri it may change; field 0 is no pointer field); with mock_writes "U callee field size" per
 // fact. Not a script itself; the same file in the Dreamcast and Saturn targets (the GameCube has its own).
 // The inputs are those of every flag off: TcVectors, TcReach and TcBound choose each vector with of() null, then
 // writeVector runs it with the flags on (replay), its expected; one that fails then is left out. Junk had steered the
 // choice (Power Stone 2 8c06a2e8, 8c16d394, Toy Commander 8c046402 lost the inputs killing a mutant flags off).
-import ghidra.app.emulator.EmulatorHelper;
-import ghidra.app.emulator.MemoryAccessFilter;
-import ghidra.program.model.address.Address;
-import ghidra.program.model.address.AddressSetView;
-import ghidra.program.model.address.AddressSpace;
+import ghidra.app.emulator.*;
+import ghidra.program.model.address.*;
 import ghidra.program.model.lang.Register;
-import ghidra.program.model.listing.Function;
-import ghidra.program.model.listing.Instruction;
-import ghidra.program.model.listing.Listing;
-import ghidra.program.model.listing.Program;
-import ghidra.program.model.pcode.PcodeOp;
-import ghidra.program.model.pcode.Varnode;
+import ghidra.program.model.listing.*;
+import ghidra.program.model.pcode.*;
 import java.util.*;
 
 final class TcStrict {
@@ -67,21 +59,22 @@ final class TcStrict {
     static final int FR = 0xffe;      // fr1..fr11 of a mask
     static final int R1_7 = (TcFlow.LOW | TcFlow.INTS) & ~(1 << 20); // r1..r7 of a mask
     static final int MAX_VISITS = 64; // readsAfter: per instruction; then all of r1..r7 count as read
+    static final java.util.function.ToLongFunction<byte[]> LE = // 1 to 8 bytes, least significant first (advance)
+        b -> java.nio.ByteBuffer.wrap(Arrays.copyOf(b, 8)).order(java.nio.ByteOrder.LITTLE_ENDIAN).getLong();
     static long seed;                 // the function seed (TcPrepare)
+    static int exitLive;              // live at a return of the walked code: the function's own outputs (TcOut), or 0
     static boolean replaying;         // of() runs only inside replay()
     static final int[] dropped = new int[2]; // per set (dev, hidden): chosen vectors the replay failed (TcPrepare)
-    // Per direct callee (TcPrepare: callees()), the scratch registers its summary says it may change; a target not in
-    // it changes all of SCRATCH.
+    // Per direct callee (TcPrepare: callees()), the scratch registers its summary may change (not in it: SCRATCH).
     static final Map<Long, Integer> changes = new TreeMap<>();
-    // Per direct callee, the registers its harness compares (meta.json callees "regs"; TcPrepare): where a CJ line can
-    // matter.
+    // Per direct callee, the registers its harness compares (meta.json callees "regs"; TcPrepare): where CJ matters.
     static final Map<Long, List<String>> compared = new HashMap<>();
     // readsAfter per return address, and the function's extent (TcTail) it walks: per function (callees()).
     static final Map<Long, Integer> reads = new HashMap<>();
     static AddressSetView extent;
+    static Set<Long> direct;          // callees(): the function's direct callees, whose facts count (null: all; stubs)
 
-    // TcPrepare, before the runs: the function's direct callees' masks (only with mock_junk and param_summaries) and
-    // compared registers (regs).
+    // TcPrepare, before the runs: the direct callees, their masks (only with mock_junk and param_summaries), regs.
     static void callees(TcBase s, List<Function> cs, Map<Long, List<String>> regs) {
         dropped[0] = dropped[1] = 0;
         changes.clear();
@@ -89,6 +82,8 @@ final class TcStrict {
         compared.putAll(regs);
         reads.clear();
         extent = null;
+        direct = new HashSet<>();
+        for (Function g : cs) direct.add(g.getEntryPoint().getOffset());
         if ((s.facts.strict & JUNK) == 0 || !s.facts.paramSummaries) return;
         for (Function g : cs) changes.put(g.getEntryPoint().getOffset(), s.sig.summary(g).writes & SCRATCH);
         // A call through a RAM mirror (Power Stone 2 8c0d761c: `jsr @r3`, r3 = 0x0c187958) is as direct, to the folded
@@ -135,7 +130,7 @@ final class TcStrict {
                 w |= mask(prog, op.getOutput());
                 ends |= op.getOpcode() == PcodeOp.RETURN;
             }
-            if (ends) continue;
+            if (ends) { live |= exitLive & ~w; continue; }  // a function's own outputs (TcOut)
             List<Address> next = new ArrayList<>();
             if (!ins.getFlowType().isCall()) {
                 for (Address t : ins.getFlows()) if (body.contains(t)) next.add(t);
@@ -173,15 +168,14 @@ final class TcStrict {
         return name.matches("s[0-7]") ? 13 + name.charAt(1) - '0' : -1;
     }
 
-    // The facts: {callee, field, size} in file order (the runtimes apply them in the order of the U lines).
+    // The facts of the function's direct callees (listed()) in file order, the U lines' (TcFacts.fact's form).
     static List<long[]> facts(TcFacts f) {
-        List<long[]> out = new ArrayList<>();
-        for (String[] w : f.mockWrites) {
-            int fld = field(w[1]);
-            if (fld < 0) throw new IllegalArgumentException("mock_write: no pointer field " + w[1]);
-            out.add(new long[] {Long.parseLong(w[0], 16), fld, Integer.parseInt(w[2])});
-        }
-        return out;
+        return listed(f).stream().map(w -> TcFacts.fact(w, field(w[1]))).toList();
+    }
+
+    // The mock_write lines of the function's direct callees: another function's harness stays byte for byte.
+    static List<String[]> listed(TcFacts f) {
+        return f.mockWrites.stream().filter(w -> direct == null || direct.contains(Long.parseLong(w[0], 16))).toList();
     }
 
     static String header(TcFacts f) {
@@ -192,27 +186,27 @@ final class TcStrict {
                 .append(c.getValue() & FR).append('\n');
         }
         if ((f.strict & WRITES) != 0) {
-            for (long[] w : facts(f)) h.append("U ").append(TcBase.hex(w[0])).append(' ').append(w[1]).append(' ')
-                .append(w[2]).append('\n');
+            for (String[] w : listed(f)) h.append("U ").append(TcBase.hex(Long.parseLong(w[0], 16))).append(' ')
+                .append(field(w[1])).append(' ').append(w[2]).append('\n');
         }
         return h.toString();
     }
 
     // meta.json: the facts the writes came from (only with mock_writes and a fact: other metas are unchanged).
     static String meta(TcFacts f) {
-        if ((f.strict & WRITES) == 0 || f.mockWrites.isEmpty()) return "";
+        List<String[]> ws = listed(f);
+        if ((f.strict & WRITES) == 0 || ws.isEmpty()) return "";
         StringBuilder m = new StringBuilder(",\n  \"mock_writes\": [");
-        for (int i = 0; i < f.mockWrites.size(); i++) {
-            String[] w = f.mockWrites.get(i);
-            m.append(i > 0 ? ", " : "").append(String.format("{\"callee\": \"%s\", \"field\": \"%s\", \"size\": %s}",
-                w[0], w[1], w[2]));
+        for (int i = 0; i < ws.size(); i++) {
+            String[] w = ws.get(i);
+            m.append(i > 0 ? ", " : "").append(String.format("{\"callee\": \"%s\", \"field\": \"%s\", \"%s\": %s}",
+                w[0], w[1], w[2].startsWith("a") ? "advance" : "size", w[2].startsWith("a") ? '"' + w[2] + '"' : w[2]));
         }
         return m.append(']').toString();
     }
 
     // This run's own stores, per 4 KiB page: the instructions' and TcSq's sends (the store queue's `pref` is the
-    // function's), not mock_writes' bytes (write() mutes it around them: the filter sees EmulatorHelper.writeMemory
-    // too).
+    // function's), not mock_writes' bytes (write() mutes it around them: the filter sees EmulatorHelper.writeMemory's).
     static final class Stored extends MemoryAccessFilter {
         final AddressSpace ram;
         final Map<Long, long[]> pages = new HashMap<>();
@@ -293,14 +287,12 @@ final class TcStrict {
         long target = Long.parseLong(rec[0], 16);
         if ((s.flags & JUNK) != 0) s.leftover(emu, call, target, rec.length);
         if ((s.flags & SNAPS) != 0) s.snap(emu, call, target, rec);
-        if ((s.flags & JUNK) != 0) {
-            s.junk(emu, call, changes(target) & ~readsAfter(s.o.getCurrentProgram(), s.o.fn, s.o.reg(emu, "PR")));
-        }
+        if ((s.flags & JUNK) != 0) s.junk(emu, call, target);
         if ((s.flags & WRITES) != 0) s.write(emu, call, target, rec);
     }
 
     int size(long target, int fld) {
-        for (long[] w : facts) if (w[0] == target && w[1] == fld) return (int) w[2];
+        for (long[] w : facts) if (w[0] == target && w[1] == fld) return w[2] < 0 ? 4 : (int) w[2];
         return 0;
     }
 
@@ -329,18 +321,15 @@ final class TcStrict {
         }
     }
 
-    boolean has(String reg) {
-        return o.getCurrentProgram().getRegister(reg) != null;
-    }
-
-    // The registers of mask m (changes(target)) the callee may change.
-    void junk(EmulatorHelper emu, int call, int m) {
+    // The registers the callee may change (changes) that the function does not read back (readsAfter).
+    void junk(EmulatorHelper emu, int call, long target) {
+        int m = changes(target) & ~readsAfter(o.getCurrentProgram(), o.fn, o.reg(emu, "PR"));
         for (int i = 1; i <= 7; i++) set(emu, "r" + i, i, call, m);
         for (int i = 1; i <= 11; i++) set(emu, "fr" + i, 16 + i, call, m);
     }
 
     void set(EmulatorHelper emu, String reg, int slot, int call, int m) {
-        if ((m & TcFlow.maskOf(reg)) == 0 || !has(reg)) return;
+        if ((m & TcFlow.maskOf(reg)) == 0 || o.getCurrentProgram().getRegister(reg) == null) return;
         long now = o.reg(emu, reg), z = TcJunk.at(seed, vid, call, slot), j = slot > 7 ? TcJunk.fr(z) : z & 0xffffffffL;
         long[] was = left.get(reg);  // still an earlier call's junk: the value without junk is the one before that
         left.put(reg, new long[] {j, was != null && was[0] == now ? was[1] : now});
@@ -362,22 +351,33 @@ final class TcStrict {
 
     // The runtimes' test too (tc_strict.h tcs_write): wholly in RAM, no instruction byte.
     boolean writable(long p, int n) {
-        if (!TcBase.inRam(p, n)) return false;
-        for (int k = 0; k < n; k++) if (o.facts.isCode(p + k)) return false;
-        return true;
+        for (int k = 0; TcBase.inRam(p, n) && k < n; k++) if (o.facts.isCode(p + k)) return false;
+        return TcBase.inRam(p, n);
     }
 
     void write(EmulatorHelper emu, int call, long target, String[] rec) {
         for (long[] w : facts) {
             int fld = (int) w[1], n = (int) w[2];
             long p = TcBase.fold(Long.parseLong(rec[fld], 16));
-            if (w[0] != target || !writable(p, n)) continue;
-            byte[] b = new byte[n];
+            if (w[0] != target || !writable(p, n < 0 ? 4 : n)) continue;
+            byte[] b = n < 0 ? advance(emu, p, w) : new byte[n];
             for (int k = 0; k < n; k++) b[k] = (byte) TcJunk.at8(seed, vid, call, 0x10000L * (1 + fld), k);
+            if (b == null) continue;
             if (stored != null) stored.muted = true;  // not the function's own store (Stored)
             emu.writeMemory(o.toAddr(p), b);
             if (stored != null) stored.muted = false;
         }
+    }
+
+    // An advance's new cursor word at p (core/strict_judge.advance; tc_strict.h tcs_advance), little-endian: pc =
+    // up(pc, A), the B-byte op at pc, pc += B, then up(pc, a) + s for a listed op; null when the op is not in RAM.
+    byte[] advance(EmulatorHelper emu, long p, long[] w) {
+        long pc = LE.applyAsLong(emu.readMemory(o.toAddr(p), 4)) + w[3] - 1 & -w[3], at = TcBase.fold(pc);
+        if (!TcBase.inRam(at, w[4])) return null;
+        long op = LE.applyAsLong(emu.readMemory(o.toAddr(at), (int) w[4]));
+        pc += w[4];
+        for (int i = 5; i + 2 < w.length; i += 3) if (w[i] == op) pc = (pc + w[i + 1] - 1 & -w[i + 1]) + w[i + 2];
+        return new byte[] {(byte) pc, (byte) (pc >>> 8), (byte) (pc >>> 16), (byte) (pc >>> 24)};
     }
 
     // After TcExit.collect: r15, r8..r14, fr12..fr15 of a run that returned.

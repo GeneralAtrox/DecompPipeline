@@ -133,6 +133,8 @@ def parse_results(path):
             cur["fh"] = [int(x, 16) for x in t[1:5]]
         elif k == "GH":  # r8..r14 at exit: only for vectors that set them at entry (line G)
             cur["gs"] = [int(x, 16) for x in t[1:8]]
+        elif k == "RO":  # r4..r7 at exit: only for a function whose callers read them (TcOut, meta r_exports)
+            cur["ro"] = [int(x, 16) for x in t[1:5]]
         elif k == "QH":  # fr0..fr15 and the FPSCR mode word at exit: only for vectors with line Q
             cur["fq"] = [int(x, 16) for x in t[1:17]]
             cur["mode"] = int(t[17], 16) if len(t) > 17 else None
@@ -305,6 +307,21 @@ def compare_state(exp, act):
     return diffs
 
 
+def compare_outputs(meta, exp, act):
+    """r4..r7 at exit (RO) that the function's callers read after calling it (meta r_exports, TcOut): a hand-written
+    leaf hands a result back there (Spawn 8c0602a0: r4 past the vertex stream). Its C sets them with sh4_set_r."""
+    diffs = []
+    if "ro" not in exp:
+        return diffs
+    got = act.get("ro")
+    for r in (meta or {}).get("r_exports") or ():
+        i = int(r[1:]) - 4
+        if got is None or exp["ro"][i] != got[i]:
+            diffs.append(f"{r} at exit (its callers read it: sh4_set_r({r[1:]}, ...) before returning): expected "
+                         f"0x{exp['ro'][i]:08x}, " + ("got nothing" if got is None else f"got 0x{got[i]:08x}"))
+    return diffs
+
+
 def spin_wait(cfg, addr):
     """Whether TcSpin applies to the function at addr: project.json "spin_waits" ({address: evidence}, e.g.
     {"8c010080": "waits on vblank word 8cfe000c"}) names it. Opt-in, since a repeating state is not always a wait (TC
@@ -330,6 +347,37 @@ def spin_arg(cfg, addr):
     words = sorted({int(w, 16) & 0x1FFFFFFF for w in re.findall(r"(?<![0-9a-fA-F])(?:0x)?([0-9a-fA-F]{8})(?![0-9a-fA-F])",
                                                                cfg["spin_waits"][addr.lower()])})
     return "spin" + (":" + "_".join(f"{w:08x}" for w in words) if words else "")  # analyzeHeadless.bat splits at commas
+
+
+def run_flag(cfg, addr):
+    """(word, callee, n) when project.json "run_flags" lists the function at addr, else None: a loop that runs while a
+    word the function sets is non-zero, and only a callee clears it (TcCalls). {"8c02d2a8": {"word": "8c5423d4",
+    "callee": "8c02d930", "call": 3, "why": "<the store of 0 and the call path to it>"}}: in the test run and every
+    runtime the Nth mocked call (from 1) to callee stores 0 into the word. Opt-in, one per function; an entry without
+    its evidence, or with a bad address or count, is refused."""
+    flags = cfg.get("run_flags") or {}
+    if not isinstance(flags, dict):
+        raise ValueError('project.json "run_flags" must map each function address to its flag')
+    e = flags.get(addr.lower())
+    if e is None:
+        return None
+    if not isinstance(e, dict) or not isinstance(e.get("why"), str) or not e["why"].strip():
+        raise ValueError(f'project.json "run_flags" {addr}: no evidence ("why": which callee stores 0 there, and how)')
+    try:
+        word, callee = (int(e[k], 16) for k in ("word", "callee"))
+    except (KeyError, TypeError, ValueError):
+        raise ValueError(f'project.json "run_flags" {addr}: "word" and "callee" are addresses (hex)') from None
+    n = e.get("call")
+    if word % 4 or not isinstance(n, int) or isinstance(n, bool) or not 1 <= n <= 64:
+        raise ValueError(f'project.json "run_flags" {addr}: an aligned word and "call" 1..64')
+    return word, callee, n
+
+
+def run_flag_arg(cfg, addr):
+    """TcPrepare's script arg 12: "-" for a function run_flags does not list, else "rf:WORD_CALLEE_N" (8 hex digits
+    each, N decimal; no ",;= ": analyzeHeadless.bat splits arguments at them)."""
+    f = run_flag(cfg, addr)
+    return "-" if f is None else f"rf:{f[0]:08x}_{f[1]:08x}_{f[2]}"
 
 
 def compare_halt(exp, act):
@@ -418,5 +466,5 @@ def compare_vector(meta, image, vec, exp, act, frame_lo=FRAME_LO, strict=None, r
     for i in range(16):
         if not same_f32(exp["xf"][i], act["xf"][i]):
             diffs.append(f"xf{i} (XMTRX): expected 0x{exp['xf'][i]:08x}, got 0x{act['xf'][i]:08x}")
-    return diffs + compare_state(exp, act) + strict_judge.compare(meta, exp, act, REG_INDEX, strict_judge.XR_SH,
+    return diffs + compare_state(exp, act) + compare_outputs(meta, exp, act) + strict_judge.compare(meta, exp, act, REG_INDEX, strict_judge.XR_SH,
                                                                   same_word, strict, report, WORD)

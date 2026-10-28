@@ -6,6 +6,8 @@
 2. The C: sh4_fmac, the same text in tc_rt.c, rd_sh4.c and the port's sh4_rt.c, built 32-bit (the readable runner,
    the port) and 64-bit (the judge's runner, xemu), run with MXCSR as the runners set it (DAZ|FTZ, RC from FPSCR.RM).
 3. The oracle: TcRound.fma through TcFpu's DN steps (tests/java/TcFmacStub.java).
+4. KitX87: the port kit's x87 precision as FPSCR.PR (sh4_rt.c's text, built 32-bit with the port's flags): two
+   multiplies of a float a function returned round twice, as the SH-4's fmuls do (TC h5n1 and h9n1).
 Cases: every combination of 26 corner operands (zeros, infinities, NaN, extremes, denormals, ties), then random ones
 built to hit the hard spots: cancellation, products exactly halfway between two floats plus a tiny addend (where a
 double sum rounded to nearest and then to float would round twice), overflow, the smallest normal. FMAC_N sets the
@@ -328,11 +330,75 @@ class Oracle(unittest.TestCase):
                 self.assertEqual(bad[:10], [], f"{len(bad)} of {len(cases)}")
 
 
+X87_HARNESS = r"""#include <float.h>
+#include <stdio.h>
+#include <string.h>
+#include <xmmintrin.h>
+typedef float f32;
+typedef unsigned int u32;
+#define MODE_FR 0x00200000u
+#define MODE_SZ 0x00100000u
+#define MODE_PR 0x00080000u
+static u32 g_fpscr, g_mode;
+%s
+static volatile u32 g_in[3] = {0x3fa66666u, 0x3bc49ba6u, 0x38d1b717u}; /* 1.3, 0.006, 1e-4 */
+static __declspec(noinline) f32 rd(int i) { f32 f; u32 u = g_in[i]; memcpy(&f, &u, 4); return f; }
+static u32 product(void) /* (fwd * drive) * mass as the translator writes TC's Body_InitK10Dynamics: two fmuls */
+{
+    f32 mass = rd(2), r = (rd(0) * rd(1)) * mass;
+    u32 u;
+    memcpy(&u, &r, 4);
+    return u;
+}
+int main(void)
+{
+    unsigned int x87 = 0;
+    __control87_2(_RC_CHOP | _PC_53, _MCW_RC | _MCW_PC, &x87, NULL); /* the kit before: RM's rounding, 53 bits */
+    printf("%%08x", product());
+    sh4_rt_set_fpu_mode();
+    printf(" %%08x %%x", product(), _control87(0, 0) & _MCW_PC);
+    sh4_lds_fpscr(0x000c0001u); /* PR=1 */
+    printf(" %%x", _control87(0, 0) & _MCW_PC);
+    sh4_lds_fpscr(0x00040001u);
+    printf(" %%x %%08x\n", _control87(0, 0) & _MCW_PC, product());
+    return 0;
+}
+"""
+
+
+@unittest.skipUnless(os.name == "nt" and vcvars(32), "no 32-bit Visual Studio tools")
+class KitX87(unittest.TestCase):
+    def test_precision(self):
+        """32-bit code keeps a float a function returned on the x87 and multiplies it there: at 53 bits
+        `(rd() * rd()) * m` rounds once (TC h5n1: drive_fwd 35516130), where the SH-4's two fmuls give 3551612f.
+        The kit's sh4_rt_set_fpu_mode and sh4_lds_fpscr (their text, built with the port's flags) set the x87's
+        precision as FPSCR.PR: 24 bits for single, 53 for double."""
+        kit = text(SIDES[2])
+        src = "\n".join([re.search(r"#if defined\(_M_IX86\)\n#define X87_PC.*?#endif\n", kit, re.S).group(0),
+                         re.search(r"void sh4_lds_fpscr\(u32 v\)\n\{\n.*?\n\}\n", kit, re.S).group(0),
+                         re.search(r"void sh4_rt_set_fpu_mode\(void\)\n\{\n.*?\n\}\n", kit, re.S).group(0)])
+        work = ROOT / "tests" / ".work"
+        work.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="x87_", dir=work) as d:
+            d = pathlib.Path(d)
+            (d / "x87.c").write_text(X87_HARNESS % src, encoding="utf-8")
+            vc = str(vcvars(32)).replace("/", "\\")
+            r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && cl /nologo /std:c11 /W4 /WX /O1 /fp:strict '
+                               f'/arch:SSE2 x87.c"', cwd=d, capture_output=True, text=True, errors="replace",
+                               timeout=300)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            r = subprocess.run([str(d / "x87.exe")], capture_output=True, text=True, timeout=60)
+            self.assertEqual(r.returncode, 0, r.stderr)
+            pc24, pc53 = "%x" % 0x20000, "%x" % 0x10000  # _PC_24, _PC_53
+            self.assertEqual(r.stdout.split(), ["35516130", "3551612f", pc24, pc53, pc24, "3551612f"])
+
+
 class Wiring(unittest.TestCase):
     def test_text(self):
         fpu, rnd = text(SH4 / "ghidra_scripts" / "TcFpu.java"), text(SH4 / "ghidra_scripts" / "TcRound.java")
-        self.assertIn('if (st.snap == null && list.stream().anyMatch(o -> o.kind.equals("fmac")))', fpu)
-        self.assertIn("if (!facts.fpscrModel && !fmac) continue;", fpu)
+        self.assertIn('if (st.snap == null && list.stream().anyMatch(o -> ONCE.contains(o.kind)))', fpu)  # fmac..
+        self.assertIn('static final Set<String> ONCE = Set.of("fmac", "fipr", "ftrv");', fpu)
+        self.assertIn("if (!facts.fpscrModel && !once) continue;", fpu)
         self.assertIn("TcRound.apply(op, rn, 0, st.pr, false);", fpu)  # the p-code check: two roundings
         self.assertIn("TcRound.apply(op, rz, st.rm, st.pr, true);", fpu)  # the result: one
         self.assertNotIn('"fr0*fr" + op.m', fpu)  # no intermediate product to reject

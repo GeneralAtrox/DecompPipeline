@@ -159,7 +159,7 @@ class StatusPlate(unittest.TestCase):
 
     def test_prepare_strips_before_split(self):  # ghidra.prepare: strip_status, then split_packet
         src = pathlib.Path(ghidra.__file__).read_text(encoding="utf-8")
-        self.assertLess(src.index("    strip_status(packet)"), src.index("    split_packet(packet)"))
+        self.assertLess(src.index("    strip_status(out_packet)"), src.index("    split_packet(out_packet)"))
 
 
 class Worker:

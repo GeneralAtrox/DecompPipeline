@@ -116,7 +116,7 @@ public class TcSig {
         fl.restoreIsWrite = facts.paramSummaries;
         if (facts.paramSummaries) fl.calleeDefs = this::ownDefs;
         int[] flow = fl.entryFlow(f, args);
-        boolean modes = flow[2] != 0;
+        boolean modes = flow[2] != 0 || TcFpscr.Sz.wide();  // a mode switch, or SZ=1 at entry (TcFpscr.Sz)
         int read = flow[0] | flow[1] | flow[3];
         if (modes) read &= ~0xffff; // float masks are unsafe across mode switches
         int state = TcFlow.STATE | TcFlow.ISTATE;

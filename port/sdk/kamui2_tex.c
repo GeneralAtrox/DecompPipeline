@@ -143,6 +143,7 @@ s32 kmCreateTextureSurface(KMSURFACEDESC *surface, u32 width, u32 height, u32 ty
     u32 at = alloc(mip16_lead(flags, format) + bytes + tail);
     if (!at) {
         pvr_todo("kamui2: texture memory full (%u bytes asked)", bytes);
+        k2_run_callback(3); /* Kamui's texture-memory-full callback */
         return K2_NOT_ENOUGH_MEMORY;
     }
     s->surface_type = small ? SURFACE_SMALL_VQ : SURFACE_TEXTURE;

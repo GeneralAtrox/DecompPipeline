@@ -27,7 +27,7 @@ public abstract class TcOracle extends TcInputs {
         long retx;                        // the extra result word (entryRet): a nonstandard result register, u64 high
         int[] xf = new int[16];
         int[] fh = new int[4];            // fr12..fr15 at exit
-        long[] gi = new long[7];          // r8..r14 at exit
+        long[] gi = new long[7], ro = new long[4];  // r8..r14, r4..r7 (TcOut) at exit
         int[] fq = new int[16];           // fr0..fr15 at exit (Proto.fpuState)
         long mode; TcFpscr.Run fs; TcTrack.Run tr;  // FPSCR mode bits at exit (modeWord); FPSCR as state; TcTrack's
         List<String> writes = new ArrayList<>();
@@ -210,7 +210,7 @@ public abstract class TcOracle extends TcInputs {
             emu.writeRegister("FPSCR_SZ", BigInteger.ZERO);
             emu.writeRegister("FPSCR_FR", BigInteger.ZERO);
         }
-        if (sr != null) sr.enter(emu, v);  // MD=1, RB=0, BL=0, the vector's IMASK (TcSr)
+        TcFpscr.Sz.enter(emu); if (sr != null) sr.enter(emu, v);  // MD=1, RB=0, BL=0, the vector's IMASK (TcSr)
         emu.writeRegister(emu.getPCRegister(), u(fn.getEntryPoint().getOffset()));
     }
 
@@ -291,16 +291,16 @@ public abstract class TcOracle extends TcInputs {
                         res.callCapped = true;
                         return res;
                     }
-                    res.calls.add(callRecord(emu, pc) + TcTrack.call(pc)); TcFpscr.call(emu);
-                    TcStrict.call(res, emu, calls);  // snapshots, junk, writes (after the records)
+                    res.calls.add(callRecord(emu, pc) + TcTrack.call(pc)); TcFpscr.call(emu); TcFpscr.Sz.call(emu, pc); if (sq != null) sq.callee(this, emu, pc);
+                    TcStrict.call(res, emu, calls); TcCalls.flagCall(this, res, emu, pc);  // snapshots, junk, writes (after the records; TcSq.callee reads r4..r7 first); a listed run flag (TcCalls)
                     if (prev >= 0) res.sites.add(prev);
                     if (TcExit.halts(listing, pca)) {  // a callee that never returns: the run ends with it
                         res.halted = true;
                         break;
                     }
                     int k = calls - v.rets.length;
-                    long rv = k < 0 ? (v.rets[calls] = TcFret.at(floatRet, pc, v.rets[calls]))
-                        : entryLate != null && k < entryLate.length ? (entryLate[k] = TcFret.at(floatRet, pc, entryLate[k]))
+                    long rv = k < 0 ? (v.rets[calls] = TcLate.ranged(v, pc, calls, TcFret.at(floatRet, pc, v.rets[calls])))  // genretfn
+                        : entryLate != null && k < entryLate.length ? (entryLate[k] = TcLate.ranged(v, pc, calls, TcFret.at(floatRet, pc, TcLate.pooled(v, pc, k, entryLate[k]))))
                         : 0;
                     TcLive.after(live, this, emu, pc, calls++); // the callee's own change of r8..r14 (TcLive)
                     if (spin != null) spin.call();

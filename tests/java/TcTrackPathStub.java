@@ -4,7 +4,8 @@
 //   P SHAPE SZ PR   the shape's path with the mode bits FPSCR_SZ and FPSCR_PR
 // Shapes: fmov (`if (!(SZ == 0)) goto <doubleWidth>; FR6 = ..; goto <skip>; <doubleWidth> DR6 = ..`), skip (PR set:
 // nothing; fldi1 FR4), next (`if (PR != 0) goto inst_next; FR8 = ..`), const (a decode-time constant that is false:
-// the double form never runs; FR5 or DR4), other (a branch on T), plain (r4 and fv8: no branch).
+// the double form never runs; FR5 or DR4), other (a branch on T), plain (r4 and fv8: no branch), slot (bt/s with
+// fmov fr14,fr4 in its delay slot: `cond = T; <the fmov shape on FR4/DR4>; if (cond != 0) goto target`).
 import ghidra.program.model.address.*;
 import ghidra.program.model.pcode.*;
 import java.nio.file.*;
@@ -70,6 +71,17 @@ public class TcTrackPathStub {
             case "other":
                 op(PcodeOp.CBRANCH, null, c(2), r("T"));
                 op(PcodeOp.COPY, r("fr4"), c(0));
+                break;
+            case "slot":
+                op(PcodeOp.COPY, u(4), r("T"));
+                op(PcodeOp.INT_EQUAL, u(0), r("FPSCR_SZ"), c(0));
+                op(PcodeOp.BOOL_NEGATE, u(1), u(0));
+                op(PcodeOp.CBRANCH, null, c(3), u(1));
+                op(PcodeOp.COPY, r("fr4"), r("fr6"));
+                op(PcodeOp.BRANCH, null, c(2));
+                op(PcodeOp.COPY, r("dr4"), r("dr6"));
+                op(PcodeOp.INT_NOTEQUAL, u(5), u(4), c(0));
+                op(PcodeOp.CBRANCH, null, new Varnode(RAM.getAddress(0x8c010040L), 4), u(5));
                 break;
             case "plain":
                 op(PcodeOp.COPY, r("r4"), c(1));

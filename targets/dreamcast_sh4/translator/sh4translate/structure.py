@@ -409,8 +409,8 @@ def ends(u):
     if u.kind == "goto":
         return u.cond is None
     if u.kind == "op" and u.lines != ["@BREAK"]:
-        code = [x.strip() for x in u.lines if not x.strip().startswith("/*")]
-        return bool(code) and (code[-1].startswith("return") or code[-1] == "tc_halt();")
+        from .cfgstruct import op_ends  # cfgstruct imports this module
+        return op_ends(u.lines)          # a return or halt, or a scope `{ u32 g_ = ...; ... return r0; }` ending so
     return False
 
 

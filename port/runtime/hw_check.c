@@ -9,6 +9,9 @@
  *   --hw-tex FILE        "frame address size" lines, by frame: at the first scene of that emulator frame, those
  *                        texture memory bytes go to FILE.bin, each as u32 address, size, frame and the bytes (none
  *                        for a frame the port has no scene in: a movie it does not play).
+ *   --hw-digest FILE     as --hw-out, with each list's vertex digest ("D" lines, ta_digest.c) and without the store
+ *                        queue model below: the lists as the port plays them (tools/lockstep.py, tools/ta_digest.py).
+ *                        --hw-out writes the D lines too; --hw-dump F:FILE the masked fields of one scene (ta_digest.c).
  *   --hw-strip L:S:V@F   logs the guest address of vertex V of strip S of list L in the scene of emulator frame F
  *                        (V -1: its header), for --hw-watch-ram.
  *   --hw-watch-ram A@F   logs each write to the guest word A from the scene's begin to its render, in emulator frame
@@ -68,6 +71,7 @@ static u32 g_ram_at, g_ram_frame, g_ram_watching, g_ram_armed;
 static u32 g_vram_at, g_vram_size, g_vram_frame, g_vram_watching, g_vram_hits;
 static u32 g_sq;     /* the store queue model: on with any --hw option */
 static u32 g_paired; /* a scene had an emulator frame: the run ends with them */
+static u32 g_frame;  /* the scene's emulator frame, for ta_digest_strip */
 static char g_seq[SEQ_CAP];
 
 static FILE *open_or_exit(const char *path, const char *mode)
@@ -105,6 +109,12 @@ static void load_tex(const char *path)
 int hw_check_option(const char *arg, const char *value)
 {
     if (!value) return 0;
+    if (ta_digest_option(arg, value)) return 2;
+    if (!strcmp(arg, "--hw-digest")) {
+        g_out = open_or_exit(value, "w");
+        setvbuf(g_out, NULL, _IOFBF, 1u << 20);
+        return 2;
+    }
     if (!strcmp(arg, "--hw-out")) {
         g_out = open_or_exit(value, "w");
         setvbuf(g_out, NULL, _IOFBF, 1u << 20);
@@ -169,6 +179,7 @@ static void end_strip(Strips *s)
         s->have_last = 1;
     }
     put(s, " %u", s->n, 0, 0, 0);
+    if (s->kind != 2u) ta_digest_strip(g_frame);
     if (s->kind == 0)
         for (u32 i = 0; i < 3u; i++) s->sum[i] += s->lo[i] + s->hi[i];
     s->strips++;
@@ -211,6 +222,7 @@ static void walk(Strips *s, u32 start, u32 end, u32 frame)
             words = modvol ? SLOT_WORDS : header_words(w[0]);
             if (w + words > stop) return;
             memcpy(s->hdr, w, sizeof s->hdr);
+            if (!modvol) ta_digest_header(w, words, type == PARA_SPRITE);
             s->hdr[0] &= ~PCW_END_OF_STRIP;
             s->kind = modvol ? 2u : (u32)(type == PARA_SPRITE);
             s->have_hdr = 1;
@@ -220,6 +232,7 @@ static void walk(Strips *s, u32 start, u32 end, u32 frame)
             if (w + words > stop) return;
             if (g_find[2] == 0u) found(s, frame, header);
             else if (s->n + 1u == g_find[2]) found(s, frame, w);
+            if (s->kind != 2u) ta_digest_vertex(w);
             if (s->kind == 1u) {
                 s->n = 4u;
                 end_strip(s);
@@ -304,10 +317,12 @@ void hw_check_scene(const PvrPass *passes, u32 count)
     else if (g_paired && g_sq) port_exit("hw check: the emulator frames ended", 0);
     if (frame < 0 || port_extra_drawing()) return;
     if (g_bin) dump_textures((u32)frame);
-    if (!g_out && !g_finding) return;
+    if (!g_out && !g_finding && !ta_digest_dumping()) return;
     if (g_out) fprintf(g_out, "R %d %u\n", frame, resent);
+    g_frame = (u32)frame;
     for (u32 l = 0; l < PVRX_LISTS; l++) {
         memset(&s, 0, sizeof s);
+        ta_digest_list(l);
         s.list = l;
         s.seq = g_seq;
         g_seq[0] = '\0';
@@ -316,7 +331,9 @@ void hw_check_scene(const PvrPass *passes, u32 count)
         if (g_out && s.strips)
             fprintf(g_out, "L %u %u %u %.9g %.9g %.9g%s\n", l, s.strips, s.vertices, s.sum[0], s.sum[1], s.sum[2],
                     g_seq);
+        if (g_out && s.strips && l != LIST_MODVOL_OPAQUE && l != LIST_MODVOL_TRANS) ta_digest_write(g_out, l);
     }
+    ta_digest_scene_done((u32)frame);
 }
 
 void hw_check_vram(u32 offset, u32 size)

@@ -452,7 +452,7 @@ def check_readable(cfg, addr, src_file, build_dir, sets=("dev", "hidden"), reg=N
         return hook(cfg, addr, src_file, build_dir, sets=sets, reg=reg, harness_dir=harness_dir,
                     callee_harness=callee_harness, lean=lean, stub=stub)
     from . import readable, readable_abi, readable_outptr, readable_outrun, readable_stack, readable_varargs
-    from .readable_lint import pointer_bytes_lint, raw_name_lint, readable_lint, void_result_lint
+    from .readable_lint import fused_lint, pointer_bytes_lint, raw_name_lint, readable_lint, void_result_lint
     harness = harness_dir or paths.HARNESS / addr
     meta = paths.read_json(harness / "meta.json")
     result = {"addr": addr, "verdict": "FAIL", "stage": "lint", "lint": [], "build": []}
@@ -513,7 +513,7 @@ def check_readable(cfg, addr, src_file, build_dir, sets=("dev", "hidden"), reg=N
         return raw_consts.resolve(reg, global_extents.for_process(cfg, reg), v)
     result["lint"] = (readable_lint(src, name, proto, named, retire.mirrors(paths.ROOT))
                       + raw_name_lint(src, reg, set(aliases) | {addr})
-                      + void_result_lint(src, reg))
+                      + void_result_lint(src, reg) + ([] if stub else fused_lint(cfg, meta, src)))  # RR8, not on a stub
     raw_file = paths.MATCHED / f"{addr}.c"
     if raw_file.exists():
         raw_text = raw_file.read_text(encoding="utf-8", errors="replace")

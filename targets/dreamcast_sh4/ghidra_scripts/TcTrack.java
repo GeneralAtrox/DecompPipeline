@@ -11,7 +11,8 @@
 //    a computed NaN's payload is the FPU's, which C does not reproduce. Every other word, an integer word holding a
 //    NaN's pattern (-1 is one), is compared bit for bit. A float store is an fmov to memory or sts.l FPUL, and a
 //    mov.l of a register holding float bits: from sts FPUL, a mov of such a register, or a mov.l load of a word a
-//    float store of this run wrote (a float moved through integer registers or the stack). expected.txt "FN addr..."
+//    float store of this run wrote (a float moved through integer registers or the stack, kept through and/or/xor
+//    into it: a flag bit set in a float word). expected.txt "FN addr..."
 //    lists the words a float store wrote that still hold what it wrote and are a NaN at exit (exit), only when there
 //    is one.
 import ghidra.app.emulator.EmulatorHelper;
@@ -106,8 +107,8 @@ final class TcTrack {
     // The registers the step at in wrote: the p-code outputs on the path it took. The SH-4 SLEIGH holds an FPU
     // instruction's single and double forms in one body (`if (!(FPSCR_SZ == 0)) goto <doubleWidth>`; FPSCR_PR the
     // same, some with decode-time constants), and only the form the mode selects runs: fmov.s @r0,fr6 with SZ 0 writes
-    // fr6, not dr6's fr7. The conditions are evaluated on the mode bits (no FPU step changes them); a branch on anything
-    // else counts every output (outs).
+    // fr6, not dr6's fr7. The conditions are evaluated on the mode bits (no FPU step changes them); a branch inside the
+    // instruction on anything else counts every output (outs).
     Set<String> written(Instruction in, EmulatorHelper emu) {
         Program p = in.getProgram();
         Set<String> w = path(in.getPcode(), v -> {
@@ -118,7 +119,11 @@ final class TcTrack {
     }
 
     // The register outputs (drN and fvN split) on the path the p-code takes when its conditions read only constants
-    // and the mode bits FPSCR_SZ and FPSCR_PR (mode: their values); null when a condition reads anything else.
+    // and the mode bits FPSCR_SZ and FPSCR_PR (mode: their values); null when a condition on a branch inside the
+    // instruction reads anything else. A branch out of it on anything else is bt/s or bf/s (`cond = T; delayslot(1);
+    // if (cond ...) goto target`): the delay slot runs on both paths (SH-4 manual, delayed branches), and the taken
+    // path writes only what came before it, so the outputs are the fall-through path's (fmov fr14,fr4 in the slot
+    // with SZ 0 writes fr4, not dr4's fr5).
     static Set<String> path(PcodeOp[] ops, java.util.function.Function<Varnode, String> name,
                             java.util.function.ToLongFunction<String> mode) {
         Map<Long, Long> tmp = new HashMap<>();
@@ -131,8 +136,8 @@ final class TcTrack {
             if (code == PcodeOp.CBRANCH || code == PcodeOp.BRANCH) {
                 Long c = code == PcodeOp.BRANCH ? Long.valueOf(1) : value(op.getInput(1), tmp, name, mode);
                 Varnode to = op.getInput(0);
-                if (c == null) return null;
-                if (c == 0) i++;
+                if (c == null && to.isConstant()) return null;
+                if (c == null || c == 0) i++;  // leaving on anything else (bt/s, bf/s: T): the rest is a superset
                 else if (to.isConstant()) i += (int) to.getOffset();
                 else break;  // out of the instruction (inst_next)
                 continue;
@@ -223,11 +228,16 @@ final class TcTrack {
 
     // Float bits through the integer registers for the instruction w (outs: the registers it writes): fbits after it,
     // and the word it stores float bits to: 0 @Rn (sts.l FPUL,@-Rn; mov.l Rm,@Rn / @-Rn: Rn after it), 1 @(R0,Rn),
-    // 2 + 4 * disp @(disp,Rn); or -1. sts FPUL,Rn and mov Rm,Rn of float bits make Rn hold float bits.
+    // 2 + 4 * disp @(disp,Rn); or -1. sts FPUL,Rn and mov Rm,Rn of float bits make Rn hold float bits, and so do
+    // and/or/xor into a register holding them (Rn, or R0 with #imm): the rest of the word is still the FPU's (Spawn
+    // 8c01bf94: fmov.s fr3,@r6; mov.l @r6,r3; or r12,r3; mov.l r3,@r6 sets the PVR vertex flag in bit 0).
     static int flow(Set<String> fbits, int w, Set<String> outs) {
         int n = (w >> 8) & 15, m = (w >> 4) & 15, o = w & 0xf00f;
         boolean src = fbits.contains("r" + m);  // before this instruction's writes
+        boolean logic = o == 0x2009 || o == 0x200a || o == 0x200b;  // and, xor, or Rm,Rn
+        boolean bits = logic ? fbits.contains("r" + n) : (w >> 8) >= 0xc9 && (w >> 8) <= 0xcb && fbits.contains("r0");
         fbits.removeAll(outs);
+        if (bits) fbits.add(logic ? "r" + n : "r0");
         if ((w & 0xf0ff) == 0x4052) return 0;
         if ((w & 0xf0ff) == 0x005a || (o == 0x6003 && src)) fbits.add("r" + n);
         else if (src && (o == 0x2002 || o == 0x2006)) return 0;

@@ -37,6 +37,17 @@ public class TcFacts {
     int strict;
     List<String[]> mockWrites = new ArrayList<>();
 
+    // A "mock_write callee field size" line's fact as TcStrict uses it, fld the field's record number: {callee, fld,
+    // size}; an advance "aA.B:op.a.s:..." (core/strict_judge.advance) {callee, fld, -1, A, B, op, a, s, ...}.
+    static long[] fact(String[] w, int fld) {
+        if (fld < 0) throw new IllegalArgumentException("mock_write: no pointer field " + w[1]);
+        String[] t = w[2].startsWith("a") ? w[2].substring(1).split("[.:]") : new String[0];
+        long[] r = Arrays.copyOf(new long[] {Long.parseLong(w[0], 16), fld, t.length > 0 ? -1 : 0}, 3 + t.length);
+        if (t.length == 0) r[2] = Integer.parseInt(w[2]);
+        for (int i = 0; i < t.length; i++) r[3 + i] = Long.parseLong(t[i], i >= 2 && (i - 2) % 3 == 0 ? 16 : 10);
+        return r;
+    }
+
     // The values the scripts were written with (TcBase constants); a facts file must agree with them.
     static TcFacts defaults() {
         TcFacts f = new TcFacts();

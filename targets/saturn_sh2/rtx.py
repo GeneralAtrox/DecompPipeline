@@ -13,6 +13,8 @@ class Spec(SH4):
     helper_types = {"u2f": "f32", "f2u": "u32", "sx8": "u32", "sx16": "u32"}
     handover_get = {"sh4_r"}
     handover_set = {"sh4_set_r"}
+    fused = None  # no FPU, no fmac: lint R9/fmac and RR8 and draft --fmac never apply (core/fused)
+    once = ()     # nor fipr or ftrv
     sp_init = 0x060FE000
     ram = (0x06000000, 0x06100000)  # high work RAM
     mirrors = {0x26: (0x06, "|", 0x20000000)}  # the cache-through area (target.json address_mirrors 26: 06)

@@ -384,6 +384,108 @@ class DraftReplacesStale(unittest.TestCase):
         self.assertEqual(self.run_adopt(adopt_ok=False), "adoptable (machine)")
         self.assertEqual((self.d / "src" / f"{self.a}.c").read_text(encoding="utf-8"), "/* agent, old */")
 
+
+class DraftFmac(unittest.TestCase):
+    """refine.py draft --fmac (draft_run.fused_gap, list_fmac, command(fmac=True)): a passing readable file that
+    writes the code's fmac as `a*b + c` (two roundings) is replaced by its machine file when that one calls sh4_fmac;
+    only the machine file is tried; a file that calls sh4_fmac, code without fmac and harness_stale rows are left
+    (fmac-probe 2026-10-26: TC Spline_MeasureLength drifted the h5n1 camera)."""
+
+    TWICE = "void F(f32 *p, f32 t)\n{\n    p[0] = t * p[0] + p[1];\n}\n"
+    FUSED = "void F(f32 *p, f32 t)\n{\n    p[0] = sh4_fmac(t, p[0], p[1]);\n}\n"
+
+    def setUp(self):
+        from core.rtx import source
+        self.d = pathlib.Path(tempfile.mkdtemp(prefix="dfm", dir=TMP))
+        self.a, self.b = "8c010000", "8c010010"
+        (self.d / "src").mkdir()
+        # 8c010000: fmac fr0,fr2,fr3 in its block, and one more in the pool after it (not code); 8c010010: none
+        words = [0xF32E, 0x000B, 0x0009, 0x0009, 0xF45E, 0, 0, 0, 0x000B, 0x0009]
+        self.bin = self.d / "image.bin"
+        self.bin.write_bytes(b"".join(struct.pack("<H", w) for w in words))
+        for addr, hi in ((self.a, "8c010007"), (self.b, "8c010013")):
+            (self.d / "harness" / addr).mkdir(parents=True)
+            (self.d / "harness" / addr / "meta.json").write_text(json.dumps(
+                {"addr": addr, "blocks": [[addr, hi]]}), encoding="utf-8")
+            (self.d / "src" / f"{addr}.c").write_text(self.TWICE, encoding="utf-8")
+        self.machine = self.d / "machine.c"
+        self.machine.write_text(self.FUSED, encoding="utf-8")
+        self.cfg = {"function_lock_wait_s": 0.2, "binary_path": self.bin}
+        ok = {"verdict": "PASS", "stage": "compare"}
+        sh4 = source.spec("dreamcast_sh4")
+
+        def no_draft(*a, **k):
+            raise AssertionError("--fmac tries the machine file only")
+        self.patches = [mock.patch.object(refine, "LEDGER", self.d / "readable.json"),
+                        mock.patch.object(readable, "SRC", self.d / "src"), mock.patch.object(paths, "RUNS", self.d),
+                        mock.patch.object(paths, "HARNESS", self.d / "harness"),
+                        mock.patch.object(readopt, "BACKUP", self.d / "backup"),
+                        mock.patch.object(fn_claim, "LOCKS", self.d / "locks"),
+                        mock.patch.object(refine, "raw_missing", lambda a: None),
+                        mock.patch.object(readable, "Registry", lambda: None),
+                        mock.patch.object(source, "spec", lambda target=None: sh4),
+                        mock.patch.object(draft_run, "judge_machine", lambda *a: (self.machine, ok, [])),
+                        mock.patch.object(draft_run, "candidates", no_draft),
+                        mock.patch.object(draft_run, "judge", no_draft)]
+        for p in self.patches:
+            p.start()
+        refine.update(self.a, status="readable")
+
+    def tearDown(self):
+        for p in reversed(self.patches):
+            p.stop()
+
+    def run_fmac(self, addrs, adopt_ok=True):
+        return draft_run.command(self.cfg, addrs, adopt_ok=adopt_ok, workers=1, log=lambda m: None, fmac=True)
+
+    def meta(self, addr):
+        return paths.read_json(self.d / "harness" / addr / "meta.json")
+
+    def test_counts_code_words_only(self):
+        self.assertEqual(draft_run.fused_ops(self.cfg, self.meta(self.a)), 1)
+        self.assertEqual(draft_run.fused_ops(self.cfg, self.meta(self.b)), 0)
+
+    def test_gap(self):
+        self.assertEqual(draft_run.fused_gap(self.cfg, self.a, self.meta(self.a)),
+                         "1 fmac in the code, no sh4_fmac in the file")
+        self.assertIsNone(draft_run.fused_gap(self.cfg, self.a, self.meta(self.a), self.FUSED))
+        self.assertIsNone(draft_run.fused_gap(self.cfg, self.b, self.meta(self.b)))
+
+    def test_list_reads_only(self):
+        before = sorted(p.relative_to(self.d) for p in self.d.rglob("*"))
+        self.assertEqual(draft_run.list_fmac(self.cfg, []), {self.a: "1 fmac in the code, no sh4_fmac in the file"})
+        self.assertEqual(sorted(p.relative_to(self.d) for p in self.d.rglob("*")), before)
+
+    def test_passing_file_replaced_and_backed_up(self):
+        out = self.run_fmac([self.a, self.b])
+        self.assertEqual(out[self.a], "ADOPTED (source: draft, machine), replaced readable: "
+                                      "1 fmac in the code, no sh4_fmac in the file")
+        self.assertEqual(out[self.b], "skipped: no fmac, fipr or ftrv rounded apart from the code")
+        self.assertEqual((self.d / "src" / f"{self.a}.c").read_text(encoding="utf-8"), self.FUSED)
+        self.assertEqual([p.read_text(encoding="utf-8") for p in (self.d / "backup").iterdir()], [self.TWICE])
+        row = refine.load_ledger()[self.a]
+        self.assertEqual((row["status"], row["source"], row["readable_by"]), ("readable", "draft", "machine"))
+
+    def test_machine_rounding_twice_not_adopted(self):
+        self.machine.write_text(self.TWICE, encoding="utf-8")
+        self.assertTrue(self.run_fmac([self.a])[self.a].startswith("machine: rounds twice too, not adopted"))
+        self.assertEqual((self.d / "src" / f"{self.a}.c").read_text(encoding="utf-8"), self.TWICE)
+
+    def test_harness_stale_and_no_adopt_kept(self):
+        self.assertEqual(self.run_fmac([self.a], adopt_ok=False)[self.a], "adoptable (machine)")
+        refine.update(self.a, status="harness_stale")
+        self.assertEqual(self.run_fmac([self.a])[self.a],
+                         "adoptable (machine); not adopted: has a readable file (harness_stale)")
+        self.assertEqual((self.d / "src" / f"{self.a}.c").read_text(encoding="utf-8"), self.TWICE)
+        self.assertFalse((self.d / "backup").exists())
+
+    def test_plain_draft_still_keeps_passing_files(self):
+        """Without --fmac a passing file is never replaced, whatever it rounds."""
+        with mock.patch.object(draft_run, "candidates", lambda *a: [("machine", self.machine,
+                                                                     {"verdict": "PASS", "stage": "compare"}, [])]):
+            got = draft_run.command(self.cfg, [self.a], adopt_ok=True, workers=1, log=lambda m: None)[self.a]
+        self.assertEqual(got, "adoptable (machine); not adopted: has a readable file (readable)")
+
 class Headers23(unittest.TestCase):
     """A #define whose /* comment closes on a later line is one item; the items after it keep their names."""
 

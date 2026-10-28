@@ -2,7 +2,9 @@
  *
  * The display is the kit's window, so the mode only matters for its callbacks: kmSetDisplayMode calls the
  * line-mode callback (slot 11) as Kamui does, and the vertical blank callback (slot 8) runs at every vertical blank
- * the kit waits for. Fog and the background plane go to pvr/ in the hardware's own terms.
+ * the kit waits for. Slot 0 runs when kmRender has drawn (Kamui calls it last in its end-of-render interrupt) and
+ * slot 3 when kmCreateTextureSurface finds texture memory full (Kamui calls it when the allocator returns 3). Fog
+ * and the background plane go to pvr/ in the hardware's own terms.
  *
  * Needs from the game's headers: KmCallbackFunc (void (*)(void *)), KmVersionInfo (12 bytes) and the function
  * names below as the game's registry has them (the Km_* ones are registry names for library functions with no SDK
@@ -11,6 +13,8 @@
 #include "platform.h"
 #include "kamui2.h"
 
+#define SLOT_RENDER_DONE 0
+#define SLOT_TEXTURE_FULL 3
 #define SLOT_VBLANK 8
 #define SLOT_LINES 11
 #define FOG_ENTRIES 128u
@@ -19,8 +23,12 @@
 #define LINES_PAL_BASE 496u /* PAL line mode 0; each mode up to 4 adds 16 lines */
 #define LINES_PAL_STEP 16u
 #define LINE_MODES 5u
+#define PALETTE_MODES 4u /* kmSetPaletteMode: ARGB1555, RGB565, ARGB4444, ARGB8888 */
 
 static KmCallbackFunc g_lines_fn;
+static KmCallbackFunc g_slot_fn[SLOT_TEXTURE_FULL + 1];
+static void *g_slot_arg[SLOT_TEXTURE_FULL + 1];
+static u32 g_palette_mode;
 static u32 g_frame_lines = LINES_NTSC;
 
 u32 k2_frame_lines(void) { return g_frame_lines; }
@@ -31,20 +39,25 @@ s32 Km_InitDevice(u32 flags)
     return K2_OK;
 }
 
-/* The display mode's line-count callback: it gets {0, line mode} and may choose the mode. */
+/* The display mode's line-count callback: it gets {mode, line mode} and may choose the line mode. */
 s32 Km_SetCallback11(KmCallbackFunc func)
 {
     g_lines_fn = func;
     return K2_OK;
 }
 
+/* Kamui calls the line-mode callback only for a PAL mode with extra lines (mode bits 0x42 both set: the library's
+ * kmSetDisplayMode tests them before it calls slot 11); any other mode keeps 480 lines, whatever the callback would choose. */
+#define MODE_PAL_LINES 0x42u
+
 s32 kmSetDisplayMode(u32 mode, u32 bpp, u32 dither, u32 antiAlias)
 {
     static u32 lines_arg[2];
     port_log("kamui2: display mode %02x, pixel format %u, dither %u, anti-alias %u\n", mode, bpp, dither != 0,
              antiAlias != 0);
-    if (g_lines_fn) {
-        lines_arg[0] = 0;
+    g_frame_lines = LINES_NTSC;
+    if (g_lines_fn && (mode & MODE_PAL_LINES) == MODE_PAL_LINES) {
+        lines_arg[0] = mode;
         lines_arg[1] = 0;
         g_lines_fn(lines_arg);
         if (lines_arg[1] < LINE_MODES) g_frame_lines = LINES_PAL_BASE + LINES_PAL_STEP * lines_arg[1];
@@ -55,12 +68,32 @@ s32 kmSetDisplayMode(u32 mode, u32 bpp, u32 dither, u32 antiAlias)
 
 s32 Km_SetCallback(s32 slot, KmCallbackFunc func, void *arg)
 {
-    if (slot == SLOT_VBLANK)
+    if (slot == SLOT_VBLANK) {
         port_set_vblank_hook((PortVblankFn)func, arg);
-    else if (func)
+    } else if (slot == SLOT_RENDER_DONE || slot == SLOT_TEXTURE_FULL) {
+        g_slot_fn[slot] = func;
+        g_slot_arg[slot] = arg;
+    } else if (func) {
         pvr_todo("kamui2: Km_SetCallback slot %d", slot);
+    }
     return K2_OK;
 }
+
+void k2_run_callback(s32 slot)
+{
+    if (slot >= 0 && slot <= SLOT_TEXTURE_FULL && g_slot_fn[slot]) g_slot_fn[slot](g_slot_arg[slot]);
+}
+
+/* The palette's entry format, kept for PAL_RAM_CTRL; pvr/ decodes no palettized textures yet. A mode above 3 is
+ * refused, as Kamui refuses it. */
+s32 kmSetPaletteMode(s32 mode)
+{
+    if ((u32)mode >= PALETTE_MODES) return K2_ERROR;
+    g_palette_mode = (u32)mode;
+    return K2_OK;
+}
+
+u32 k2_palette_mode(void) { return g_palette_mode; }
 
 s32 kmSetBorderColor(u32 argb)
 {
@@ -108,7 +141,15 @@ s32 kmSetFogTable(const f32 *table)
     return K2_OK;
 }
 
-/* The colour is the fifth argument (the first four words are unused). */
+/* The colour is the first stack word. A game whose names carry it as one argument (the registry's stack storage)
+ * defines KM_FOG_COLOR_ONE_ARG in its headers; otherwise it is the fifth argument (the first four words unused). */
+#ifdef KM_FOG_COLOR_ONE_ARG
+s32 kmSetFogTableColor(u32 argb)
+{
+    pvr_set_fog_color(argb);
+    return K2_OK;
+}
+#else
 s32 kmSetFogTableColor(u32 unusedR4, u32 unusedR5, u32 unusedR6, u32 unusedR7, u32 argb)
 {
     (void)unusedR4;
@@ -118,6 +159,7 @@ s32 kmSetFogTableColor(u32 unusedR4, u32 unusedR5, u32 unusedR6, u32 unusedR7, u
     pvr_set_fog_color(argb);
     return K2_OK;
 }
+#endif
 
 s32 kmSetFogDensity(u32 density)
 {
@@ -163,4 +205,12 @@ u32 Km_SetBackgroundPlane(void *plane, s32 flags)
     }
     pvr_set_background(xyz, argb);
     return K2_OK;
+}
+
+/* The SDK's own name and arguments for it: the vertex pointers and type as above; the structure size only steps
+ * Kamui's packers through the vertices. */
+s32 kmSetBackGroundPlane(void **vertices, s32 vertexType, s32 structSize)
+{
+    (void)structSize;
+    return (s32)Km_SetBackgroundPlane(vertices, vertexType);
 }

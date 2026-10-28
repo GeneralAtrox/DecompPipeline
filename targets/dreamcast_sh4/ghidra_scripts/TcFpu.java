@@ -3,9 +3,7 @@
 // DN (always): a denormal source operand of a float arithmetic instruction counts as a signed zero, and a denormal
 // result is flushed to a signed zero. Around each such step the oracle zeroes denormal sources (restoring the
 // registers that are not results afterwards) and flushes denormal results. The C runner does the same with SSE
-// DAZ|FTZ (tc_rt.c). Intermediate values of fipr and ftrv live in p-code temporaries the oracle cannot flush,
-// while the C runner's separately rounded operations do: a vector producing a nonzero intermediate below the smallest
-// normal is rejected.
+// DAZ|FTZ (tc_rt.c). fipr and ftrv have no float intermediate values (below: their products and sums are double).
 // RM (only with TcFacts.fpscrModel, target.json "fpscr_model"): every float result of the step is recomputed from the
 // source operands with TcRound, in the precision FPSCR.PR selects, as the patched SLEIGH orders the operations
 // (fipr/ftrv element order 0..3, fsrra = 1/sqrt, each rounded on its own). The recomputation is first done
@@ -17,6 +15,13 @@
 // normal_fmac), the p-code rounds the product and then the sum. Its result is recomputed as above, the p-code check
 // with two roundings, the result with one (TcRound.fma; tc_rt.c's sh4_fmac). An exact value in
 // [2^-126 - 2^-150, 2^-126) rejects the vector (TcRound.nearMinNormal: the manual and SSE flush it differently).
+// fipr, ftrv (always, as fmac): the SH-4 computes one inner product per result (the software manual's FIPR and FTRV;
+// Hitachi's Hot Chips IX paper: one hardware inner product, no rounded intermediate values); the reference emulator,
+// Flycast (sh4_fpu.cpp, shil_canonical.h innerProduct), sums the double products in double and rounds once to single,
+// all in the host's FPSCR-set mode (MXCSR RC toward zero for RM=1, DAZ|FTZ for DN). The p-code rounds every product
+// and sum (seven roundings). The p-code check is done with seven, the result kept with one (TcRound.fipr; tc_fpu.c's
+// sh4_fipr and sh4_ftrv). A double sum in [2^-126 - 2^-150, 2^-126) rejects the vector (TcRound.nearMinNormal).
+// once() adds vectors that tell the two apart (the judge's test case for C that rounds seven times).
 // ftrc (always): Ghidra's SLEIGH ftrc is trunc(), a 64-bit conversion of which FPUL keeps the low 32 bits; the SH-4
 // saturates (0x7fffffff above the int range, 0x80000000 below it and for a NaN), as tc_rt.c's sh4_ftrc does. The
 // oracle sets FPUL from the source operand after the step (r15: xemu found it in 225 functions).
@@ -43,6 +48,7 @@ public class TcFpu {
         "^(fadd|fsub|fmul|fdiv|fmac|fsqrt|fcmp/eq|fcmp/gt|fipr|ftrv|fsrra|float|fcnvds|fcnvsd|ftrc)\\s+(\\S+)$");
     static final Set<String> MODEL_ONLY = Set.of("float", "fcnvds", "fcnvsd"); // no denormal source: DN-only ignores them
     static final Set<String> PAIRED = Set.of("fadd", "fsub", "fmul", "fdiv", "fsqrt", "fcmp/eq", "fcmp/gt");
+    static final Set<String> ONCE = Set.of("fmac", "fipr", "ftrv"); // rounded once by the SH-4, at every step by p-code
 
     // One float instruction: the registers it reads (as denormal-flushed operands), those it writes, and its operands.
     static class Op {
@@ -65,6 +71,7 @@ public class TcFpu {
     final TcLoads steps;
     final TcFacts facts;
     final Map<Long, List<Op>> ops = new HashMap<>();
+    boolean seven;  // once()'s second run: keep fipr's and ftrv's seven-rounding result (the C it must tell apart)
 
     TcFpu(TcLoads steps, TcFacts facts) {
         this.steps = steps;
@@ -180,10 +187,6 @@ public class TcFpu {
         return bits & (wide(r) ? 0x8000000000000000L : 0x80000000L);
     }
 
-    static boolean tiny(float x) {
-        return x != 0 && Math.abs(x) < Float.MIN_NORMAL;
-    }
-
     static float f(EmulatorHelper emu, String reg) {
         return Float.intBitsToFloat((int) TcLoads.reg(emu, reg));
     }
@@ -208,7 +211,7 @@ public class TcFpu {
             }
             st.snap = new HashMap<>();
         }
-        if (st.snap == null && list.stream().anyMatch(o -> o.kind.equals("fmac"))) st.snap = new HashMap<>(); // fmac
+        if (st.snap == null && list.stream().anyMatch(o -> ONCE.contains(o.kind))) st.snap = new HashMap<>(); // fmac..
         for (Op op : list) {
             for (String r : eff(op.src, op, st.pr)) {
                 long b = bits(emu, r);
@@ -233,29 +236,16 @@ public class TcFpu {
         return st;
     }
 
-    // A nonzero intermediate below the smallest normal, in the order the patched SLEIGH and tc_rt.c compute them (fmac
-    // has none: its exact product is never rounded).
+    // fipr's or an ftrv row's double sum (TcRound.dot) just below the smallest normal (TcRound.nearMinNormal); fmac
+    // has its own check in after(). The products and sums are double: no float intermediate value to flush.
     String intermediate(EmulatorHelper emu, Op op, int rm) {
-        if (op.kind.equals("fipr")) {
-            float t = 0;
-            for (int i = 0; i < 4; i++) {
-                float p = TcRound.mul(f(emu, "fr" + (op.m + i)), f(emu, "fr" + (op.n + i)), rm);
-                if (tiny(p)) return "product " + i;
-                t = i == 0 ? p : TcRound.add(t, p, rm);
-                if (i > 0 && i < 3 && tiny(t)) return "partial sum " + i;
+        float[] x = new float[4], y = new float[4];
+        for (int row = 0; row < 4 && (op.kind.equals("ftrv") || row == 0 && op.kind.equals("fipr")); row++) {
+            for (int k = 0; k < 4; k++) {
+                x[k] = f(emu, op.kind.equals("fipr") ? "fr" + (op.m + k) : "xf" + (row + 4 * k));
+                y[k] = f(emu, "fr" + (op.n + k));
             }
-            return null;
-        }
-        if (op.kind.equals("ftrv")) {
-            for (int row = 0; row < 4; row++) {
-                float t = 0;
-                for (int k = 0; k < 4; k++) {
-                    float p = TcRound.mul(f(emu, "xf" + (row + 4 * k)), f(emu, "fr" + (op.n + k)), rm);
-                    if (tiny(p)) return "row " + row + " product " + k;
-                    t = k == 0 ? p : TcRound.add(t, p, rm);
-                    if (k > 0 && k < 3 && tiny(t)) return "row " + row + " partial sum " + k;
-                }
-            }
+            if (TcRound.nearMinNormal(TcRound.dot(x, y, rm))) return "row " + row + " sum below the smallest normal";
         }
         return null;
     }
@@ -275,8 +265,9 @@ public class TcFpu {
             Map<String, Long> rn = new HashMap<>(st.snap), rz = new HashMap<>(st.snap);
             Set<String> mod = new LinkedHashSet<>(); // the results recomputed: all, or without the model fmac's
             for (Op op : st.ops) {
+                boolean once = ONCE.contains(op.kind) && !st.pr;
                 boolean fmac = op.kind.equals("fmac") && !st.pr;
-                if (!facts.fpscrModel && !fmac) continue;
+                if (!facts.fpscrModel && !once) continue;
                 if (fmac && TcRound.nearMinNormal(TcRound.f(rz, "fr0"), TcRound.f(rz, op.a[1]),
                                                   TcRound.f(rz, op.a[2]))) {
                     return "fmac result just below the smallest normal (" + op.text + ": TcRound.nearMinNormal)";
@@ -284,6 +275,11 @@ public class TcFpu {
                 TcRound.apply(op, rn, 0, st.pr, false);
                 TcRound.apply(op, rz, st.rm, st.pr, true);
                 mod.addAll(eff(op.dst, op, st.pr));
+                if (seven && once && !fmac) { // once()'s second run: fipr/ftrv rounded seven times in the live RM
+                    Map<String, Long> r7 = new HashMap<>(st.snap);
+                    TcRound.apply(op, r7, st.rm, st.pr, false);
+                    for (String r : eff(op.dst, op, st.pr)) rz.put(r, r7.get(r));
+                }
             }
             for (String r : mod) {
                 long got = bits(emu, r);
@@ -315,5 +311,88 @@ public class TcFpu {
     static long ftrc(String r, long bits) {
         double d = wide(r) ? Double.longBitsToDouble(bits) : Float.intBitsToFloat((int) bits);
         return Double.isNaN(d) ? 0x80000000L : (long) (int) d & 0xffffffffL; // Java's (int) truncates and saturates
+    }
+
+    // ---------- separating vectors (once(), with "targeted_vectors") ----------
+    // A function whose code has fipr or ftrv, when no valid vector gives other results with them rounded seven times
+    // than once, gets up to 2 more per set that do: copies of valid vectors with two to four float inputs the run
+    // read (an f32 parameter, a 4-byte word it loaded, an XMTRX element with ftrv) set to ordinary floats (exponent
+    // -8..8, a full fraction), added as TcBoundPass adds (ids after every other vector). Fragment "once":{have, runs,
+    // added, note}; null with the flag off or no fipr/ftrv (the harness as without the pass). One generator per try.
+    static String once(TcVectors g, TcBase.Proto proto, long seed) throws Exception {
+        String ops = " ";  // the body's mnemonics; ftrv also reads XMTRX (then the xf bank is an input)
+        for (Instruction i : g.listing.getInstructions(g.body, true)) ops += i.getMnemonicString().toLowerCase() + " ";
+        boolean xm = ops.matches("(?s).* _?ftrv .*"), vec = xm || ops.matches("(?s).* _?fipr .*");
+        if (!g.facts.targetedVectors || !vec) return null;
+        int runs = 0, have = 0, added[] = new int[2];
+        String note = g.seeds.isEmpty() ? "no valid vector to start from" : "";
+        for (int i = 0; i < g.seeds.size() && have == 0; i++, runs += 2) {
+            TcReach.Entry e = g.seeds.get(i);
+            have = same(rerun(g, e, e.v, false), rerun(g, e, e.v, true)) ? 0 : 1;
+        }
+        List<Integer> flts = new ArrayList<>();
+        for (var q : proto.params) if (q.storage.matches("fr([4-9]|1[01])")) flts.add(num(q.storage) - 4);
+        TcCfg flow = new TcCfg(g);
+        List<Long> consts = TcGuide.constants(g.listing, g.body, g::poolValue);
+        long all = g.facts.oracleBudgetS <= 0 ? Long.MAX_VALUE : TcBudget.of(g.facts, g.facts.oracleBudgetS - 30);
+        long end = Math.min(all, g.work() + TcBudget.of(g.facts, 30));
+        for (int s = 0; s < 2 && have == 0 && note.isEmpty(); s++) {
+            for (int t = 0; t < 48 && added[s] < 2 && note.isEmpty(); t++) {
+                if (g.work() > end) { note = "the work budget ran out after " + runs + " runs"; break; }
+                Random h = new Random(seed * 0x9e3779b97f4a7c15L + s * 0x632be59bd9b4e019L + t * 0x85ebca6bL
+                    + 0x6f6e6365L);
+                TcReach.Entry e = TcBoundPass.copy(g.seeds.get(h.nextInt(g.seeds.size())));
+                List<long[]> lds = e.r.loads.stream().filter(ld -> ld[2] == 4 && !TcProvenance.ownFrame(ld[1])
+                    && !g.facts.isCode(ld[1]) && !flow.isConst(ld[1])).toList();
+                int nf = flts.size(), nl = lds.size(), nx = xm || nf + nl == 0 ? 16 : 0;
+                for (int k = 2 + h.nextInt(3); k > 0; k--) {  // 2-4 inputs: one alone often meets zeros (x*x + 0)
+                    int x = (h.nextBoolean() ? 0x80000000 : 0) | (119 + h.nextInt(17)) << 23 | h.nextInt(1 << 23) | 1;
+                    int n = h.nextInt(nf + nl + nx);
+                    if (n < nf) e.v.fr[flts.get(n)] = x;
+                    else if (n < nf + nl) TcReach.patch(e.v, lds.get(n - nf), x & 0xffffffffL);
+                    else e.v.xf[n - nf - nl] = x;
+                }
+                enter(g, e);
+                TcInputs.Vec[] box = {e.v};
+                TcOracle.Result r = g.runRepaired(box, h, consts, g.rescued, new int[1]);
+                TcReach.Entry ran = r.ok ? TcReach.entry(g, box[0], r) : null;  // the state as run (TcReach reruns it)
+                runs += r.ok ? 3 : 1;
+                if (ran == null || same(rerun(g, ran, box[0], false), rerun(g, ran, box[0], true))) continue;
+                enter(g, ran);  // writeVector writes the entry state the vector ran with
+                g.writeVector(g.valid[0] + g.valid[1], s == 0 ? "dev" : "hidden", box[0], r);
+                g.valid[s]++;
+                added[s]++;
+                if (s == 0) { g.covDev.addAll(r.cov); g.dirsDev.addAll(r.dirs); }
+                g.covAll.addAll(r.cov); g.dirsAll.addAll(r.dirs);
+                for (int c : r.cov) g.blockHits.merge(c, 1, Integer::sum);
+                for (long site : r.sites) g.siteHits.merge(site, 1, Integer::sum);
+            }
+        }
+        return String.format("\"once\":{\"have\":%d,\"runs\":%d,\"added\":[%d,%d],\"note\":\"%s\"}", have, runs,
+            added[0], added[1], note);
+    }
+
+    static void enter(TcVectors g, TcReach.Entry e) {
+        g.entryFh = e.fh; g.entryFq = e.fq; g.storeFaults = g.rescued;
+        g.entryLow = e.low == null ? null : e.low.clone(); g.entryGi = e.gi == null ? null : e.gi.clone();
+        g.entryLate = e.late == null ? null : e.late.clone();
+    }
+
+    // v run again from e's entry state (no repairs: it ran valid), fipr/ftrv rounded seven times or once.
+    static TcOracle.Result rerun(TcVectors g, TcReach.Entry e, TcInputs.Vec v, boolean seven) {
+        enter(g, e);
+        g.fpu.seven = seven;
+        try {
+            return g.runOracle(TcReach.copy(v));
+        } finally {
+            g.fpu.seven = false;
+        }
+    }
+
+    // The results the judge compares: the result registers, the FPU state, the memory writes, the calls.
+    static boolean same(TcOracle.Result a, TcOracle.Result b) {
+        return a.ok == b.ok && a.r0 == b.r0 && a.fr0 == b.fr0 && a.retx == b.retx && Arrays.equals(a.xf, b.xf)
+            && Arrays.equals(a.fh, b.fh) && Arrays.equals(a.gi, b.gi) && Arrays.equals(a.fq, b.fq)
+            && a.mode == b.mode && a.writes.equals(b.writes) && a.calls.equals(b.calls);
     }
 }

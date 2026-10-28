@@ -27,6 +27,8 @@ class Target:
     loads = {}        # {function name: C type} memory reads
     stores = {}       # {function name: C type} memory writes (address, value)
     pure = set()      # functions with no side effects that read no memory (bit casts, sign extension, ...)
+    fused = None      # ((opcode mask, value), runtime call): a multiply-add the CPU rounds once (draft --fmac)
+    once = ()         # (((opcode mask, value), (runtime calls), name), ...): more the CPU rounds once (core/fused)
 
     def is_load(self, fn):
         return fn in self.loads

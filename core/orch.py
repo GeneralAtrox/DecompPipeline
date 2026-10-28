@@ -86,7 +86,7 @@ class Worker:
         pre, self.next = self.next, None
         if pre is None:
             return
-        pre.thread.join(float(self.o.cfg.get("ghidra_timeout_s", 600)) + 60)
+        pre.thread.join(float(self.o.cfg.get("ghidra_kill_s") or self.o.cfg.get("ghidra_timeout_s", 600)) + 60)
         with self.o.lock:
             r = self.o.ledger["functions"].get(pre.addr)
             if r and r.get("status") in ACTIVE:

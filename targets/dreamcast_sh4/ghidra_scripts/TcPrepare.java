@@ -11,6 +11,9 @@
 //     evidence names (compare.spin_arg), else "-" or absent
 //  11 "hw:..." when project.json "hw_ops" lists the function: its listed hardware ops (TcHw, core/hw_ops.arg), else
 //     "-" or absent
+//  12 "rf:WORD_CALLEE_N" when project.json "run_flags" lists the function: the word its Nth call to CALLEE clears
+//     (TcCalls, core/compare.run_flag_arg), else "-" or absent
+//  13 "sz:MODES[:CALLEE.XY_...]": FPSCR.SZ at entry and after its calls (TcFpscr.Sz, core/sz_entry.arg), else absent
 //
 // LOCKED: the watcher agent may not change this file (it may only change the project's TcInputs.java and hints).
 //
@@ -54,6 +57,8 @@ public class TcPrepare extends TcVectors {
         spinWait = a.length > 10 && a[10].startsWith("spin");
         if (spinWait && a[10].startsWith("spin:")) for (String w : a[10].substring(5).split("_")) spinWords.add(Long.parseLong(w, 16));
         TcHw.on = TcHw.parse(a.length > 11 ? a[11] : "-");  // listed hardware ops (TcHw), null: none (every prepare)
+        TcCalls.flag = TcCalls.parseFlag(a.length > 12 ? a[12] : "-");  // a listed run flag (TcCalls), null: none
+        TcFpscr.Sz.on = TcFpscr.Sz.parse(a.length > 13 ? a[13] : "-");  // FPSCR.SZ at entry and after calls (TcFpscr.Sz), null: none
         List<String> hints = hintsFile.equals("-") ? new ArrayList<>() : Files.readAllLines(Paths.get(hintsFile));
         Files.createDirectories(packet);
         Files.createDirectories(harness);
@@ -182,10 +187,12 @@ public class TcPrepare extends TcVectors {
             callees.append(String.format("{\"addr\":\"%s\",\"regs\":[%s],\"signature\":\"%s\"}",
                 hex(c.getEntryPoint().getOffset()), regs, esc(cSignature("fn_" + hex(c.getEntryPoint().getOffset()), cp))));
         }
-        live = facts.paramSummaries ? TcLive.of(this, calledBy(fn, body)) : null;  // callees changing r8..r14
+        TcOut.prepare(this, facts.paramSummaries);  // r4..r7 outputs: its own, then its callees' (TcLive.of)
+        live = facts.paramSummaries ? TcLive.of(this, calledBy(fn, body)) : null;  // callees changing r8..r14, r4..r7
         TcTrack.on = TcTrack.of(listing, body, calledBy(fn, body), proto);  // pointer calls' arguments, float NaN words
         TcStrict.callees(this, calledBy(fn, body), regsOf);  // mock_junk: what each callee may change (TcStrict)
         sq = TcSq.of(listing, body, proto.giState);  // a state pointer whose store queue the function sends
+        if (sq != null) sq.callees(getCurrentProgram(), calledBy(fn, body), facts.fpscrEntry);  // their stores into the queues (TcSq)
         sr = TcSr.of(listing, body);  // SR read or written (TcSr)
         di.dispose();
 
@@ -222,10 +229,13 @@ public class TcPrepare extends TcVectors {
         if (proto.giState != 0) {
             extra.append(",\n  \"r_state\": [\"").append(TcSig.names(proto.giState).replace(", ", "\",\"")).append("\"]");
         }
-        if (live != null) extra.append(",\n  \"r_live\": ").append(live.meta());  // TcLive
+        if (live != null && !live.meta().equals("{}")) extra.append(",\n  \"r_live\": ").append(live.meta());  // TcLive
+        extra.append(TcOut.meta());  // r_out, r_out_left, r_exports (TcOut)
         if (sq != null) extra.append(",\n  \"sq_window\": ").append(sq.meta());  // TcSq
+        if (TcFpscr.Sz.on != null) extra.append(",\n  \"fpscr_sz\": \"").append(a[13]).append('"');  // TcFpscr.Sz: the translator's facts
         if (proto.fpuState) extra.append(",\n  \"fpu_state\": true");  // TcSig.fpuProto: the whole FPU is state
         if (TcHw.on != null) extra.append(",\n  \"hw_ops\": ").append(TcHw.on.meta());  // listed hardware ops (TcHw)
+        extra.append(TcCalls.flagMeta());  // a listed run flag (TcCalls)
         if (TcFpscr.on != null) extra.append(",\n  \"fpscr_state\": true");  // FPSCR is state (TcFpscr)
         extra.append(TcStrict.meta(facts));  // the facts mock_writes wrote from (TcStrict)
         String meta = String.format("{\n  \"addr\": \"%s\",\n  \"name\": \"%s\",\n  \"bytes\": %d,\n  \"signature\": \"%s\",\n"
@@ -268,8 +278,9 @@ public class TcPrepare extends TcVectors {
         String reach = why == null ? TcReach.run(this, proto, seed, seeds) : null;  // vectors reaching unreached calls
         String bound = why == null ? TcBoundPass.run(this, proto, seed, new ArrayList<>(globals)) : null;  // TcBound
         if (why == null) align.replace(this, proto, new ArrayList<>(globals), hints, seed);  // for those left out
-        String head = fpscrLine() + TcHw.header() + (live != null ? live.header() : "")
-            + (sq != null ? sq.header() : "");
+        String once = why == null ? TcFpu.once(this, proto, seed) : null;  // fipr/ftrv: one rounding vs seven
+        String head = fpscrLine() + TcHw.header() + TcCalls.flagHeader() + (live != null ? live.header() : "")
+            + (sq != null ? sq.header() : "") + TcOut.header();
         Files.write(harness.resolve("vectors.txt"), (head + TcStrict.header(facts) + vout).getBytes("UTF-8"));  // J, U
         Files.write(harness.resolve("expected.txt"), eout.toString().getBytes("UTF-8"));
         for (int s = 0; s < 2; s++) {  // chosen vectors whose strict replay failed: not written (TcStrict.replay)
@@ -313,7 +324,7 @@ public class TcPrepare extends TcVectors {
             + (textRestored > 0 ? "\"text_restored\":" + textRestored + "," : "")
             + (bal.length() > 0 ? "\"stack_balance\":[" + bal + "]," : "") + (reach != null ? reach + "," : "")
             + (unhit.length() > 0 ? "\"blocks_unhit\":[" + unhit + "]," : "")
-            + (bound != null ? bound + "," : "")
+            + (bound != null ? bound + "," : "") + (once != null ? once + "," : "")
             + (dirs != null && why == null ? dirs.summary(dirsDev, dirsAll) : "") + (why == null ? align.note() : ""),
             hints.size(), sites, inv, ex);
         Files.write(harness.resolve("oracle_summary.json"), summary.getBytes("UTF-8"));

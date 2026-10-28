@@ -2,7 +2,8 @@
 time-bounded and a step that times out is killed with its whole process tree.
 
     python port/tools/build.py [--game DIR] [--engine | --no-gen] [--jobs N] [--checked] [--run [--seconds N]]
-                               [--regress] [--build-dir NAME] [--progress]
+                               [--regress] [--build-dir NAME] [--progress] [--tx DIR [--tx-mode mix|only]]
+                               [--tx-ovl ROOT]
                                [-- PORT ARGS...]   (passed to port.exe, e.g. -- --fixed-clock 1)
 
 --game: the folder with game.json (default: the current folder). Writes into <game>/build: gen (gen_port.py),
@@ -13,6 +14,8 @@ x86 or x86chk (CMake + Ninja, the kit's CMakeLists.txt) and, with --run, run/por
 the game's Start Game.bat and the launcher): build/NAME (CMake), build/NAME_gen, build/NAME.log, build/NAME_run.
 Two builds in one folder at once break Ninja's log ("Permission denied").
 --jobs: compile jobs (default: the machine's logical processors).
+--tx DIR, --tx-mode: translator C for this build (gen_port.py --tx; default: game.json "translator_c"); --tx-ovl
+ROOT: the overlays' (gen_overlays.py --tx; default: overlays.json "translator_c"), --tx-mode for them too.
 --progress: the launcher's view (a game's Start Game.bat): one line counting the compiles as they finish, rewritten
 in place, warnings and errors in full as they come, "Game is up to date." when nothing changed; the generator's and
 the compiler's full output go to the build log only.
@@ -194,6 +197,10 @@ def main():
     ap.add_argument("--regress", action="store_true", help="then run the game's tests/*.script (tools/regress.py)")
     ap.add_argument("--build-dir", default=None, help="a build of its own in build/NAME (agents: not build/x86)")
     ap.add_argument("--progress", action="store_true", help="the launcher's view: a live count")
+    ap.add_argument("--tx", default=None, help="translator C: tools/dp_judge.py --sp-input's --out folder")
+    ap.add_argument("--tx-mode", default=None, choices=("mix", "only"))
+    ap.add_argument("--tx-ovl", default=None, help="the overlays' translator C: a folder of judged folders by "
+                    "workspace name (gen_overlays.py --tx; default: overlays.json translator_c)")
     ap.add_argument("port_args", nargs=argparse.REMAINDER, help="after --: arguments for port.exe")
     a = ap.parse_args()
     cfg = game_config.load(game_config.find_game(a.game))
@@ -209,7 +216,8 @@ def main():
         if view:
             view.status("Checking the game's files...")
         rc, gen_out = run([sys.executable, str(TOOLS / "gen_port.py"), "--game", str(game), "--out", str(gen)]
-                          + (["--engine"] if a.engine else []), 600)
+                          + (["--engine"] if a.engine else []) + (["--tx", a.tx] if a.tx else [])
+                          + (["--tx-mode", a.tx_mode] if a.tx_mode else []), 600)
         if view:
             view.clear()
         if not view or rc:
@@ -218,7 +226,8 @@ def main():
             raise SystemExit(f"gen_port.py failed ({rc})")
         if (game / "overlays.json").is_file():  # the overlays, compiled side by side (gen_overlays.py)
             rc, out = run([sys.executable, str(TOOLS / "gen_overlays.py"), "--game", str(game), "--out",
-                           str(gen / "overlays")], 1200)
+                           str(gen / "overlays")] + (["--tx", a.tx_ovl] if a.tx_ovl else [])
+                          + (["--tx-mode", a.tx_mode] if a.tx_mode else []), 1200)
             if not view or rc:
                 print(out, end="")
             if rc:

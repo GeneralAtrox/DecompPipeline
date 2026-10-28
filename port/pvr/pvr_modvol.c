@@ -7,11 +7,15 @@
  *         ones earlier volumes enclosed, and the parity is cleared for the next volume.
  * Last, the pixels with 0x80 and 0x01 are scaled by the cheap shadow intensity (FPU_SHAD_SCALE, kmSetCheapShadowMode)
  * and the volume bits are cleared. Exclusion volumes (instruction 2) and the two-parameter mode are to-dos. The same
- * scheme as Flycast's renderers (reference only). */
+ * scheme as Flycast's renderers (reference only).
+ * Translucent modifier volumes act on the autosort pass's fragments instead (pvr_oit.hlsl ps_volume, ps_merge): the
+ * same parity and inside bits, kept per fragment, between the gather and the resolve. */
 #include <string.h>
 #include "pvr_int.h"
 #include "platform.h"
 #include "pvr_shadow.h"
+#include "pvr_tvolume.h"
+#include "pvr_tmerge.h"
 
 #define ISP_VOLUME_SHIFT 29
 #define VOLUME_INCLUSION 1u
@@ -27,6 +31,9 @@ static ID3D11DepthStencilState *g_mv[MV_STATES];
 static ID3D11BlendState *g_no_color, *g_shade;
 static ID3D11PixelShader *g_shadow;
 static int g_ready, g_broken;
+static ID3D11PixelShader *g_tvolume, *g_tmerge;
+static ID3D11DepthStencilState *g_tnone; /* no depth or stencil: the fragments' own depths decide */
+static int g_tready, g_tbroken;
 
 static int stencil_state(u32 i, int depth, u32 read, u32 write, D3D11_COMPARISON_FUNC func, D3D11_STENCIL_OP pass,
                          D3D11_STENCIL_OP fail)
@@ -88,15 +95,20 @@ static int ready(void)
     return g_ready;
 }
 
-static void draw_batches(const PvrScene *s, u32 first, u32 end, u32 state, UINT ref)
+static void draw_range(const PvrScene *s, u32 first, u32 end)
 {
-    ID3D11DeviceContext_OMSetDepthStencilState(g_gfx.ctx, g_mv[state], ref);
     for (u32 i = first; i < end; i++) {
         const PvrBatch *b = &s->batch[i];
         if (!b->count) continue;
         pvr_scissor(b);
         ID3D11DeviceContext_Draw(g_gfx.ctx, b->count, b->first);
     }
+}
+
+static void draw_batches(const PvrScene *s, u32 first, u32 end, u32 state, UINT ref)
+{
+    ID3D11DeviceContext_OMSetDepthStencilState(g_gfx.ctx, g_mv[state], ref);
+    draw_range(s, first, end);
 }
 
 static f32 min3(f32 a, f32 b, f32 c) { return a < b ? (a < c ? a : c) : (b < c ? b : c); }
@@ -166,4 +178,48 @@ void pvr_modvol_draw(const PvrScene *s, u32 pass, ID3D11Buffer *frame_consts)
     ID3D11DeviceContext_OMSetBlendState(cx, g_shade, NULL, 0xffffffffu);
     ID3D11DeviceContext_OMSetDepthStencilState(cx, g_mv[MV_SHADE], STENCIL_SHADOW | STENCIL_INSIDE);
     ID3D11DeviceContext_Draw(cx, 3, 0);
+}
+
+static int trans_ready(void)
+{
+    ID3D11Device *dev = g_gfx.dev;
+    D3D11_DEPTH_STENCIL_DESC d;
+    if (g_tready || g_tbroken) return g_tready;
+    memset(&d, 0, sizeof d);
+    d.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+    d.DepthFunc = D3D11_COMPARISON_ALWAYS;
+    g_tready = SUCCEEDED(ID3D11Device_CreateDepthStencilState(dev, &d, &g_tnone)) &&
+               SUCCEEDED(ID3D11Device_CreatePixelShader(dev, g_pvr_tvolume, sizeof g_pvr_tvolume, NULL, &g_tvolume)) &&
+               SUCCEEDED(ID3D11Device_CreatePixelShader(dev, g_pvr_tmerge, sizeof g_pvr_tmerge, NULL, &g_tmerge));
+    if (!g_tready) {
+        g_tbroken = 1;
+        port_log("pvr: no translucent modifier volume resources; they are not applied\n");
+    }
+    return g_tready;
+}
+
+void pvr_modvol_trans_draw(const PvrScene *s, u32 pass)
+{
+    ID3D11DeviceContext *cx = g_gfx.ctx;
+    const u32 *r = s->range[pass][PVRX_LIST_TRANS_MOD];
+    u32 base = r[0];
+    if (g_pvr.shadow < 0) {
+        pvr_todo("pvr: translucent modifier volumes with two-parameter polygons (cheap shadow off)");
+        return;
+    }
+    if (!trans_ready()) return;
+    pvr_seen("translucent modifier volumes: per fragment, cheap shadow");
+    ID3D11DeviceContext_OMSetDepthStencilState(cx, g_tnone, 0);
+    for (u32 i = r[0]; i < r[1]; i++) {
+        u32 mode = (s->batch[i].isp >> ISP_VOLUME_SHIFT) & 7u;
+        ID3D11DeviceContext_PSSetShader(cx, g_tvolume, NULL, 0);
+        draw_range(s, i, i + 1u);
+        if (mode != VOLUME_INCLUSION && mode != VOLUME_EXCLUSION) continue;
+        if (mode == VOLUME_EXCLUSION) /* not applied: its faces again flip each parity back */
+            pvr_todo("pvr: exclusion modifier volumes");
+        else
+            ID3D11DeviceContext_PSSetShader(cx, g_tmerge, NULL, 0);
+        draw_range(s, base, i + 1u);
+        base = i + 1u;
+    }
 }

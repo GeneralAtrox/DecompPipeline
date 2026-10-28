@@ -7,6 +7,7 @@
 #include <string.h>
 #include <windows.h>
 #include "port.h"
+#include "platform.h"
 #include "port_dispatch.h"
 #include "overlay.h"
 
@@ -36,6 +37,21 @@ const PortDispatch *port_dispatch_find(u32 addr)
         return NULL;
     }
     return NULL;
+}
+
+PortCodeFn port_code_function(u32 addr)
+{
+    const PortDispatch *d;
+    if (!guest_is_ram(addr)) {
+        /* host code in the P0 form a game stores code addresses in (addr & 0x1fffffff, the 0x0c.. mirror of its
+         * 0x8c.. code): the image's fixed base (CMakeLists /BASE, above 0x20000000) gives the bits the mask dropped */
+        uintptr_t full = (uintptr_t)addr | (g_mod_lo & ~(uintptr_t)0x1fffffffu);
+        if (addr < 0x20000000u && full >= g_mod_lo && full < g_mod_hi) return (PortCodeFn)full;
+        return (PortCodeFn)(uintptr_t)addr;
+    }
+    d = overlay_find(addr);
+    if (!d) d = port_dispatch_find(guest_fold(addr));
+    return d ? (PortCodeFn)d->fn : NULL;
 }
 
 int dispatch_count(void)
@@ -101,6 +117,7 @@ static void fatal(EXCEPTION_POINTERS *ep)
     const u32 *sp = (const u32 *)(uintptr_t)c->Esp;
     for (int i = 0, n = 0; i < 512 && n < 12; i++)
         if (sp[i] >= g_mod_lo && sp[i] < g_mod_hi) log_host("stack return?", sp[i]), n++;
+    diag_fault_chain(c->Esp);
     dispatch_report();
     port_stub_report();
     port_log_flush();
@@ -212,6 +229,10 @@ static LONG CALLBACK handler(EXCEPTION_POINTERS *ep)
     if (code == EXCEPTION_ACCESS_VIOLATION && er->NumberParameters >= 2 && er->ExceptionInformation[1] == c->Eip) {
         u32 target = (u32)c->Eip;
         if (guest_is_ram(target)) return call_guest(c);
+        if ((uintptr_t)port_code_function(target) != (uintptr_t)target) { /* host code in its P0 form */
+            c->Eip = (DWORD)(uintptr_t)port_code_function(target);
+            return EXCEPTION_CONTINUE_EXECUTION;
+        }
         port_log("CALL %08x: not guest code\n", target);
         fatal(ep);
     }

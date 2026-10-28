@@ -28,6 +28,8 @@ static int parse_size(const char *v, u32 *w, u32 *h)
 
 int gfx_option(const char *arg, const char *value)
 {
+    int n = gfx_vmu_option(arg, value);
+    if (n) return n;
     if (!strcmp(arg, "--headless")) return g_gfx.headless = 1;
     if (!strcmp(arg, "--warp")) return g_gfx.warp = 1;
     if (!strcmp(arg, "--vsync") && value) {

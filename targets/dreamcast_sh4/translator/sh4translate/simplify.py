@@ -23,7 +23,7 @@ VAR = r"(?:r1[0-5]|r[0-9]|fr1[0-5]|fr[0-9]|fpul|t|mach|macl|pr)"
 VARS = re.compile(rf"\b{VAR}\b")
 VARSET = {f"r{k}" for k in range(16)} | {f"fr{k}" for k in range(16)} | {"fpul", "t", "mach", "macl", "pr"}
 STATE = {f"r{k}" for k in range(8, 15)}
-SIDE = re.compile(r"\b(?:rd\w*|wr\w*|tx_call|body|tc_\w+|sh4_\w+|sx8|sx16|CV)\s*\(|@|\bgoto\b|\breturn\b|\bswitch\b|"
+SIDE = re.compile(r"\b(?:rd\w*|wr\w*|sq_\w+|tx_call|body|tc_\w+|sh4_\w+|sx8|sx16|CV)\s*\(|@|\bgoto\b|\breturn\b|\bswitch\b|"
                   r"\bif\b")
 PLAIN = re.compile(rf"^({VAR}) = (.*);$")
 COMPOUND = re.compile(rf"^({VAR}) (\+|-|&|\||\^|<<|>>)= (.*);$")
@@ -33,7 +33,7 @@ SHIFT = re.compile(rf"^({VAR}) (<<|>>)= (\d+);$")
 LIT = r"(?:0x[0-9a-f]+u|\d+u)"
 FOLD = re.compile(rf"(^|[(,=]\s*)({LIT}) (\+|-|&|\||\^|<<|>>) ({LIT})(?=\s*(?:[),;]|$))")
 CALLS = ("bsr", "bsrf", "jsr")
-BRANCHES = ("bt", "bf", "bt/s", "bf/s", "bra", "rts", "bsr", "bsrf", "jsr", "braf", "jmp")
+BRANCHES = ("bt", "bf", "bt/s", "bf/s", "bra", "rts", "bsr", "bsrf", "jsr", "braf", "jmp", "bsrl")
 
 
 def lit(v):
@@ -314,7 +314,7 @@ class Simplifier:
         ft = self.ft
         sig = ft.sig
         if sig.ret == "void":
-            ret = set()
+            ret = {"r0"} if ft.sp_input else set()     # the port form's body hands back r0 (translate.render)
         elif sig.ret_reg:
             ret = {sig.ret_reg}
         elif sig.ret == "u64":

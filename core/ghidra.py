@@ -6,7 +6,7 @@ import contextlib
 import threading
 
 from . import (callee_drift, compare, fsca, ghidra_broker, ghidra_server, hw_ops, oracle_stamp, paths, prepare_timing,
-               sig_override, stack_uninit, strict_judge, target_hooks, toolcfg)
+               sig_override, stack_uninit, strict_judge, sz_entry, target_hooks, toolcfg)
 from .packet_split import MAX_LINES, packet_files, split_packet, strip_status  # noqa: F401 (re-exported)
 
 # Ghidra locks a project while any process has it open, even with -readOnly. So parallel preparation uses
@@ -37,7 +37,7 @@ def _headless(cfg, args, log_name, on_line=None, stop_flag=None, project=None, t
     cmd = [exe, str(project or paths.GHIDRA_PROJECT), paths.GHIDRA_NAME] + args
     # a machine-wide token, unless held (slot); on a served slot (no token) in the slot's prio, e.g. a staged prepare
     with ghidra_broker.ensure(cfg, ghidra_broker.current_prio(), log_name, stop_flag):
-        rc, out, reason = paths.run_bounded(cmd, timeout or cfg["ghidra_timeout_s"], env=_env(cfg), on_line=on_line, stop_flag=stop_flag)
+        rc, out, reason = paths.run_bounded(cmd, timeout or ghidra_server.kill_timeout(cfg), env=_env(cfg), on_line=on_line, stop_flag=stop_flag)
     if clock:  # core/prepare_timing: the process has exited
         clock.mark("exit")
     paths.STATE.mkdir(parents=True, exist_ok=True)
@@ -476,12 +476,40 @@ def prepare(cfg, addr, on_line=None, stop_flag=None, slot_index=0, staging=None,
     return res
 
 
+def _swap_in(new, pairs):
+    """Each (new folder, old folder) pair: the new one takes the old one's place. The old ones move aside into
+    new/old first and come back if a rename fails (a file held open), so the function keeps one whole set."""
+    moved = []
+    try:
+        for _, d in pairs:
+            if d.exists():
+                o = new / "old" / d.parent.name
+                o.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(d, o)
+                moved.append((d, o))
+        for n, d in pairs:
+            d.parent.mkdir(parents=True, exist_ok=True)
+            os.replace(n, d)
+    except OSError:
+        for n, d in pairs:
+            if d.exists() and not n.exists():  # already moved in: back out
+                os.replace(d, n)
+        for d, o in moved:
+            os.replace(o, d)
+        raise
+
+
 def _prepare(cfg, addr, on_line, stop_flag, slot_index, staging, clock):
     packet = paths.PACKETS / addr if not staging else staging["packet"]
     harness = paths.HARNESS / addr if not staging else staging["harness"]
     hints = paths.HINTS / f"{addr}.txt" if not staging else staging.get("hints")
     was = callee_drift.own_signature(paths.read_json(harness / "meta.json"))
-    for d in (packet, harness):
+    # Ghidra writes a new packet and harness under state/prepare_new/, and they take the old ones' place only once it
+    # succeeded: a prepare that fails, times out or is killed keeps the function's old harness and packet (a timed-out
+    # TC prepare once left 14 harnesses holding only meta.json). A staging trial writes in place.
+    new = None if staging else paths.STATE / "prepare_new" / f"{addr}.slot{slot_index}"
+    out_packet, out_harness = (new / "packet", new / "harness") if new else (packet, harness)
+    for d in [new] if new else [packet, harness]:
         shutil.rmtree(d, ignore_errors=True)
     inflight = paths.MARKS.with_suffix(".inflight")
     if slot_index == 0 and not staging:
@@ -497,27 +525,37 @@ def _prepare(cfg, addr, on_line, stop_flag, slot_index, staging, clock):
     facts, ndev, hints = write_facts(cfg), dev_vectors(cfg, addr), hints if hints and hints.exists() else None
     if cfg.get("fsca_table"):  # TcPrepare refuses any other table; a stale one failed every prepare (c346302)
         paths.fsca_table()  # (the PowerPC targets' TcPrepare never reads it: a 1 MB read and hash a prepare saved)
-    tc_args = [addr, str(packet), str(harness), str(ndev), str(cfg["vectors_hidden"]), str(seed), str(paths.FSCA_TABLE),
-               marks, str(hints) if hints else "-", facts, compare.spin_arg(cfg, addr)]
+    tc_args = [addr, str(out_packet), str(out_harness), str(ndev), str(cfg["vectors_hidden"]), str(seed),
+               str(paths.FSCA_TABLE), marks, str(hints) if hints else "-", facts, compare.spin_arg(cfg, addr)]
     tc_args.append(hw_ops.arg(cfg, addr))  # script arg 11: the hardware ops project.json "hw_ops" lists (TcHw)
+    if compare.run_flag(cfg, addr):  # script arg 12: the run flag project.json "run_flags" lists (TcCalls)
+        tc_args.append(compare.run_flag_arg(cfg, addr))
+    if sz_entry.arg(cfg, paths, addr) != "-":  # script arg 13: FPSCR.SZ at entry and after its calls (TcFpscr.Sz)
+        tc_args += ["-"] * (13 - len(tc_args)) + [sz_entry.arg(cfg, paths, addr)]
     log_name = f"ghidra_prepare{'_staging' if staging else ''}_slot{slot_index}.log"
-    if ghidra_server.serves(cfg, slot_index, staging):  # the slot's long-lived Ghidra (core/ghidra_server)
-        out = ghidra_server.run(cfg, slot_index, project, scripts, _stamp(), tc_args, _env(cfg), on_line, stop_flag)
-        clock.mark("exit")
-        (paths.STATE / log_name).write_text(out, encoding="utf-8")
-    else:
-        out = _headless(cfg, [
-            "-process", paths.config()["binary_path"].name, "-noanalysis", "-scriptPath", str(scripts),
-            *([] if slot_index == 0 and not staging else ["-readOnly"]), "-postScript", "TcPrepare.java", *tc_args,
-        ], log_name, on_line=on_line, stop_flag=stop_flag, project=project, clock=clock)
-    if marks != "-":
-        inflight.unlink()  # only reached when Ghidra succeeded; otherwise they are retried next time
-    strip_status(packet)  # the status plate is the Ghidra project's, not the function's (core/packet_split)
-    split_packet(packet)
-    clock.mark("split_packet")
-    meta = paths.read_json(harness / "meta.json")
-    if meta is None:
-        raise RuntimeError("TcPrepare produced no meta.json:\n" + "\n".join(out.splitlines()[-25:]))
+    try:
+        if ghidra_server.serves(cfg, slot_index, staging):  # the slot's long-lived Ghidra (core/ghidra_server)
+            out = ghidra_server.run(cfg, slot_index, project, scripts, _stamp(), tc_args, _env(cfg), on_line, stop_flag)
+            clock.mark("exit")
+            (paths.STATE / log_name).write_text(out, encoding="utf-8")
+        else:
+            out = _headless(cfg, [
+                "-process", paths.config()["binary_path"].name, "-noanalysis", "-scriptPath", str(scripts),
+                *([] if slot_index == 0 and not staging else ["-readOnly"]), "-postScript", "TcPrepare.java", *tc_args,
+            ], log_name, on_line=on_line, stop_flag=stop_flag, project=project, clock=clock)
+        if marks != "-":
+            inflight.unlink()  # only reached when Ghidra succeeded; otherwise they are retried next time
+        strip_status(out_packet)  # the status plate is the Ghidra project's, not the function's (core/packet_split)
+        split_packet(out_packet)
+        clock.mark("split_packet")
+        meta = paths.read_json(out_harness / "meta.json")
+        if meta is None:
+            raise RuntimeError("TcPrepare produced no meta.json:\n" + "\n".join(out.splitlines()[-25:]))
+        if new:
+            _swap_in(new, [(out_packet, packet), (out_harness, harness)])
+    finally:
+        if new:
+            shutil.rmtree(new, ignore_errors=True)
     # callee records take the callees' own harness signatures (Ghidra's view of a callee can be stale: callee_drift)
     callee_drift.adopt(meta, callee_drift.Signatures((staging or {}).get("callees") or paths.HARNESS))
     clock.mark("adopt")

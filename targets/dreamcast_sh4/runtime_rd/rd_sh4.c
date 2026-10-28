@@ -14,6 +14,7 @@ static u32 g_fr[16]; /* fr0..fr15 (fr12..fr15: line H; all of them: line Q) */
 static u32 g_mode;   /* FPSCR.FR | SZ | PR in their FPSCR bit positions */
 static int g_fpu;    /* line Q given: the whole FPU is state */
 static u32 g_gs[7];  /* r8..r14: runtime state (line G), as in tc_rt.c */
+static u32 g_ro[4], g_ro_mask; /* r4..r7 as the last call left them, and line O's compared ones (TcOut, tc_rt.c) */
 static u32 (*g_fsca)[65536][2]; /* fsca_table.bin: {sin, cos} bits per angle, round to nearest, then toward zero */
 
 static u32 f2u(f32 f) { u32 u; memcpy(&u, &f, 4); return u; }
@@ -88,26 +89,30 @@ void sh4_fsca(u32 fpul, f32 *s, f32 *c)
     *c = u2f(g_fsca[rc != 0u][i][1]);
 }
 
-static __m128 mul(f32 a, f32 b) { return _mm_mul_ss(_mm_set_ss(a), _mm_set_ss(b)); }
+/* fipr FVm,FVn and ftrv XMTRX,FVn: one inner product rounded once, as the reference emulator (Flycast: sh4_fpu.cpp,
+ * shil_canonical.h innerProduct) computes the SH-4's (the software manual's FIPR and FTRV: one hardware inner product,
+ * no rounded intermediate values): each product in double (exact), the four summed in element order 0..3 in double,
+ * the sum converted once to single, all in MXCSR's mode (RC from FPSCR.RM, DAZ|FTZ from FPSCR.DN), as the oracle's
+ * TcRound.fipr. SSE2 operations, never the x87 or a fused multiply-add. */
+static __m128d widen(f32 x) { return _mm_cvtss_sd(_mm_setzero_pd(), _mm_set_ss(x)); }
+
+static __m128d dmul(f32 a, f32 b) { return _mm_mul_sd(widen(a), widen(b)); }
 
 f32 sh4_fipr(const f32 a[4], const f32 b[4])
 {
-    __m128 t = mul(a[0], b[0]);
-    t = _mm_add_ss(t, mul(a[1], b[1]));
-    t = _mm_add_ss(t, mul(a[2], b[2]));
-    t = _mm_add_ss(t, mul(a[3], b[3]));
-    return _mm_cvtss_f32(t);
+    __m128d t = dmul(a[0], b[0]);
+    t = _mm_add_sd(t, dmul(a[1], b[1]));
+    t = _mm_add_sd(t, dmul(a[2], b[2]));
+    t = _mm_add_sd(t, dmul(a[3], b[3]));
+    return _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(), t));
 }
 
 void sh4_ftrv(f32 v[4])
 {
     f32 out[4];
-    for (int row = 0; row < 4; row++) {
-        __m128 t = mul(u2f(g_xf[row]), v[0]);
-        t = _mm_add_ss(t, mul(u2f(g_xf[row + 4]), v[1]));
-        t = _mm_add_ss(t, mul(u2f(g_xf[row + 8]), v[2]));
-        t = _mm_add_ss(t, mul(u2f(g_xf[row + 12]), v[3]));
-        out[row] = _mm_cvtss_f32(t);
+    for (int row = 0; row < 4; row++) { /* XMTRX is column-major: row r is xf r, r+4, r+8, r+12 */
+        f32 m[4] = {u2f(g_xf[row]), u2f(g_xf[row + 4]), u2f(g_xf[row + 8]), u2f(g_xf[row + 12])};
+        out[row] = sh4_fipr(m, v);
     }
     for (int i = 0; i < 4; i++) v[i] = out[i];
 }
@@ -171,11 +176,12 @@ void sh4_fipr_fv(int m, int n)
 
 /* r8..r14 as runtime state (index 8..14): entry values from line G, exit values compared (line GH), and a callee
  * reading them is compared on them at the call (call record fields 29..35). As tc_rt.c. */
-u32 sh4_r(int i) { return (i >= 8 && i < 15) ? g_gs[i - 8] : 0; }
+u32 sh4_r(int i) { return (i >= 8 && i < 15) ? g_gs[i - 8] : (i >= 4 && i < 8) ? g_ro[i - 4] : 0; }
 
 void sh4_set_r(int i, u32 v)
 {
     if (i >= 8 && i < 15) g_gs[i - 8] = v;
+    if (i >= 4 && i < 8) g_ro[i - 4] = v;
 }
 
 /* SR (TcSr), as tc_rt.c. */
@@ -300,6 +306,7 @@ void rd_sh4_reset(void)
     memset(g_xf, 0, sizeof g_xf);
     memset(g_fr, 0, sizeof g_fr);
     memset(g_gs, 0, sizeof g_gs);
+    memset(g_ro, 0, sizeof g_ro);
     memset(g_draws, 0, sizeof g_draws);
     g_sr = 0;
     g_has_sr = 0;
@@ -319,7 +326,7 @@ void tcrt_set_gs(const u32 bits[7]) { memcpy(g_gs, bits, sizeof g_gs); }
 
 void tcrt_add_live(u32 target, u32 reg, u32 n, const u32 d[4])
 {
-    if (g_nlive >= RD_MAX_LIVE || reg < 8 || reg > 14 || n > 4) return;
+    if (g_nlive >= RD_MAX_LIVE || reg < 4 || reg > 14 || n > 4) return;
     g_live[g_nlive].target = tcrt_fold(target);
     g_live[g_nlive].reg = reg;
     g_live[g_nlive].n = n;
@@ -329,13 +336,24 @@ void tcrt_add_live(u32 target, u32 reg, u32 n, const u32 d[4])
 
 void tcrt_set_draws(const u32 draws[16]) { memcpy(g_draws, draws, sizeof g_draws); }
 
-void rd_sh4_live(u32 target, u32 k)
+void tcrt_set_ro(const u32 r4_7[4]) { memcpy(g_ro, r4_7, sizeof g_ro); }
+
+void tcrt_set_ro_mask(u32 mask) { g_ro_mask = mask; }
+
+void tcrt_report_ro(FILE *out)
+{
+    if (g_ro_mask && !tcrt_halted) fprintf(out, "RO %08x %08x %08x %08x\n", g_ro[0], g_ro[1], g_ro[2], g_ro[3]);
+}
+
+void rd_sh4_live(u32 target, u32 k, const u32 r4_7[4])
 {
     u32 draw = g_draws[k % 16];
+    memcpy(g_ro, r4_7, sizeof g_ro); /* the callee got them; a K line moves its output (TcOut) */
     for (u32 i = 0; i < g_nlive; i++) {
         if (g_live[i].target != target) continue;
         u32 n = g_live[i].n;
-        g_gs[g_live[i].reg - 8] += n == 1 ? g_live[i].d[0] : n ? g_live[i].d[draw % n] : 0x20u * (1u + draw % 3u);
+        u32 *rn = g_live[i].reg >= 8 ? &g_gs[g_live[i].reg - 8] : &g_ro[g_live[i].reg - 4];
+        *rn += n == 1 ? g_live[i].d[0] : n ? g_live[i].d[draw % n] : 0x20u * (1u + draw % 3u);
     }
 }
 

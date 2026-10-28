@@ -13,7 +13,9 @@
  *            [--input START@300,A@600+30,..]   (scripted presses at vertical blanks, gfx/gfx_input.c)
  *            [--save-dir DIR] [--vmu A1,B1,..|none]   (save files, default data\saves beside port.exe and none
  *                                  kept by a --fixed-clock run; the memory card sockets, sdk/bu_vmu.c, default A1)
+ *            [--vmu-screen off|side|over]   (the cards' LCDs beside or over the picture, gfx/gfx_vmu.c; default off)
  *            [--settings FILE|none]   (the saved options, host/host_settings.cpp; default data\settings.txt)
+ *            [--flash FILE]       (the console's 128 KB flash ROM image, sdk/fm_mng.c; default a stock console's)
  *            [--audio on|off] [--audio-dump FILE.wav]   (the sound device, off by default in --headless and
  *                                  --fixed-clock runs; the mix as a WAV file, gfx/gfx_audio.c)
  *            [--present tick|interp] [--interp-frames N] [--interp-verify 1] [--fps N]   (in-between frames,
@@ -26,6 +28,7 @@
  *                                  (the lockstep check, lockstep.c)
  *            [--hw-out FILE] [--hw-tex FILE] [--hw-strip L:S:V@F] [--hw-watch-ram A@F] [--hw-watch-vram A:N@F]
  *                                  (the hardware check, with --lockstep; hw_check.c)
+ *            [--diag-skip FILE] [--diag-cover FILE]   (bring-up sweeps, tools/bu_sweep.py; diag.c)
  *            [--ssaa 2|4] [--aniso N]   (look-review prototypes, off by default: supersampling, anisotropic
  *                                  filtering; runtime/gfx/gfx_present.c, pvr/pvr_states.c)
  */
@@ -94,8 +97,10 @@ void port_exit(const char *why, int code)
     if (InterlockedExchange(&g_exiting, 1)) return;
     port_log("EXIT: %s after %u vertical blanks\n", why, port_vblank_count());
     dispatch_report();
+    guest_p4_report();
     port_stub_report();
     port_extra_report();
+    pvr_oit_report();
     lockstep_close();
     port_log_flush();
     ExitProcess((UINT)code);
@@ -193,7 +198,7 @@ int port_main(int argc, char **argv)
         else if ((used = input_option(a, v)) == 0 && (used = audio_option(a, v)) == 0 && (used = gfx_option(a, v)) == 0
                  && (used = extra_option(a, v)) == 0 && (used = session_option(a, v)) == 0 &&
                  (used = scene_dump_option(a, v)) == 0 &&
-                 (used = lockstep_option(a, v)) == 0)
+                 (used = lockstep_option(a, v)) == 0 && (used = diag_option(a, v)) == 0)
             used = 1; /* unknown: skipped */
     }
     port_log_open(log);
@@ -216,6 +221,7 @@ int port_main(int argc, char **argv)
         return 1;
     }
     port_log("dispatch: %d guest functions\n", dispatch_count());
+    diag_install();
     int boot = load_boot(image, dump);
     if (boot) return boot;
     DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &g_game_thread, 0, FALSE,

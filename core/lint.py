@@ -165,3 +165,11 @@ def _matching_brace(code, start):
 def norm_sig(s):
     s = re.sub(r"\s+", " ", s.strip())
     return re.sub(r"\s*([(),*])\s*", r"\1", s)
+
+
+def fused_lint(cfg, meta, src):
+    """R9/fmac (rule R9: sh4_fmac for fmac, never a*b + c): the function's code has the target's fused multiply-add
+    and work.c never calls the one-rounding function (core/fused). check.run_check applies it; the checks that ask
+    whether a harness or a mutant is judged right (refine.harness_stale, the watcher gate, core/mutation) do not."""
+    from . import fused
+    return fused.lint(cfg, meta, src, fused.RAW)

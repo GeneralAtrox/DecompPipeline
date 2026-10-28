@@ -39,7 +39,8 @@ def main():
     a = ap.parse_args()
     sys.path[:0] = [a.repo, a.tool]
     from core import ret_reg
-    from sh4translate.translate import Image, Signature, TargetFacts, TranslateError, spin_ranges, translate_function
+    from sh4translate.translate import (Image, Signature, TargetFacts, TranslateError, spin_ranges, sz_from_caller,
+                                        translate_function, written_code)
     state = pathlib.Path(a.bodies).parent if a.bodies else None
     proj_f = state.parent / "project.json" if state else None
     project = json.loads(proj_f.read_text(encoding="utf-8")) if proj_f and proj_f.is_file() else {}
@@ -52,7 +53,8 @@ def main():
     body = [(int(lo, 16), int(hi, 16)) for lo, hi in meta.get("blocks") or []]
     try:
         src = translate_function(img, addr, Signature.from_meta(meta), facts, body or None, entries=entries,
-                                 ranges=ranges.get(addr), spin=spin_ranges(project).get(addr))
+                                 ranges=ranges.get(addr), spin=spin_ranges(project).get(addr),
+                                 written=written_code(project), sz_from_caller=addr in sz_from_caller(project))
     except TranslateError as e:
         print(f"sh4-translate: {e}", file=sys.stderr)
         return NO_TRANSLATION

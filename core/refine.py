@@ -152,7 +152,8 @@ def harness_stale(cfg, addr, on_pass=None, memo=None):
     key = memo.key_of(addr, src) if memo is not None else None  # before the judge reads its inputs
     if key is not None and memo.passed(addr, key) is not None:
         return None
-    res = check.run_check(cfg, addr, str(src), build_dir=paths.BUILD / addr / "rd_rawcheck")
+    res = check.run_check(cfg, addr, str(src), build_dir=paths.BUILD / addr / "rd_rawcheck",
+                          fused=False)  # lint R9/fmac says the C rounds twice, not that the harness is stale
     infra.check(res.get("build"), res.get("run_error"), what="raw check")  # a refused file is no stale harness
     if res["verdict"] == "PASS":
         if on_pass:

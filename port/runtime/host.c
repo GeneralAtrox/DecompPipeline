@@ -18,7 +18,7 @@
 #define VIRT_PER_VBLANK (VIRT_HZ / PORT_VBLANK_HZ)
 #define VIRT_PER_LOOK (VIRT_HZ / 1000000u)
 static int g_fixed_clock;
-static u64 g_virt;
+static u64 g_virt, g_vblank_virt; /* the virtual time, and the last vertical blank's in its units */
 static u32 g_fast_until;
 static LARGE_INTEGER g_base, g_freq;
 
@@ -26,6 +26,24 @@ void host_set_fixed_clock(int on) { g_fixed_clock = on; }
 int host_fixed_clock(void) { return g_fixed_clock; }
 void host_set_fast_until(u32 vblank) { g_fast_until = vblank; }
 u32 host_fast_until(void) { return g_fast_until; }
+
+/* A stretch the player does not see (a game's hidden screens): the virtual clock from the time reached, so its frames
+ * run without waiting, then real time again from where the virtual time got to. Nothing changes under
+ * --fixed-clock. */
+static int g_fast_stretch;
+void host_fast_begin(void)
+{
+    if (g_fixed_clock) return;
+    g_virt = host_ticks(VIRT_HZ);
+    g_fixed_clock = g_fast_stretch = 1;
+}
+
+void host_fast_end(void)
+{
+    if (!g_fast_stretch) return;
+    g_fixed_clock = g_fast_stretch = 0;
+    QueryPerformanceCounter(&g_base);
+}
 
 u64 host_ticks(u32 hz)
 {
@@ -45,7 +63,9 @@ u64 host_ticks(u32 hz)
 static void clock_time(HostTime *t)
 {
     SYSTEMTIME s;
-    if (g_fixed_clock || g_fast_until) { /* a fixed date, Saturday 2000-01-01 12:00:00, plus the virtual time */
+    /* A fixed date, Saturday 2000-01-01 12:00:00, plus the virtual time. A hidden fast stretch keeps the real date:
+     * a file the game saves in it is stamped as on the console. */
+    if ((g_fixed_clock && !g_fast_stretch) || g_fast_until) {
         u32 secs = g_fixed_clock ? (u32)(g_virt / VIRT_HZ) : (u32)host_ticks(1u);
         t->year = 2000;
         t->month = 1;
@@ -74,7 +94,7 @@ void host_local_time(HostTime *t)
 
 void host_sleep_ms(u32 ms) { Sleep(ms); }
 
-#define VBLANK_TASKS 4
+#define VBLANK_TASKS 8
 static u32 g_vblanks;
 static PortVblankFn g_vblank_fn;
 static void *g_vblank_arg;
@@ -91,7 +111,7 @@ void port_add_vblank_task(PortVblankFn fn, void *arg)
             g_vblank_tasks[i].arg = arg;
             return;
         }
-    port_exit("host: more than 4 vertical blank tasks", 1);
+    port_exit("host: more than 8 vertical blank tasks", 1);
 }
 
 void port_set_vblank_hook(PortVblankFn fn, void *arg)
@@ -138,11 +158,12 @@ static void wait_vblank(int extra)
     gfx_pump();
     if (g_fixed_clock) {
         if (extra) port_extra_idle(0);
-        g_virt = (g_virt / VIRT_PER_VBLANK + 1u) * VIRT_PER_VBLANK;
+        g_virt = g_vblank_virt = (g_virt / VIRT_PER_VBLANK + 1u) * VIRT_PER_VBLANK;
     } else {
         u64 next = host_ticks(PORT_VBLANK_HZ) + 1u, due_us = next * 1000000u / PORT_VBLANK_HZ;
         while (host_ticks(PORT_VBLANK_HZ) < next)
             if (!extra || !port_extra_idle(due_us)) nap_until(due_us, extra);
+        g_vblank_virt = host_ticks(VIRT_HZ);
     }
     g_vblanks++;
     if (g_fixed_clock && g_fast_until && g_vblanks >= g_fast_until) {
@@ -158,6 +179,13 @@ void port_wait_vblank(void) { wait_vblank(0); }
 void port_wait_vblank_extra(void) { wait_vblank(1); }
 
 u32 port_vblank_count(void) { return g_vblanks; }
+
+u32 port_vblank_phase(int look)
+{
+    u64 now = look || !g_fixed_clock ? host_ticks(VIRT_HZ) : g_virt;
+    u64 d = now > g_vblank_virt ? now - g_vblank_virt : 0u;
+    return d >= VIRT_PER_VBLANK ? 65536u : (u32)(d * 65536u / VIRT_PER_VBLANK);
+}
 
 /* The virtual clock moves when an in-between frame looks at it: put back afterwards (frame_extra.c). */
 void host_extra_state(void) { port_extra_state(&g_virt, sizeof g_virt); }
@@ -250,4 +278,30 @@ int host_save_write(const char *name, const void *buf, u32 size)
     ok = WriteFile(f, buf, size, &put, NULL) && put == size && FlushFileBuffers(f);
     CloseHandle(f);
     return ok && MoveFileExA(tmp, path, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+}
+
+/* --flash FILE, read like a save file (recorded, and a replay gets the recorded image) under a name no save file
+ * can have. */
+int host_flash_read(void *buf, u32 size)
+{
+    const char *path = host_arg("--flash");
+    HANDLE f;
+    DWORD got = 0;
+    LARGE_INTEGER len;
+    int ok = session_save_replayed("*flash", buf, size);
+    if (ok == -2) {
+        ok = 0;
+        if (path) {
+            f = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+            ok = -1;
+            if (f != INVALID_HANDLE_VALUE) {
+                if (GetFileSizeEx(f, &len) && len.QuadPart == size && ReadFile(f, buf, size, &got, NULL) &&
+                    got == size)
+                    ok = 1;
+                CloseHandle(f);
+            }
+        }
+    }
+    session_save_read("*flash", buf, size, ok);
+    return ok;
 }

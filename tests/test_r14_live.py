@@ -9,7 +9,8 @@
 3. the wiring: the new scripts are locked, every script stays at 400 lines or fewer, TcPrepare writes header lines K
    and S before the vectors, both runners parse them and fold the store-queue window only after line S.
 4. baselines: an --old-scripts folder is a scripts folder or a baseline (ghidra_scripts/ with that time's catalog and
-   code ranges beside it), and --list reads the first word of each line.
+   code ranges beside it), --list reads the first word of each line, and a baseline's stamp is the one that day's
+   scripts, catalog and ranges give (an unchanged baseline's is today's).
 The oracle side itself needs Ghidra: the regress gate judges it (Toy Commander's tc-r14-* fixtures).
 Synthetic data. Run: python -W error tests/test_r14_live.py.
 """
@@ -18,10 +19,13 @@ import pathlib
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(ROOT / "tools"))
+sys.path[:0] = [str(ROOT / "tools"), str(ROOT / "tests")]
 import selective_restamp as sr  # noqa: E402
+from test_sync import TMP  # noqa: E402,F401  (sets DECOMP_PROJECT when run alone)
+from core import ghidra, oracle_fresh, paths  # noqa: E402
 
 SH4 = ROOT / "targets" / "dreamcast_sh4"
 
@@ -168,7 +172,7 @@ class Wiring(unittest.TestCase):
         for p in (SH4 / "ghidra_scripts").glob("*.java"):
             self.assertLessEqual(len(p.read_text(encoding="utf-8").splitlines()), 400, p.name)
         prep = (SH4 / "ghidra_scripts" / "TcPrepare.java").read_text(encoding="utf-8")
-        self.assertIn('(live != null ? live.header() : "")\n            + (sq != null ? sq.header() : "");', prep)
+        self.assertIn('(live != null ? live.header() : "")\n            + (sq != null ? sq.header() : "") + TcOut.header();', prep)
         self.assertIn("(head + TcStrict.header(facts) + vout)", prep)  # the headers, then the strict ones, then V
 
     def test_runners(self):
@@ -192,6 +196,30 @@ class Baselines(unittest.TestCase):
             self.assertEqual((sorted(scripts), cat, rng), (["TcPrepare.java"], b / "catalog.json", None))
             scripts, cat, rng = sr.baseline(b / "ghidra_scripts")
             self.assertEqual((sorted(scripts), cat, rng), (["TcPrepare.java"], None, None))
+
+    def test_old_stamper(self):  # PS2 2026-10-26: the old Stampers kept today's shared hash, so none ever matched
+        with tempfile.TemporaryDirectory() as t:
+            d = pathlib.Path(t)
+            for name, text in (("today.java", "class A {}"), ("old.java", "class B {}"), ("TcInputs.java", "class I {}"),
+                               ("today.json", "{}"), ("old.json", '{"functions": []}'), ("old.txt", "8c010000\n")):
+                (d / name).write_text(text, encoding="utf-8")
+            cfg, a = {"binary_sha256": "x", "vectors_hidden": 48}, "8c010000"
+            scripts = {"TcPrepare.java": d / "today.java"}
+            with mock.patch.object(paths, "target_scripts", lambda: dict(scripts)), \
+                    mock.patch.multiple(paths, INPUTS=d / "TcInputs.java", CATALOG=d / "today.json", HINTS=d), \
+                    mock.patch.multiple(ghidra, facts_body=lambda c: f"ranges {paths.CODE_RANGES}\n",
+                                        dev_vectors=lambda c, x: 48):
+                today = oracle_fresh.Stamper(cfg).today(a)
+                same = sr.old_stamper(cfg, scripts, None, None).today(a)
+                other = {"TcPrepare.java": d / "old.java"}
+                old = sr.old_stamper(cfg, other, None, None).today(a)
+                catalog = sr.old_stamper(cfg, scripts, d / "old.json", None).today(a)
+                ranges = sr.old_stamper(cfg, scripts, None, d / "old.txt").today(a)
+                self.assertEqual(paths.CATALOG, d / "today.json")
+                scripts = other  # the stamp a prepare on the old scripts' day recorded
+                self.assertEqual(old, oracle_fresh.Stamper(cfg).today(a))
+            self.assertEqual(same, today)
+            self.assertEqual(len({today, old, catalog, ranges}), 4)
 
     def test_listed(self):
         with tempfile.TemporaryDirectory() as t:

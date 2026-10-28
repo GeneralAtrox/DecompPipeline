@@ -158,6 +158,7 @@ void gfx_clear(u32 argb)
 void gfx_frame_done(void)
 {
     if (!g_gfx.dev) return;
+    gfx_movie_draw();
     gfx_capture_frame(g_gfx.frames);
     scene_dump_poll(g_gfx.frames);
     g_gfx.frames++;
@@ -172,8 +173,15 @@ int gfx_can_show(void)
     return g_can_show;
 }
 
+static int g_hold;
+void gfx_hold(int on) { g_hold = on; }
+
 void gfx_present(void)
 {
+    if (g_hold) {
+        gfx_pump();
+        return;
+    }
     gfx_frame_done();
     gfx_show();
 }
@@ -231,6 +239,7 @@ void gfx_show(void)
     ID3D11RenderTargetView_GetResource(g_back_rtv, &back);
     ID3D11DeviceContext_CopySubresourceRegion(g_gfx.ctx, back, 0, g_gfx.frame_x, g_gfx.frame_y, 0,
                                               (ID3D11Resource *)g_gfx.frame, 0, NULL);
+    gfx_vmu_draw(back);
     ID3D11Resource_Release(back);
     /* VSync off presents at once, tearing where the swap chain allows it (variable refresh). While the window cannot
      * be seen, a synced present can block far longer than a refresh, so only a test present is made then. */
@@ -254,6 +263,8 @@ void gfx_shutdown(void)
     if (g_gfx.latency) CloseHandle(g_gfx.latency);
     g_gfx.latency = NULL;
     release_frame();
+    gfx_vmu_release();
+    gfx_movie_release();
     if (g_gfx.swap) IDXGISwapChain1_Release(g_gfx.swap);
     if (g_gfx.ctx) ID3D11DeviceContext_Release(g_gfx.ctx);
     if (g_gfx.dev) ID3D11Device_Release(g_gfx.dev);

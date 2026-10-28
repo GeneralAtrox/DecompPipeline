@@ -91,7 +91,9 @@ int main(int argc, char **argv)
     while (fgets(line, sizeof line, in)) {
         if (line[0] == 'P') { /* entry FPSCR, before the first vector (TcVectors.fpscrLine) */
             tcrt_set_fpscr((u32)strtoul(line + 1, NULL, 16));
-        } else if (line[0] == 'K') { /* a callee changing r8..r14, before the first vector (TcLive) */
+        } else if (line[0] == 'O') { /* the r4..r7 compared at exit, before the first vector (TcOut) */
+            tcrt_set_ro_mask((u32)strtoul(line + 1, NULL, 10));
+        } else if (line[0] == 'K') { /* a callee changing r8..r14 or r4..r7, before the first vector (TcLive) */
             char *p = line + 1;
             u32 t = (u32)strtoul(p, &p, 16), reg = (u32)strtoul(p, &p, 10), n = (u32)strtoul(p, &p, 10), d[4] = {0};
             for (u32 i = 0; i < n && i < 4; i++) d[i] = (u32)strtoul(p, &p, 16);
@@ -104,6 +106,10 @@ int main(int argc, char **argv)
             tcrt_add_hw(reg, (u32)strtoul(p, &p, 16));
         } else if (line[0] == 'Z') { /* GBR is state, before the first vector (TcHw): reported at exit as GB */
             tcrt_set_gbr_state();
+        } else if (line[0] == 'f') { /* a run flag, before the first vector (TcCalls): "f word callee n" */
+            char *p = line + 1;
+            u32 word = (u32)strtoul(p, &p, 16), callee = (u32)strtoul(p, &p, 16);
+            tcrt_set_run_flag(word, callee, (u32)strtoul(p, &p, 10));
         } else if (line[0] == 'J' || line[0] == 'U') { /* the stricter judge's flags and facts (tc_strict.h) */
             tcrt_strict_line(line);
         } else if (line[0] == 'V') {
@@ -154,6 +160,8 @@ int main(int argc, char **argv)
             tcrt_set_sr((u32)strtoul(line + 2, NULL, 16));
         } else if (line[0] == 'N') { /* after V's reset: the entry FPSCR, FPSCR is state (TcFpscr) */
             tcrt_set_fpscr_state((u32)strtoul(line + 1, NULL, 16));
+        } else if (line[0] == 'z') { /* after V's reset and N: the entry FPSCR.SZ its caller runs it with (TcFpscr.Sz) */
+            if (strtoul(line + 1, NULL, 16) & 0x00100000u) sh4_fschg();
         } else if (line[0] == 'Q') {
             char *p = line + 1;
             for (int i = 0; i < 16; i++) fq[i] = (u32)strtoul(p, &p, 16);
@@ -209,6 +217,7 @@ int main(int argc, char **argv)
             tcrt_set_fh(fh);
             tcrt_set_gs(gs);
             tcrt_set_low(low);
+            tcrt_set_ro(r);
             if (has_fq) rd_sh4_set_fq(fq);
             tcrt_set_call_returns(rets);
             if (rd_out_paint()) paint_stack();
@@ -226,6 +235,7 @@ int main(int argc, char **argv)
             tcrt_report_fpscr(out);
             if (has_fh) tcrt_report_fh(out);
             if (has_gs) tcrt_report_gs(out);
+            tcrt_report_ro(out);
             if (has_fq) rd_sh4_report_fq(out);
             fprintf(out, "E\n");
             fflush(out);

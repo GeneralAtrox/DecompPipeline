@@ -10,15 +10,16 @@
  * of the same scene continues each list where the previous pass ended.
  *
  * Needs from the game's headers: the function names below as the game's registry has them, and g_kmDriverState
- * (Kamui's driver state; the vsync interval word is at K2_DRIVER_VSYNC_WAIT). */
+ * (Kamui's driver state, a KmDriverState with the vsync words vsync_wait and vsync_wait_neg, whose offsets differ
+ * between Kamui 2 versions: 0x754 / 0x78c in 16,3,0,0, 0x7f4 / 0x82c in 16,3,2,0). */
 #include "game.h"
 #include "platform.h"
 #include "kamui2.h"
 #include "lockstep.h"
 
-#define K2_DRIVER_VSYNC_WAIT 0x754u /* frames - 1 between flips (Kamui 2 16.x; the SDK's kmSetWaitVsyncCount) */
 #define K2_QUEUE_IDLE 0x101          /* the queue status with nothing queued */
 #define K2_RENDER_DONE 0x69          /* a render id's status once rendered */
+#define K2_RENDER_NOFLIP 1u          /* kmRender's KM_RENDER_NOFLIP (KM_RENDER_FLIP is 0) */
 #define RAM_MASK 0x00ffffffu         /* 16 MB main RAM */
 #define RAM_CACHED 0x8c000000u
 #define RAM_UNCACHED 0xac000000u
@@ -98,8 +99,20 @@ s32 kmEndPass(KMVERTEXBUFFDESC *vertexBuffer)
 /* vsync_wait + 1: the vertical blanks between flips */
 static u32 flip_interval(void)
 {
-    s32 wait = *(const s32 *)((const u8 *)&g_kmDriverState + K2_DRIVER_VSYNC_WAIT);
+    s32 wait = g_kmDriverState.vsync_wait;
     return (u32)(wait < 0 ? 0 : wait) + 1u;
+}
+
+/* The SDK's kmSetWaitVsyncCount, as its code writes the driver state: vsync_wait = count - 1, and for count <= 0
+ * vsync_wait_neg = 1 - count, vsync_wait = -count - 1. Always 0. */
+s32 kmSetWaitVsyncCount(s32 count)
+{
+    if (count <= 0) {
+        count = -count;
+        g_kmDriverState.vsync_wait_neg = count + 1;
+    }
+    g_kmDriverState.vsync_wait = count - 1;
+    return K2_OK;
 }
 
 /* Flips at the vertical blank: at least one, and vsync_wait + 1 since the last flip. extra: in-between frames are
@@ -116,15 +129,17 @@ static void wait_flip(int extra)
 
 /* Renders the scene's passes and flips; returns the render id the status calls take. With --present interp the
  * frame is counted (and dumped) at once and shown only if no in-between frame was shown while it waited; an
- * in-between frame's own render is shown at once, with no wait. */
+ * in-between frame's own render is shown at once, with no wait. A KM_RENDER_NOFLIP render (one view of a split
+ * screen) only draws into the frame: no wait and nothing shown until a render that flips. */
 s32 kmRender(u32 flip)
 {
     int extra;
-    (void)flip;
     hw_check_scene(g_passes, g_pass_count);
     pvr_render(g_passes, g_pass_count);
     hw_check_rendered(g_passes, g_pass_count);
     g_pass_count = 0;
+    k2_run_callback(0); /* the end-of-render callback: the scene is drawn */
+    if (flip == K2_RENDER_NOFLIP) return ++g_render_id;
     if (port_extra_drawing()) {
         gfx_capture_extra();
         gfx_show();
@@ -176,4 +191,10 @@ s32 Km_SetClipRect(u32 x0, u32 y0, u32 x1, u32 y1)
     u32 lines = k2_frame_lines(), half = lines / 2u;
     pvr_set_clip(x0, (y0 * 480u + half) / lines, x1, ((y1 + 1u) * 480u + half) / lines - 1u);
     return K2_OK;
+}
+
+/* The SDK's own name for it (the same four stores into the driver state, at another offset in later versions). */
+s32 kmSetPixelClipping(s32 xMin, s32 yMin, s32 xMax, s32 yMax)
+{
+    return Km_SetClipRect((u32)xMin, (u32)yMin, (u32)xMax, (u32)yMax);
 }

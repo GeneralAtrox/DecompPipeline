@@ -150,13 +150,13 @@ class Wiring(unittest.TestCase):
         for p in (SH4 / "ghidra_scripts").glob("*.java"):
             self.assertLessEqual(len(p.read_text(encoding="utf-8").splitlines()), 400, p.name)
         oracle = (SH4 / "ghidra_scripts" / "TcOracle.java").read_text(encoding="utf-8")
-        self.assertIn("v.rets[calls] = TcFret.at(floatRet, pc, v.rets[calls])", oracle)
+        self.assertIn("v.rets[calls] = TcLate.ranged(v, pc, calls, TcFret.at(floatRet, pc, v.rets[calls]))", oracle)
         prep = (SH4 / "ghidra_scripts" / "TcPrepare.java").read_text(encoding="utf-8")
         self.assertIn('if (cp.ret.equals("f32")) floatRet.add(c.getEntryPoint().getOffset());', prep)
         self.assertIn("TcFguide.java", locked)
         vec = (SH4 / "ghidra_scripts" / "TcVectors.java").read_text(encoding="utf-8")
         g, f, h = (vec.index(x) for x in ("TcGuide.guide(v,", "TcFguide.guide(v, proto, listing, body, mem, seed, id, "
-                                                               "idTry, rescue);", "applyHints(v, hints);"))
+                                                               "idTry, rescue);", "applyHints(v, TcLate.ranges("))
         self.assertLess(g, f)
         self.assertLess(f, h)
 

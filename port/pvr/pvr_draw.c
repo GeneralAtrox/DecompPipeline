@@ -1,7 +1,8 @@
 /* Draws a scene into the frame target, in the PowerVR's order per pass: the background (a clear to the plane's
- * colour and depth), opaque, punch-through, the opaque modifier volumes (pvr_modvol.c), translucent. Translucent
- * modifier volumes are a to-do.
- * Translucent polygons are sorted per pixel in a pass with autosort (pvr_oit.c), else drawn in submission order.
+ * colour and depth), opaque, punch-through, the opaque modifier volumes (pvr_modvol.c), translucent, and its
+ * modifier volumes (pvr_modvol.c, on the autosort fragments).
+ * Translucent polygons are sorted per pixel in a pass with autosort (pvr_oit.c), else drawn in submission order
+ * (then the translucent modifier volumes are a to-do).
  *
  * One vertex buffer and one per-batch state buffer are uploaded per scene; each batch is one draw with its
  * texture, sampler, blend, depth state and scissor. */
@@ -286,9 +287,11 @@ static void draw_translucent(const PvrPass *pass, u32 p)
     const u32 *r = g_scene.range[p][PVRX_LIST_TRANSLUCENT];
     if (pass->autosort && r[1] > r[0] && pvr_oit_begin(g_dsv)) {
         draw_list(p, PVRX_LIST_TRANSLUCENT);
+        if (pvr_modvol_trans_needed(&g_scene, p)) pvr_modvol_trans_draw(&g_scene, p);
         pvr_oit_resolve();
         bind_pipeline();
     } else {
+        if (pvr_modvol_trans_needed(&g_scene, p)) pvr_todo("pvr: translucent modifier volumes without autosort");
         draw_list(p, PVRX_LIST_TRANSLUCENT);
     }
 }
@@ -315,8 +318,6 @@ static int draw_scene(const PvrPass *passes)
             pvr_modvol_draw(&g_scene, p, g_cb);
             bind_pipeline();
         }
-        if (pvr_modvol_trans_needed(&g_scene, p))
-            pvr_todo("pvr: translucent modifier volumes");
         draw_translucent(&passes[p], p);
     }
     ID3D11DeviceContext_OMSetRenderTargets(cx, 0, NULL, NULL);

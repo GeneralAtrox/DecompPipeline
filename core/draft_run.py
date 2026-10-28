@@ -22,11 +22,19 @@ readable pass, draft for the draft). An adopted file's row has "readable_by": "m
 or given its numbers their meaning yet (core/refine tells a later agent so; an agent's pass sets "agent").
 The adoption gate has no length limit by default (the user's decision, 2026-10-23: an agent reviews the file when it
 next works on the function); config readable_draft_max_lines sets one.
+--fmac (fused_gap(), command(fmac=True)): a readable file that rounds a fused multiply-add twice (`a*b + c` where the
+code has the CPU's one-rounding fmac) passes the judge when its vectors cannot tell the two apart, yet drifts the
+game (TC h5n1 camera, Spline_MeasureLength: fmac-probe 2026-10-26). For a function whose code has the target's fused
+opcode (rtx SPEC.fused) and whose readable file never calls the one-rounding runtime function, only the machine file
+is tried (the draft is the matched raw C, which can round twice too); --adopt replaces the passing file with it,
+backed up, as a STALE one is replaced. list_fmac() is the read-only selection (refine.py draft --fmac --list).
+The same for the other instructions the CPU rounds once (rtx SPEC.once, core/fused: the SH-4's fipr and ftrv, which
+float multiplies and adds round seven times): fused_gap names them too, so --fmac selects and replaces those files.
 """
 import re
 import shutil
 
-from . import draft, draft_gate, paths, readable, readable_abi, refine
+from . import draft, draft_gate, fused, paths, readable, readable_abi, refine
 from . import readable_check as rcheck
 from .compare import IMAGE_BASE, WORD
 from .raw_names import mask
@@ -193,14 +201,42 @@ def adoptable(res, gaps):
     return res["verdict"] == "PASS" and res.get("stage") == "compare" and not res.get("run_error") and not gaps
 
 
-def replaceable(addr):
+def replaceable(addr, fmac=False):
     """None when `refine.py draft --adopt` may write readable/src/ADDR.c: there is no file yet, or verify recorded it
-    STALE (it fails the current judge on a current harness); else why not. A passing file is never replaced, nor a
-    harness_stale one (its raw C fails too: nothing can pass until it is prepared again)."""
+    STALE (it fails the current judge on a current harness), or (fmac: command() has found its fused_gap) it rounds a
+    fused multiply-add twice; else why not. Any other passing file is never replaced, nor a harness_stale one (its raw
+    C fails too: nothing can pass until it is prepared again)."""
     if not (readable.SRC / f"{addr}.c").exists():
         return None
     status = refine.load_ledger().get(addr, {}).get("status")
-    return None if status == "stale" else f"has a readable file ({status})"
+    return None if status == "stale" or (fmac and status != "harness_stale") else f"has a readable file ({status})"
+
+
+def fused_ops(cfg, meta):
+    """How many of the target's fused multiply-adds (rtx SPEC.fused) the function's code has (core/fused.ops)."""
+    return fused.ops(cfg, meta or {})
+
+
+def fused_gap(cfg, addr, meta, text=None):
+    """Why readable/src/ADDR.c (or text) rounds the code's fused multiply-adds twice: "N fmac in the code, no
+    sh4_fmac in the file"; None when the code has none or the file calls the one-rounding function (core/fused.gap,
+    lint RR8's test)."""
+    f = readable.SRC / f"{addr}.c"
+    if text is None and not f.exists():
+        return None
+    return fused.gap(cfg, meta or {}, text if text is not None else f.read_text(encoding="utf-8", errors="replace"))
+
+
+def list_fmac(cfg, addrs):
+    """{addr: fused_gap} of the functions among addrs (every readable file when empty) whose readable file rounds a
+    fused multiply-add twice. Reads only: no judge, no claim."""
+    addrs = addrs or sorted(p.stem for p in readable.SRC.glob("*.c"))
+    out = {}
+    for addr in addrs:
+        gap = fused_gap(cfg, addr, paths.read_json(paths.HARNESS / addr / "meta.json"))
+        if gap:
+            out[addr] = gap
+    return out
 
 
 def adopt(addr, path, res, kind="draft"):
@@ -275,10 +311,12 @@ def first(cfg, addr, mode, log=print):
         return None
 
 
-def command(cfg, addrs, adopt_ok=False, workers=4, log=print):
-    """`refine.py draft TARGETS [--adopt]`: judge each function's draft (runs/ADDR/readable/draft.c); --adopt adopts
-    a passing, readable one for a function without a readable file, or whose file verify recorded STALE (the old
-    file backed up; replaceable()), under its claim. Returns {addr: outcome}."""
+def command(cfg, addrs, adopt_ok=False, workers=4, log=print, fmac=False):
+    """`refine.py draft TARGETS [--adopt] [--fmac]`: judge each function's draft (runs/ADDR/readable/draft.c);
+    --adopt adopts a passing, readable one for a function without a readable file, or whose file verify recorded
+    STALE (the old file backed up; replaceable()), under its claim. fmac: only functions with a fused_gap, only their
+    machine file, which must call the one-rounding function; --adopt then replaces the passing file too. Returns
+    {addr: outcome}."""
     import concurrent.futures
     from . import fn_claim
     reg = readable.Registry()
@@ -287,18 +325,32 @@ def command(cfg, addrs, adopt_ok=False, workers=4, log=print):
         meta = paths.read_json(paths.HARNESS / addr / "meta.json")
         if not meta or refine.raw_missing(addr):
             return addr, "skipped: no harness or no matched raw C"
+        gap = fused_gap(cfg, addr, meta) if fmac else None
+        if fmac and not gap:
+            return addr, "skipped: no fmac, fipr or ftrv rounded apart from the code"
         try:
             with fn_claim.claim(addr, "draft", fn_claim.wait_s(cfg)):
-                found = candidates(cfg, reg, addr, meta, log)
+                if fmac:
+                    m = judge_machine(cfg, reg, addr, meta, log)
+                    if m is None:
+                        return addr, f"not made: no machine file ({gap})"
+                    if fused_gap(cfg, addr, meta, m[0].read_text(encoding="utf-8")):
+                        return addr, f"machine: rounds twice too, not adopted ({gap})"
+                    found = [("machine",) + m]
+                else:
+                    found = candidates(cfg, reg, addr, meta, log)
                 if not found:
                     return addr, "not made: no machine file and no draft"
                 for kind, path, res, gaps in found:
                     if adoptable(res, gaps):
-                        kept = replaceable(addr)
+                        kept = replaceable(addr, fmac=bool(gap))
                         if adopt_ok and kept is None:
-                            stale = (readable.SRC / f"{addr}.c").exists()
+                            old = (readable.SRC / f"{addr}.c").exists()
+                            status = refine.load_ledger().get(addr, {}).get("status") if old else None
                             adopt(addr, path, res, kind)
-                            return addr, f"ADOPTED (source: draft, {kind})" + (", replaced STALE" if stale else "")
+                            return addr, f"ADOPTED (source: draft, {kind})" + (
+                                f", replaced {'STALE' if status == 'stale' else status}" if old else "") + (
+                                f": {gap}" if gap else "")
                         return addr, f"adoptable ({kind})" + (f"; not adopted: {kept}" if adopt_ok else "")
                 kind, path, res, gaps = found[0]
                 return addr, f"{kind}: {why(res, gaps)}"

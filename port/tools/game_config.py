@@ -19,7 +19,8 @@ ADDR = re.compile(r"[0-9a-f]{8}")
 NAME = re.compile(r"[A-Za-z_]\w*")
 REQUIRED = ("name", "decomp", "entry", "image_base")
 KNOWN = set(REQUIRED) | {"boot_file", "disc", "fsca_table", "must_work", "sdk", "sources", "hardware", "wrap",
-                         "console", "id", "boot_sha256", "arrows", "widescreen", "kamui1", "lockstep_sample_pcs"}
+                         "console", "id", "boot_sha256", "arrows", "widescreen", "aica_arm", "kamui1", "lockstep_sample_pcs",
+                         "lockstep_rtc_pcs", "lockstep_scene_pcs", "translator_c", "tx_first", "not_code"}
 CONSOLE = ("country", "language", "broadcast")
 
 
@@ -142,6 +143,10 @@ def load(game_dir):
     if not isinstance(widescreen, bool):
         raise ConfigError(f"game.json widescreen: {widescreen!r} "
                           "(true: the game widens its culling by port_widescreen())")
+    aica_arm = raw.get("aica_arm", False)
+    if not isinstance(aica_arm, bool):
+        raise ConfigError(f"game.json aica_arm: {aica_arm!r} (true: the game's own sound driver runs on the kit's "
+                          "AICA ARM7, runtime/aica_arm.c)")
     k1 = raw.get("kamui1", {})
     if not isinstance(k1, dict) or set(k1) - {"list_word"}:
         raise ConfigError('game.json kamui1: {"list_word": the guest address of the Kamui 1 list table word}')
@@ -152,7 +157,37 @@ def load(game_dir):
     if not isinstance(pcs, list) or len(pcs) > 8:
         raise ConfigError("game.json lockstep_sample_pcs: up to 8 guest addresses (the port's sample points)")
     pcs = [_addr(a, "lockstep_sample_pcs") for a in pcs]
-    sha = [str(h).lower() for h in raw.get("boot_sha256", [])]
+    # where the game reads the RTC (the SDK's date read): a frame that reads it drives the port with what it read
+    rtc = raw.get("lockstep_rtc_pcs", [])
+    if not isinstance(rtc, list) or len(pcs) + len(rtc) > 8:
+        raise ConfigError("game.json lockstep_rtc_pcs: the RTC reads' guest addresses, up to 8 with the sample PCs")
+    rtc = [_addr(a, "lockstep_rtc_pcs") for a in rtc]
+    # where a scene begins (the SDK's kmBeginScene, the port's lockstep_scene): frames then count as the port's do
+    scene = raw.get("lockstep_scene_pcs", [])
+    if not isinstance(scene, list) or len(pcs) + len(rtc) + len(scene) > 8:
+        raise ConfigError("game.json lockstep_scene_pcs: the scene begins' guest addresses, up to 8 with the other PCs")
+    scene = [_addr(a, "lockstep_scene_pcs") for a in scene]
+    # translator C (tools/tx_port.py): {"dir": tools/dp_judge.py --sp-input's --out folder, "mode": "mix"|"only"};
+    # absent, the port compiles readable C and logging stubs only
+    tc = raw.get("translator_c")
+    if tc is not None and (not isinstance(tc, dict) or set(tc) - {"dir", "mode"} or not tc.get("dir")
+                           or tc.get("mode", "mix") not in ("mix", "only")):
+        raise ConfigError('game.json translator_c: {"dir": the judged translator C folder, "mode": "mix" or "only"}')
+    tc = {"dir": str((game_dir / tc["dir"]).resolve()), "mode": tc.get("mode", "mix")} if tc else None
+    # mix mode: functions whose readable C gives way to translator C, the same function's machine code judged; for a
+    # readable file that passes its judge yet loses an argument the raw harness has no slot for (e.g. one passed on
+    # in r5 through a table call, which sync-names turns into `(void)cb;` or keeps out of the callers' raw-name calls)
+    first = raw.get("tx_first", [])
+    if not isinstance(first, list):
+        raise ConfigError("game.json tx_first: the functions (guest addresses) whose readable C yields to translator C")
+    first = [_addr(a, "tx_first") for a in first]
+    # catalog entries that are data, not code (a disassembler's function start inside a table the game reads): no
+    # dispatch row, so no guest code thunk is written over the data. {addr: evidence}
+    not_code = raw.get("not_code", {})
+    if not isinstance(not_code, dict) or not all(isinstance(v, str) and v for v in not_code.values()):
+        raise ConfigError("game.json not_code: {guest address: the evidence that it is data, not a function}")
+    not_code = {_addr(a, "not_code"): v for a, v in not_code.items()}
+    sha =[str(h).lower() for h in raw.get("boot_sha256", [])]
     if not all(re.fullmatch(r"[0-9a-f]{64}", h) for h in sha):
         raise ConfigError("game.json boot_sha256: a list of the accepted boot files' SHA-256 (64 hex digits each)")
     return {"dir": game_dir, "name": str(raw["name"]), "id": gid, "boot_sha256": sha, "decomp": path("decomp"),
@@ -160,15 +195,16 @@ def load(game_dir):
             "image_base": _addr(raw["image_base"], "image_base"), "boot_file": boot, "disc": path("disc"),
             "fsca_table": path("fsca_table"), "must_work": path("must_work"),
             "sdk": [mods[m] for m in sdk], "sources": sources, "hardware": hardware, "wrap": wrap,
-            "console": console, "arrows": arrows, "widescreen": widescreen, "kamui1": kamui1,
-            "lockstep_sample_pcs": pcs}
+            "console": console, "arrows": arrows, "widescreen": widescreen, "aica_arm": aica_arm, "kamui1": kamui1,
+            "lockstep_sample_pcs": pcs, "lockstep_rtc_pcs": rtc, "lockstep_scene_pcs": scene,
+            "translator_c": tc, "tx_first": first, "not_code": not_code}
 
 
 def c_string(s):
     return '"' + s.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
-def port_config_h(cfg):
+def port_config_h(cfg, own_crt=(), bu_image=False):
     lines = ["/* Generated by port/tools/gen_port.py from game.json: do not edit. */", "#ifndef PORT_CONFIG_H",
              "#define PORT_CONFIG_H", "", f"#define PORT_GAME_NAME {c_string(cfg['name'])}",
              f"#define PORT_ENTRY_NAME {c_string(cfg['entry']['name'])}",
@@ -181,10 +217,16 @@ def port_config_h(cfg):
     stick = int(cfg.get("arrows") == "stick")
     lines.append(f"#define PORT_ARROWS_STICK {stick} /* 1: the arrow keys move only the stick (game.json arrows) */")
     lines.append(f"#define PORT_WIDESCREEN {int(bool(cfg.get('widescreen')))} /* 1: Hor+ in play runs (game.json) */")
+    if cfg.get("aica_arm"):  # runtime/aica_arm.c: the game's sound driver runs on the AICA's ARM7 (off: no ARM)
+        lines.append("#define PORT_AICA_ARM 1")
     if cfg["console"]:
         lines += [f"#define PORT_CONSOLE_{k.upper()} 0x{v:x}" for k, v in cfg["console"].items()]
     if cfg.get("kamui1", {}).get("list_word"):  # sdk/kamui1_scene.c: where the game reads Kamui 1's list table word
         lines.append(f"#define PORT_KAMUI1_LIST_WORD 0x{cfg['kamui1']['list_word']}u")
+    if own_crt:  # runtime/port_libm.c leaves these out: the game's own judged C defines them (gen_port.py OWN_CRT)
+        lines += [f"#define PORT_OWN_CRT_{n} 1" for n in sorted(own_crt)]
+    if bu_image:  # sdk/bu_vmu.c's file image functions take the game's BUS_BACKUPFILEHEADER (a game without it has none)
+        lines.append("#define PORT_BU_FILE_IMAGE 1")
     return "\n".join(lines + ["", "#endif"]) + "\n"
 
 
@@ -216,14 +258,19 @@ def cmake_list(var, items):
     return [f"set({var}"] + [f'  "{pathlib.Path(x).as_posix()}"' for x in items] + [")"]
 
 
-def port_files_cmake(cfg, readable_src, readable_files, readable_include, rd_rt_dir, defines=None, no_pch=()):
+def port_files_cmake(cfg, readable_src, readable_files, readable_include, rd_rt_dir, defines=None, no_pch=(),
+                     tx=None):
     """defines: {readable file stem: ["Name=Wrapper", ...]}, the game.json wraps of the functions that file calls.
-    no_pch: the readable files compiled without the precompiled game.h (CMakeLists.txt)."""
+    no_pch: the readable files compiled without the precompiled game.h (CMakeLists.txt). tx: (the translator C
+    functions' tx_ADDR.c files, tc_call's glue files, the judged runtime's folder with tc_rt.h), or None."""
     lines = ["# Generated by port/tools/gen_port.py: what the kit's CMakeLists.txt compiles for this game."]
     lines += cmake_list("PORT_READABLE", [readable_src / f"{x}.c" for x in readable_files])
     lines += cmake_list("PORT_READABLE_NO_PCH", [readable_src / f"{x}.c" for x in no_pch])
     lines += [f'set(PORT_READABLE_INCLUDE "{readable_include.as_posix()}")', f'set(PORT_RD_RT "{rd_rt_dir.as_posix()}")']
     lines += cmake_list("PORT_SDK_SOURCES", cfg["sdk"]) + cmake_list("PORT_GAME_SOURCES", cfg["sources"])
+    if tx:
+        lines += cmake_list("PORT_TX", tx[0]) + cmake_list("PORT_TX_CALLS", tx[1])
+        lines.append(f'set(PORT_TC_RT "{pathlib.Path(tx[2]).as_posix()}")')
     for x, defs in sorted((defines or {}).items()):
         lines.append(f'set_source_files_properties("{(readable_src / f"{x}.c").as_posix()}" PROPERTIES '
                      f'COMPILE_DEFINITIONS "{";".join(defs)}")')

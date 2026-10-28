@@ -15,7 +15,33 @@ prototype returns f32 (harness meta.json callee records; Ghidra's signature wher
 has a `mova` and an `fcmp/` (a superset of the functions TcFguide harvests a constant for). --change late is the
 TcLate change (results for calls after the 16th): a harness with a vector that made more than 16 calls (expected.txt
 CALL lines); in any other the draws and line C stay byte for byte. --change spin is the TcSpin change (a wait loop
-nothing in it ends is a halt): opt-in, so only the functions project.json "spin_waits" lists. Changes join with +
+nothing in it ends is a halt): opt-in, so only the functions project.json "spin_waits" lists. --change dslot is the
+TcTrack delay-slot change (the registers a bt/s or bf/s step wrote: its delay slot's mode-selected form, no longer
+every form's outputs): a function with a computed call or jump (jsr/jmp @rN, bsrf, braf: TcTrack tracks CA only
+then) and, in a bt/s or bf/s delay slot, an FPU instruction with another FPSCR mode's form that writes an argument
+register: a destination fr4..fr11 (or dr/xd/fv), not fldi0/fldi1 (no double form). An integer slot's outputs were
+exact already, and a pair partner outside fr4..fr11 is no argument. The change only drops float registers from CA
+lines, so only a harness whose expected.txt has a CA line with an fr register can differ. --change fnrmw is
+the TcTrack float-bits change (and/or/xor into a register holding float bits keeps them, so the word it stores back
+joins FN): it only adds NaN words to FN, so only a harness with a vector whose W lines leave a NaN word outside that
+vector's FN can differ (a word written in part counts when its exponent bytes are written and all ones), of a
+function whose packet asm has a float store (fmov to memory, sts FPUL) and an and/or/xor into a register that a
+mov.l then stores within the next 8 lines (or #imm into r0 the same). --change lrep is the
+TcLate repair (a fault through a later call's result repairs it and points that callee's later results at fresh
+chunks): only a run that faults after its 17th call can differ, so a harness with a vector that made more than 16
+calls, or one whose oracle_summary.json counts an invalid fault ("fault: ...", "write outside RAM") in a function whose
+packet asm can make a 17th call: 17 call instructions, or one inside a loop (an invalid vector's calls are not
+recorded). --change retfn is the genretfn hint (TcLate.ranges: every call to one callee returns a value from a
+range): only a function whose oracle/hints file has a genretfn line can differ. --change fipr is the fipr-once change
+(TcRound.fipr: fipr and ftrv rounded once; TcFpu.once: separating vectors): only a function whose packet asm has
+a fipr or ftrv instruction can differ (TcFpu acts on its own steps only). --change runflag is the run-flag change
+(TcCalls: a listed callee's Nth mocked call clears a word): opt-in, so only the functions project.json "run_flags"
+lists. --change sz is the FPSCR.SZ change (TcFpscr.Sz, core/sz_entry.py: the entry mode from the callers' code,
+a callee's SZ at return): only a function with a script arg 13 (sz_entry.arg) can differ, the others run as
+before. Its stamp gains a line, so its old stamp is never today's: it is re-prepared whatever the baseline says.
+--change mockwrite is a project.json "mock_write_facts" change (core/strict_judge; the facts file, a shared
+stamp input, gains its lines): only callers of a listed callee (meta.json callees) can differ, and the baselines'
+stamps are taken with the facts file as it was without the list (none listed before). Changes join with +
 (--change fret+fargs: either alters the harness).
 Only harnesses current under the scripts before the change (--old-scripts: that commit's ghidra_scripts folder) are
 refreshable; any other is stale for its own reasons and left to tools/reprepare_stale.py --stamps. --old-scripts can
@@ -39,7 +65,7 @@ Phases (each resumable; run under tools/bounded.py, servers stopped):
   --phase must    re-prepare the refreshable candidates (at most --max per run) and judge each one's matched raw C
 usage: python tools/selective_restamp.py --project DIR --old-scripts DIR [--old-scripts DIR ...]
        --phase sample|refresh|must [--sample 100] [--seed 14] [--max 100] [--slots N]
-       [--change r14|fret|fargs|late|spin|fret+fargs|none] [--list FILE] [--dry]
+       [--change r14|fret|fargs|late|spin|dslot|fnrmw|lrep|retfn|fipr|runflag|mockwrite|sz|fret+fargs|none] [--list FILE] [--dry]
 Exit 0 when the phase finished clean (all identical; nothing left; every judged raw C passes), 1 otherwise.
 """
 import argparse
@@ -197,11 +223,181 @@ def late_candidates(harness, calls=16):
     return out
 
 
+DSLOT_DEST = re.compile(r"^(?:fr(?:[4-9]|1[01])|dr\d+|xd\d+|fv\d+)$")
+COMPUTED = re.compile(r"^\s*[0-9a-f]{8}\s+_?(?:jsr|jmp)\s+@r\d+|^\s*[0-9a-f]{8}\s+_?(?:bsrf|braf)\s+r\d+")
+
+
+def dslot_candidates(harness, packets):
+    """The functions whose harness the TcTrack delay-slot change can alter: a computed call or jump, and an FPU
+    instruction (`_f...`) writing an argument register (DSLOT_DEST) in the delay slot of a bt/s or bf/s, in the
+    packet asm; and a CA line with an fr register in expected.txt (the change drops only those)."""
+    out = set()
+    for d in pathlib.Path(packets).iterdir():
+        exp = pathlib.Path(harness) / d.name / "expected.txt"
+        if not exp.is_file() or not re.search(r"^CA .*\bfr", exp.read_text(encoding="utf-8", errors="replace"),
+                                              re.M):
+            continue
+        lines = []
+        for p in sorted(d.glob("asm*.txt")):
+            lines += p.read_text(encoding="utf-8", errors="replace").splitlines()
+        if not any(COMPUTED.match(ln) for ln in lines):
+            continue
+        for prev, ln in zip(lines, lines[1:]):
+            a, b = prev.split(), ln.split()
+            if (len(a) > 1 and len(b) > 2 and a[1] in ("bt/s", "bf/s") and b[1].startswith("_f")
+                    and b[1] not in ("_fldi0", "_fldi1") and DSLOT_DEST.match(b[2].split(",")[-1])):
+                out.add(d.name)
+                break
+    return out
+
+
+def logic_store(lines):
+    """Whether the asm has a float store and an and/or/xor into a register a mov.l stores within the next 8 lines."""
+    fstore = logic = False
+    for i, ln in enumerate(lines):
+        m = ASM.match(ln)
+        if not m:
+            continue
+        mn, ops = m.group(1).lower(), [o.strip() for o in m.group(2).split(",")]
+        if (mn.startswith("fmov") and ops[-1].startswith("@")) or (mn.startswith("sts") and ops[0] == "fpul"):
+            fstore = True
+        if mn in ("and", "or", "xor") and len(ops) == 2 and REG.match(ops[1]):
+            for nxt in lines[i + 1:i + 9]:
+                n = ASM.match(nxt)
+                if n and n.group(1).lower() == "mov.l" and [o.strip() for o in n.group(2).split(",")][0] == ops[1] \
+                        and "@" in n.group(2):
+                    logic = True
+    return fstore and logic
+
+
+def fnrmw_candidates(harness, packets):
+    """The functions whose harness the TcTrack float-bits change can alter: a vector whose W lines leave a NaN word
+    (all four bytes written, or its exponent bytes written and all ones) that the vector's FN does not list, and a
+    float store plus a stored and/or/xor in the packet asm (logic_store)."""
+    out = set()
+    for d in pathlib.Path(harness).iterdir():
+        p = d / "expected.txt"
+        lines = []
+        for a in sorted((pathlib.Path(packets) / d.name).glob("asm*.txt")):
+            lines += a.read_text(encoding="utf-8", errors="replace").splitlines()
+        if not p.is_file() or not logic_store(lines):
+            continue
+        writes, fn = {}, set()
+
+        def nan_left():
+            for w in {a & ~3 for a in writes}:
+                b = [writes.get(w + i) for i in range(4)]
+                if w in fn or b[3] is None or b[2] is None or (b[3] & 0x7f) != 0x7f or not b[2] & 0x80:
+                    continue
+                if None in b or (b[2] & 0x7f or b[1] or b[0]):
+                    return True
+            return False
+
+        for line in p.read_text(encoding="utf-8", errors="replace").splitlines() + ["V"]:
+            t = line.split()
+            if t and t[0] == "V":
+                if nan_left():
+                    out.add(d.name)
+                    break
+                writes, fn = {}, set()
+            elif t and t[0] == "W" and len(t) > 2:
+                a = int(t[1], 16)
+                for i, b in enumerate(bytes.fromhex(t[2])):
+                    writes[a + i] = b
+            elif t and t[0] == "FN":
+                fn = {int(x, 16) for x in t[1:]}
+    return out
+
+
+CALL_ASM = re.compile(r"^\s*([0-9a-f]{8})\s+(?:jsr|bsr|bsrf|jmp)\s", re.M)
+BACK_ASM = re.compile(r"^\s*([0-9a-f]{8})\s+(?:bt|bf|bra|bt/s|bf/s)\s+0x([0-9a-f]{8})", re.M)
+
+
+def calls_17(text):
+    """Whether asm can make a 17th call in one run: 17 call instructions, or one inside a loop (a backward branch
+    whose span holds a call)."""
+    calls = [int(m.group(1), 16) for m in CALL_ASM.finditer(text)]
+    if len(calls) >= 17:
+        return True
+    for m in BACK_ASM.finditer(text):
+        at, to = int(m.group(1), 16), int(m.group(2), 16)
+        if to <= at and any(to <= c <= at for c in calls):
+            return True
+    return False
+
+
+def lrep_candidates(harness, packets):
+    """The functions whose harness the TcLate repair can alter: late_candidates, and a function whose oracle summary
+    counts an invalid fault and whose packet asm can make a 17th call (calls_17: an invalid run's calls are not
+    recorded)."""
+    out = late_candidates(harness)
+    for d in pathlib.Path(harness).iterdir():
+        p = d / "oracle_summary.json"
+        if d.name in out or not p.is_file():
+            continue
+        try:
+            inv = json.loads(p.read_text(encoding="utf-8")).get("invalid") or {}
+        except ValueError:
+            continue
+        if not any(k.startswith("fault") or k == "write outside RAM" for k in inv):
+            continue
+        if calls_17("".join(a.read_text(encoding="utf-8", errors="replace")
+                            for a in sorted((pathlib.Path(packets) / d.name).glob("asm*.txt")))):
+            out.add(d.name)
+    return out
+
+
+def retfn_candidates(hints):
+    """The functions whose harness the genretfn hint can alter (TcLate.ranges): those whose oracle/hints/<addr>.txt has
+    a genretfn line. A hints file without one draws nothing new."""
+    return {h.stem.lower() for h in pathlib.Path(hints).glob("*.txt")
+            if any(ln.split()[:1] == ["genretfn"] for ln in h.read_text(encoding="utf-8", errors="replace").splitlines())}
+
+
+FIPR = re.compile(r"^\s*[0-9a-f]{8}\s+_?(?:fipr|ftrv)\b", re.M | re.I)
+
+
+def fipr_candidates(packets):
+    """The functions whose harness the fipr-once change can alter: a fipr or ftrv instruction in the packet asm."""
+    return {d.name for d in pathlib.Path(packets).iterdir()
+            if any(FIPR.search(f.read_text(encoding="utf-8", errors="replace")) for f in sorted(d.glob("asm*.txt")))}
+
+
 def spin_candidates(cfg):
     """The functions whose harness TcSpin can alter: those project.json "spin_waits" lists (compare.spin_wait; an
     entry without its evidence is refused). Every other harness stays byte for byte."""
     from core import compare
     return {x.lower() for x in cfg.get("spin_waits") or {} if compare.spin_wait(cfg, x)}
+
+
+def runflag_candidates(cfg):
+    """The functions whose harness the run-flag change (TcCalls) can alter: those project.json "run_flags" lists
+    (compare.run_flag; an entry without its evidence is refused). Every other harness stays byte for byte."""
+    from core import compare
+    return {x.lower() for x in cfg.get("run_flags") or {} if compare.run_flag(cfg, x)}
+
+
+def sz_candidates(cfg):
+    """The functions whose harness the FPSCR.SZ change (TcFpscr.Sz) can alter: those with a script arg 13 (called
+    with SZ=1, or with a callee that returns in the other mode; core/sz_entry.arg). Every other runs as before."""
+    from core import oracle_fresh, paths, sz_entry
+    return {x for x in oracle_fresh.matched_functions() if sz_entry.arg(cfg, paths, x) != "-"}
+
+
+def mockwrite_candidates(cfg, harness):
+    """The functions whose harness a "mock_write_facts" list can alter: those with a listed callee (meta.json
+    callees). Every other harness stays byte for byte (TcStrict writes only at a listed callee's call)."""
+    from core import strict_judge
+    listed = {c for c, _f, _n in strict_judge.write_facts(cfg)}
+    out = set()
+    for m in pathlib.Path(harness).glob("*/meta.json"):
+        try:
+            callees = json.loads(m.read_text(encoding="utf-8")).get("callees") or []
+        except ValueError:
+            continue
+        if any(str(c.get("addr", "")).lower().removeprefix("0x").zfill(8) in listed for c in callees):
+            out.add(m.parent.name)
+    return out
 
 
 def harness_bytes(d, sig_of=None):
@@ -263,6 +459,23 @@ def baseline(folder):
             rng if sd != d and rng.is_file() else None)
 
 
+def old_stamper(cfg, scripts, catalog, ranges, no_writes=False):
+    """A Stamper for a baseline (baseline()'s scripts, catalog, ranges). Its shared hash is taken again from them:
+    Stamper takes it from today's inputs once (10314a8), and kept, every old stamp equalled today's (PS2, 2026-10-26)."""
+    from core import ghidra, oracle_fresh, oracle_stamp, paths
+    old = oracle_fresh.Stamper(cfg)
+    old.scripts = dict(scripts, **{"TcInputs.java": paths.INPUTS})
+    if ranges or no_writes:  # no_writes: the facts file before a "mock_write_facts" list (--change mockwrite)
+        body = ghidra.facts_body({k: v for k, v in cfg.items() if not (no_writes and k == "mock_write_facts")})
+        old.facts = oracle_stamp.facts_hashed(body.replace(str(paths.CODE_RANGES), str(ranges)) if ranges else body)
+    keep, paths.CATALOG = paths.CATALOG, catalog or paths.CATALOG
+    try:
+        old.shared = oracle_stamp.common(old.scripts, old.facts)
+    finally:
+        paths.CATALOG = keep
+    return old
+
+
 def listed(path):
     """The addresses of a list file: the first word of each line, comments (#) left out."""
     out = set()
@@ -283,7 +496,9 @@ def main():
     ap.add_argument("--seed", type=int, default=14)
     ap.add_argument("--max", type=int, default=100)
     ap.add_argument("--slots", type=int)
-    ap.add_argument("--change", choices=("r14", "fret", "fargs", "late", "spin", "fret+fargs", "none"), default="r14",
+    ap.add_argument("--change", choices=("r14", "fret", "fargs", "late", "spin", "dslot", "fnrmw", "lrep", "retfn",
+                                         "fipr", "runflag", "mockwrite", "runflag+mockwrite", "sz", "fret+fargs", "none"),
+                    default="r14",
                     help="which oracle change (docstring)")
     ap.add_argument("--list", action="append", default=[], help="a file of more candidate addresses")
     ap.add_argument("--dry", action="store_true")
@@ -291,7 +506,7 @@ def main():
     ws = use_project(a.project)
     if not a.dry and a.phase != "refresh" and server_state(ws, timeout=3) is not None:
         sys.exit("the project's server is running: stop it first (prepare needs the master Ghidra project)")
-    from core import cascade, ghidra, oracle_fresh, oracle_stamp, paths, refine
+    from core import cascade, ghidra, oracle_fresh, paths, refine
     cfg = paths.config()
     if a.slots:
         cfg["ghidra_parallel"] = a.slots
@@ -301,11 +516,7 @@ def main():
         scripts, catalog, ranges = baseline(folder)
         if not scripts:
             sys.exit(f"no *.java in {folder}")
-        old = oracle_fresh.Stamper(cfg)
-        old.scripts = dict(scripts, **{"TcInputs.java": paths.INPUTS})
-        if ranges:
-            old.facts = oracle_stamp.facts_hashed(ghidra.facts_body(cfg).replace(str(paths.CODE_RANGES), str(ranges)))
-        olds.append((old, catalog))
+        olds.append((old_stamper(cfg, scripts, catalog, ranges, "mockwrite" in a.change), catalog))
 
     def was_current(st, x):
         for old, catalog in olds:
@@ -321,7 +532,15 @@ def main():
             (fret_candidates(paths.HARNESS) if "fret" in a.change else set())
             | (fargs_candidates(paths.HARNESS, paths.PACKETS) if "fargs" in a.change else set())
             | (late_candidates(paths.HARNESS) if "late" in a.change else set())
-            | (spin_candidates(cfg) if "spin" in a.change else set()))
+            | (spin_candidates(cfg) if "spin" in a.change else set())
+            | (dslot_candidates(paths.HARNESS, paths.PACKETS) if "dslot" in a.change else set())
+            | (fnrmw_candidates(paths.HARNESS, paths.PACKETS) if "fnrmw" in a.change else set())
+            | (lrep_candidates(paths.HARNESS, paths.PACKETS) if "lrep" in a.change else set())
+            | (retfn_candidates(paths.HINTS) if "retfn" in a.change else set())
+            | (fipr_candidates(paths.PACKETS) if "fipr" in a.change else set())
+            | (runflag_candidates(cfg) if "runflag" in a.change else set())
+            | (mockwrite_candidates(cfg, paths.HARNESS) if "mockwrite" in a.change else set())
+            | (sz_candidates(cfg) if a.change == "sz" else set()))
     for f in a.list:
         cand |= listed(f)
     current, refreshable, other = [], [], []

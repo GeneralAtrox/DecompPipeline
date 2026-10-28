@@ -319,7 +319,7 @@ names, Ghidra names or gotos) and passes the adoption gate (core/draft_gate: no 
 header #define or enum names; any length, unless `readable_draft_max_lines` sets a limit) is adopted
 (`source: draft`, `readable_by: machine`) with no agent; an agent's later pass sets `readable_by: agent`, and an
 agent working on a machine file is told to name it. With `--draft start` (the default; `adopt` stops there) a file
-that is not adopted is the agent's work.c (the machine file when it passes the judge); `refine.py draft TARGETS [--adopt]` judges drafts alone. Re-adoption
+that is not adopted is the agent's work.c (the machine file when it passes the judge); `refine.py draft TARGETS [--adopt]` judges drafts alone; `refine.py draft --fmac [--list | --adopt]` takes the readable files that write the code's fmac as two roundings (they pass a judge whose vectors cannot tell, and drift the game) and replaces each with its machine file when that one passes and calls sh4_fmac (old file backed up). Lint R9/fmac (raw C) and RR8 (readable C, core/fused) fail such a file outright: `verify` marks it stale for that route and `run --redo`; matched raw C goes back through `tools/requeue.py` and `translate_backlog --record`. The harness-staleness check, the watcher gate and the mutation audit leave the rule out. Re-adoption
 (core/readopt.py): `refine.py verify --adopt` tries a STALE file's earlier attempts newest first and adopts the first
 strict PASS (old file backed up to state/readopt_backup, `source: readopt attempt-NN`), else lists the function in
 state/redo.txt for `refine.py run @state/redo.txt --redo`; `refine.py adopt TARGETS` does the same for failed rows.

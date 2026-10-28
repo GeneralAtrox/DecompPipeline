@@ -13,6 +13,7 @@
 /* vectors.txt header line S (TcSq: a function sending a state pointer's store queue): the store-queue window
  * 0xe0000000..0xe3ffffff folds onto RAM too, its four views of the 16 MB, as in the port (port.h GUEST_SQ_BASE). */
 extern int tcrt_sq_window;
+extern char tcrt_sq_line[1024]; /* the line (runner.c): "S N" then per callee register "target reg lo hi" (xemu) */
 void tcrt_set_sq_window(void);
 
 /* Main RAM is also visible at 0x0c... (P0); with the MMU off it is the same bytes. Every access and call target is
@@ -50,12 +51,16 @@ void tcrt_set_sr(u32 imask);            /* line I: SR at entry, MD=1 and this in
 void tcrt_report_sr(FILE *out);         /* line IM: the interrupt mask at exit, only after a line I */
 void tcrt_add_hw(u32 reg, u32 value);   /* header line Y: a listed hardware register and its value (TcHw) */
 void tcrt_set_gbr_state(void);          /* header line Z: GBR is state (TcHw) */
+void tcrt_set_run_flag(u32 word, u32 callee, u32 n); /* header line f: callee's Nth call clears word (TcCalls) */
 void tcrt_report_gbr(FILE *out);        /* line GB: GBR at exit, only after a line Z */
 void tcrt_set_low(const u32 bits[4]);    /* r0..r3 at entry (line L) */
+void tcrt_set_ro(const u32 r4_7[4]);     /* r4..r7 at entry (line R): sh4_r(4..7) until a call (TcOut) */
+void tcrt_set_ro_mask(u32 mask);        /* header line O: r(4+k) compared at exit for bit k (TcOut) */
+void tcrt_report_ro(FILE *out);         /* line RO: r4..r7 at exit, only after a line O */
 u32 tcrt_low(int index);                 /* for the generated thunk: a parameter in r0..r3 */
 void tcrt_set_retx(u32 value);           /* for the generated thunk: the extra result word (line RETX) */
 void tcrt_set_call_returns(const u32 rets[TCRT_RETS]);
-void tcrt_add_live(u32 target, u32 reg, u32 n, const u32 d[4]); /* header line K: a callee changing rN (TcLive) */
+void tcrt_add_live(u32 target, u32 reg, u32 n, const u32 d[4]); /* header line K: a callee changing rN (TcLive, TcOut) */
 void tcrt_set_draws(const u32 draws[16]); /* line A: the vector's draws for the K callees' deltas */
 void tcrt_report(FILE *out, u32 r0, u32 fr0_bits);
 /* tc_halt (TcExit), tc_spin (TcSpin): longjmp here; the runner sets it before each vector. tcrt_halted: the vector

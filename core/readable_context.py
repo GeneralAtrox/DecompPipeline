@@ -217,6 +217,23 @@ def low_regs():
     return set(abi.get("extra_inputs_allowed", ("r0", "r1", "r2", "r3")))
 
 
+def out_notes(meta):
+    """context.md notes on r4..r7 outputs (TcOut): a callee handing a result back there, read after the call (meta
+    r_out), or the function's own, read by its callers (meta r_exports). Shared with core/agent.abi_notes."""
+    lines = []
+    if meta.get("r_out"):
+        lines += ["", "## Callees that hand results back in r4..r7", "",
+                  "These callees leave an argument register advanced, and this function reads it after the call "
+                  "(meta r_out: " + ", ".join(f"fn_{t} {r}" for t, r in meta["r_out"].items()) + "):",
+                  "after each such call, read the register with sh4_r(N) (N = 4..7), as raw.c does; never keep the",
+                  "value it had before the call."]
+    if meta.get("r_exports"):
+        lines += ["", "## Results handed back in " + ", ".join(meta["r_exports"]), "",
+                  "Its callers read these registers after calling it, and they are compared at exit: before",
+                  "returning, set each with sh4_set_r(N, value) to the value the original leaves there, as raw.c does."]
+    return lines
+
+
 def state_notes(meta):
     """context.md notes on registers outside the C convention: runtime state, and callees reading r0..r3 or r8..r14."""
     lines = []
@@ -232,11 +249,16 @@ def state_notes(meta):
                       f"fn_{t} {r} {d}" for t, regs in meta["r_live"].items() for r, d in regs.items()) + "): the value",
                   "changes at each such call. Read it with sh4_r(N) after the call, as raw.c does; never keep a copy",
                   "across one."]
+    lines += out_notes(meta)
     if meta.get("sq_window"):
         lines += ["", "## The store-queue window", "",
                   f"{meta['sq_window']} may point into the store-queue window (0xe0000000..), mapped onto RAM as in",
                   "the port. Keep raw.c's 32-byte copies at the slots its pref sends unwritten: they are the queue's",
                   "old contents, which no store in C puts there."]
+        from core.agent import sq_callee_bytes
+        if sq_callee_bytes(meta):
+            lines += [f"Raw.c's sq_mark lines name the bytes a callee stores into the window ({sq_callee_bytes(meta)}):",
+                      "the pref sends them as the callee left them, so no copy may overwrite them."]
     if meta.get("fpu_state"):
         lines += ["", "## The whole FPU is state", "",
                   "raw.c switches FPU modes: fr0..fr15, xf0..xf15 and the mode bits are compared at exit and at",

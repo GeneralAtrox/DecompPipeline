@@ -25,6 +25,25 @@ void pvr_vram_written(u32 offset, u32 size)
         pvr_tex_invalidate(offset, size > PVRX_VRAM_SIZE - offset ? PVRX_VRAM_SIZE - offset : size);
 }
 
+/* Texture memory as guest code writes it through the 64-bit path's window (0x04000000..0x047fffff in any area: a
+ * game library that copies texture data itself rather than through the SDK): the host bytes of [addr, addr + size)
+ * in that window, NULL for any other range. The bytes are kept for an in-between frame's undo, as the SDK layer
+ * keeps them; the writer then calls port_texture_written. */
+#define TEX_WINDOW 0x04000000u
+#define AREA_MASK 0x1fffffffu
+
+static void vram_undone(void *p, u32 size) { pvr_vram_written((u32)((u8 *)p - g_vram), size); }
+
+u8 *port_texture_window(u32 addr, u32 size)
+{
+    u32 a = (addr & AREA_MASK) - TEX_WINDOW;
+    if ((addr & AREA_MASK) < TEX_WINDOW || a >= PVRX_VRAM_SIZE || size > PVRX_VRAM_SIZE - a) return NULL;
+    port_extra_undo(g_vram + a, size, vram_undone);
+    return g_vram + a;
+}
+
+void port_texture_written(u32 addr, u32 size) { pvr_vram_written((addr & AREA_MASK) - TEX_WINDOW, size); }
+
 /* An in-between frame's settings are put back after it (runtime/frame_extra.c); the fog table is uploaded again. */
 static void state_undone(void *p, u32 size)
 {

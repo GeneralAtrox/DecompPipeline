@@ -15,9 +15,14 @@ The guest model is DP's judge model (target.json "abi", "memory"; tc_rt.h):
   r15 and r0..r3; runtime state (r8..r14, fr12..fr15, and fr0..fr15 when the whole FPU is state) is handed over at
   every call and at exit; only r0 and fr0 (the same result bits) change across a call (DP's mocked callee);
 - the FPU modes FPSCR.SZ/PR/FR are followed through the code from the ABI's entry state (all 0): a paired move
-  (SZ=1) is two single moves; frchg/fschg/fpchg also update the runtime's mode word (sh4_frchg, ...);
-- PC-relative literal-pool loads and mova become constants; computed jumps through a bounded table (braf/jmp after
-  a cmp/hs or cmp/hi range check) become a switch over the table's targets.
+  (SZ=1) is two single moves; frchg/fschg/fpchg also update the runtime's mode word (sh4_frchg, ...). A function its
+  callers run with SZ=1 (project.json "fpscr_sz_from_caller") gets a body for each SZ, chosen by the runtime's mode
+  at entry (sh4_sz); the SZ=0 one is the C a function without the fact gets. meta "fpscr_sz" (TcFpscr.Sz, from the
+  callers' code) gives the modes it is called in (one body, or one per mode) and the callees that return with SZ
+  changed: the modes follow their SZ at return, and the C sets it after the call (the judge's callee is mocked);
+- PC-relative literal-pool loads and mova become constants, except a pool word the program writes at run time
+  (project.json "written_code"): that load reads memory where the original does; computed jumps through a bounded
+  table (braf/jmp after a cmp/hs or cmp/hi range check) become a switch over the table's targets.
 
 Nothing here is specific to one game or address: everything comes from the machine code and the target facts.
 """
@@ -91,6 +96,11 @@ class Signature:
     hw_writes: frozenset = frozenset()
     sq_window: str | None = None    # the register that may point into the store-queue window (meta "sq_window")
     fpscr_state: bool = False       # FPSCR is runtime state, compared at exit and at calls (meta "fpscr_state", TcFpscr)
+    sq_callee: dict | None = None   # {callee: {"r4": bytes}}: what a callee stores through r4..r7 (meta "sq_callee")
+    r_out: frozenset = frozenset()  # r4..r7 handed over like r8..r14: a callee's output read after it (meta "r_out"),
+                                    # or the function's own, read by its callers (meta "r_exports"; TcOut)
+    sz_entry: tuple = (0,)          # the FPSCR.SZ its callers run it with (meta "fpscr_sz", TcFpscr.Sz)
+    sz_exits: dict | None = None    # {callee: "XY"}: its SZ at return entered with 0 (X) and 1 (Y), "u" unknown
 
     @classmethod
     def from_meta(cls, meta):
@@ -102,7 +112,10 @@ class Signature:
                    meta["ret"], meta.get("ret_reg"), callees, bool(meta.get("fpu_state")), bool(meta.get("fr0_result")),
                    frozenset(int(r, 16) for r in (hw.get("reads") or {})),
                    frozenset(int(r, 16) for r in (hw.get("writes") or ())), meta.get("sq_window"),
-                   bool(meta.get("fpscr_state")))
+                   bool(meta.get("fpscr_state")), sq_callee_bytes(meta.get("sq_callee")),
+                   frozenset(r for regs in (meta.get("r_out") or {}).values() for r in regs.split(","))
+                   | frozenset(meta.get("r_exports") or ()),
+                   *fpscr_sz(meta.get("fpscr_sz")))
 
     @classmethod
     def generic(cls, addr):
@@ -206,6 +219,8 @@ def writes(i: Insn):
         return set()
     if o in ("bsr", "bsrf", "jsr"):
         return {"pr", "r0", "fr0"}      # the callee's result comes back in r0 and fr0
+    if o == "bsrl":
+        return {"pr"}                   # a local subroutine's bsr: a jump that sets PR (FunctionTranslator._traverse)
     if o in ("clrs", "sets"):
         return {"s"}
     if o in ("shad", "shld"):
@@ -318,7 +333,7 @@ def reads(i: Insn):
         return {"r0", n}
     if o in ("clrs", "sets", "ldtlb"):
         return set()
-    if o in ("nop", "rts", "rte", "sleep", "bra", "bsr", "bt", "bf", "bt/s", "bf/s", "trapa", "illegal", "clrt",
+    if o in ("nop", "rts", "rte", "sleep", "bra", "bsr", "bsrl", "bt", "bf", "bt/s", "bf/s", "trapa", "illegal", "clrt",
              "sett", "clrmac", "div0u", "mov#", "mova", "mov.l@pc", "mov.w@pc", "movt") or o.endswith("@gbr_ld"):
         return set()
     if o in ("jmp", "jsr", "braf", "bsrf", "lds", "ldc", "lds.l", "ldc.l"):
@@ -355,8 +370,11 @@ def reads(i: Insn):
 # ------------------------------------------------------------------------------------------------ the translator
 class FunctionTranslator:
     def __init__(self, image: Image, entry: int, sig: Signature, facts: TargetFacts, body=None, entries=None,
-                 comments=True, ranges=None, spin=None):
+                 comments=True, ranges=None, spin=None, written=None, entry_sz=0):
         self.img, self.entry, self.sig, self.f = image, entry, sig, facts
+        # the literal-pool bytes the program writes at run time (written_code): a load of one reads memory
+        self.written = frozenset(written or ())
+        self.entry_sz = entry_sz  # FPSCR.SZ at entry: 1 for the SZ=1 body of an fpscr_sz_from_caller function
         # the wait loops DP's project names (project.json "spin_waits": the ranges its evidence gives): a branch back
         # within one calls tc_spin() when it is taken, as the judge's reference halts there (TcSpin)
         self.spin = list(spin or ())
@@ -392,6 +410,7 @@ class FunctionTranslator:
         self._fpscr_free = None     # fpscr_free: the sts/lds fpscr that only set FPSCR's untracked bits
         self.fpscr_why = None       # fpscr_free: why it refused, where the reason is known
         self.recursive = False      # the function calls itself: the body is the helper `body`, given r15 and PR
+        self.sp_input = False       # the port form: every function's body is `body`, given r15 and PR (as recursive)
         self.call_helper = False    # calls to callees DP's meta does not list go through the tx_call helper (size)
         self.emitted: dict[int, list] = {}  # non-branch instruction -> its C lines (before any mutation)
         self.span: dict[int, list] = {}     # node -> [first, end) of its lines in the emitted items
@@ -469,7 +488,7 @@ class FunctionTranslator:
                 elif y.op == "lds" and y.imm == 2:
                     c = self.reg_const(x, R(y.m))
                     v = frozenset({c if c is not None else ENTRY})  # (a value from elsewhere: no call's here)
-            return frozenset({x + 4}) if i.op in ("bsr", "bsrf", "jsr") else v
+            return frozenset({x + 4}) if i.op in ("bsr", "bsrf", "jsr", "bsrl") else v
 
         leaves = set()
         while work:
@@ -521,7 +540,121 @@ class FunctionTranslator:
             t = self.resolve_table(a)
             if t:
                 return ("table", tuple(fold_p0(x) for x in t))
+            t = self.width_table(a) if i.op == "braf" else None
+            if t:
+                return ("table", t)
         return None
+
+    def width_table(self, a):
+        """Targets of a braf into the code after it whose offset the code before it bounds (hand-written asm: `and
+        #7,r0; shll2 r0; braf r0` jumps into a run of bra's; PS2 8c189000 shifts flag bits into r9 by rotcl in a
+        local subroutine, then `shll2 r9; braf r9`). A forward pass from the entry values each register by its bit
+        width and its known-zero low bits (a local subroutine's rts returns to its own call; a mocked callee changes
+        r0); the targets are a + 4 + (k << tz) below 1 << w. None when that is more than 64 targets or one is no code
+        of the body."""
+        reg = int(R(self.img.insn(a).m)[1:])
+        st = self._widths().get(a)
+        if st is None:
+            return None
+        w, tz = st[reg]
+        n = 1 << max(w - tz, 0)
+        if n > 64:
+            return None
+        out = tuple((a + 4 + (k << min(tz, 31))) & U32 for k in range(n))
+        return out if all(self.local(t) and self.img.has(t, 2) for t in out) else None
+
+    def _widths(self):
+        """{address: (w, tz) per r0..r15 before it} over the paths width_table follows (context-sensitive returns)."""
+        top = (32, 0)
+        memo, at = {}, {}
+
+        def join(x, y):
+            return tuple((max(p[0], q[0]), min(p[1], q[1])) for p, q in zip(x, y))
+
+        def step(st, x):
+            st = list(st)
+            o, n, m = x.op, x.n, x.m
+            if o == "mov#":
+                v = x.imm & U32
+                st[n] = (v.bit_length(), (v & -v).bit_length() - 1 if v else 32) if v < 0x80 else top
+            elif o == "mov":
+                st[n] = st[m]
+            elif o in ("and#", "and"):
+                v = x.imm & 0xFF
+                s = 0 if o == "and#" else n
+                q = (v.bit_length(), (v & -v).bit_length() - 1 if v else 32) if o == "and#" else st[m]
+                st[s] = (min(st[s][0], q[0]), max(st[s][1], q[1]))
+            elif o in ("or#", "or", "xor#", "xor"):
+                v = x.imm & 0xFF
+                s = 0 if o.endswith("#") else n
+                q = (v.bit_length(), (v & -v).bit_length() - 1 if v else 32) if o.endswith("#") else st[m]
+                st[s] = (max(st[s][0], q[0]), min(st[s][1], q[1]))
+            elif o in ("shll", "shll2", "shll8", "shll16", "shlr", "shlr2", "shlr8", "shlr16"):
+                k = int(o[4:] or 1)
+                w, z = st[n]
+                if o.startswith("shll"):
+                    st[n] = (w + k, min(z + k, 32)) if w + k <= 32 else (32, min(z + k, 32))
+                else:
+                    st[n] = (max(w - k, 0), max(z - k, 0) if z < 32 else 32)
+            elif o == "rotcl":
+                st[n] = (min(st[n][0] + 1, 32), 0)
+            elif o == "movt":
+                st[n] = (1, 0)
+            elif o in ("extu.b", "extu.w"):
+                st[n] = (min(st[m][0], 8 if o == "extu.b" else 16), st[m][1])
+            else:
+                for r in writes(x):
+                    if r[0] == "r" and r[1:].isdigit():
+                        st[int(r[1:])] = top
+            return tuple(st)
+
+        def run(entry, st0, depth):
+            key = (entry, st0)
+            if key in memo:
+                return memo[key]
+            memo[key] = None    # (a recursion returns nothing)
+            if depth > 16:
+                return None
+            ins = {entry: st0}
+            work, out = [entry], None
+            while work:
+                x = work.pop()
+                if not self.local(x) or not self.img.has(x, 2):
+                    continue
+                s_in = ins[x]
+                at[x] = s_in if x not in at else join(at[x], s_in)
+                i = self.img.insn(x)
+                slot = self.img.insn(x + 2) if i.delayed else None
+                s = step(s_in, slot) if slot is not None else s_in
+                nxt = []
+                if i.op == "rts":
+                    out = s if out is None else join(out, s)
+                elif i.op == "bsr" and self.local(i.ea) and i.ea != self.entry:
+                    r = run(i.ea, s, depth + 1)
+                    if r is not None:
+                        nxt = [(x + 4, r)]
+                elif i.op in ("bsr", "bsrf", "jsr"):
+                    nxt = [(x + 4, (top,) + s[1:])]
+                elif i.op in ("braf", "jmp"):
+                    d = self.dec_used.get(x)
+                    nxt = [(t, s) for t in (d[1] if d and d[0] == "table" else ())]
+                elif i.op == "bra":
+                    nxt = [(i.ea, s)]
+                elif i.op in ("bt", "bf", "bt/s", "bf/s"):
+                    nxt = [(x + (4 if slot else 2), s), (i.ea, s)]
+                elif i.op not in ("rte", "illegal", "sleep", "trapa"):
+                    nxt = [(x + 2, step(s, i))]
+                for y, sy in nxt:
+                    old = ins.get(y)
+                    new = sy if old is None else join(old, sy)
+                    if new != old:
+                        ins[y] = new
+                        work.append(y)
+            memo[key] = out
+            return out
+
+        run(self.entry, (top,) * 16, 0)
+        return at
 
     def reg_const(self, a, reg):
         v = self.symexec(self.block_start(a), a)[reg]
@@ -533,6 +666,7 @@ class FunctionTranslator:
         self.succ = {}
         self.fall_out = {}
         self.pr_targets = set()
+        self.local_calls = set()
         work, seen = [self.entry], set()
         while work:
             a = work.pop()
@@ -542,6 +676,11 @@ class FunctionTranslator:
             if not self.local(a):
                 raise TranslateError(f"flow reaches {a:08x} outside the body")
             i = self.img.insn(a)
+            if i.op == "bsr" and self.local(i.ea) and i.ea != self.entry:
+                # a bsr into the body: a local subroutine of hand-written asm (core/asm_modules.py), which DP's
+                # oracle runs as part of the function. It sets PR and jumps; its rts returns through PR to a + 4.
+                i = dataclasses.replace(i, op="bsrl")
+                self.local_calls.add(a)
             self.insns[a] = i
             self.primary.add(a)
             succ = []
@@ -594,6 +733,13 @@ class FunctionTranslator:
                 elif self.local(i.ea):
                     succ = [i.ea]
                     self.leaders.add(i.ea)
+            elif i.op == "bsrl":
+                succ = [i.ea]
+                self.leaders.add(i.ea)
+                if a + 4 not in self.pr_targets:
+                    self.pr_targets.add(a + 4)
+                    self.leaders.add(a + 4)
+                    work.append(a + 4)
             elif i.op in ("bsr", "bsrf", "jsr"):
                 tgt = i.ea if i.op == "bsr" else (d[1] if d and d[0] == "const" else None)
                 if not (tgt is not None and self.halts_at(tgt)):
@@ -641,6 +787,8 @@ class FunctionTranslator:
             v = None
             if o == "mov#":
                 st[n] = ("c", i.imm & U32)
+            elif o in ("mov.l@pc", "mov.w@pc") and self.pool_written(i):
+                st[n] = ("?",)
             elif o == "mov.l@pc":
                 st[n] = ("c", self.img.u32(i.ea))
             elif o == "mov.w@pc":
@@ -795,6 +943,8 @@ class FunctionTranslator:
         out = []
         for k in range(n):
             ea = (base + size * k + scale * off + add) & U32
+            if any(ea + j in self.written for j in range(size)):
+                return None     # a table the program writes at run time has no targets to read here
             if size == 2:
                 e = self.img.u16(ea)
                 e = e - 0x10000 if e & 0x8000 else e
@@ -838,6 +988,10 @@ class FunctionTranslator:
         self.labels_used.add(a)
         return f"L_{a:08x}"
 
+    def pool_written(self, i: Insn):
+        """A PC-relative load (mov.w/mov.l @(disp,PC)) of a pool word the program writes at run time."""
+        return any(i.ea + k in self.written for k in range(4 if i.op == "mov.l@pc" else 2))
+
     def mem_ld(self, size, addr, const):
         if size == 4 and const is not None and const in self.sig.hw_reads:
             return f"tc_hw_read32({h(const)})"
@@ -858,9 +1012,10 @@ class FunctionTranslator:
         r15 and r0..r3. A computed target gets what any callee the original was seen calling takes, and every
         argument register the function set since its entry or last call (set_args): the target may be one meta
         does not list, which takes those. A stack word the callee takes is read into arg_sK first (a field's value
-        must be free of calls for the draft step)."""
+        must be free of calls for the draft step). The port form (sp_input) gives every call them all: its C runs
+        the callee for real, which reads its arguments whether DP compares them or not."""
         cal = self.sig.callees
-        if cal is None:
+        if cal is None or self.sp_input:
             regs = set(self.ALL_ARGS)
         elif target_expr.startswith("0x"):
             regs = set(cal.get(int(target_expr[:-1], 16), self.ALL_ARGS))
@@ -1170,7 +1325,7 @@ class FunctionTranslator:
                 lost = {f"r{k}" for k in range(8)} | {"pr"}
                 return st[0] - lost, st[1] - lost, {k: v for k, v in st[2].items() if k not in lost}
             if not self.succ.get(a):        # an exit: a return or a tail call
-                if st[0] & ({f"r{k}" for k in range(8, 15)} | ({"r0", "r1"} if self.sig.ret != "void" else set())):
+                if st[0] & ({f"r{k}" for k in range(8, 15)} | ({"r0", "r1"} if self.sig.ret != "void" or self.sp_input else set())):
                     raise Bad
             return step(st, i)
 
@@ -1208,8 +1363,9 @@ class FunctionTranslator:
         if target_expr.startswith("0x"):
             self.callees.add(int(target_expr[:-1], 16))
         cal = self.sig.callees
-        if self.call_helper and not (cal is not None and target_expr.startswith("0x")
-                                     and int(target_expr[:-1], 16) in cal) and \
+        # (the port form hands every callee all its words anyway, so a listed callee may take the helper too)
+        if self.call_helper and (self.sp_input or not (cal is not None and target_expr.startswith("0x")
+                                                       and int(target_expr[:-1], 16) in cal)) and \
                 not any(r.startswith("fr") for r in self.set_args(self.cur)):
             # (the helper hands over r4..r7 and no float register: a call with a float argument set takes the block)
             self.use("r1", "r2", "r3", "r4", "r5", "r6", "r7", "r15")
@@ -1219,7 +1375,17 @@ class FunctionTranslator:
         a = self.cur
         if not tail and not halt:
             s.append(f"@FR0:{a}@")
+            x = self.sz_exit(self.insns[a], {R(self.insns[a].m): int(target_expr[:-1], 16)}
+                             if target_expr.startswith("0x") else {}, getattr(self, "sz_call", {}).get(a))
+            if x is not None:   # the callee's SZ at return (sz_exits): the judge's mocked callee keeps the mode
+                s.append(f"if ({'!' if x else ''}sh4_sz()) sh4_fschg();")
             q = self.sig.sq_window
+            if q and self.sig.sq_callee:
+                # a callee storing through a pointer into the window: those bytes of the queues are its own
+                marks = self.sq_marks(target_expr)
+                if marks:
+                    self.helpers.update(("sq", "sqc"))
+                    s = marks + s  # before the argument lines (fill_call_args wants them next to the call)
             if q and q in STATE:
                 # a callee that moves the queue pointer up through the window filled the blocks it passed
                 self.helpers.add("sq")
@@ -1231,6 +1397,29 @@ class FunctionTranslator:
             # copied back, so the variables are the runtime's again whichever way the code goes on.
             return [f"@SYNC_OUT:{a}@"] + s + ["@SYNC_IN_ALL@", f"@RETURN_CLEAN:{a}@"]
         return [f"@SYNC_OUT:{a}@"] + s + ([f"@RETURN_CLEAN:{a}@"] if tail else [f"@SYNC_IN:{a}@"])
+
+    def sq_marks(self, target_expr):
+        """The sq_mark lines before a call (r4..r7 still its arguments): per callee of Signature.sq_callee the target
+        may be, the bytes it stores through each register (DP's TcSq.callee)."""
+        out = []
+        for c, regs in sorted(self.sig.sq_callee.items()):
+            if target_expr.startswith("0x") and int(target_expr[:-1], 16) != c:
+                continue
+            m = [f"sq_mark(&sq, {r}, 0x{lo:016x}ull, 0x{hi:016x}ull);" for r, (lo, hi) in sorted(regs.items())]
+            self.use(*regs)
+            out += m if target_expr.startswith("0x") else [f"if ({target_expr} == 0x{c:08x}u) {{ " + " ".join(m) + " }"]
+        return out
+
+    def in_regs(self):
+        """The port form's further body inputs: each argument register DP's signature does not list (a value the
+        function may only pass on, as its C runs the callee for real) and r0..r3 (which a function that does not
+        write them hands back or passes on as they came), in_REG after the parameters. The judged function passes
+        0, which is what such a register held before."""
+        if not self.sp_input:
+            return []
+        given = {st for _, _, st in self.sig.params}
+        return [x for x in [f"r{k}" for k in range(8)] + [f"fr{k}" for k in range(4, 12)]
+                if x not in given and (x not in self.state or x in self.sig.r_out)]
 
     def self_call(self):
         """A call of the function itself. DP's oracle runs it (its entry is inside the body, so it is no mocked
@@ -1250,10 +1439,15 @@ class FunctionTranslator:
             else:
                 raise TranslateError(f"a call of the function itself with a parameter in {st} at {a:08x}")
             self.use(st)
+        for x in self.in_regs():
+            self.use(x)
         self.use("r15")
         self.recursive = True
-        call = f"body({', '.join(['r15', h(a + 4)] + args)})"
+        call = f"body({', '.join(['r15', h(a + 4)] + args + self.in_regs())})"
         sig = self.sig
+        if sig.ret == "void" and self.sp_input:  # the port form's body hands back r0
+            self.use("r0")
+            return [f"r0 = {call};"]
         if sig.ret == "void":
             return [call + ";"]
         if sig.ret == "f32":
@@ -1313,6 +1507,8 @@ class FunctionTranslator:
             L.append(f"{n} = {m};")
         elif o == "mov#":
             L.append(f"{n} = {h(i.imm)};")
+        elif o in ("mov.l@pc", "mov.w@pc") and self.pool_written(i):
+            L.append(f"{n} = {self.mem_ld(4 if o == 'mov.l@pc' else 2, h(i.ea), i.ea)};")
         elif o == "mov.l@pc":
             L.append(f"{n} = {h(self.img.u32(i.ea))};")
         elif o == "mov.w@pc":
@@ -1785,6 +1981,8 @@ class FunctionTranslator:
             new.pop(r, None)
         if o == "mov#":
             new[n] = i.imm & U32
+        elif o in ("mov.l@pc", "mov.w@pc") and self.pool_written(i):
+            pass    # read at run time: not a constant
         elif o == "mov.l@pc":
             new[n] = self.img.u32(i.ea)
         elif o == "mov.w@pc":
@@ -1878,6 +2076,10 @@ class FunctionTranslator:
             L += slot_lines
             L.append(f"@RETURN:{a}@")
             return L, None
+        if o == "bsrl":
+            self.use("pr")
+            L += slot_lines
+            return L + [f"pr = {h(a + 4)};", f"goto {self.label(i.ea)};"], None
         if o in ("bsr", "bsrf", "jsr"):
             if o == "bsr":
                 tgt = h(i.ea)
@@ -1952,7 +2154,9 @@ class FunctionTranslator:
         does at the join), or an lds loads a PR this does not follow (TC 8c0611d8, just before its rts): PR is then
         unknown (None) until an lds sets it again, and any instruction whose meaning PR changes is refused there."""
         ldss = {a for a, i in self.insns.items() if i.op == "lds" and SYSR.get(i.imm) == "fpscr"}
-        if not any(self.insns[a].op in ("fschg", "fpchg") for a in self.insns) and not (ldss and self.sig.fpscr_state):
+        self.sz_call = {}   # FPSCR.SZ its callee starts in, per call (call_stmt: its SZ at return, sz_exits)
+        if not self.entry_sz and not any(self.insns[a].op in ("fschg", "fpchg") for a in self.insns) \
+                and not (ldss and self.sig.fpscr_state) and not self.sig.sz_exits:
             if any(i.op in ("fcnvsd", "fcnvds") for i in self.insns.values()):
                 raise TranslateError("fcnvsd/fcnvds with FPSCR.PR=0 (undefined) or set where DP cannot follow it")
             return
@@ -1978,7 +2182,7 @@ class FunctionTranslator:
                 pr = fp.get(m)  # None: not known here (TC 8c0611d8 or-s a shifted constant), as where paths meet
             return sz, pr, fp2, self.const_step(x, c)
 
-        mode = {self.entry: (0, 0, {}, {})}
+        mode = {self.entry: (self.entry_sz, 0, {}, {})}
         at = {}
         work = [self.entry]
         while work:
@@ -1989,13 +2193,18 @@ class FunctionTranslator:
                 at[x.addr] = st[:2]
                 st = step(st, x)
             sz, pr, fp, c = st
+            if i.op in ("bsr", "bsrf", "jsr"):
+                self.sz_call[a] = sz    # (after its delay slot: `bsr f; fschg` runs f in the other mode)
+            x = self.sz_exit(i, c, sz)
+            if x is not None:   # a callee that returns with SZ changed (sz_exits): the C sets it after the call
+                sz = x
             if i.op in ("bsr", "bsrf", "jsr"):     # the callee returns with the modes as they were (DP's mock)
                 lost = {f"r{k}" for k in range(8)} | {"pr"}
                 fp = {k: v for k, v in fp.items() if k not in lost}
                 c = {k: v for k, v in c.items() if k not in lost}
             nxt = list(self.succ.get(a, ()))
-            if i.op == "lds" and i.imm == 2:
-                nxt += sorted(self.pr_targets)
+            if (i.op == "lds" and i.imm == 2) or (i.op == "rts" and self.local_calls):
+                nxt += sorted(self.pr_targets)     # (a local subroutine's rts returns to one of them)
             for b in nxt:
                 if b not in self.insns:
                     continue
@@ -2031,6 +2240,15 @@ class FunctionTranslator:
             if sz and (i.op == "fmov" or i.op.startswith("fmov.s@")):
                 self.insns[a] = dataclasses.replace(i, op=i.op.replace("fmov.s", "fmov.d") if "@" in i.op else "fmov.d")
 
+    def sz_exit(self, i, consts, sz):
+        """The FPSCR.SZ a call (bsr, jsr @rN of a constant) returns with when its callee changes it (Signature.sz_exits)
+        and sz is its SZ at the call, else None (unknown: kept, as the oracle keeps it)."""
+        if not self.sig.sz_exits or i.op not in ("bsr", "jsr") or sz is None:
+            return None
+        t = i.ea if i.op == "bsr" else consts.get(R(i.m))
+        x = self.sig.sz_exits.get(t, "")[sz:sz + 1]
+        return int(x) if x in ("0", "1") else None
+
     def translate(self):
         self.has_calls = False
         self.discover()
@@ -2042,7 +2260,7 @@ class FunctionTranslator:
         self.fpu_all = self.sig.fpu_state or any(self.insns[a].op == "frchg" for a in self.insns)
         # runtime state: r8..r14 and fr12..fr15 always (what a callee may read and what the exit leaves), the whole
         # fr bank when the FPU is state
-        self.state = set(STATE) | {F(k) for k in (range(16) if self.fpu_all else range(12, 16))}
+        self.state = set(STATE) | {F(k) for k in (range(16) if self.fpu_all else range(12, 16))} | set(self.sig.r_out)
         allv = [self.insns[a] for a in sorted(self.primary)] + [self.insns[a] for a in sorted(self.slots)]
         self.pr_read = any(x.op in ("sts", "sts.l") and x.imm == 2 for x in allv)
         if self.pr_targets:
@@ -2070,7 +2288,7 @@ class FunctionTranslator:
             i = self.insns[a]
             self.cur = a
             cm = f"/* {a:08x}  {disasm(i)} */" if self.comments else None
-            if i.op in ("bt", "bf", "bt/s", "bf/s", "bra", "rts", "bsr", "bsrf", "jsr", "braf", "jmp"):
+            if i.op in ("bt", "bf", "bt/s", "bf/s", "bra", "rts", "bsr", "bsrf", "jsr", "braf", "jmp", "bsrl"):
                 slot = self.insns.get(a + 2) if i.delayed else None
                 if cm and slot:
                     cm = f"/* {a:08x}  {disasm(i)}; {a + 2:08x}  {disasm(slot)} */"
@@ -2243,7 +2461,12 @@ class FunctionTranslator:
         def get(r):
             return f"{r} = sh4_fr({r[2:]});" if r.startswith("fr") else f"{r} = sh4_r({r[1:]});"
         ret_clean = None
-        if sig.ret == "void":
+        if sig.ret == "void" and self.sp_input:
+            # the port form's body hands back r0 all the same: DP's signature says nothing comes back, but a caller
+            # in the port may take the original's r0 (the outer function the judge runs still returns nothing)
+            self.use("r0")
+            ret = "return r0;"
+        elif sig.ret == "void":
             ret = "return;"
         elif sig.ret == "f32":
             self.use("fr0")
@@ -2340,11 +2563,19 @@ class FunctionTranslator:
                 "",
             ]
         out.append("@HELPERS@")
-        if self.recursive:
+        extra = self.in_regs()
+        if self.recursive or self.sp_input:
             k = sig.text.index("(")
             rest = sig.text[k + 1:]
-            out.append("/* The function's body, which calls itself: sp and ret_addr are r15 and PR on entry. */")
-            out.append("static " + sig.text[:k].replace(sig.name, "body") + "(u32 sp, u32 ret_addr" +
+            if extra:
+                more = ", ".join(("f32 in_" if x.startswith("fr") else "u32 in_") + x for x in extra)
+                rest = more + ")" if rest.strip() in ("void)", ")") else rest[:rest.rindex(")")] + ", " + more + ")"
+            out.append("/* The function's body" + (", which calls itself" if self.recursive else "") +
+                       ": sp and ret_addr are r15 and PR on entry. */")
+            head = sig.text[:k].replace(sig.name, "body")
+            if sig.ret == "void" and self.sp_input:
+                head = head.replace("void", "u32", 1)
+            out.append("static " + head + "(u32 sp, u32 ret_addr" +
                        (")" if rest.strip() in ("void)", ")") else ", " + rest))
         else:
             out.append(sig.text)
@@ -2421,10 +2652,12 @@ class FunctionTranslator:
                     if kind == "f32":
                         self.helpers.add("f2u")
                     out.append(f"    {r} = {'f2u(' + pmap[r] + ')' if kind == 'f32' else '(u32)' + pmap[r]};")
-            elif 8 <= k <= 14 and r in self.live_in[self.entry]:
+            elif r in extra:
+                out.append(f"    {r} = in_{r};")
+            elif (8 <= k <= 14 or r in self.sig.r_out) and r in self.live_in[self.entry]:
                 out.append(f"    {r} = sh4_r({k});")
             elif k == 15:
-                out.append(f"    r15 = {'sp' if self.recursive else h(self.f.entry_sp)};")
+                out.append(f"    r15 = {'sp' if self.recursive or self.sp_input else h(self.f.entry_sp)};")
         fparams = {st: (name, kind) for name, kind, st in sig.params if st.startswith("fr")}
         for r in frs:
             if r in fparams:
@@ -2433,19 +2666,23 @@ class FunctionTranslator:
                     if kind != "f32":
                         self.helpers.add("u2f")
                     out.append(f"    {r} = {name if kind == 'f32' else 'u2f(' + name + ')'};")
+            elif r in extra:
+                out.append(f"    {r} = in_{r};")
             elif r in self.state and r in self.live_in[self.entry]:
                 out.append(f"    {r} = sh4_fr({r[2:]});")
         if "pr" in self.used and "pr" in decl:
-            out.append(f"    pr = {'ret_addr' if self.recursive else h(self.f.sentinel)};")
-        if self.recursive:
+            out.append(f"    pr = {'ret_addr' if self.recursive or self.sp_input else h(self.f.sentinel)};")
+        if self.recursive or self.sp_input:
             named = " ".join(out[out.index("{"):] + body)
-            out += [f"    (void){x};" for x in ("sp", "ret_addr") if not re.search(rf"= {x};", named)]
+            out += [f"    (void){x};" for x in ["sp", "ret_addr"] + [f"in_{r}" for r in extra]
+                    if not re.search(rf"= {x};", named)]
         if decl or frs:
             out.append("    " + " ".join(f"(void){d};" for d in decl + frs))
         out += body
         out.append("}")
-        if self.recursive:
-            call = f"body({', '.join([h(self.f.entry_sp), h(self.f.sentinel)] + [n for n, _, _ in sig.params])})"
+        if self.recursive or self.sp_input:
+            zero = ["0.0f" if x.startswith("fr") else "0u" for x in extra]
+            call = f"body({', '.join([h(self.f.entry_sp), h(self.f.sentinel)] + [n for n, _, _ in sig.params] + zero)})"
             out += ["", sig.text, "{", f"    {call};" if sig.ret == "void" else f"    return {call};", "}"]
         k = out.index("@HELPERS@")
         out[k:k + 1] = self.helper_lines()
@@ -2470,7 +2707,7 @@ class FunctionTranslator:
         if hs:
             hs = ["/* The bits of a float as an integer and back (the SH-4's FPUL and register moves, fabs). */"] + hs
         if "sq" in self.helpers:
-            hs = SQ_HELPERS + hs
+            hs = (SQ_HELPERS if "sqc" not in self.helpers else sq_callee_helpers()) + hs
         return hs + [""] if hs else hs
 
 
@@ -2662,6 +2899,69 @@ SQ_HELPERS = [
 ]
 
 
+def sq_callee_bytes(meta):
+    """meta "sq_callee" {"8c074f18": {"r4": "10-17,20-2f"}} as {0x8c074f18: {"r4": (bits 0..63, bits 64..127)}};
+    a loose register ("?": the callee's stores depend on data) stores nothing in DP's model."""
+    out = {}
+    for c, regs in (meta or {}).items():
+        for r, spec in regs.items():
+            if spec == "?":
+                continue
+            bits = 0
+            for part in spec.split(","):
+                lo, _, hi = part.partition("-")
+                for j in range(int(lo, 16), int(hi or lo, 16) + 1):
+                    bits |= 1 << j
+            out.setdefault(int(c, 16), {})[r] = (bits & (1 << 64) - 1, bits >> 64)
+    return out or None
+
+
+def sq_callee_helpers():
+    """SQ_HELPERS with the bytes a callee stored (sq_mark): a pref sends each from its RAM byte, unread when that is
+    the byte it sends to (the block's own byte stays: the callee wrote it there; it may be machine code, R8)."""
+    h = list(SQ_HELPERS)
+    swap = {
+        "typedef struct { u32 from[2]; u32 marked[2]; u8 bytes[2][32]; } SqQueues;":
+            ["typedef struct { u32 from[2]; u32 marked[2]; u8 bytes[2][32]; u32 src[2][32]; } SqQueues;",
+             "static void sq_clr(u32 *s, u32 n) { while (n) s[--n] = 0; }"],
+        "    if (sq_in(b)) { q->from[(b >> 5) & 1u] = 0x8c000000u | (b & 0x00ffffe0u); q->marked[(b >> 5) & 1u] = 0; }":
+            ["    if (sq_in(b)) { q->from[(b >> 5) & 1u] = 0x8c000000u | (b & 0x00ffffe0u); q->marked[(b >> 5) & 1u] = 0;",
+             "                    sq_clr(q->src[(b >> 5) & 1u], 32u); }"],
+        "    q->from[0] = 0; q->from[1] = 0; q->marked[0] = 0; q->marked[1] = 0;":
+            ["    q->from[0] = 0; q->from[1] = 0; q->marked[0] = 0; q->marked[1] = 0; sq_clr(q->src[0], 64u);"],
+        "            q->bytes[((a + i) >> 5) & 1u][(a + i) & 31u] = (u8)(v >> (8u * i));":
+            ["            q->bytes[((a + i) >> 5) & 1u][(a + i) & 31u] = (u8)(v >> (8u * i));",
+             "            q->src[((a + i) >> 5) & 1u][(a + i) & 31u] = 0;"],
+        "        b[j] = ((q->marked[k] >> j) & 1u) ? q->bytes[k][j] : from != to ? rd8(from + j) : 0;":
+            ["        b[j] = ((q->marked[k] >> j) & 1u) ? q->bytes[k][j] : q->src[k][j] ? (q->src[k][j] != to + j ? "
+             "rd8(q->src[k][j]) : 0)",
+             "             : from != to ? rd8(from + j) : 0;"],
+        "        if (((q->marked[k] >> j) & 1u) || from != to) wr8(to + j, b[j]);   /* a's own bytes stay as they are */":
+            ["        if (((q->marked[k] >> j) & 1u) || (q->src[k][j] ? q->src[k][j] != to + j : from != to))",
+             "            wr8(to + j, b[j]);   /* a's own bytes stay as they are */"],
+        "    q->marked[k] = 0;":
+            ["    q->marked[k] = 0;", "    sq_clr(q->src[k], 32u);"],
+    }
+    out = []
+    for ln in h:
+        out += swap.pop(ln, [ln])
+    if swap:
+        raise AssertionError(f"SQ_HELPERS lines moved: {list(swap)}")
+    return out + [
+        "/* A mocked callee stored the bytes lo/hi mark (offsets 0..127) through a: those in the window are its own. */",
+        "static void sq_mark(SqQueues *q, u32 a, unsigned long long lo, unsigned long long hi)",
+        "{",
+        "    u32 j, b;",
+        "    for (j = 0; j < 128u; j++) {",
+        "        b = a + j;",
+        "        if (!(((j < 64u ? lo >> j : hi >> (j - 64u)) & 1u) && sq_in(b))) continue;",
+        "        q->marked[(b >> 5) & 1u] &= ~(1u << (b & 31u));",
+        "        q->src[(b >> 5) & 1u][b & 31u] = 0x8c000000u | (b & 0x00ffffffu);",
+        "    }",
+        "}",
+    ]
+
+
 FIELD_LINE = re.compile(r"^\s*a\.(r|fr|s|rlo)\[(\d)\] = (.*);$")
 FIELD_ORDER = [("r", k) for k in range(4)] + [("fr", k) for k in range(8)] + [("s", k) for k in range(8)] + [("rlo", k) for k in range(4)]
 
@@ -2690,28 +2990,95 @@ def fill_call_args(body):
 
 
 def translate_function(image, entry, sig, facts=None, body=None, entries=None, comments=True, simplify=None,
-                       ranges=None, spin=None):
+                       ranges=None, spin=None, sp_input=False, written=None, sz_from_caller=False):
     """simplify: the sh4translate.simplify passes to apply (None: all of them; () for none). ranges: the function's
-    catalog ranges (FunctionTranslator.ranges). spin: its wait loops' ranges (FunctionTranslator.spin, spin_ranges)."""
+    catalog ranges (FunctionTranslator.ranges). spin: its wait loops' ranges (FunctionTranslator.spin, spin_ranges).
+    sp_input: the port form (FunctionTranslator.sp_input): the body takes r15 and PR as inputs, and the function
+    itself passes the judge's entry values, so the judged text also runs in a port with a real stack. written: the
+    pool bytes the program writes at run time (written_code). sz_from_caller: its callers run it with FPSCR.SZ 0 or 1
+    (fpscr_sz_from_caller): a body for each, chosen at entry (by_mode)."""
     from .simplify import PASSES
     passes = set(PASSES if simplify is None else simplify)
 
-    def make(cm, helper=False):
+    def make(cm, helper=False, sz=0):
         try:
-            return made(cm, helper, body)
+            return made(cm, helper, body, sz)
         except TranslateError as e:
             # Ghidra's body can stop short of the machine code's own flow (a branch into a delay slot that then runs
             # on past it): the flow is followed from the entry instead, up to the other functions' entries
             if body is None or not str(e).startswith("flow reaches"):
                 raise
-            return made(cm, helper, None)
+            return made(cm, helper, None, sz)
 
-    def made(cm, helper, extent):
-        ft = FunctionTranslator(image, entry, sig, facts or TargetFacts(), extent, entries, cm, ranges, spin)
+    def made(cm, helper, extent, sz):
+        ft = FunctionTranslator(image, entry, sig, facts or TargetFacts(), extent, entries, cm, ranges, spin,
+                                written, sz)
         ft.simplify = passes
         ft.call_helper = helper
+        ft.sp_input = sp_input
         return ft.translate()
+    if sz_from_caller or tuple(sig.sz_entry) == (0, 1):
+        return fit(lambda cm, helper=False: by_mode(make(cm, helper, 0), make(cm, helper, 1), sig.name), comments)
+    if tuple(sig.sz_entry) == (1,):     # its callers all run it with SZ=1 (meta "fpscr_sz")
+        return fit(lambda cm, helper=False: make(cm, helper, 1), comments)
     return fit(make, comments)
+
+
+def by_mode(sz0, sz1, name):
+    """One C from a function's two translations, FPSCR.SZ 0 and 1 at entry: the SZ=1 body as body_sz1, the SZ=0 one
+    as body_sz0, and body (or, without one, the function itself) choosing between them by the runtime's FPSCR.SZ
+    (sh4_sz). Both share the text before the body; the SZ=1 body's parameters are some of the SZ=0 one's."""
+    def find(src):
+        for nm in ("body", name):
+            m = re.search(rf"^((?:static )?(\w+)) {nm}\(([^)]*)\)\n\{{\n.*?^\}}\n", src, re.M | re.S)
+            if m:
+                return nm, m
+        raise TranslateError("FPSCR.SZ from the caller: no body to choose between")
+    nm, a = find(sz0)
+    nm1, b = find(sz1)
+    if nm1 != nm or sz0[:a.start()] != sz1[:b.start()] or a.group(2) != b.group(2):
+        raise TranslateError("FPSCR.SZ from the caller: the two translations differ outside the body")
+    names = [p.split()[-1] for p in a.group(3).split(",") if p.strip() not in ("", "void")]
+    names1 = [p.split()[-1] for p in b.group(3).split(",") if p.strip() not in ("", "void")]
+    if not set(names1) <= set(names):
+        raise TranslateError("FPSCR.SZ from the caller: the SZ=1 body takes what the SZ=0 one does not")
+
+    def call(k, ps):    # body_szK in both forms: fn_ADDR_szK would break the judge's R5 (fn_ only for itself)
+        return f"body_sz{k}({', '.join(ps)});"
+
+    def rename(m, k):
+        return m.group(0).replace(f"{m.group(1)} {nm}(", f"static {m.group(2)} body_sz{k}(", 1)
+    one = f"return {call(1, names1)}" if a.group(2) != "void" else f"{{ {call(1, names1)} return; }}"
+    zero = ("return " if a.group(2) != "void" else "") + call(0, names)
+    choose = ("/* The FPSCR.SZ its caller runs it with picks the body (fmov moves 64-bit pairs while SZ is 1). */\n"
+              f"{a.group(1)} {nm}({a.group(3)})\n{{\n    if (sh4_sz())\n        {one}\n    {zero}\n}}\n")
+    return sz0[:a.start()] + rename(b, 1) + "\n" + rename(a, 0) + "\n" + choose + sz0[a.end():]
+
+
+def written_code(project):
+    """The code bytes the program writes at run time (project.json "written_code": {"ADDR" or "LO..HI": evidence},
+    ADDR one 16-bit word, LO..HI the bytes from LO up to HI): a literal-pool load of one reads memory."""
+    out = set()
+    for k in (project.get("written_code") or {}):
+        lo, _, hi = k.partition("..")
+        lo = int(lo, 16)
+        out.update(range(lo, int(hi, 16) if hi else lo + 2))
+    return out
+
+
+def fpscr_sz(arg):
+    """meta "fpscr_sz" (TcFpscr.Sz, core/sz_entry.arg: "sz:MODES[:CALLEE.XY_...]") as (Signature.sz_entry, sz_exits)."""
+    if not arg:
+        return (0,), None
+    parts = arg.split(":")
+    exits = {int(c, 16): x for c, x in (e.split(".") for e in parts[2].split("_"))} if len(parts) > 2 else None
+    return tuple(int(m) for m in parts[1]), exits
+
+
+def sz_from_caller(project):
+    """The functions their callers run with FPSCR.SZ set or clear (project.json "fpscr_sz_from_caller": {addr:
+    evidence}; Toy Commander's TM2X handlers run inside 8c09de06's fschg pair)."""
+    return {int(a, 16) for a in (project.get("fpscr_sz_from_caller") or {})}
 
 
 def spin_ranges(project):

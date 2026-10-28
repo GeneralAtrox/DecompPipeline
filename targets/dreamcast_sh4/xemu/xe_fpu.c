@@ -7,9 +7,9 @@
  * range, 0x80000000 below it and for a NaN.
  *
  * Where the hardware's rounding is not IEEE, xemu takes the oracle's documented model, so these are not cross-checked
- * (only the registers and order they use are): fipr and ftrv sum in element order 0..3, each step rounded;
- * fsrra is 1/sqrt in single precision; fsca reads the runtime's table. fmac is tc_rt.c's sh4_fmac (rounded once,
- * as the manual says). */
+ * (only the registers and order they use are): fsrra is 1/sqrt in single precision; fsca reads the runtime's table.
+ * fmac is tc_rt.c's sh4_fmac (rounded once, as the manual says); fipr and ftrv are tc_fpu.c's sh4_fipr (one inner
+ * product rounded once, as the reference emulator computes it). */
 #include <math.h>
 #include <string.h>
 #include <xmmintrin.h>
@@ -131,12 +131,12 @@ static void arith(Xe *x, u16 op, int pr)
 
 static void fipr(Xe *x, u32 vm, u32 vn)
 {
-    const u32 *a = x->fr + vm, *b = x->fr + vn;
-    f32 t = F(a[0]) * F(b[0]);
-    t = t + F(a[1]) * F(b[1]);
-    t = t + F(a[2]) * F(b[2]);
-    t = t + F(a[3]) * F(b[3]);
-    x->fr[vn + 3] = U(t);
+    f32 a[4], b[4];
+    for (u32 i = 0; i < 4; i++) {
+        a[i] = F(x->fr[vm + i]);
+        b[i] = F(x->fr[vn + i]);
+    }
+    x->fr[vn + 3] = U(sh4_fipr(a, b)); /* rounded once (tc_fpu.c) */
 }
 
 static void ftrv(Xe *x, u32 vn)
@@ -144,11 +144,8 @@ static void ftrv(Xe *x, u32 vn)
     f32 v[4], out[4];
     for (int i = 0; i < 4; i++) v[i] = F(x->fr[vn + (u32)i]);
     for (int row = 0; row < 4; row++) { /* XMTRX is column-major: row r is xf r, r+4, r+8, r+12 */
-        f32 t = F(x->xf[row]) * v[0];
-        t = t + F(x->xf[row + 4]) * v[1];
-        t = t + F(x->xf[row + 8]) * v[2];
-        t = t + F(x->xf[row + 12]) * v[3];
-        out[row] = t;
+        f32 m[4] = {F(x->xf[row]), F(x->xf[row + 4]), F(x->xf[row + 8]), F(x->xf[row + 12])};
+        out[row] = sh4_fipr(m, v); /* each row one inner product rounded once (tc_fpu.c) */
     }
     for (int i = 0; i < 4; i++) x->fr[vn + (u32)i] = U(out[i]);
 }

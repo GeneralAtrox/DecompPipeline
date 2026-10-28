@@ -1,9 +1,11 @@
 """Second entry points folded into another function's body (core/mid_entries.py): each needs an entry override.
 
-usage: python tools/mid_entries.py --project DIR [--json FILE] [--merged]
+usage: python tools/mid_entries.py --project DIR [--json FILE] [--merged] [--apply ADDR[,ADDR...]]
 
 Static (the packets' listings, state/function_bodies.txt, the catalog and the binary); writes nothing in the
-workspace. Lists, for the functions in the project's scope, every address something outside its function enters
+workspace but with --apply: the chosen addresses, each one listed here as needing an override (in or outside the
+scope: a module's second entry, D2's PS2 8c188422), go into project.json catalog_overrides "entry" (key order,
+indent and line endings kept, as tools/data_funcs.py --add); then `decomp.py catalog`. Lists, for the functions in the project's scope, every address something outside its function enters
 (a call, a function pointer in a literal pool, a branch from another function, a table of functions), with the
 evidence: each one needs project.json catalog_overrides "entry" (TcOverride makes the function at the next catalog
 run; the port then has a host function there instead of returning 0). Counted apart: the same in code outside the
@@ -26,6 +28,7 @@ def main():
     ap.add_argument("--project", required=True)
     ap.add_argument("--json")
     ap.add_argument("--merged", action="store_true", help="also list the merged bodies")
+    ap.add_argument("--apply", help="listed addresses that go into catalog_overrides entry")
     a = ap.parse_args()
     use_project(a.project)
     from core import mid_entries, paths
@@ -49,6 +52,21 @@ def main():
         print(f"  {r['addr']} in {r['in']} [{r['kind']}]: {'; '.join(r['evidence'][:2])}{more}")
     if a.json:
         pathlib.Path(a.json).write_text(json.dumps(rows, indent=1), encoding="utf-8")
+    if a.apply:
+        want = [paths.norm_addr(x) for x in a.apply.split(",")]
+        listed = {r["addr"] for r in rows if r["kind"] == "needs override"}
+        if set(want) - listed - decided:
+            print(f"not listed as needing an override: {', '.join(sorted(set(want) - listed - decided))}")
+            return 1
+        pj = paths.ROOT / "project.json"
+        raw = pj.read_bytes().decode("utf-8")
+        data = json.loads(raw)
+        entries = data.setdefault("catalog_overrides", {}).setdefault("entry", [])
+        new = [x for x in want if x not in entries]
+        entries += new
+        text = json.dumps(data, indent=2) + "\n"
+        pj.write_bytes((text.replace("\n", "\r\n") if "\r\n" in raw else text).encode("utf-8"))
+        print(f"project.json: {len(new)} catalog_overrides entr(ies) added; now run `decomp.py --project DIR catalog`")
     return 0
 
 

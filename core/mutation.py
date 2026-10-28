@@ -150,7 +150,7 @@ def judge_with(cfg, addr, build_root, timeout_s, harness_dir=None):
         (d / "work.c").write_text(text, encoding="utf-8")
         try:
             return check.run_check(cfg_m, addr, str(d / "work.c"), sets=("dev", "hidden"), build_dir=d / "b",
-                                   harness_dir=harness_dir)
+                                   harness_dir=harness_dir, fused=False)  # kills by the comparison alone
         finally:
             shutil.rmtree(d, ignore_errors=True)
     return judge

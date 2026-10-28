@@ -198,6 +198,16 @@ public class TcTail {
         }
         if (!in.getFlowType().isCall()) {
             for (Reference r : in.getReferencesFrom()) if (r.getReferenceType().isJump()) out.add(r.getToAddress());
+        } else {
+            // A call to code that is no function's entry: a local subroutine of hand-written asm (catalog_overrides
+            // "not_entry", core/asm_modules.py; PS2 8c188b60 inside Lib_RenderModelA). Its rts returns through PR to
+            // the call, so it runs as part of the function: in the extent, not a mocked callee.
+            FunctionManager fm = prog.getFunctionManager();
+            for (Reference r : in.getReferencesFrom()) {
+                Address t = r.getToAddress();
+                if (r.getReferenceType().isCall() && fm.getFunctionAt(t) == null
+                        && prog.getListing().getInstructionAt(t) != null) out.add(t);
+            }
         }
         return out;
     }
@@ -230,4 +240,25 @@ public class TcTail {
         }
         return out;
     }
+
+    // A literal-pool load `mov.w|mov.l <pool>,rN` (PC-relative, read-only): {N, value}, the word sign-extended;
+    // else null. Read from the instruction's own read reference, as prValue reads one (TcLive.Deltas).
+    static long[] literal(Program prog, Instruction ins) {
+        String t = ins.toString().toLowerCase();
+        java.util.regex.Matcher m = LITERAL.matcher(t);
+        if (!m.matches()) return null;
+        for (Reference r : ins.getReferencesFrom()) {
+            if (!r.getReferenceType().isRead() || !r.getToAddress().isMemoryAddress()) continue;
+            try {
+                long v = m.group(1).equals("w") ? prog.getMemory().getShort(r.getToAddress())
+                    : prog.getMemory().getInt(r.getToAddress());
+                return new long[] {Integer.parseInt(m.group(2)), v & 0xffffffffL};
+            } catch (Exception e) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    static final java.util.regex.Pattern LITERAL = java.util.regex.Pattern.compile("^mov\\.([wl])\\s+0x[0-9a-f]+,r(\\d+)$");
 }

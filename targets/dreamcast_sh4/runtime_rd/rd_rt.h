@@ -26,7 +26,7 @@ f32 sh4_fsrra(f32 x);                                 /* fsrra: 1.0f / sqrt(x) *
 f32 sh4_fsqrt_rm(f32 x);                              /* fsqrt: sqrt(x), rounded as FPSCR.RM says (the game's mode) */
 f32 sh4_fmac(f32 fr0, f32 frm, f32 frn);              /* fmac FR0,FRm,FRn: fr0 * frm + frn, rounded once */
 void sh4_fsca(u32 fpul, f32 *sin_out, f32 *cos_out);  /* fsca FPUL,DRn: sin to FRn, cos to FRn+1 */
-f32 sh4_fipr(const f32 a[4], const f32 b[4]);         /* fipr FVm,FVn: ((a0*b0 + a1*b1) + a2*b2) + a3*b3 */
+f32 sh4_fipr(const f32 a[4], const f32 b[4]);         /* fipr FVm,FVn: a0*b0 + .. + a3*b3, rounded once */
 void sh4_ftrv(f32 v[4]);                              /* ftrv XMTRX,FVn: v = XMTRX * v */
 /* Double precision (FPSCR.PR=1, set by the original's lds FPSCR): DRn is the pair fr n (high word) : fr n+1 (low
  * word), n even, kept as two f32 variables carrying the bits. The helpers do the double operation on the pairs; the
@@ -62,7 +62,8 @@ void sh4_lds_fpscr(u32 value);                        /* lds Rm,FPSCR */
 void sh4_ftrv_fv(int n);                              /* ftrv XMTRX,FVn: fr n..n+3 = XMTRX * fr n..n+3 (n = 0,4,8,12) */
 void sh4_fipr_fv(int m, int n);                       /* fipr FVm,FVn: fr n+3 = sh4_fipr(fr m..m+3, fr n..n+3) */
 u32 sh4_r(int index);                                 /* read r8..r14 as runtime state (hand-written code keeps a */
-void sh4_set_r(int index, u32 value);                 /* pointer in r14 across calls); write it */
+void sh4_set_r(int index, u32 value);                 /* pointer in r14 across calls), or the r4..r7 a callee handed
+                                                       * back (meta r_out); write it */
 u32 sh4_stc_sr(void);                                 /* stc sr,Rn: SR (the interrupt mask is compared at exit, */
 void sh4_ldc_sr(u32 value);                           /* as tc_rt.h); ldc Rm,sr */
 u32 tc_hw_read32(u32 reg);                            /* a listed hardware register's load (tc_rt.h): the target's */
