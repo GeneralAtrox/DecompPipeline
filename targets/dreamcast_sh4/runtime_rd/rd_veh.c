@@ -59,7 +59,7 @@ static void log_call(u32 target, const u32 r[4], const u32 fr[8], const u32 st[8
         for (int i = 0; i < 4; i++) rec[25 + i] = rd_self_guest(lo[i]);
         rd_sh4_log(rec, fr);
     }
-    rd_sh4_live(target, g_ncalls); /* after the record: the callee saw the old rN */
+    rd_sh4_live(target, g_ncalls, r); /* after the record: the callee saw the old rN */
     g_ncalls++;
 }
 
@@ -110,6 +110,24 @@ static void tcs_scratch(int i, u32 bits) { rd_sh4_scratch(i, bits); }
 
 #include "tc_strict.h"
 
+/* A run flag (header line f, TcCalls), as tc_rt.c: the Nth call to the listed callee stores 0 into the word, after
+ * the strict judge's writes. */
+static u32 g_flag_word, g_flag_callee, g_flag_n, g_flag_seen;
+
+void tcrt_set_run_flag(u32 word, u32 callee, u32 n)
+{
+    g_flag_word = tcrt_fold(word);
+    g_flag_callee = tcrt_fold(callee);
+    g_flag_n = n;
+}
+
+static void flag_apply(u32 target)
+{
+    static const u8 zero[4] = {0};
+    if (!g_flag_n || target != g_flag_callee || ++g_flag_seen != g_flag_n) return;
+    tcs_write(g_flag_word, 4, zero); /* only where the oracle writes (TcStrict.writable) */
+}
+
 /* The raw-C call API (runs raw matched C through this runtime, for its own regression, and for the original's bytes
  * at out-pointer calls: vectors line B). */
 u32 tc_call(u32 target, const TcArgs *args)
@@ -124,6 +142,7 @@ u32 tc_call(u32 target, const TcArgs *args)
     if (g_ncalls <= RD_MAX_CALLS) out_copy(g_ncalls - 1, tcrt_fold(target), g_call_log[g_ncalls - 1]);
     if (rd_tracing && g_ncalls <= RD_MAX_CALLS) rd_trace_call(g_ncalls - 1, tcrt_fold(target), g_call_log[g_ncalls - 1]);
     if (g_ncalls <= RD_MAX_CALLS) tcs_call(g_ncalls - 1, tcrt_fold(target), g_call_log[g_ncalls - 1]); /* tc_strict.h */
+    flag_apply(tcrt_fold(target));
     rd_sh4_result(rv); /* the oracle's mocked callee leaves its result in r0 and fr0 */
     return rv;
 }
@@ -333,6 +352,7 @@ static LONG call_trap(CONTEXT *c)
     log_call(target, r, fr, st, lo);
     if (g_nouts && g_ncalls <= RD_MAX_CALLS) out_copy(g_ncalls - 1, target, g_call_log[g_ncalls - 1]);
     if (g_ncalls <= RD_MAX_CALLS) tcs_call(g_ncalls - 1, target, g_call_log[g_ncalls - 1]); /* after out_copy */
+    flag_apply(target);
     rd_sh4_result(g_ret_bits);
     if (ret == 'f') c->Eip = (DWORD)(uintptr_t)ret_f32;
     else if (ret == 'L') c->Eip = (DWORD)(uintptr_t)ret_u64;
@@ -376,6 +396,7 @@ void rd_calls_reset(const u32 rets[TCRT_RETS])
 {
     memcpy(g_rets, rets, sizeof g_rets);
     g_ncalls = 0;
+    g_flag_seen = 0;
     g_code_read = 0;
     g_nrearm = 0;
 }

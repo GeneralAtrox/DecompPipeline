@@ -32,6 +32,14 @@ project.json "mock_write_facts": {"<callee hex>": {"<field>": size, ..., "why": 
 target's integer argument registers (abi int_args) or a stack word s0..s7, size 1..256 bytes, why required (the
 callee's code or a manual that shows the write). The facts file gets "mock_write callee field size" lines only while
 mock_writes is on, so an unused list leaves the oracle stamp unchanged.
+
+A field's size can instead be an advance (Dreamcast only: little-endian words, the shared TcStrict and tc_strict.h):
+{"advance": {"align": A, "op": B, "operands": {"<op hex>": [a, s], ...}}}. The callee is a script operand reader that
+moves a cursor: the 4-byte word at the pointer is a guest address pc, and at each mocked call, on both sides, pc =
+up(pc, A); op = the B-byte word at pc; pc += B; and for an op listed, pc = up(pc, a) + s (an op not listed adds
+nothing more); the word is then written (Toy Commander 8c048914 Script_ReadIntConst: align 2, op 2, c2 [1, 1], c3
+[2, 2], c4 [4, 4]). Nothing is written when the word or the op bytes are not in RAM (TcBase.inRam), or the word is an
+instruction's. Its facts token is "aA.B:op.a.s:..." (ops in order); a call snapshot of that field takes 4 bytes.
 """
 import struct
 
@@ -39,6 +47,7 @@ FLAGS = {"mock_junk": 1, "mock_writes": 2, "call_snapshots": 4, "exit_frame": 8}
 REPORTABLE = ("call_snapshots", "exit_frame")
 MODES = ("enforce", "report")
 MAX_SIZE = 256  # tc_strict.h TCS_MAX_SIZE
+MAX_OPS = 16    # an advance's listed ops (tc_strict.h TCS_MAX_OPS)
 # The exit frame's registers in XR order, and how each compares: a word (the mirror rule's same_word), f32 or f64.
 XR_SH = [("r15", "w")] + [(f"r{i}", "w") for i in range(8, 15)] + [(f"fr{i}", "f32") for i in range(12, 16)]
 XR_PPC = [("r1", "w")] + [(f"r{i}", "w") for i in range(14, 32)] + [(f"f{i}", "f64") for i in range(14, 32)]
@@ -50,7 +59,8 @@ def on(cfg, flag):
 
 
 def write_facts(cfg):
-    """project.json "mock_write_facts" as [(callee 8 hex digits, field, size)], sorted; ValueError on a bad entry."""
+    """project.json "mock_write_facts" as [(callee 8 hex digits, field, size or advance token)], sorted; ValueError on
+    a bad entry."""
     facts = cfg.get("mock_write_facts") or {}
     if not isinstance(facts, dict):
         raise ValueError('project.json "mock_write_facts" must map each callee to its fields and evidence')
@@ -68,10 +78,40 @@ def write_facts(cfg):
             if field not in fields:
                 raise ValueError(f'project.json "mock_write_facts" {callee}: {field} is no pointer argument '
                                  f'({", ".join(sorted(fields))})')
-            if not isinstance(size, int) or isinstance(size, bool) or not 1 <= size <= MAX_SIZE:
+            if isinstance(size, dict):
+                size = advance(cfg, f"{callee} {field}", size)
+            elif not isinstance(size, int) or isinstance(size, bool) or not 1 <= size <= MAX_SIZE:
                 raise ValueError(f'project.json "mock_write_facts" {callee} {field}: size 1..{MAX_SIZE} bytes')
             out.append((c.zfill(8), field, size))
-    return sorted(out)
+    return sorted(out, key=lambda w: (w[0], w[1]))
+
+
+def advance(cfg, where, entry):
+    """A cursor advance (the module's doc) as its facts token "aA.B:op.a.s:..."; ValueError on a bad one."""
+    bad = f'project.json "mock_write_facts" {where}: '
+    if cfg.get("target") != "dreamcast_sh4":
+        raise ValueError(bad + "an advance is modelled on the Dreamcast only (little-endian words)")
+    adv, num = entry.get("advance"), (lambda v, ok: isinstance(v, int) and not isinstance(v, bool) and ok(v))
+    if set(entry) != {"advance"} or not isinstance(adv, dict) or set(adv) != {"align", "op", "operands"}:
+        raise ValueError(bad + 'an advance is {"advance": {"align": A, "op": B, "operands": {op hex: [a, s]}}}')
+    if not num(adv["align"], lambda v: v in (1, 2, 4)) or not num(adv["op"], lambda v: v in (1, 2, 4)):
+        raise ValueError(bad + "align and op are 1, 2 or 4 bytes")
+    ops = adv["operands"]
+    if not isinstance(ops, dict) or not 1 <= len(ops) <= MAX_OPS:
+        raise ValueError(bad + f"operands: 1..{MAX_OPS} ops")
+    toks = []
+    for op, v in ops.items():
+        try:
+            k = int(str(op).lower().removeprefix("0x"), 16)
+        except ValueError:
+            k = -1
+        if not 0 <= k < 1 << 8 * adv["op"] or not isinstance(v, list) or len(v) != 2 \
+                or not num(v[0], lambda x: x in (1, 2, 4)) or not num(v[1], lambda x: 0 <= x <= MAX_SIZE):
+            raise ValueError(bad + f"operand {op}: an op of {adv['op']} bytes, [align 1|2|4, size 0..{MAX_SIZE}]")
+        toks.append((k, f"{k:x}.{v[0]}.{v[1]}"))
+    if len({k for k, _ in toks}) != len(toks):
+        raise ValueError(bad + "an op is listed twice")
+    return ":".join([f"a{adv['align']}.{adv['op']}"] + [t for _, t in sorted(toks)])
 
 
 def facts_lines(cfg):

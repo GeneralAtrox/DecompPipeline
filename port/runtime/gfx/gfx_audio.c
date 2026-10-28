@@ -1,27 +1,34 @@
-/* The sound output: at each vertical blank the AICA (aica.c) mixes 735 frames, the 44,100 Hz the chip runs at over a
- * 1/60 s tick, so its voices and read positions move with the game's tick, the same every run under --fixed-clock.
+/* The sound output: at each vertical blank the AICA (aica.c) mixes the 44,100 Hz the chip runs at over the console's
+ * NTSC blank (aica_vblank_frames: 735.735 frames as 735 or 736), so its voices, read positions and CD tracks move with
+ * the game's tick as on the console, the same every run under --fixed-clock. The host's tick is 1/60 s, so the device
+ * stream plays those frames 1.001 times as fast (44,144 a second) and never runs ahead of the device.
  * The frames go to an SDL3 audio stream (the default device) and to --audio-dump FILE.wav. The device is off by
  * default in --headless and --fixed-clock runs (automated ones; --fast-until's is on, silent until real time);
- * --audio on|off decides otherwise. --volume 0..100 scales the device's output only. */
+ * --audio on|off decides otherwise. --volume 0..100 scales the device's output only. For the audio check
+ * (tools/audio_check.py): --audio-keys FILE logs each voice start, "K frame voice level dipan step frames", and key off,
+ * "F frame voice 0 0 0 0", frame counted as the dump's; --audio-cd off leaves the CD out of the mix (the drive still
+ * plays), so the dump holds the voices alone. */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
 #include <SDL3/SDL.h>
 #include "aica.h"
 #include "gfx.h"
+#include "media/media.h"
 
-#define TICK_FRAMES (AICA_RATE / PORT_VBLANK_HZ)
-#define TICK_BYTES (TICK_FRAMES * 4u)
+#define TICK_BYTES (AICA_VBLANK_MAX_FRAMES * 4u)
 #define QUEUE_MAX (8u * TICK_BYTES) /* ~133 ms queued: further ticks are dropped until the device catches up */
 
 static int g_device = -1; /* --audio: -1 the default, 0 off, 1 on */
-static const char *g_dump_path;
+static const char *g_dump_path, *g_keys_path;
 /* Win32 file calls, not the CRT's: the watchdog suspends the game thread mid-tick, and the CRT's exit flush would
  * wait for the stream lock it holds. */
-static HANDLE g_dump = INVALID_HANDLE_VALUE;
+static HANDLE g_dump = INVALID_HANDLE_VALUE, g_keys = INVALID_HANDLE_VALUE;
 static u32 g_dump_bytes;
 static SDL_AudioStream *g_stream;
 static int g_started;
+static u64 g_ticks; /* vertical blanks mixed */
 static int g_volume = 100, g_muted; /* --volume 0..100, and the host's mute (menu, focus); the dump is not scaled */
 
 static void apply_gain(void)
@@ -52,6 +59,14 @@ int audio_option(const char *arg, const char *value)
         g_dump_path = value;
         return 2;
     }
+    if (!strcmp(arg, "--audio-cd") && value) {
+        aica_cd_mute(!strcmp(value, "off"));
+        return 2;
+    }
+    if (!strcmp(arg, "--audio-keys") && value) {
+        g_keys_path = value;
+        return 2;
+    }
     return 0;
 }
 
@@ -78,7 +93,7 @@ static void dump_header(void)
 static void open_device(void)
 {
     SDL_AudioSpec spec;
-    static const s16 silence[2 * TICK_FRAMES * 2] = {0};
+    static const s16 silence[2 * AICA_VBLANK_MAX_FRAMES * 2] = {0};
     spec.format = SDL_AUDIO_S16;
     spec.channels = 2;
     spec.freq = (int)AICA_RATE;
@@ -92,23 +107,36 @@ static void open_device(void)
         return;
     }
     SDL_PutAudioStreamData(g_stream, silence, (int)sizeof silence); /* two ticks of headroom */
+    SDL_SetAudioStreamFrequencyRatio(g_stream, (float)(PORT_VBLANK_HZ * 1001u) / 60000.0f); /* blanks to ticks */
     apply_gain();
     SDL_ResumeAudioStreamDevice(g_stream);
 }
 
 static void tick(void *arg)
 {
-    static s16 frames[2 * TICK_FRAMES];
+    static s16 frames[2 * AICA_VBLANK_MAX_FRAMES];
+    u32 n = aica_vblank_frames(g_ticks++), bytes = n * 4u;
     (void)arg;
-    aica_mix(frames, TICK_FRAMES);
+    aica_mix(frames, n);
+    media_mix(frames, n); /* the kit's own decoders: ADX music, a movie's sound */
+    aica_next_frames(aica_vblank_frames(g_ticks));
     if (g_stream && !(host_fixed_clock() && host_fast_until()) && SDL_GetAudioStreamQueued(g_stream) < (int)QUEUE_MAX)
-        SDL_PutAudioStreamData(g_stream, frames, (int)TICK_BYTES);
+        SDL_PutAudioStreamData(g_stream, frames, (int)bytes);
     if (g_dump != INVALID_HANDLE_VALUE) {
         DWORD put;
-        WriteFile(g_dump, frames, TICK_BYTES, &put, NULL);
-        g_dump_bytes += TICK_BYTES;
+        WriteFile(g_dump, frames, bytes, &put, NULL);
+        g_dump_bytes += bytes;
         dump_header();
     }
+}
+
+static void key_log(u32 v, u64 frame, int on, u32 level, u32 pan, u32 step, u32 frames)
+{
+    char line[96];
+    int n = snprintf(line, sizeof line, "%c %llu %u %u %u %u %u\n", on ? 'K' : 'F', (unsigned long long)frame, v,
+                     level, pan, step, frames);
+    DWORD put;
+    WriteFile(g_keys, line, (DWORD)n, &put, NULL);
 }
 
 void audio_start(void)
@@ -122,6 +150,11 @@ void audio_start(void)
                              NULL);
         if (g_dump == INVALID_HANDLE_VALUE) port_log("audio: cannot write %s\n", g_dump_path);
         else dump_header();
+    }
+    if (g_keys_path) {
+        g_keys = CreateFileA(g_keys_path, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL,
+                             NULL);
+        if (g_keys != INVALID_HANDLE_VALUE) aica_key_log(key_log);
     }
     port_log("audio: %u Hz stereo, mixed at each vertical blank; output %s%s%s\n", AICA_RATE,
              g_stream ? "to the default device" : "off", g_dump != INVALID_HANDLE_VALUE ? ", dumped to " : "",

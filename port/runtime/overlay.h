@@ -27,6 +27,8 @@ typedef struct {
     u32 nwindows;
     const PortDispatch *rows; /* the unit's functions, by address */
     u32 nrows;
+    const PortDispatch *glue; /* tc_call's glue for its functions on translator C (fn: a tx_rt.h PortTcGlue), by address */
+    u32 nglue;
 } PortOverlay;
 
 /* Generated (gen_overlays.py overlay_table.c); a game with none links an empty table (overlay.c). */
@@ -36,6 +38,9 @@ extern const int port_noverlays;
 /* NULL if addr is in no unit's range; else the loaded unit's function there, or a row that returns 0 (logged) */
 const PortDispatch *overlay_find(u32 addr);
 PortFn port_guest_target(u32 addr); /* what a call to guest addr runs (overlay trampolines) */
+/* tc_call's glue (fn: a tx_rt.h PortTcGlue) for the function at addr of the unit loaded there, NULL if that function
+ * has none (readable C, a stub) or no loaded unit has one */
+const PortDispatch *overlay_glue(u32 addr);
 void overlay_report(void);          /* the unit switches and misses, into the log */
 
 #endif

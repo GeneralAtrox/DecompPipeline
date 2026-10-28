@@ -8,6 +8,7 @@ Run: python -W error tests/test_port_kit.py (it imports these)
 import pathlib
 import random
 import shutil
+import struct
 import subprocess
 import sys
 import tempfile
@@ -165,6 +166,50 @@ int main(void)
     return 0;
 }
 """
+TX_DRIVER_C = r"""/* Translator C units: tc_call's view (tx_rt.c call): the loaded unit's glue, with r4 in the argument block. */
+#include <stdio.h>
+#include <string.h>
+#include "port.h"
+#include "overlay.h"
+#include "tx_rt.h"
+
+void *guest_alloc(void);
+extern const unsigned char img_a[], img_b[];
+
+static void call(const char *what, u32 addr)
+{
+    const PortDispatch *g = overlay_glue(addr);
+    PortTcArgs a;
+    PortTcRet o = {0, 0.0f};
+    memset(&a, 0, sizeof a);
+    a.r[0] = 5;
+    if (g) ((PortTcGlue)g->fn)(&a, &o);
+    if (g) printf("%s %s %u\n", what, g->name, o.r0);
+    else printf("%s -\n", what);
+}
+
+int main(void)
+{
+    if (!guest_alloc()) return 3;
+    call("empty", 0x8c600100u);
+    memcpy((void *)(uintptr_t)0x8c600000u, img_a, 0x1000);
+    call("a", 0x8c600100u);
+    memcpy((void *)(uintptr_t)0x8c600000u, img_b, 0x1000);
+    call("b", 0x8c600100u);
+    call("main", 0x8c020000u);
+    return 0;
+}
+"""
+TX_HOST_C = r"""
+/* tx_rt.c's part the glue uses: a guest stack in the mapped RAM. */
+#include <stdint.h>
+static uint32_t g_sp = 0x8c00f400u;
+uint32_t port_tx_enter(uint32_t frame, uint32_t args) { uint32_t sp = g_sp - args; g_sp = sp - frame; return sp; }
+void port_tx_leave(uint32_t sp, uint32_t args) { g_sp = sp + args; }
+int port_tx_fpu_whole(int whole) { (void)whole; return 0; }
+void port_tx_take_rlo(uint32_t *lo) { lo[0] = lo[1] = lo[2] = lo[3] = 0; }
+float sh4_fr(int index) { (void)index; return 0.0f; }
+"""
 HOST_FAULT_C = r"""/* The runtime's other parts for the fault driver: main's dispatch table has one function. */
 #include <stdarg.h>
 #include <stdio.h>
@@ -186,6 +231,7 @@ u32 guest_fold(u32 a) { return (a >> 24) == 0x0cu ? a | 0x80000000u : a; }
 int guest_is_ram(u32 a) { return guest_fold(a) - 0x8c000000u < 0x01000000u; }
 int rom_read(EXCEPTION_POINTERS *ep) { (void)ep; return 0; }
 void port_stub_report(void) {}
+void diag_fault_chain(u32 esp) { (void)esp; }
 void port_log_flush(void) {}
 void port_log(const char *fmt, ...)
 {
@@ -306,6 +352,56 @@ class OverlayBuilt(unittest.TestCase):
         self.assertEqual(code, 3, got)
         self.assertEqual(got[-1], "EXIT: overlay: a call into overlay RAM with no loaded function")
         self.assertNotIn("none 0", got)
+
+    def test_translator_c_units(self):
+        """Two units over one range, each on translator C (the port form, tools/tx_port.py): each judged file is
+        compiled with its unit's prefix at the port's /W4 /WX (no shared symbol, no prefix.h), and tc_call reaches the
+        loaded unit's function through its glue (overlay_glue): r4 + 1 with a loaded, r4 + 2 with b, none with
+        neither or outside overlay RAM."""
+        sys.path.insert(0, str(TOOL))
+        sys.path.insert(0, str(TOOL / "targets" / "dreamcast_sh4" / "translator"))
+        from test_sync import TMP  # noqa: F401  (sets DECOMP_PROJECT when run alone)
+        import overlay_tx
+        import tx_port
+        from sh4translate.translate import Image, Signature, translate_function
+        da, a = image(1)
+        db, b = image(2)
+        blocks = [(LO + 0x40 * i, LO + 0x40 * i + 0x30) for i in range(60)]
+        units = [{"id": "a", "ranges": [(LO, HI)]}, {"id": "b", "ranges": [(LO, HI)]}]
+        wins = [go.pick_windows("a", a, [(LO, HI)], blocks, [("b", [(LO, HI)], b)]),
+                go.pick_windows("b", b, [(LO, HI)], blocks, [("a", [(LO, HI)], a)])]
+        addr = f"{LO + 0x100:08x}"
+        reg = type("Reg", (), {"kind": staticmethod(lambda t: "i")})
+        abi = type("Abi", (), {"own_storages": staticmethod(lambda *x: ["r4"])})
+        meta = {"params": [{"storage": "r4"}]}
+        files, glue = {}, []
+        for p, add in (("A", 1), ("B", 2)):  # mov r4,r0; add #add,r0; rts; nop
+            img = Image(struct.pack("<4H", 0x6043, 0x7000 | add, 0x000B, 0x0009), LO + 0x100)
+            sig = Signature(f"fn_{addr}", f"u32 fn_{addr}(u32 a0)", [("a0", "u32", "r4")], "u32")
+            c = translate_function(img, LO + 0x100, sig, sp_input=True)
+            (self.out / p).mkdir()
+            src = self.out / p / f"{addr}.c"
+            src.write_text(c if isinstance(c, str) else c[0], encoding="utf-8")
+            files[f"tx_{p}.c"] = tx_port.inbound_c(reg, abi, addr, "u32 Fx(u32 a0)", meta, src,
+                                                   src.read_text(encoding="utf-8"), p)
+            files[f"glue_{p}.c"] = overlay_tx.glue_c(p, [(addr, tx_port.outbound_glue(reg, abi, addr, "u32 Fx(u32 a0)",
+                                                                                        meta, f"{p}__Fx"), "Fx")])
+            glue.append((f"{p}__txglue", 1))
+        for p in "AB":  # txglue.c's game.h: the workspace's prototypes, prefixed (prefix.h) as gen_overlays has them
+            files[f"glue_{p}.c"] = files[f"glue_{p}.c"].replace('#include "game.h"',
+                                                              f'#include "rd_rt.h"\nu32 {p}__Fx(u32 a0);')
+        rows = [[(LO + 0x100, "A__Fx", "Fx")], [(LO + 0x100, "B__Fx", "Fx")]]
+        files.update({"table.c": go.table_c(units, go.groups(units), wins, rows, glue), "driver.c": TX_DRIVER_C,
+                      "host.c": HOST_C.split("int A__f")[0] + HOST_C[HOST_C.index("void *guest_alloc"):] + TX_HOST_C,
+                      "images.c": bytes_c("img_a", da) + bytes_c("img_b", db)})
+        for n, t in files.items():
+            (self.out / n).write_text(t, encoding="utf-8")
+        inc = f'/I"{KIT / "runtime" / "tx"}" /I"{TOOL / "targets" / "dreamcast_sh4" / "runtime"}"'
+        log = build(self.out, [self.out / n for n in files] + [KIT / "runtime" / "overlay.c"], "otx.exe", inc)
+        self.assertEqual(log, "")
+        self.assertEqual(self.run_exe("otx.exe"), [
+            "empty -", "log: overlay: a active (call to 8c600100)", "a Fx 6",
+            "log: overlay: b active (call to 8c600100)", "b Fx 7", "main -"])
 
     def test_no_overlays_links_the_empty_table(self):
         """A game with no overlay table still links (the /alternatename default) and finds none."""

@@ -9,6 +9,7 @@
  *
  * The config file named by environment variable XEMU_FN (tools/xemu_check.py writes it) has one item per line:
  *   entry ADDR | body LO HI (half-open; several) | retx rN or frN (meta ret_reg) | u64 (r1 is RETX) | fpscr HEX
+ *   | szx CALLEE XY (TcFpscr.Sz: the callee's FPSCR.SZ at return entered with 0, X, and 1, Y; another digit: unknown)
  * The machine code comes from the image file itself (the runner's first argument), not through rd16: the runtime
  * reads of code bytes are the C's rule R8 and are reported. */
 #include <stdio.h>
@@ -26,7 +27,7 @@
 static int g_loaded;
 static u8 *g_image;
 static u32 g_image_size;
-static u32 g_entry, g_body[XE_MAX_BODY][2], g_nbody, g_fpscr_entry = 0x00040001u;
+static u32 g_entry, g_body[XE_MAX_BODY][2], g_nbody, g_fpscr_entry = 0x00040001u, g_szx[32][2], g_nszx;
 static int g_retx_reg = -1, g_retx_fr, g_u64;
 static u32 g_rt_mode; /* the runtime's FPU mode bits as xemu last set them (0 after its reset) */
 static u32 g_rc_entry; /* MXCSR rounding control at entry (the runtime's, from line P) */
@@ -83,6 +84,8 @@ static void load_config(void)
             g_u64 = 1;
         } else if (strncmp(ln, "fpscr ", 6) == 0) {
             g_fpscr_entry = (u32)strtoul(ln + 6, NULL, 16);
+        } else if (strncmp(ln, "szx ", 4) == 0 && g_nszx < 32) {
+            g_szx[g_nszx][0] = (u32)strtoul(ln + 4, &p, 16), g_szx[g_nszx++][1] = (u32)strtoul(p, NULL, 16);
         }
     }
     free(text);
@@ -136,6 +139,9 @@ static int g_sq_reg = -1;
 int xe_model_sqwt;
 static u32 g_sq_from[2];
 static u8 g_sq_stored[2][32];
+/* the bytes a mocked callee stores through r4..r7 (line S after N; TcSq.callee): per queue byte its RAM byte, or 0. A
+ * pref sends it from there (the stub stored nothing: the block's own byte stays when that is where it went) */
+static u32 g_sq_src[2][32];
 
 static int in_window(u32 a) { return a - 0xe0000000u < 0x04000000u; }
 
@@ -148,6 +154,28 @@ static void sq_fill(u32 from, u32 to)
         }
         g_sq_from[(b >> 5) & 1] = 0x8c000000u | (b & 0x00ffffe0u);
         memset(g_sq_stored[(b >> 5) & 1], 0, 32);
+        memset(g_sq_src[(b >> 5) & 1], 0, sizeof g_sq_src[0]);
+    }
+}
+
+/* a mocked call to target: the bytes its line-S entries mark through r4..r7 are the callee's (TcSq.callee) */
+static void sq_callee(const Xe *x, u32 target)
+{
+    char *p = tcrt_sq_line + 1;
+    strtoul(p, &p, 10);
+    for (;;) {
+        char *q = p;
+        u32 t = (u32)strtoul(p, &p, 16), r = (u32)strtoul(p, &p, 10);
+        unsigned long long m[2];
+        m[0] = strtoull(p, &p, 16);
+        m[1] = strtoull(p, &p, 16);
+        if (p == q || r < 4 || r > 7) return;
+        for (u32 j = 0; j < 128 && t == target; j++) {
+            u32 b = x->r[r] + j;
+            if (!((m[j >> 6] >> (j & 63)) & 1) || !in_window(b)) continue;
+            g_sq_stored[(b >> 5) & 1][b & 31] = 0;
+            g_sq_src[(b >> 5) & 1][b & 31] = 0x8c000000u | (b & 0x00ffffffu);
+        }
     }
 }
 
@@ -156,6 +184,7 @@ static void sq_entry(const Xe *x)
     g_sq_reg = -1;
     memset(g_sq, 0, sizeof g_sq);
     memset(g_sq_stored, 0, sizeof g_sq_stored);
+    memset(g_sq_src, 0, sizeof g_sq_src);
     g_sq_from[0] = g_sq_from[1] = 0;
     if (!tcrt_sq_window) return;
     for (int i = 8; i < 15 && g_sq_reg < 0; i++) {
@@ -176,6 +205,7 @@ void xe_wr(u32 a, u32 v, int size)
         for (int i = 0; i < size; i++) {
             g_sq[(a >> 5) & 1][(a + (u32)i) & 31] = (u8)(v >> (8 * i));
             g_sq_stored[(a >> 5) & 1][(a + (u32)i) & 31] = 1;
+            g_sq_src[(a >> 5) & 1][(a + (u32)i) & 31] = 0;
         }
         if (!xe_model_sqwt) return;
     }
@@ -188,8 +218,14 @@ void xe_wr(u32 a, u32 v, int size)
 void xe_pref(u32 a)
 {
     if (!tcrt_sq_window || !in_window(a)) return; /* a cache prefetch: nothing to see */
-    const u8 *q = g_sq[(a >> 5) & 1];
+    u8 *q = g_sq[(a >> 5) & 1];
     u32 dst = 0x8c000000u | (a & 0x00ffffe0u);
+    for (u32 j = 0; j < 32; j++) { /* a mocked callee's bytes (sq_callee) */
+        u32 s = g_sq_src[(a >> 5) & 1][j];
+        if (s) xe_ghmem_read(s, 1);
+        if (s) q[j] = rd8(s), g_sq_stored[(a >> 5) & 1][j] = 1;
+    }
+    memset(g_sq_src[(a >> 5) & 1], 0, sizeof g_sq_src[0]);
     if (xe_model_sqwt) {
         u32 k = (a >> 5) & 1, src = g_sq_from[k] ? g_sq_from[k] : dst;
         u8 out[32];
@@ -283,7 +319,11 @@ static void call(Xe *x, u32 target)
     }
     sync_out(x);
     u32 before = g_sq_reg >= 0 ? x->r[g_sq_reg] : 0;
+    if (tcrt_sq_window) sq_callee(x, target);
     u32 rv = tc_call(target, &a);
+    for (u32 k = 0, d; k < g_nszx; k++) /* a callee that returns with another FPSCR.SZ (TcFpscr.Sz) */
+        if (g_szx[k][0] == target && (d = g_szx[k][1] >> (x->fpscr & XE_FPSCR_SZ ? 0 : 4) & 15u) < 2u)
+            x->fpscr = (x->fpscr & ~XE_FPSCR_SZ) | (d ? XE_FPSCR_SZ : 0u);
     x->r[0] = rv;
     x->fr[0] = rv;
     for (int i = 8; i < 15; i++) x->r[i] = sh4_r(i);
@@ -320,7 +360,7 @@ void tc_thunk(const u32 *r, const f32 *fr, u32 *out_r0, f32 *out_fr0)
         memcpy(&x.xf[i], &g, 4);
     }
     if (!tcrt_fpu_state()) memcpy(x.fr + 4, fr, 8 * sizeof(u32));
-    x.fpscr = g_fpscr_entry & ~(XE_FPSCR_FR | XE_FPSCR_SZ | XE_FPSCR_PR);
+    x.fpscr = (g_fpscr_entry & ~(XE_FPSCR_FR | XE_FPSCR_SZ | XE_FPSCR_PR)) | (sh4_sz() ? XE_FPSCR_SZ : 0u); /* line z */
     sq_entry(&x);
     u32 pc = g_entry;
     long steps = 0;

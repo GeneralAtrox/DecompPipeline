@@ -394,6 +394,7 @@ final class TcReach {
         for (byte[] d : v.patchData) c.patchData.add(d.clone());
         c.genHeapNext = v.genHeapNext;
         c.genPoked = new HashMap<>(v.genPoked);
+        TcLate.copy(v, c);
         return c;
     }
 }

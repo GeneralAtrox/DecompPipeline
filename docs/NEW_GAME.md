@@ -5,6 +5,30 @@ game-specific lives in a **project workspace** that you create, and the disc ima
 of a finished workspace is the Toy Commander repository (`decomp/`: project.json, matched and readable C,
 headers, names, the design briefs and the progress log).
 
+The short version: the target's own translator writes every function's raw C, DP's judge checks it on the
+original code's test vectors, and an agent works only on what the translator could not pass (step 4). The
+readable round and a native port follow (steps 6 and 8); a port can already run on the translator's C.
+
+## What changed since the last public update (26 October 2026)
+
+- **Port from translator C** (step 8): a port compiles the translator's judged C wherever readable C does not
+  pass yet, for the main binary and for overlays, so a game boots before its readable round is done.
+- **Judge, SH-4:** fipr/ftrv rounded once, as the console computes them (fmac already was), and lint R9/RR8
+  refuse C that rounds the code's fmac twice; FPSCR.SZ taken from the callers' code, so functions that run with
+  64-bit moves are judged in that mode; callees that hand results back in r4..r7; hand-written assembly modules
+  judged and translated as one unit (`tools/asm_modules.py`, `tools/mid_entries.py`); a callee's stores into the
+  store queues; hints for callee results drawn from a range, run flags and mocked readers. Each change landed
+  only on proof that the judge lost none of the mutants it killed before.
+- **Prepare:** `ghidra_kill_s` gives a slow machine more wall time without changing any stamp; a failed prepare
+  keeps the old harness. `tools/selective_restamp.py` refreshes only the harnesses a judge change touches.
+- **Port kit** (port/README.md lists every module and the game.json key that turns it on): Kamui 1, more of
+  Kamui 2, ADX and Sofdec movies with sound, a game's own sound driver on an emulated AICA ARM7, the VMU screen,
+  save file images, the console's heap layout, fibres, gdFs and ADXF, controllers set up without
+  pdInitPeripheral, translucent modifier volumes, the game's own float maths in place of the host's, and the x87
+  precision following FPSCR.PR.
+- **Testing a port:** `port/tools/lockstep.py` compares a port with Flycast frame by frame (RAM and the display
+  lists); `port/tools/bu_sweep.py` runs the port past many blockers in one go and lists each one.
+
 ## 0. Machine setup (once)
 
 - Python 3.12, a JDK 21, Ghidra 12.x, Visual Studio 2022 with the C++ workload (the judge builds every
@@ -20,6 +44,8 @@ headers, names, the design briefs and the progress log).
   The judge warns when it is not. For the regression suite, `tests/patterns.local.json`
   (also git-ignored) maps each `projects` key of tests/patterns.json to its workspace path.
 - Install the SH-4 language once: `python targets/dreamcast_sh4/ghidra_lang/install_lang.py <ghidra_home>`.
+- The translator needs nothing more: it is part of DP (`targets/dreamcast_sh4/translator/`, sh4-translate), and
+  config `translate_first` (on by default) runs it before any agent.
 - Once a workspace exists (step 2), `python tools/doctor.py --project <workspace>` checks it for consistency.
 
 Every long command should run under `tools/bounded.py SECONDS ...`, which kills the whole process tree on time-out.
@@ -76,6 +102,7 @@ A folder with `project.json`. Toy Commander's is the template; the fields a new 
 | `port` | the monitor UI's port (one per workspace that serves at the same time) |
 | `seed_functions` | `true` for a game linked at `0x0c...` (step 1's scan says so); harmless otherwise |
 | `ghidra_timeout_s` | one function's prepare (default 900 s); setup, catalog, seed and graph get `ghidra_setup_timeout_s` (default 3600 s) |
+| `ghidra_kill_s` | the wall time before one function's prepare is killed (default: `ghidra_timeout_s`). The oracle budget in the facts still comes from `ghidra_timeout_s` (counted in work with `oracle_work_per_s`), so raising this lets a loaded or slower machine finish the same harness without changing any stamp; machine-local, e.g. in config.local.json |
 
 Then, in this order (the references need the catalog and the disassembly):
 
@@ -116,11 +143,23 @@ game. You don't decompile those; you name them.
 
 The SDK, and the databases built from it, are Sega material: keep them out of any repository.
 
-## 4. Match round (raw C)
+## 4. Match round: the translator first, agents only on a FAIL
 
-`python decomp.py --project <workspace> serve` opens the monitor UI. Start workers (Haiku by default): each one
-takes a function, writes raw C against the guest-memory API, and gets PASS or FAIL. Callees are mocked, so
-functions are independent.
+Each function's raw C is first written by the target's own translator (Dreamcast: sh4-translate). DP's judge,
+unchanged, decides it exactly as it decides an agent's: same lint, build and test vectors. A PASS is a match that
+costs no agent tokens (its ledger row says `"source": "translated"`). Only a FAIL goes to an agent, which starts
+from the translated C and its first differences. On Toy Commander, Spawn and Power Stone 2 the translator's C
+passes for nearly every matched function (its README, `targets/dreamcast_sh4/translator/README.md`, has the
+figures and the causes of the rest). How the stage works: docs/TRANSLATOR_STAGE.md.
+
+- **Without agents first (recommended):** prepare harnesses ahead (`tools/prepare_list.py --project WS @FILE`, or
+  `tools/idle_prepare.py`), then `python tools/translate_backlog.py --project WS --record --json OUT.json` judges
+  the translator's C on every harness the workspace has and finishes each PASS as a worker would. It never starts
+  Ghidra; stop the server first. A harness made before a judge change has an old stamp, and `--record` records
+  nothing on it: re-prepare it first.
+- **Then the agents, for what is left:** `python decomp.py --project <workspace> serve` opens the monitor UI.
+  Start workers (Haiku by default): each one takes a function, runs the translator, and only on a FAIL writes raw
+  C against the guest-memory API until it gets a PASS. Callees are mocked, so functions are independent.
 
 - Reuse earlier games first: for each earlier workspace, best first, `xproject.py --project WS --from OLD match`,
   `report`, `stage` and `names` (`match` rewrites `state/import.json`, so run the four per workspace; a later
@@ -201,6 +240,12 @@ The kit holds no game code; your game's repository holds a port folder with:
    (`--engine` adds the `extra_functions` readable C). Each stub is logged at its first call. Put the ones
    start-up cannot get past in `must_work.txt`: the run stops at the first (exit code 3). Replace them one by one
    with engine readable C, a kit module or your own source, until the main loop runs.
+5. Translator C, before or beside the readable round (off by default): judge the port form once,
+   `python targets/dreamcast_sh4/translator/tools/dp_judge.py --ws <workspace> --out <dir> --sp-input --all`,
+   then set game.json `"translator_c": {"dir": "<dir>", "mode": "mix"}`. `mix` compiles readable C where it
+   passes and the translator's judged C for the rest; `only` uses translator C everywhere; `tx_first` lists
+   functions whose readable C yields to translator C. The port takes only the very text judged there (each row
+   keeps the C's sha256). Overlays: overlays.json `translator_c`.
 
 Toy Commander's `port/` (game.json, must_work.txt, its hardware and Kamui 2 files) is a complete example. A
 replacement that only needs SDK names belongs in the kit's `sdk/`; one bound to your game's own code stays with

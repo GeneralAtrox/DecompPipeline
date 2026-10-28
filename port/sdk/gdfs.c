@@ -7,6 +7,7 @@
  * flagged as a directory, so a listed "." would never end.
  *
  * gdFsGetStat: games wait while it returns 1, the "transfer busy" value, so a finished transfer returns 2.
+ * Streaming readers (Gd_StreamGetStat, Gd_ServerTick) see each request accepted and already done.
  *
  * Needs from the game's headers (game.h): GDFS and GDFS_DIRREC as pointers to struct GdfsHandle and struct
  * GdfsDirRec (defined here), GDD_DRVSTAT_STANDBY / _PLAY / _PAUSE, GDD_SEEK_CUR / _END and SdkProc, and the
@@ -295,13 +296,25 @@ s32 gdFsRead(GDFS gdfs, s32 sectors, void *buffer)
     return FS_ERR_OK;
 }
 
+/* The library's request returns the sectors it took (clipped at the end of the file), 0 when it took none (the drive
+ * busy, or the position at the end), or an error. Callers loop `while (r == 0)` and advance by the count (a
+ * movie reader does), so a plain 0 for "done" would read on to the end of the file. */
 s32 gdFsReqRd32(GDFS gdfs, s32 sectors, void *buffer)
 {
+    s32 count;
+    if (!valid(gdfs)) return FS_ERR_ILLHNDL;
     if (((uintptr_t)buffer & 31u) != 0) return FS_ERR_32ALIGN;
-    return gdFsRead(gdfs, sectors, buffer);
+    count = gdfs->sectors - gdfs->pos < sectors ? gdfs->sectors - gdfs->pos : sectors;
+    if (count <= 0) return 0;
+    return gdFsRead(gdfs, count, buffer) == FS_ERR_OK ? count : FS_ERR_READ;
 }
 
 s32 gdFsGetStat(GDFS gdfs) { return valid(gdfs) ? FS_TRANSFER_DONE : FS_ERR_ILLHNDL; }
+
+/* A handle's error status (the library's gdFsGetErrStat field): every read has ended without an error. */
+s32 Gd_StreamGetStat(void *stream) { return valid((GDFS)stream) ? FS_ERR_OK : FS_ERR_ILLHNDL; }
+
+void Gd_ServerTick(void) {} /* the library's server step: reads are done when their call returns */
 
 void gdFsEntryErrFuncAll(SdkProc func, void *obj) { (void)func, (void)obj; } /* reads never fail asynchronously */
 
@@ -322,6 +335,18 @@ s32 gdFsGetDrvStat(void)
 }
 
 s32 gdFsReqDrvStat(void) { return FS_ERR_OK; }
+
+/* The library's own handle, the one its drive requests (gdFsReqDrvStat) run on: there once gdFsInit has mounted the
+ * disc, NULL before. Gd_FsGetHandleStatus is a handle's request status (FS_ERR_ILLHNDL for no handle), and every
+ * request here has finished when the call that made it returns. */
+static struct GdfsHandle g_system;
+
+GDFS Gd_GetSystemHandle(void) { return g_mounted ? &g_system : NULL; }
+
+s32 Gd_FsGetHandleStatus(GDFS gdfs)
+{
+    return valid(gdfs) || (gdfs == &g_system && g_mounted) ? FS_TRANSFER_DONE : FS_ERR_ILLHNDL;
+}
 
 s32 gdFsDaPlay(s32 firstTrack, s32 lastTrack, s32 repeat)
 {

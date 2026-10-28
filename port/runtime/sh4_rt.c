@@ -19,6 +19,7 @@ static u32 g_fr[16];
 static u32 g_mode;  /* FPSCR.FR | SZ | PR in their FPSCR bit positions */
 static u32 g_fpscr = 0x00040001u; /* FPSCR's other fields: sh4_rt_set_fpu_mode's DN=1, RM=1 until sh4_lds_fpscr */
 static u32 g_gs[7]; /* r8..r14 */
+static u32 g_ro[4]; /* r4..r7 as the last tc_call passed them, or as a translated callee handed one back (TcOut) */
 extern const unsigned int port_fsca_sin[2][65536]; /* fsca: gen fsca_table.c (core/fsca.py): [0] nearest, [1] to zero */
 
 /* Unions, not memcpy: the kit builds with the judge's /O1, which has no /Oi, so a memcpy here is a CRT call. */
@@ -94,26 +95,30 @@ void sh4_fsca(u32 fpul, f32 *s, f32 *c)
     *c = u2f(tab[(i + 0x4000u) & 0xffffu]); /* the cosine is the sine a quarter turn on */
 }
 
-static __m128 mul(f32 a, f32 b) { return _mm_mul_ss(_mm_set_ss(a), _mm_set_ss(b)); }
+/* fipr FVm,FVn and ftrv XMTRX,FVn: one inner product rounded once, as the reference emulator (Flycast: sh4_fpu.cpp,
+ * shil_canonical.h innerProduct) computes the SH-4's (the software manual's FIPR and FTRV: one hardware inner product,
+ * no rounded intermediate values): each product in double (exact), the four summed in element order 0..3 in double,
+ * the sum converted once to single, all in MXCSR's mode (RC from FPSCR.RM, DAZ|FTZ from FPSCR.DN), as the oracle's
+ * TcRound.fipr. SSE2 operations, never the x87 or a fused multiply-add. */
+static __m128d widen(f32 x) { return _mm_cvtss_sd(_mm_setzero_pd(), _mm_set_ss(x)); }
+
+static __m128d dmul(f32 a, f32 b) { return _mm_mul_sd(widen(a), widen(b)); }
 
 f32 sh4_fipr(const f32 a[4], const f32 b[4])
 {
-    __m128 t = mul(a[0], b[0]);
-    t = _mm_add_ss(t, mul(a[1], b[1]));
-    t = _mm_add_ss(t, mul(a[2], b[2]));
-    t = _mm_add_ss(t, mul(a[3], b[3]));
-    return _mm_cvtss_f32(t);
+    __m128d t = dmul(a[0], b[0]);
+    t = _mm_add_sd(t, dmul(a[1], b[1]));
+    t = _mm_add_sd(t, dmul(a[2], b[2]));
+    t = _mm_add_sd(t, dmul(a[3], b[3]));
+    return _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(), t));
 }
 
 void sh4_ftrv(f32 v[4])
 {
     f32 out[4];
-    for (int row = 0; row < 4; row++) {
-        __m128 t = mul(u2f(g_xf[row]), v[0]);
-        t = _mm_add_ss(t, mul(u2f(g_xf[row + 4]), v[1]));
-        t = _mm_add_ss(t, mul(u2f(g_xf[row + 8]), v[2]));
-        t = _mm_add_ss(t, mul(u2f(g_xf[row + 12]), v[3]));
-        out[row] = _mm_cvtss_f32(t);
+    for (int row = 0; row < 4; row++) { /* XMTRX is column-major: row r is xf r, r+4, r+8, r+12 */
+        f32 m[4] = {u2f(g_xf[row]), u2f(g_xf[row + 4]), u2f(g_xf[row + 8]), u2f(g_xf[row + 12])};
+        out[row] = sh4_fipr(m, v);
     }
     for (int i = 0; i < 4; i++) v[i] = out[i];
 }
@@ -150,6 +155,8 @@ void sh4_fschg(void)
 
 void sh4_fpchg(void) { g_mode ^= MODE_PR; }
 
+u32 sh4_sz(void) { return (g_mode & MODE_SZ) != 0u; }
+
 /* Double precision (FPSCR.PR=1) on fr pairs: the judge's definitions (sh4_double.h), PR from g_mode */
 #define SH4D_PR() ((g_mode & MODE_PR) != 0u)
 #define SH4D_UNDEFINED(s) port_log("%s: undefined on the SH-4, registers left as they were\n", s)
@@ -175,11 +182,12 @@ void sh4_fipr_fv(int m, int n)
     g_fr[n + 3] = f2u(sh4_fipr(a, b));
 }
 
-u32 sh4_r(int i) { return (i >= 8 && i < 15) ? g_gs[i - 8] : 0; }
+u32 sh4_r(int i) { return (i >= 8 && i < 15) ? g_gs[i - 8] : (i >= 4 && i < 8) ? g_ro[i - 4] : 0; }
 
 void sh4_set_r(int i, u32 v)
 {
     if (i >= 8 && i < 15) g_gs[i - 8] = v;
+    if (i >= 4 && i < 8) g_ro[i - 4] = v;
 }
 
 /* SR (rd_rt.h): a word only; the port's interrupts (the vertical-blank hook) do not look at its mask. */
@@ -230,6 +238,17 @@ u32 sh4_stc_gbr(void) { return g_gbr; }
  * sh4_rt_set_fpu_mode does (RM 0 nearest, 1 toward zero; the reserved 2 and 3 as 0). The enables cannot trap here. */
 u32 sh4_sts_fpscr(void) { return (g_fpscr & ~(MODE_FR | MODE_SZ | MODE_PR)) | g_mode; }
 
+/* The x87's precision as FPSCR.PR: 24 bits for single, 53 for double. 32-bit code keeps a float that a function
+ * returned (rdf32, sh4_fr) on the x87 and goes on computing there; at the default 53 bits `(a * b) * c` rounds once
+ * where the SH-4's two fmuls round twice (TC's Body_InitK10Dynamics: 1 ulp, then a vehicle drifts). x64 has no x87. */
+#if defined(_M_IX86)
+#define X87_PC(fpscr) (((fpscr) & MODE_PR) ? _PC_53 : _PC_24)
+#define X87_MCW_PC _MCW_PC
+#else
+#define X87_PC(fpscr) 0u
+#define X87_MCW_PC 0u
+#endif
+
 void sh4_lds_fpscr(u32 v)
 {
     unsigned int x87 = 0;
@@ -237,7 +256,7 @@ void sh4_lds_fpscr(u32 v)
     g_fpscr = v & ~(MODE_FR | MODE_SZ | MODE_PR);
     g_mode = v & (MODE_FR | MODE_SZ | MODE_PR);
     _mm_setcsr((_mm_getcsr() & ~0xe040u) | ((v >> 18) & 1u ? 0x8040u : 0u) | ((v & 3u) == 1u ? 0x6000u : 0u));
-    __control87_2((v & 3u) == 1u ? _RC_CHOP : _RC_NEAR, _MCW_RC, &x87, NULL);
+    __control87_2(((v & 3u) == 1u ? _RC_CHOP : _RC_NEAR) | X87_PC(v), _MCW_RC | X87_MCW_PC, &x87, NULL);
 }
 
 void sh4_ldc_gbr(u32 v) { g_gbr = v; }
@@ -277,12 +296,12 @@ int sh4_rt_init(const char *check_table)
 }
 
 /* FPSCR 0x00040001 (target.json fpscr_entry): DN=1 (denormals flush to zero: DAZ|FTZ), RM=1 (round toward zero).
- * The x87 too: 32-bit code converts integers to float on it. */
+ * The x87 too: 32-bit code converts integers to float on it, and its precision is PR's (X87_PC). */
 void sh4_rt_set_fpu_mode(void)
 {
     unsigned int x87 = 0;
     _mm_setcsr((_mm_getcsr() & ~0x6000u) | 0x8040u | 0x6000u);
-    __control87_2(_RC_CHOP, _MCW_RC, &x87, NULL);
+    __control87_2(_RC_CHOP | X87_PC(0u), _MCW_RC | X87_MCW_PC, &x87, NULL);
 }
 
 /* tc_halt (rd_rt.h): the original's endless loop (`bra .`, an error halt). The port ends the run there instead of

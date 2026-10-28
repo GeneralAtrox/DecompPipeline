@@ -2,7 +2,7 @@
 // reached through a window subclass. Every choice applies at once and goes into the settings file (as the option it
 // stands for), so the next run starts the same way. The menu shows while windowed; full screen hides it.
 //   Display: full screen, window size, aspect (pillarbox; wide after the look review), VSync, in-between frames,
-//            frame-rate cap, frame-rate counter
+//            frame-rate cap, frame-rate counter, VMU screen
 //   Audio:   volume, mute when unfocused
 //   Input:   rumble, pause when unfocused
 //   Help:    copy agent prompt (F9; the bar's copy icon is the same command: host_copy_button.cpp)
@@ -24,6 +24,7 @@ enum : UINT {
     kAspectWide,
     kInterp = 130,
     kFpsCap = 140, // kFpsCap + N: kFpsCaps[N]
+    kVmuScreen = 150, // kVmuScreen + N: --vmu-screen mode N (off, side, over)
     kVolume0 = 200, // kVolume0 + N: N x 25 %
     kVolume100 = 204,
     kMuteUnfocused = 210,
@@ -42,7 +43,11 @@ constexpr UINT kFpsCapCount = sizeof kFpsCaps / sizeof kFpsCaps[0];
 
 HMENU display_menu()
 {
-    HMENU m = CreatePopupMenu(), size = CreatePopupMenu(), aspect = CreatePopupMenu(), cap = CreatePopupMenu();
+    HMENU m = CreatePopupMenu(), size = CreatePopupMenu(), aspect = CreatePopupMenu(), cap = CreatePopupMenu(),
+          vmu = CreatePopupMenu();
+    AppendMenuW(vmu, MF_STRING, kVmuScreen, L"&Off");
+    AppendMenuW(vmu, MF_STRING, kVmuScreen + 1, L"&Beside the picture");
+    AppendMenuW(vmu, MF_STRING, kVmuScreen + 2, L"O&ver the picture (top left)");
     AppendMenuW(cap, MF_STRING, kFpsCap, L"&None (as many as the display takes)");
     for (UINT n = 1; n < kFpsCapCount; n++) {
         std::wstring label = L"&" + std::to_wstring(kFpsCaps[n]) + L" frames a second";
@@ -65,6 +70,8 @@ HMENU display_menu()
     AppendMenuW(m, MF_STRING, kInterp, L"&In-between frames (the game keeps its own rate)");
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(cap), L"Frame-rate c&ap");
     AppendMenuW(m, MF_STRING, kFpsCounter, L"Frame-rate &counter");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(vmu), L"V&MU screen");
     return m;
 }
 
@@ -109,6 +116,7 @@ void sync()
     check(kInterp, extra_interp() != 0);
     for (UINT n = 0; n < kFpsCapCount; n++) check(kFpsCap + n, extra_fps() == kFpsCaps[n]);
     check(kFpsCounter, p.fps_counter);
+    for (UINT n = 0; n <= 2; n++) check(kVmuScreen + n, gfx_vmu_mode() == static_cast<int>(n));
     for (UINT n = 0; n <= 4; n++) check(kVolume0 + n, volume == static_cast<int>(n) * 25);
     check(kMuteUnfocused, p.mute_unfocused);
     check(kRumble, input_rumble() != 0);
@@ -134,6 +142,9 @@ void command(UINT id)
     } else if (id == kFpsCounter) {
         p.fps_counter = !p.fps_counter;
         host::settings_set("fps-counter", on_off(p.fps_counter));
+    } else if (id >= kVmuScreen && id <= kVmuScreen + 2) {
+        gfx_vmu_set_mode(static_cast<int>(id - kVmuScreen));
+        host::settings_set("vmu-screen", gfx_vmu_mode_name(gfx_vmu_mode()));
     } else if (id >= kVolume0 && id <= kVolume100) {
         audio_set_volume(static_cast<int>(id - kVolume0) * 25, 0);
         host::settings_set("volume", std::to_string(audio_volume()));

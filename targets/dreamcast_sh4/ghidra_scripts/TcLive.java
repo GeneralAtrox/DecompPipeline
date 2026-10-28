@@ -1,32 +1,25 @@
 // Callee effects on r8..r14 ("live across calls"). Not a script itself; TcPrepare builds one per function, TcOracle
 // applies it at each mocked call, TcVectors writes it to vectors.txt.
 //
-// Toy Commander's display-list library keeps the TA write pointer in r14, a global register: an emitter stores a
-// vertex at r14 and returns with r14 advanced (8c075768 `add #0x20,r14`), and its callers end a strip at the live r14
-// (`mov r14,r4; add #-0x20,r4; mov.l 0xf0000000,@r4`). A mocked callee used to leave every register but r0 and fr0 as
-// it was, so C that read r14 once before the calls (or set it back before each call) matched, and the port drew strip
-// ends over polygon headers. Now a mocked call to a callee that leaves rN changed (TcSum's writes, saves and restores
-// excepted, transitively) advances rN by what the callee does to it on every return path (delta, below):
+// Toy Commander's display-list library keeps the TA write pointer in r14: an emitter stores a vertex at r14 and returns
+// with r14 advanced (8c075768 `add #0x20,r14`), its callers end a strip at the live r14. A mocked callee used to leave
+// every register but r0 and fr0, so C that read r14 once before the calls matched, and the port drew strip ends over
+// polygon headers. A mocked call to a callee that leaves rN changed (TcSum's writes, saves and restores excepted,
+// transitively) advances rN by what the callee does to it on every return path (delta, below):
 //   a constant d   - rN += d (the emitters: +0x20, +0x40);
 //   a set of them  - rN += one of them, drawn per vector and call (line A);
 //   unknown        - (a loop advancing it, a value loaded from memory) rN += STEP * (1..3), drawn the same way.
 // The C runners (tc_rt.c, rd_veh.c) apply the same table (header lines K) and draws, so C must read rN after each such
-// call: a stale copy writes the strip end elsewhere (W), passes another rN to the next callee (CALL) or leaves another
-// rN at exit (GH). A constant is the real delta, so C that adds it itself is as right as the port's own emitter.
+// call: a stale copy writes elsewhere (W), passes another rN on (CALL) or leaves another at exit (GH).
 //
-// A context switch (Power Stone 2 8c2b99a0: saves r0..r15, PR and SR at r5, loads them from r4 and returns on the new
-// stack) returns with r15 loaded from memory (base MEM): control comes back to its caller only when another switch
-// restores the caller's own registers, so such a return counts as delta 0, and a callee with only delta 0 has no
-// effect (KEPT). Before, its r8..r14 were unknown: PS2 8c1831e4 calls it through r14 twice per loop, and the oracle
-// moved r14. Only a loaded r15 is a switch: an r15 merely not followed (TOP) keeps the rule below. A large frame
-// (`mov.w 0x..,r1; add r1,r15`) is followed exactly, its literal-pool constant read (literal): when any untracked
-// r15 counted as a switch, every such function's r14 was kept, and TC's display-list callers (8c052c78, 8c02872c,
-// ...: the TA pointer advanced in a loop) lost their r14 entry.
+// A context switch (PS2 8c2b99a0: loads r0..r15 from r4) returns with r15 loaded from memory (MEM): delta 0 (KEPT), not
+// an untracked r15 (TOP). A large frame (`mov.w 0x..,r1; add r1,r15`) is followed exactly (TcTail.literal): else TC's
+// display-list callers (8c052c78, 8c02872c) lost their r14 entry. Entries 7..10 are r4..r7 outputs (TcOut).
 //
-// delta: forward over the function's p-code (TcTail.extent: body and shared tails), each integer register valued as
-// (r8..r14 or r15 at entry, or a constant) + offset or unknown, with the 4-byte stack slots at r15 + c (a push and its
-// pop restore). A call clobbers r0..r7 and applies its callee's own delta (bottom-up, a cycle is unknown); a branch to
-// another function is a tail call. The value of rN at each return, against its entry value, gives the delta.
+// The same pass finds the bytes stored through r4..r7 at entry (args; TcSq's header). delta: forward over the p-code
+// (TcTail.extent), each integer register valued as (a register at entry, or a constant) + offset or unknown, with the
+// 4-byte stack slots at r15 + c (a push and its pop restore). A call clobbers r0..r7 and applies its callee's own delta
+// (bottom-up, a cycle unknown); a branch to another function is a tail call. rN at each return against entry: delta.
 import ghidra.app.emulator.EmulatorHelper;
 import ghidra.program.model.address.*;
 import ghidra.program.model.lang.Register;
@@ -39,7 +32,7 @@ final class TcLive {
     static final long STEP = 0x20;  // an unknown delta: STEP * (1 + draw % 3)
     static final int MAX_SET = 4;   // more distinct constants than this: unknown
     static final int MAX_VISITS = 64; // per instruction; then the function's deltas are unknown
-    static final long[] NONE = null, UNKNOWN = new long[0], KEPT = {0};
+    static final long[] NONE = null, UNKNOWN = new long[0], KEPT = {0}, OTHER = new long[0];  // OTHER: by identity
 
     final Map<Long, long[][]> table = new LinkedHashMap<>(); // callee -> per r8..r14: null kept, {d..} or {} unknown
     long[] draws = new long[16];                            // per call index (line A), set per vector try
@@ -49,13 +42,13 @@ final class TcLive {
         TcLive out = new TcLive();
         Deltas d = new Deltas(s.getCurrentProgram());
         for (Function g : callees) {
-            if ((s.sig.summary(g).writes & TcFlow.ISTATE) == 0) continue;
-            long[][] e = d.of(g).clone(); // the memo stays whole
+            long[][] e = new long[11][];  // all NONE; d's memo stays whole
             boolean any = false;
-            for (int i = 0; i < 7; i++) {
-                if ((s.sig.summary(g).writes & (1 << (24 + i))) == 0 || Arrays.equals(e[i], KEPT)) e[i] = NONE;
+            for (int i = 0; i < 7 && (s.sig.summary(g).writes & TcFlow.ISTATE) != 0; i++) {
+                e[i] = (s.sig.summary(g).writes & (1 << (24 + i))) == 0 || Arrays.equals(d.of(g)[i], KEPT) ? NONE : d.of(g)[i];
                 any |= e[i] != NONE;
             }
+            any |= TcOut.outs(s, g, e);  // r4..r7 (TcOut)
             if (any) out.table.put(g.getEntryPoint().getOffset(), e);
         }
         return out.table.isEmpty() ? null : out;
@@ -69,9 +62,9 @@ final class TcLive {
     void apply(TcOracle o, EmulatorHelper emu, long target, int k) {
         long[][] e = table.get(target);
         if (e == null) return;
-        for (int i = 0; i < 7; i++) {
+        for (int i = 0; i < e.length; i++) {
             if (e[i] == NONE) continue;
-            String r = "r" + (8 + i);
+            String r = "r" + (i < 7 ? 8 + i : i - 3);
             long was = o.reg(emu, r), now = (was + amount(e[i], draws[k % 16])) & 0xffffffffL;
             emu.writeRegister(r, o.u(now));
             if (o.sq != null && o.sq.reg == 8 + i) o.sq.called(was, now);  // the blocks it filled (TcSq)
@@ -91,10 +84,10 @@ final class TcLive {
     String header() {
         StringBuilder b = new StringBuilder();
         for (Map.Entry<Long, long[][]> e : table.entrySet()) {
-            for (int i = 0; i < 7; i++) {
+            for (int i = 0; i < e.getValue().length; i++) {
                 long[] d = e.getValue()[i];
                 if (d == NONE) continue;
-                b.append(String.format("K %08x %d %d", e.getKey(), 8 + i, d.length));
+                b.append(String.format("K %08x %d %d", e.getKey(), i < 7 ? 8 + i : i - 3, d.length));
                 for (long x : d) b.append(String.format(" %08x", x & 0xffffffffL));
                 b.append('\n');
             }
@@ -121,7 +114,7 @@ final class TcLive {
                 for (long x : d) v.append(v.length() > 0 ? "|" : "").append(x < 0 ? "-0x" + Long.toHexString(-x) : "0x" + Long.toHexString(x));
                 r.append(r.length() > 0 ? "," : "").append(String.format("\"r%d\":\"%s\"", 8 + i, d.length == 0 ? "?" : v));
             }
-            b.append(b.length() > 0 ? "," : "").append(String.format("\"%08x\":{%s}", e.getKey(), r));
+            if (r.length() > 0) b.append(b.length() > 0 ? "," : "").append(String.format("\"%08x\":{%s}", e.getKey(), r));
         }
         return "{" + b + "}";
     }
@@ -130,9 +123,12 @@ final class TcLive {
     static final class Deltas {
         static final int TOP = -1, CONST = 16, MEM = 17; // a value's base: register 0..15 at entry, CONST, a 4-byte
                                                          // load from non-stack memory (MEM), or TOP (unknown)
+        static final int ARG = 20;                       // ARG + k: from r(4+k) at entry, at an unknown offset
         final Program prog;
-        final Map<Address, long[][]> memo = new HashMap<>();
+        final Map<Address, long[][]> memo = new HashMap<>(), stored = new HashMap<>(), outs = new HashMap<>();  // args, outs
+        boolean follow;  // outs (TcOut): a call applies the callee's own r4..r7 outs; off, every other result stays
         final Set<Address> open = new HashSet<>();
+        long fpscr; boolean marking = true;  // args: the entry FPSCR (TcSq.path); step marks stores (not on a forked step)
 
         Deltas(Program prog) {
             this.prog = prog;
@@ -150,28 +146,50 @@ final class TcLive {
             return memo.get(f.getEntryPoint());
         }
 
+        // Per r4..r7: at f's returns against entry: NONE kept, {d..}, UNKNOWN (from it, offset unknown), OTHER.
+        long[][] outs(Function f) {
+            of(f);
+            return outs.getOrDefault(f.getEntryPoint(), new long[][] {OTHER, OTHER, OTHER, OTHER});
+        }
+        // Per r4..r7 at entry: the bytes f stores through it, {bits of offsets 0..63, 64..127}, or null (loose).
+        long[][] args(Function f) {
+            of(f);
+            return stored.getOrDefault(f.getEntryPoint(), new long[4][]);
+        }
+
+        static int arg(int b) { return b >= 4 && b < 8 ? b - 4 : b >= ARG && b < ARG + 4 ? b - ARG : -1; }  // k of r(4+k)
+
         // State: base[16], off[16] for r0..r15, stack slots r15entry+c -> {base, off}.
         static final class St {
             int[] base = new int[16];
             long[] off = new long[16];
             Map<Long, long[]> stack = new HashMap<>();
+            long[] must = new long[8], may = new long[8];  // per rK: bytes stored on every path, on some path
+            int loose;                                      // bit k: rK's stores are not exact
 
             St copy() {
                 St s = new St();
                 s.base = base.clone();
                 s.off = off.clone();
                 s.stack = new HashMap<>(stack);
+                s.must = must.clone(); s.may = may.clone(); s.loose = loose;
                 return s;
             }
 
             boolean join(St o) { // this = this meet o; whether this changed
                 boolean ch = false;
-                for (int i = 0; i < 16; i++) {
-                    if (base[i] != TOP && (base[i] != o.base[i] || off[i] != o.off[i])) {
-                        base[i] = TOP;
-                        ch = true;
-                    }
+                for (int i = 0; i < 16; i++) {  // differing: TOP, or ARG + k when either came from rK
+                    if (base[i] == o.base[i] && off[i] == o.off[i]) continue;
+                    int k = arg(base[i]) >= 0 ? arg(base[i]) : arg(o.base[i]), b = k >= 0 ? ARG + k : TOP;
+                    ch |= base[i] != b || off[i] != 0;
+                    base[i] = b;
+                    off[i] = 0;
                 }
+                for (int i = 0; i < 8; i++) {
+                    ch |= (must[i] & o.must[i]) != must[i] || (may[i] | o.may[i]) != may[i];
+                    must[i] &= o.must[i]; may[i] |= o.may[i];
+                }
+                ch |= (loose | o.loose) != loose; loose |= o.loose;
                 for (Iterator<Map.Entry<Long, long[]>> it = stack.entrySet().iterator(); it.hasNext(); ) {
                     Map.Entry<Long, long[]> e = it.next();
                     if (!Arrays.equals(e.getValue(), o.stack.get(e.getKey()))) {
@@ -194,21 +212,26 @@ final class TcLive {
             Deque<Address> work = new ArrayDeque<>(List.of(f.getEntryPoint()));
             List<Set<Long>> exits = new ArrayList<>();
             for (int i = 0; i < 7; i++) exits.add(new TreeSet<>());
-            boolean[] unknown = new boolean[7];
+            boolean[] unknown = new boolean[7], ounk = new boolean[4], oth = new boolean[4];
+            List<Set<Long>> ox = List.of(new TreeSet<>(), new TreeSet<>(), new TreeSet<>(), new TreeSet<>());
+            St ret = null;  // the args' bytes over every return
             while (!work.isEmpty()) {
                 Address a = work.pop();
                 if (visits.merge(a, 1, Integer::sum) > MAX_VISITS) return null;
                 Instruction ins = listing.getInstructionAt(a);
                 if (ins == null) return null;
                 St s = in.get(a).copy();
+                if (ins.getMnemonicString().replaceFirst("^_", "").equalsIgnoreCase("pref")) s.loose = 15;
                 Map<Long, long[]> uniq = new HashMap<>();
                 boolean ends = false;
-                long[] lit = literal(ins);
+                long[] lit = TcTail.literal(prog, ins);
                 if (lit != null) {
                     s.base[(int) lit[0]] = CONST;
                     s.off[(int) lit[0]] = lit[1];
                 }
-                for (PcodeOp op : lit != null ? new PcodeOp[0] : ins.getPcode()) {
+                PcodeOp[] ops = lit != null ? new PcodeOp[0] : ins.getPcode();
+                marking = !TcSq.path(this, s, ops);  // an instruction forking on FPSCR.SZ (fmov): its stores on one path
+                for (PcodeOp op : ops) {
                     int oc = op.getOpcode();
                     if (oc == PcodeOp.CALL || oc == PcodeOp.CALLIND) {
                         call(s, callee(ins, op));
@@ -222,11 +245,13 @@ final class TcLive {
                     }
                 }
                 if (ends) {
+                    if (ret == null) ret = s.copy(); else ret.join(s);
                     for (int i = 0; i < 7; i++) {
                         if (s.base[15] == MEM) exits.get(i).add(0L);  // a stack switch: the caller resumes as it was
                         else if (s.base[8 + i] == 8 + i) exits.get(i).add(s.off[8 + i]);
                         else unknown[i] = true;
                     }
+                    TcOut.exit(s, ox, ounk, oth);  // r4..r7 (outs)
                     continue;
                 }
                 for (Address n : successors(ins, body)) {
@@ -242,6 +267,13 @@ final class TcLive {
                 if (unknown[i] || e.size() > MAX_SET) out[i] = UNKNOWN;
                 else out[i] = e.stream().mapToLong(Long::longValue).toArray();
             }
+            long[][] st = new long[4][];
+            for (int k = 0; k < 4 && ret != null; k++) {  // exact: no loose store, the same bytes on every return path
+                long[] m = Arrays.copyOfRange(ret.must, 2 * k, 2 * k + 2);
+                st[k] = (ret.loose >> k & 1) == 0 && Arrays.equals(m, Arrays.copyOfRange(ret.may, 2 * k, 2 * k + 2)) ? m : null;
+            }
+            stored.put(f.getEntryPoint(), st);
+            outs.put(f.getEntryPoint(), TcOut.classify(ox, ounk, oth));
             return out;
         }
 
@@ -276,7 +308,18 @@ final class TcLive {
         }
 
         void call(St s, Function g) {
+            long[][] st = g != null ? args(g) : new long[4][];
+            for (int k = 0; k < 4; k++) {  // the bytes g stores through its r(4+k), a pointer from this function's rT
+                int t = arg(s.base[4 + k]);
+                if (t < 0 || st[k] != null && st[k][0] == 0 && st[k][1] == 0) continue;
+                if (st[k] == null || s.base[4 + k] != 4 + t) s.loose |= 1 << t;
+                for (int j = 0; j < 128 && s.base[4 + k] == 4 + t && st[k] != null; j++) {
+                    if ((st[k][j >> 6] >> (j & 63) & 1) != 0) mark(s, t, s.off[4 + k] + j);
+                }
+            }
+            St was = follow && g != null ? s.copy() : null;
             for (int i = 0; i < 8; i++) s.base[i] = TOP;
+            if (was != null) TcOut.follow(s, outs(g), was);  // the callee's own r4..r7 outs (TcOut)
             if (g == null) return; // an unknown target: r8..r14 kept (the ABI)
             long[][] d = of(g);
             for (int i = 0; i < 7; i++) {
@@ -323,6 +366,8 @@ final class TcLive {
             Varnode out = op.getOutput();
             if (oc == PcodeOp.STORE) {
                 long[] a = val(s, uniq, op.getInput(1));
+                int k = arg((int) a[0]);
+                for (int j = 0; marking && k >= 0 && j < op.getInput(2).getSize(); j++) mark(s, k, a[0] == 4 + k ? a[1] + j : -1);
                 if (a[0] == 15 && op.getInput(2).getSize() == 4) s.stack.put(a[1], val(s, uniq, op.getInput(2)));
                 else if (a[0] == 15) s.stack.remove(a[1]);
                 return;
@@ -340,28 +385,16 @@ final class TcLive {
                 if (a[0] == 15 && s.stack.containsKey(a[1])) x = s.stack.get(a[1]);
                 else if (a[0] != 15) x = new long[] {MEM, 0};
             }
+            for (int i = 0; x[0] == TOP && oc != PcodeOp.LOAD && i < op.getNumInputs(); i++) {  // a value from rK
+                int k = arg((int) val(s, uniq, op.getInput(i))[0]);
+                if (k >= 0) x = new long[] {ARG + k, 0};
+            }
             set(s, uniq, out, x);
         }
 
-        // A literal-pool load `mov.w|mov.l <pool>,rN` (PC-relative, read-only): {N, value}, the word sign-extended;
-        // else null. Read from the instruction's own read reference, as TcTail.prValue reads one.
-        long[] literal(Instruction ins) {
-            String t = ins.toString().toLowerCase();
-            java.util.regex.Matcher m = LITERAL.matcher(t);
-            if (!m.matches()) return null;
-            for (Reference r : ins.getReferencesFrom()) {
-                if (!r.getReferenceType().isRead() || !r.getToAddress().isMemoryAddress()) continue;
-                try {
-                    long v = m.group(1).equals("w") ? prog.getMemory().getShort(r.getToAddress())
-                        : prog.getMemory().getInt(r.getToAddress());
-                    return new long[] {Integer.parseInt(m.group(2)), v & 0xffffffffL};
-                } catch (Exception e) {
-                    return null;
-                }
-            }
-            return null;
+        static void mark(St s, int k, long at) {  // rK + at stored (at -1: an unknown offset, loose)
+            if (at < 0 || at >= 128) s.loose |= 1 << k;
+            else { s.must[2 * k + (int) (at >> 6)] |= 1L << (at & 63); s.may[2 * k + (int) (at >> 6)] |= 1L << (at & 63); }
         }
-
-        static final java.util.regex.Pattern LITERAL = java.util.regex.Pattern.compile("^mov\\.([wl])\\s+0x[0-9a-f]+,r(\\d+)$");
     }
 }

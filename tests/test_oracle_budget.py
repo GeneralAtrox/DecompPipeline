@@ -47,6 +47,7 @@ class Facts(unittest.TestCase):
         self.assertIn("oracle_budget_s 750\n", body)
         self.assertIn("oracle_rescue_s 90\n", body)
         self.assertNotIn("oracle_deadline_s", body)
+        self.assertEqual(ghidra.facts_body(dict(cfg, ghidra_kill_s=2700)), body)  # the kill limit is no fact: no stamp moves
         other = ghidra.facts_body({k: v for k, v in cfg.items() if k != "oracle_work_per_s"})
         self.assertIn("oracle_deadline_s 750\n", other)  # a target without a rate (GameCube) as before
         self.assertNotIn("oracle_budget_s", other)

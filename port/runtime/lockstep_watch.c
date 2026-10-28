@@ -16,6 +16,32 @@
 static volatile u32 *g_at;
 static u32 g_frame, g_hits;
 static PVOID g_handler;
+/* --lockstep-entry: execute breakpoints (DR0..DR3) on up to four functions' host code; each call logs its argument's
+ * words */
+static DWORD g_entry_at[ENTRY_MAX];
+static u32 g_entry_guest[ENTRY_MAX], g_entry_count;
+static u32 g_entry_words, g_entry_off, g_entry_n, g_entry_line, g_entry_label, g_entry_calls;
+static volatile u32 *g_entry_frames;
+static volatile int g_entry_arming; /* the arming exception is the entry's, not the write watch's */
+
+/* One call of function k: "lockstep entry: line N fn G label L frames F arg A w.. | j..", the emulator half's LS_ENTRY
+ * line after "fn" (the words at the first argument, then those at the pointer at argument + off; "-" where it is
+ * null). */
+static void entry_hit(const CONTEXT *c, u32 k)
+{
+    const u32 *arg = *(const u32 *const *)(uintptr_t)(c->Esp + 4u); /* cdecl: the first argument above the return */
+    const u32 *j = arg ? *(const u32 *const *)((const u8 *)arg + g_entry_off) : NULL;
+    static char line[16384];
+    int n = snprintf(line, sizeof line, "lockstep entry: line %u fn %08x label %08x frames %u arg %08x", g_entry_line,
+                     g_entry_guest[k], g_entry_label, g_entry_frames ? *g_entry_frames : 0u, (u32)(uintptr_t)arg);
+    for (u32 i = 0; i < g_entry_words && n > 0 && (size_t)n < sizeof line; i++)
+        n += snprintf(line + n, sizeof line - (size_t)n, arg ? " %08x" : " -", arg ? arg[i] : 0u);
+    if (n > 0 && (size_t)n < sizeof line) n += snprintf(line + n, sizeof line - (size_t)n, " |");
+    for (u32 i = 0; i < g_entry_n && n > 0 && (size_t)n < sizeof line; i++)
+        n += snprintf(line + n, sizeof line - (size_t)n, j ? " %08x" : " -", j ? j[i] : 0u);
+    port_log("%s\n", line);
+    g_entry_calls++;
+}
 
 static void hit(const CONTEXT *c)
 {
@@ -39,6 +65,26 @@ static LONG CALLBACK watch_handler(EXCEPTION_POINTERS *ep)
 {
     CONTEXT *c = ep->ContextRecord;
     DWORD code = ep->ExceptionRecord->ExceptionCode;
+    if (code == WATCH_ARM && g_entry_arming) {
+        u32 dr7 = 0;
+        for (u32 k = 0; k < g_entry_count; k++) dr7 |= 1u << (2u * k); /* Lk, on execution (RW 00, LEN 00) */
+        c->Dr0 = g_entry_count > 0u ? g_entry_at[0] : 0u;
+        c->Dr1 = g_entry_count > 1u ? g_entry_at[1] : 0u;
+        c->Dr2 = g_entry_count > 2u ? g_entry_at[2] : 0u;
+        c->Dr3 = g_entry_count > 3u ? g_entry_at[3] : 0u;
+        c->Dr6 = 0;
+        c->Dr7 = dr7;
+        c->ContextFlags |= CONTEXT_DEBUG_REGISTERS;
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
+    if (code == EXCEPTION_SINGLE_STEP && g_entry_count && (c->Dr6 & 0xfu)) {
+        for (u32 k = 0; k < g_entry_count; k++)
+            if ((c->Dr6 >> k & 1u) && c->Eip == g_entry_at[k]) entry_hit(c, k);
+        c->Dr6 = 0;
+        c->EFlags |= 0x10000u; /* RF: the breakpoint's instruction runs once without trapping again */
+        c->ContextFlags |= CONTEXT_DEBUG_REGISTERS | CONTEXT_CONTROL;
+        return EXCEPTION_CONTINUE_EXECUTION;
+    }
     if (code == WATCH_ARM) {
         c->Dr0 = view(GUEST_RAM_BASE);
         c->Dr1 = view(GUEST_MIRROR_BASE);
@@ -70,4 +116,29 @@ void lockstep_watch(volatile u32 *at, u32 frame)
     g_frame = frame;
     g_hits = 0;
     RaiseException(WATCH_ARM, 0, 0, NULL);
+}
+
+void lockstep_entry(const u32 *fn, const u32 *guest, u32 count, u32 words, u32 off, u32 n, volatile u32 *frames)
+{
+    g_entry_words = words;
+    g_entry_off = off;
+    g_entry_n = n;
+    g_entry_frames = frames;
+    if (!g_handler) g_handler = AddVectoredExceptionHandler(1, watch_handler);
+    if (!g_handler) return;
+    if (!count && g_entry_count) port_log("lockstep entry: %u calls logged\n", g_entry_calls);
+    g_entry_count = count < ENTRY_MAX ? count : ENTRY_MAX;
+    for (u32 k = 0; k < g_entry_count; k++) {
+        g_entry_at[k] = fn[k];
+        g_entry_guest[k] = guest[k];
+    }
+    g_entry_arming = 1;
+    RaiseException(WATCH_ARM, 0, 0, NULL); /* sets DR0.. on the functions, or clears them (count 0) */
+    g_entry_arming = 0;
+}
+
+void lockstep_entry_frame(u32 line, u32 label)
+{
+    g_entry_line = line;
+    g_entry_label = label;
 }

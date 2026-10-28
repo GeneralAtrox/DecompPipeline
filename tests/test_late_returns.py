@@ -6,7 +6,11 @@ wrong readable C passed 96/96 with 38 of 55 blocks untested). One pass and one f
    vector, and both runtimes return the scripted result for every call below TCRT_RETS;
 2. both runners' own line-C parse (compiled from their source): an old line of 16 words and a new one of 20 both read
    in full, a shorter line after a longer one leaves no word of it behind, and a CRLF line stops at its end;
-3. selective_restamp --change late takes a harness with a vector that made more than 16 calls, and no other.
+3. selective_restamp --change late takes a harness with a vector that made more than 16 calls, and no other;
+4. the repair (decision 5): TcVectors repairs a fault through a later result (TcLate.repair) after TcProvenance,
+   TcOracle returns the pool's chunk for a marked callee (TcLate.pooled), TcReach's vector copy keeps the marks and
+   the pool (TcLate.Marks: Vec is each workspace's own TcInputs.java, so it gains no field), and selective_restamp
+   --change lrep adds the functions with an invalid fault and a call.
 The oracle itself needs Ghidra: the re-prepare of 8c0117f4 judges it.
 Synthetic data. Run: python -W error tests/test_late_returns.py.
 """
@@ -45,13 +49,26 @@ class Wiring(unittest.TestCase):
         tcrt = re.search(r"#define TCRT_RETS (\d+)", text(SH4 / "runtime" / "tc_rt_internal.h"))
         self.assertEqual(rets.group(1), tcrt.group(1))
         oracle = text(SCRIPTS / "TcOracle.java")
-        self.assertIn("entryLate != null && k < entryLate.length ? (entryLate[k] = TcFret.at(", oracle)
+        self.assertIn("entryLate != null && k < entryLate.length ? (entryLate[k] = TcLate.ranged(v, pc, calls, TcFret.at(",
+                      oracle)  # genretfn wraps it (tests/test_genretfn.py)
         vectors = text(SCRIPTS / "TcVectors.java")
         self.assertIn("entryLate = TcLate.draw(facts, seed, id, idTry, v.rets.length);", vectors)
         self.assertIn("vout.append(TcLate.tail(entryLate, r.calls.size() - v.rets.length))", vectors)
         reach = text(SCRIPTS / "TcReach.java")
         self.assertEqual(reach.count("g.entryLate = e.late;"), 2)
         self.assertIn("e.late = g.entryLate == null ? null : g.entryLate.clone();", reach)
+
+    def test_repair(self):
+        late, oracle = text(SCRIPTS / "TcLate.java"), text(SCRIPTS / "TcOracle.java")
+        vectors, reach = text(SCRIPTS / "TcVectors.java"), text(SCRIPTS / "TcReach.java")
+        self.assertIn("static boolean repair(TcVectors g, TcInputs.Vec v, TcOracle.Result r)", late)
+        self.assertIn("m.callees.add(Long.parseLong(r.calls.get(c).split(", late)
+        self.assertIn("TcFret.at(floatRet, pc, TcLate.pooled(v, pc, k, entryLate[k]))", oracle)
+        prov, rep = vectors.find("TcProvenance.repair(this, v, r)"), vectors.find("TcLate.repair(this, v, r)")
+        self.assertTrue(0 < prov < rep, "TcLate.repair runs after TcProvenance")
+        self.assertIn("TcLate.copy(v, c);", reach)
+        # the marks live in TcLate: each workspace compiles its own gated TcInputs.java, so Vec gains no field
+        self.assertNotIn("late", text(SH4 / "template" / "TcInputs.java").split("class Vec", 1)[1].split("}", 1)[0])
 
     def test_runtimes(self):
         for p in (SH4 / "runtime" / "tc_rt.c", SH4 / "runtime_rd" / "rd_veh.c"):
@@ -147,6 +164,30 @@ class Candidates(unittest.TestCase):
             harness(h, "8c000300", [3, 40, 0])  # one vector past 16
             (h / "8c000400").mkdir()            # no expected.txt yet
             self.assertEqual(sr.late_candidates(h), {"8c000100", "8c000300"})
+
+    def test_lrep(self):
+        with tempfile.TemporaryDirectory() as t:
+            h, k = pathlib.Path(t) / "harness", pathlib.Path(t) / "packets"
+            harness(h, "8c000100", [17])  # a late candidate already
+            harness(h, "8c000200", [2])
+            harness(h, "8c000300", [2])
+            harness(h, "8c000500", [2])
+            harness(h, "8c000600", [2])
+            inv = {"8c000200": {"write outside RAM": 700}, "8c000300": {"fault: read X": 3},
+                   "8c000500": {"step limit (possible infinite loop)": 9}, "8c000600": {"fault: read X": 3}}
+            for a, i in inv.items():
+                (h / a / "oracle_summary.json").write_text(json.dumps({"invalid": i}), encoding="utf-8")
+                (k / a).mkdir(parents=True)
+                asm = ("  8c010000  jsr @r3\n  8c010002  _nop\n  8c010004  bf 0x8c010000\n" if a != "8c000600"
+                       else "  8c010000  rts\n")
+                (k / a / "asm.txt").write_text(asm, encoding="utf-8")
+            # 8c000500: no fault; 8c000600: no call
+            self.assertEqual(sr.lrep_candidates(h, k), {"8c000100", "8c000200", "8c000300"})
+        loop = "  8c010000  mov #1,r1\n  8c010002  jsr @r3\n  8c010004  _nop\n  8c010006  bt 0x8c010000\n"
+        self.assertTrue(sr.calls_17(loop))  # the call runs once per pass
+        self.assertFalse(sr.calls_17(loop.replace("bt 0x8c010000", "bt 0x8c010008")))  # forward: once
+        self.assertFalse(sr.calls_17("  8c010000  bt 0x8c010000\n  8c010002  jsr @r3\n"))  # the loop holds no call
+        self.assertTrue(sr.calls_17("".join("  %08x  bsr 0x8c020000\n" % (0x8c010000 + 4 * i) for i in range(17))))
 
 
 if __name__ == "__main__":

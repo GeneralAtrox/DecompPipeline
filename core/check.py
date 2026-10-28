@@ -15,7 +15,7 @@ import time
 from . import filelock, paths, proof, readable_stack, strict_judge, target_hooks, toolcfg
 from .compare import (IMAGE_BASE, REG_INDEX, SP, STACK_LO, Memory, _f, compare_vector, is_nan,  # noqa: F401
                       parse_results, parse_vectors, same_f32)
-from .lint import lint
+from .lint import fused_lint, lint
 
 MINMAX = re.compile(r"^\s+v?(min|max)[sp][sd]\s", re.M)  # x64 listing: SSE/AVX float min and max
 OUTPUT_CAP_MIN = 16 << 20  # the runner's result file: at most max(16 MB, 8 x expected.txt) (run_runner)
@@ -294,10 +294,10 @@ def _build(build_dir, env, cl, rt):
     return True, [re.sub(r"^.*\\work\.c", "work.c", e) for e in keep][:20]
 
 
-def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harness_dir=None):
+def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harness_dir=None, fused=True):
     """Full check of work_file. Returns a result dict; result['verdict'] is 'PASS' or 'FAIL'.
 
-    harness_dir: test vectors from somewhere else (the watcher gate checks staged oracle output)."""
+    harness_dir: test vectors from somewhere else (the watcher gate checks staged oracle output); fused: R9/fmac."""
     hook = target_hooks.get("run_check")  # a target with its own runtime and harness format (core/target_hooks)
     if hook:
         return hook(cfg, addr, work_file, sets=sets, build_dir=build_dir, harness_dir=harness_dir)
@@ -309,7 +309,7 @@ def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harn
     result = {"addr": addr, "sets": list(sets), "verdict": "FAIL", "stage": "lint", "lint": [], "build": [],
               "vectors": {}, "first_diffs": [], "failing": 0, "total": 0}
     src = pathlib.Path(work_file).read_text(encoding="utf-8", errors="replace")
-    result["lint"] = lint(src, meta)
+    result["lint"] = lint(src, meta) + (fused_lint(cfg, meta, src) if fused else [])  # R9/fmac (core/fused)
     if not result["lint"]:  # R12: frame addresses the original passes (core/frame_args)
         from . import frame_args, sh4_asm
         result["lint"] = frame_args.lint_frame_args(src, sh4_asm.read_packet(paths.PACKETS / addr))

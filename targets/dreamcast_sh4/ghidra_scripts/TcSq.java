@@ -12,6 +12,14 @@
 // The oracle models it:
 //   - a store in the window writes RAM and its queue's bytes (TcFold.setChunk);
 //   - a mocked call that moved rN up through the window (TcLive) filled the blocks it passed, each through its queue;
+//   - a mocked call stores into the queues the bytes the callee (and its callees) stores through its r4..r7 at a
+//     constant offset on every return path (TcLive.Deltas.args, table callee): at the call, each such byte whose
+//     address (rK + offset) is in the window belongs to the callee (src: its RAM byte). The callee itself is mocked
+//     (the C's stub stores nothing), so a pref sends that byte from its RAM byte: from the block's own bytes, left as
+//     they are, when the callee stored into the block the pref sends (Toy Commander 8c0702b0: 8c074f18 and 8c074e84
+//     store u, v and the colours through r4 = r14 before `pref @r14`). A callee whose stores through rK depend on
+//     data (an unknown offset, some paths only, a pref, an unknown callee given the pointer) is loose: none of its
+//     bytes count (meta "sq_callee" "?"), as before;
 //   - at entry the stream before rN is taken as contiguous: the queues hold the blocks 0x40 and 0x20 before it;
 //   - pref @a sends a's queue: the bytes stored to it since, the rest from the block it last held (RAM, now). The C
 //     copies that rest from the old block, so a rest in a code range is a code read (R8): the run faults there as a
@@ -24,6 +32,7 @@ import ghidra.app.emulator.EmulatorHelper;
 import ghidra.program.model.address.*;
 import ghidra.program.model.lang.Register;
 import ghidra.program.model.listing.*;
+import ghidra.program.model.pcode.*;
 import java.util.*;
 
 final class TcSq {
@@ -35,6 +44,8 @@ final class TcSq {
     final byte[][] buf = new byte[2][32];
     final boolean[][] stored = new boolean[2][32];
     final AddressSet sent = new AddressSet();  // the RAM blocks the run's prefs sent (TcExit.collect: its W lines)
+    final long[][] src = new long[2][32];      // per queue byte: the RAM byte a mocked callee stored it to, or -1
+    final Map<Long, long[][]> callee = new TreeMap<>();  // target -> per r4..r7: bytes stored {0..63, 64..127}, null loose
 
     TcSq(int reg, String name, Map<Long, String> prefs) {
         this.reg = reg;
@@ -195,6 +206,52 @@ final class TcSq {
         return (int) (a >> 5) & 1;
     }
 
+    // TcPrepare: the callees' stores through r4..r7 (TcLive.Deltas.args): those storing a byte, or loose.
+    void callees(Program prog, List<Function> fs, long fpscr) {
+        TcLive.Deltas d = new TcLive.Deltas(prog);
+        d.fpscr = fpscr;
+        for (Function g : fs) {
+            long[][] a = d.args(g);
+            for (long[] r : a) if (r == null || r[0] != 0 || r[1] != 0) callee.put(g.getEntryPoint().getOffset(), a);
+        }
+    }
+
+    // TcLive.Deltas.solve, per instruction branching inside itself (fmov: one register or a pair by FPSCR.SZ): the stores
+    // through r4..r7 on the entry FPSCR mode's path (TcTrack.value, eval; any other condition or an FPSCR write: loose).
+    static boolean path(TcLive.Deltas d, TcLive.Deltas.St s, PcodeOp[] ops) {
+        boolean fork = false;
+        for (PcodeOp op : ops) fork |= op.getOpcode() == PcodeOp.CBRANCH && op.getInput(0).isConstant();
+        if (!fork) return false;
+        java.util.function.Function<Varnode, String> name = v -> d.prog.getRegister(v.getAddress(), v.getSize()) == null ? null
+            : d.prog.getRegister(v.getAddress(), v.getSize()).getName();
+        java.util.function.ToLongFunction<String> mode = m -> d.fpscr >> (m.equals("FPSCR_SZ") ? 20 : 19) & 1;
+        TcLive.Deltas.St t = s.copy();
+        d.marking = true;
+        Map<Long, Long> tmp = new HashMap<>(); Map<Long, long[]> uniq = new HashMap<>();
+        int i = 0;
+        for (int n = 0; i >= 0 && i < ops.length && n <= 4 * ops.length; n++) {
+            PcodeOp op = ops[i];
+            Varnode out = op.getOutput();
+            if (op.getOpcode() == PcodeOp.CBRANCH || op.getOpcode() == PcodeOp.BRANCH) {
+                Long c = op.getOpcode() == PcodeOp.BRANCH ? Long.valueOf(1) : TcTrack.value(op.getInput(1), tmp, name, mode);
+                if (c == null && op.getInput(0).isConstant()) t.loose = 15;
+                if (c == null || c == 0) i++;
+                else if (op.getInput(0).isConstant()) i += (int) op.getInput(0).getOffset();
+                else break;
+                continue;
+            }
+            if (out != null && out.isRegister() && String.valueOf(name.apply(out)).startsWith("FPSCR")) t.loose = 15;
+            if (out != null && out.isUnique()) {
+                Long v = TcTrack.eval(op, tmp, name, mode);
+                if (v != null) tmp.put(out.getOffset(), v);
+            }
+            d.step(t, uniq, op);
+            i++;
+        }
+        s.must = t.must; s.may = t.may; s.loose = t.loose;
+        return true;
+    }
+
     // TcVectors: rN in the window for half the vectors (one of its four views of the RAM block rN was drawn at).
     void draw(long[] gi, long seed, int id, int attempt) {
         if (gi == null || reg < 8) return;  // a pointer the function builds itself (Window): nothing to draw
@@ -210,6 +267,7 @@ final class TcSq {
         Arrays.fill(from, -1);
         sent.clear();
         for (boolean[] s : stored) Arrays.fill(s, false);
+        for (long[] s : src) Arrays.fill(s, -1);
         long p = gi != null && reg >= 8 ? gi[reg - 8] & ~0x1fL : 0;
         if (!in(p)) return;
         filled(p - 0x40);
@@ -221,6 +279,7 @@ final class TcSq {
         int k = queue(b);
         from[k] = ram(b & ~0x1fL);
         Arrays.fill(stored[k], false);
+        Arrays.fill(src[k], -1);
     }
 
     // TcFold: a store (unfolded address); the bytes in the window also fill their queue.
@@ -231,6 +290,7 @@ final class TcSq {
             int k = queue(a), j = (int) (a & 31);
             buf[k][j] = val[i];
             stored[k][j] = true;
+            src[k][j] = -1;
         }
     }
 
@@ -240,6 +300,24 @@ final class TcSq {
         for (long b = p & ~0x1fL; b < q; b += 0x20) filled(b);
     }
 
+    // TcOracle, at a mocked call to target (r4..r7 its arguments, before TcStrict's junk): its window bytes are its own.
+    void callee(TcOracle o, EmulatorHelper emu, long target) {
+        if (callee.containsKey(target)) callee(target, new long[] {o.reg(emu, "r4"), o.reg(emu, "r5"), o.reg(emu, "r6"), o.reg(emu, "r7")});
+    }
+
+    void callee(long target, long[] args) {
+        long[][] e = callee.get(target);
+        for (int r = 0; e != null && r < 4; r++) {
+            long a = args[r];
+            for (int j = 0; j < 128 && e[r] != null; j++) {
+                long b = (a + j) & 0xffffffffL;
+                if ((e[r][j >> 6] >> (j & 63) & 1) == 0 || !in(b)) continue;
+                src[queue(b)][(int) (b & 31)] = ram(b);
+                stored[queue(b)][(int) (b & 31)] = false;
+            }
+        }
+    }
+
     // TcOracle, before the step at pca: a pref there (or in its delay slot) of a window address sends the queue.
     // A rest read from code (codeRest) sets the run's fault (TcOracle's fault, faultAt) and sends nothing.
     void step(TcOracle o, EmulatorHelper emu, Address pca, String[] fault, long[] faultAt) {
@@ -247,7 +325,7 @@ final class TcSq {
         long a = r != null ? o.reg(emu, r) : 0;
         if (!in(a)) return;
         int k = queue(a);
-        long to = ram(a & ~0x1fL), code = codeRest(o.facts, k);
+        long to = ram(a & ~0x1fL), code = codeRest(o.facts, k, to);
         if (code >= 0) {
             if (fault[0] == null) {
                 fault[0] = "read machine code at " + TcBase.hex(code) + " (R8: a store-queue send's old block)";
@@ -255,26 +333,68 @@ final class TcSq {
             }
             return;
         }
-        byte[] out = emu.readMemory(o.toAddr(from[k] >= 0 ? from[k] : to), 32);
-        for (int j = 0; j < 32; j++) if (stored[k][j]) out[j] = buf[k][j];
+        byte[] out = send(k, to, x -> emu.readMemory(o.toAddr(x), 1)[0]);
         emu.writeMemory(o.toAddr(to), out);
         sent.add(o.toAddr(to), o.toAddr(to + 31));
-        from[k] = to;
-        Arrays.fill(stored[k], false);
     }
 
-    // The first byte of queue k's rest (the bytes not stored since, from the block it last held) in a code range, else
-    // -1: the C copies the rest from that block (R8 checks it as a load of code).
-    long codeRest(TcFacts f, int k) {
-        for (int j = 0; j < 32 && from[k] >= 0; j++) if (!stored[k][j] && f.isCode(from[k] + j)) return from[k] + j;
+    // The 32 bytes queue k sends to the RAM block to, RAM read through mem: the bytes stored since, a mocked callee's
+    // from its RAM byte (callee), the rest from the block the queue last held (or to's own). The queue is then empty.
+    byte[] send(int k, long to, java.util.function.LongFunction<Byte> mem) {
+        byte[] out = new byte[32];
+        for (int j = 0; j < 32; j++) {
+            out[j] = stored[k][j] ? buf[k][j] : mem.apply(src[k][j] >= 0 ? src[k][j] : (from[k] >= 0 ? from[k] : to) + j);
+        }
+        from[k] = to;
+        Arrays.fill(stored[k], false);
+        Arrays.fill(src[k], -1);
+        return out;
+    }
+
+    // The first byte of queue k's rest (the bytes not stored since, from the block it last held) in a code range, or of
+    // a callee's byte stored to another block than to, else -1: the C copies them (R8 checks it as a load of code).
+    long codeRest(TcFacts f, int k, long to) {
+        for (int j = 0; j < 32; j++) {
+            long s = stored[k][j] ? -1 : src[k][j] >= 0 ? (src[k][j] != to + j ? src[k][j] : -1) : from[k] >= 0 ? from[k] + j : -1;
+            if (s >= 0 && f.isCode(s)) return s;
+        }
         return -1;
     }
 
-    String header() {  // vectors.txt, before the first vector: the C runners map the window onto RAM
-        return "S " + name.substring(1) + "\n";
+    // vectors.txt: the C runners map the window onto RAM; then per callee register storing bytes (not loose, for xemu):
+    // target, register and the bytes as two 64-bit words (offsets 0..63, 64..127).
+    String header() {
+        StringBuilder b = new StringBuilder("S " + name.substring(1));
+        for (Map.Entry<Long, long[][]> e : callee.entrySet()) {
+            for (int r = 0; r < 4; r++) {
+                long[] m = e.getValue()[r];
+                if (m != null && (m[0] != 0 || m[1] != 0)) b.append(String.format(" %08x %d %016x %016x", e.getKey(), 4 + r, m[0], m[1]));
+            }
+        }
+        return b + "\n";
     }
 
+    // meta.json "sq_window": "rN", then "sq_callee": {"callee": {"r4": "10-17,20-2f" | "?"}} when a callee stores.
     String meta() {
-        return "\"" + name + "\"";
+        StringBuilder b = new StringBuilder();
+        for (Map.Entry<Long, long[][]> e : callee.entrySet()) {
+            StringBuilder r = new StringBuilder();
+            for (int i = 0; i < 4; i++) {
+                long[] m = e.getValue()[i];
+                if (m != null && m[0] == 0 && m[1] == 0) continue;
+                r.append(r.length() > 0 ? "," : "").append(String.format("\"r%d\":\"%s\"", 4 + i, m == null ? "?" : ranges(m)));
+            }
+            b.append(b.length() > 0 ? "," : "").append(String.format("\"%08x\":{%s}", e.getKey(), r));
+        }
+        return "\"" + name + "\"" + (b.length() > 0 ? ",\n  \"sq_callee\": {" + b + "}" : "");
+    }
+
+    static String ranges(long[] m) {  // "10-17,20-2f": the byte offsets set in m
+        StringBuilder b = new StringBuilder();
+        for (int j = 0, e; j < 128; j = e + 1) {  // e: the end of the run of set bits from j
+            for (e = j; e < 128 && (m[e >> 6] >> (e & 63) & 1) != 0; e++) continue;
+            if (e > j) b.append(b.length() > 0 ? "," : "").append(Integer.toHexString(j)).append(e - 1 > j ? "-" + Integer.toHexString(e - 1) : "");
+        }
+        return b.toString();
     }
 }

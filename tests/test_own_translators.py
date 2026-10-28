@@ -357,6 +357,18 @@ class Dreamcast(unittest.TestCase):
         finally:
             shutil.rmtree(d, ignore_errors=True)
 
+    def test_no_code_after_a_returning_scope(self):
+        """A computed tail jump's scope `{ u32 g_ = ...; ... return r0; }` ends control: the return block a tail copy
+        took is dropped after it, not left as unreachable code (MSVC C4702 under /W4 /WX)."""
+        sys.path.insert(0, str(SH4 / "translator"))
+        from sh4translate.structure import structure
+        body = ["    r0 = rd8(r4 + 5u);", "    if (r0 == 0x0u) goto L_8c010040;", "    if (r0 == 0x1u) goto L_8c010040;",
+                "    goto L_8c010054;", "L_8c010040:;", "    r1 = rd32(0x0c020000u);", "    { u32 g_ = r1;",
+                "    r0 = tc_call(g_, &a);", "    return r0;", "    }", "L_8c010054:;", "    return r0;"]
+        out = [x.strip() for x in structure(body)]
+        self.assertEqual(out[-3:], ["r0 = tc_call(g_, &a);", "return r0;", "}"], "\n".join(out))
+        self.assertEqual(out.count("return r0;"), 2)   # the tail copy in the if, and the scope's
+
     def test_entry(self):  # the stage runs it through the adapter, with DP's folder for core/ret_reg
         tj = json.loads((SH4 / "target.json").read_text(encoding="utf-8"))
         self.assertEqual(tj["translator"]["name"], "sh4-translate")

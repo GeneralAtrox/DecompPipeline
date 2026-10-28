@@ -1,7 +1,7 @@
 // FPSCR.RM in the oracle: IEEE single and double precision results under round-to-nearest (RM=0, Java's own
 // arithmetic) or round-toward-zero (RM=1, Toy Commander's mode: SHC's default -round=zero, FPSCR 0x00040001).
 // Ghidra's p-code float ops always round to nearest; TcFpu recomputes the results of a step with these when RM=1,
-// and fmac's in every mode (fma: the SH-4 rounds it once, the p-code twice).
+// and fmac's, fipr's and ftrv's in every mode (fma, fipr: the SH-4 rounds them once, the p-code at every step).
 // Method: the round-to-nearest result r, then an exact comparison of |r| with the exact value (BigDecimal: a float or
 // double is an exact binary fraction, so sums and products are exact; a quotient or root is compared through the
 // inverse operation); when |r| is above it, the next value toward zero is the toward-zero result. A finite result
@@ -84,6 +84,27 @@ public class TcRound {
         return x.compareTo(min) < 0 && x.compareTo(min.subtract(bd(Math.scalb(1.0, -150)))) >= 0;
     }
 
+    // fipr/ftrv: one inner product rounded once, as the reference emulator (Flycast: sh4_fpu.cpp fipr/ftrv,
+    // shil_canonical.h innerProduct) computes the SH-4's (the software manual's FIPR and FTRV: one hardware inner
+    // product, no rounded intermediate values): each product in double (exact: 24 + 24 bits), the four summed in
+    // element order 0..3 in double in the FPU's rounding mode, the sum converted once to single in that mode.
+    static double dot(float[] a, float[] b, int rm) {
+        double t = (double) a[0] * b[0];
+        for (int i = 1; i < 4; i++) t = add(t, (double) a[i] * b[i], rm);
+        return t;
+    }
+
+    static float fipr(float[] a, float[] b, int rm) {
+        return fromDouble(dot(a, b, rm), rm);
+    }
+
+    // A dot whose value lies in [2^-126 - 2^-150, 2^-126): rounded onto the denormal grid it flushes (DN), rounded to
+    // 24 bits first it is the smallest normal; SSE (the C runner) and the console need not agree (as nearMinNormal).
+    static boolean nearMinNormal(double x) {
+        double ax = Math.abs(x);
+        return ax < Float.MIN_NORMAL && ax >= Float.MIN_NORMAL - Math.scalb(1.0, -150);
+    }
+
     static float fromInt(int i, int rm) {
         float r = (float) i;
         return rm == 0 ? r : towardZero(r, above(r, BigDecimal.valueOf(i)));
@@ -128,7 +149,8 @@ public class TcRound {
     // ---------- SH-4 instructions (TcFpu's RM model) ----------
     // The results of one float instruction, from and into regs {register -> bits} (fr/xf/FPUL 32 bits, dr 64 bits),
     // in the operation order of the patched SLEIGH and tc_rt.c; pr: FPSCR.PR (the paired instructions name dr).
-    // once: fmac rounded once as the SH-4 does (fma), else as the p-code computes it (the product, then the sum).
+    // once: fmac, fipr and ftrv rounded once as the SH-4 does (fma, fipr), else as the p-code computes them (each
+    // product, then each sum, rounded: fipr and ftrv element order 0..3).
     static void apply(TcFpu.Op op, java.util.Map<String, Long> regs, int rm, boolean pr, boolean once) {
         String[] a = op.a;
         if (pr && TcFpu.PAIRED.contains(op.kind)) {
@@ -157,26 +179,37 @@ public class TcRound {
                 regs.put(a[2], fb(once ? fma(x, y, z, rm) : add(mul(x, y, rm), z, rm)));
                 break;
             }
-            case "fipr":
+            case "fipr": {
                 if (pr) break;
+                float[] x = new float[4], y = new float[4];
+                for (int i = 0; i < 4; i++) {
+                    x[i] = f(regs, "fr" + (op.n + i));
+                    y[i] = f(regs, "fr" + (op.m + i));
+                }
                 float t = 0;
                 for (int i = 0; i < 4; i++) {
-                    float p = mul(f(regs, "fr" + (op.n + i)), f(regs, "fr" + (op.m + i)), rm);
+                    float p = mul(x[i], y[i], rm);
                     t = i == 0 ? p : add(t, p, rm);
                 }
-                regs.put("fr" + (op.n + 3), fb(t));
+                regs.put("fr" + (op.n + 3), fb(once ? fipr(x, y, rm) : t));
                 break;
-            case "ftrv":
+            }
+            case "ftrv": {
                 if (pr) break;
-                float[] v = new float[4];
+                float[] v = new float[4], in = new float[4];
+                for (int k = 0; k < 4; k++) in[k] = f(regs, "fr" + (op.n + k));
                 for (int row = 0; row < 4; row++) {
+                    float[] x = new float[4];
                     for (int k = 0; k < 4; k++) {
-                        float p = mul(f(regs, "xf" + (row + 4 * k)), f(regs, "fr" + (op.n + k)), rm);
+                        x[k] = f(regs, "xf" + (row + 4 * k));
+                        float p = mul(x[k], in[k], rm);
                         v[row] = k == 0 ? p : add(v[row], p, rm);
                     }
+                    if (once) v[row] = fipr(x, in, rm);
                 }
                 for (int row = 0; row < 4; row++) regs.put("fr" + (op.n + row), fb(v[row]));
                 break;
+            }
             case "float": {
                 int i = (int) (long) regs.get("FPUL");
                 boolean single = !pr || TcFpu.num(a[1]) % 2 == 1;

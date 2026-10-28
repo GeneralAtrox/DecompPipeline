@@ -1,12 +1,17 @@
 """Compile a game's overlays side by side (runtime/overlay.c): the units <game>/overlays.json names, each the code a
 game loads at run time over guest RAM that another unit may also use.
 
-    python port/tools/gen_overlays.py [--game DIR] [--out DIR]
+    python port/tools/gen_overlays.py [--game DIR] [--out DIR] [--tx ROOT [--tx-mode mix|only]]
 
-overlays.json: {"overlays": [{"id": "intro", "decomp": "../decomp/ovl", "ranges": [["<lo>", "<hi>"]]}, ..]}
+overlays.json: {"overlays": [{"id": "intro", "decomp": "../decomp/ovl", "ranges": [["<lo>", "<hi>"]]}, ..],
+                "translator_c": {"dir": "<ROOT>", "mode": "mix"}}
 "ranges" ([lo, hi) hex) defaults to the workspace's project.json game_ranges; "prefix" (default: the workspace's
-folder name) names the workspace's symbols. Reads (never writes) the workspaces. Writes into --out (default
-<game>/build/gen/overlays); a workspace whose readable pass has not run (no include/types.h) gets no library:
+folder name) names the workspace's symbols. Translator C (tools/tx_port.py, as gen_port.py's for main): ROOT/<the
+workspace's folder name> is that workspace's tools/dp_judge.py --sp-input --out folder (a unit's own "translator_c":
+"<DIR>" names it instead; --tx ROOT and --tx-mode override); mode mix takes a passing readable file first, translator
+C elsewhere; only, translator C wherever it passes. Reads (never writes) the workspaces. Writes into --out (default
+<game>/build/gen/overlays); a workspace whose readable pass has not run (no include/types.h) and has no translator C
+gets no library:
   <prefix>/include/game.h  the workspace's registry, as gen_port.py writes main's
   <prefix>/prefix.h        forced first into each of the workspace's files: its function names become
                            <prefix>__<name>, so two overlays (or an overlay and main) never share a symbol
@@ -14,6 +19,10 @@ folder name) names the workspace's symbols. Reads (never writes) the workspaces.
                            declaration
   <prefix>/tramp.c         for each out-of-range function its files name: a naked jump through port_guest_target,
                            which runs what a call to that guest address runs (main, or the unit loaded there)
+  <prefix>/tx/tx_ADDR.c    with translator C: each judged function the unit compiles, defined as <prefix>__<name>
+                           (tx_port.inbound_c's prefix; compiled without prefix.h, in library overlay_<prefix>_tx)
+  <prefix>/txglue.c        tc_call's glue for those (tx_port.outbound_glue): runtime/tx/tx_rt.c calls a translated
+                           function in overlay RAM through the loaded unit's glue (overlay.h overlay_glue)
   overlay_table.c          the units: ranges, identity windows and functions (runtime/overlay.h)
   overlays.cmake           one static library per workspace, linked into the port (the kit's CMakeLists.txt)
 Identity windows: OVERLAY_WINDOW bytes of code in the body ranges (state/function_bodies.txt) where the unit differs
@@ -59,6 +68,10 @@ def load_units(game_dir):
         return []
     raw = json.loads(spec.read_text(encoding="utf-8")).get("overlays") or []
     units, prefixes = [], {}
+    tc = json.loads(spec.read_text(encoding="utf-8")).get("translator_c") or {}
+    if not isinstance(tc, dict) or set(tc) - {"dir", "mode"} or tc.get("mode", "mix") not in ("mix", "only"):
+        raise OverlayError('overlays.json translator_c: {"dir": a folder of judged folders by workspace, "mode": '
+                           '"mix" or "only"}')
     for u in raw:
         ws = (game_dir / u["decomp"]).resolve()
         if not (ws / "project.json").is_file():
@@ -69,7 +82,9 @@ def load_units(game_dir):
         ranges = u.get("ranges") or json.loads((ws / "project.json").read_text(encoding="utf-8")).get("game_ranges")
         if not ranges or not CNAME.fullmatch(str(u.get("id", ""))) or not CNAME.fullmatch(prefix):
             raise OverlayError(f"overlay {u}: needs a C-name id, ranges (or game_ranges) and a C-name prefix")
-        units.append({"id": u["id"], "ws": ws, "prefix": prefix, "ranges": [hexrange(r) for r in ranges]})
+        tx = u.get("translator_c") or (str(pathlib.Path(tc["dir"]) / ws.name) if tc.get("dir") else None)
+        units.append({"id": u["id"], "ws": ws, "prefix": prefix, "ranges": [hexrange(r) for r in ranges],
+                      "tx": (game_dir / tx).resolve() if tx else None, "tx_mode": tc.get("mode", "mix")})
     if len({u["id"] for u in units}) != len(units):
         raise OverlayError("overlay ids must be unique")
     return units
@@ -162,11 +177,14 @@ def tramp_c(prefix, targets):
     return "\n".join(lines) + "\n"
 
 
-def table_c(units, grp, windows, rows):
-    """rows[i]: [(addr, symbol, name)] sorted by addr; windows[i]: [(addr, bytes)]."""
+def table_c(units, grp, windows, rows, glue=None):
+    """rows[i]: [(addr, symbol, name)] sorted by addr; windows[i]: [(addr, bytes)]; glue[i]: (the glue table's
+    symbol, its row count) of unit i's workspace on translator C (overlay_tx.glue_c), or None."""
+    glue = glue or [None] * len(units)
     out = ["/* Generated by port/tools/gen_overlays.py: the overlay units (runtime/overlay.h). */",
            '#include "overlay.h"', ""]
     out += [f"extern void {s}(void);" for s in sorted({s for r in rows for _, s, _ in r})]
+    out += [f"extern const PortDispatch {s}[];" for s in sorted({g[0] for g in glue if g})]
     for i, u in enumerate(units):
         out += ["", f"static const PortOverlayRange r{i}[] = {{" + ", ".join(
             f"{{0x{lo:08x}u, 0x{hi:08x}u}}" for lo, hi in u["ranges"]) + "};"]
@@ -177,33 +195,46 @@ def table_c(units, grp, windows, rows):
         out += ["};"]
     out += ["", "const PortOverlay port_overlays[] = {"]
     out += [f'    {{"{u["id"]}", {grp[i]}u, r{i}, {len(u["ranges"])}u, w{i}, {len(windows[i])}u, d{i}, '
-            f"{len(rows[i])}u}}," for i, u in enumerate(units)]
+            f"{len(rows[i])}u" + (f", {glue[i][0]}, {glue[i][1]}u" if glue[i] else ", 0, 0u") + "},"
+            for i, u in enumerate(units)]
     out += ["};", f"const int port_noverlays = {len(units)};"]
     return "\n".join(out) + "\n"
 
 
 def cmake(libs, table):
-    """libs: [{prefix, dir, files, include}]: one static library each, with its prefix.h forced first."""
+    """libs: [{prefix, dir, files, include, tx_files, tc_rt}]: one static library each, with its prefix.h forced
+    first; translator C (tx_files) in a library of its own, compiled as main's (CMakeLists.txt txc) against the
+    judge's tc_rt.h, with its names already prefixed."""
     q = lambda p: '"' + pathlib.Path(p).as_posix() + '"'  # noqa: E731
     lines = ["# Generated by port/tools/gen_overlays.py: the overlays, compiled side by side (CMakeLists.txt)."]
     for L in libs:
         d, t = L["dir"], f"overlay_{L['prefix']}"
         srcs = [q(f) for f in L["files"]] + [q(d / "stubs.c"), q(d / "tramp.c")]
+        srcs += [q(d / "txglue.c")] if L.get("tx_files") else []
         # The main workspace's readable include follows the unit's own: its types.h until the unit has one.
         inc = [q(d / "include"), q(L["include"]), '"${PORT_READABLE_INCLUDE}"', '"${PORT_GEN}/include"',
-               '"${PORT_RD_RT}"', '"${CMAKE_CURRENT_SOURCE_DIR}/runtime"']
+               '"${PORT_RD_RT}"', '"${CMAKE_CURRENT_SOURCE_DIR}/runtime"',
+               '"${CMAKE_CURRENT_SOURCE_DIR}/runtime/tx"']
         lines += [f"add_library({t} STATIC", *[f"  {s}" for s in srcs], ")",
                   f"target_include_directories({t} BEFORE PRIVATE {' '.join(inc)})",
                   f'target_compile_options({t} PRIVATE ${{PORT_C_FLAGS}} /TC "/FI{(d / "prefix.h").as_posix()}")',
                   f"set_property(TARGET {t} PROPERTY C_STANDARD 11)", f"target_link_libraries(port PRIVATE {t})"]
+        if L.get("tx_files"):
+            lines += [f"add_library({t}_tx STATIC", *[f"  {q(f)}" for f in L["tx_files"]], ")",
+                      f'target_include_directories({t}_tx BEFORE PRIVATE "${{CMAKE_CURRENT_SOURCE_DIR}}/runtime/tx" '
+                      f'{q(L["tc_rt"])})', f"target_compile_options({t}_tx PRIVATE ${{PORT_C_FLAGS}} /TC)",
+                      f"set_property(TARGET {t}_tx PROPERTY C_STANDARD 11)",
+                      f"target_link_libraries(port PRIVATE {t}_tx)"]
     lines.append(f"target_sources(port PRIVATE {q(table)})")
     return "\n".join(lines) + "\n"
 
 
-def worker(ws, ranges, prefix, out):
+def worker(ws, ranges, prefix, out, tx_dir=None, tx_mode="mix"):
     """One workspace (its own process: the pipeline's core reads DECOMP_PROJECT once). Writes <out>/<prefix>/ and
-    prints {rows, blocks, image, load, files, include, counts} as JSON (files None: no readable pass yet)."""
+    prints {rows, blocks, image, load, files, include, counts, tx_files, glue, tc_rt} as JSON (files None: no readable
+    pass yet). tx_dir: the workspace's judged translator C (overlay_tx.py), or None."""
     import gen_port
+    import overlay_tx
     library, paths, readable = gen_port.load_core(ws, game_config.PIPELINE)
     inr = lambda x: any(lo <= int(x, 16) < hi for lo, hi in ranges)  # noqa: E731
     blocks = []
@@ -212,13 +243,23 @@ def worker(ws, ranges, prefix, out):
         if len(p) == 3 and inr(p[1]):
             blocks.append((int(p[1], 16), int(p[2], 16)))
     cfg = paths.config()
-    info = {"blocks": blocks, "image": str(cfg["binary_path"]), "load": int(str(cfg["load_address"]), 16)}
-    if not (readable.INCLUDE / "types.h").is_file():  # no readable pass yet: nothing to compile
+    info = {"blocks": blocks, "image": str(cfg["binary_path"]), "load": int(str(cfg["load_address"]), 16),
+            "tx_files": [], "glue": [], "tc_rt": str(paths.TARGET / "runtime")}
+    # no readable pass yet: nothing to compile, unless translator C covers it (its raw signatures need no types of
+    # the workspace's own; game.h's types.h is main's then, cmake())
+    if not (readable.INCLUDE / "types.h").is_file() and tx_dir is None:
         print(json.dumps({**info, "rows": [], "files": None, "include": str(readable.INCLUDE), "counts": {}}))
         return
     reg = readable.Registry()
     files = sorted(p.stem for p in readable.SRC.glob("*.c") if re.fullmatch(r"[0-9a-f]{8}", p.stem) and inr(p.stem))
+    txs, texts, tx_why = [], {}, {}
+    if tx_dir is not None:
+        files, txs, texts, tx_why = overlay_tx.pick(reg, readable, paths, tx_dir, tx_mode, files, inr, prefix)
     sigs, _ = library.raw_declarations(reg, files)
+    metas = {x: paths.read_json(paths.HARNESS / x / "meta.json") for x in txs}
+    for x in txs:  # a translated function no readable file names: its raw signature (gen_port.py's rule)
+        if x not in reg.functions and x not in sigs:
+            sigs[x] = metas[x]["signature"]
     game_h, _ = gen_port.port_game_h(readable, reg, sigs)
     declared = sorted(set(reg.functions) | set(sigs))
     protos = {x: reg.proto(x, raw_sig=sigs.get(x)) for x in declared}
@@ -229,7 +270,7 @@ def worker(ws, ranges, prefix, out):
     own = {x for x in declared if inr(x)}
     rename = {names[x] for x in own | {x for x in declared if names[x] in used}} - gen_port.CRT
     tramps = {names[x]: x for x in declared if not inr(x) and names[x] in used and names[x] in rename}
-    stubs = [x for x in sorted(own) if x not in files and names[x] not in gen_port.CRT]
+    stubs = [x for x in sorted(own) if x not in files and x not in txs and names[x] not in gen_port.CRT]
     catalog = [f["addr"] for f in json.loads(paths.CATALOG.read_text(encoding="utf-8"))["functions"]]
     bare = sorted(x for x in catalog if inr(x) and x not in names)
     d = out / prefix
@@ -243,11 +284,17 @@ def worker(ws, ranges, prefix, out):
     body += [f'u32 {prefix}__fn_{x}(void) {{ port_stub(0x{x}u, "fn_{x}"); return 0; }}' for x in bare]
     gen_port.write_if_changed(d / "stubs.c", "\n".join(body) + "\n")
     gen_port.write_if_changed(d / "tramp.c", tramp_c(prefix, tramps))
-    rows = [(x, f"{prefix}__{names[x]}", names[x]) for x in sorted(own) if names[x] in rename]
+    if tx_dir is not None:
+        info["tx_files"], info["glue"] = overlay_tx.write(d, reg, prefix, txs, texts, protos, metas, names, tx_why)
+    rows =[(x, f"{prefix}__{names[x]}", names[x]) for x in sorted(own) if names[x] in rename]
     rows += [(x, f"{prefix}__fn_{x}", f"fn_{x}") for x in bare]
+    counts = {"files": len(files), "stubs": len(stubs), "bare": len(bare), "trampolines": len(tramps),
+              "renamed": len(rename)}
+    if tx_dir is not None:
+        counts.update({"translator C": len(txs), "tx not used": len(tx_why)})
     print(json.dumps({**info, "rows": sorted(rows), "files": [str(readable.SRC / f"{f}.c") for f in files],
-                      "include": str(readable.INCLUDE), "counts": {"files": len(files), "stubs": len(stubs),
-                      "bare": len(bare), "trampolines": len(tramps), "renamed": len(rename)}}))
+                      "include": str(readable.INCLUDE), "counts": counts,
+                      "tx_why": dict(sorted(tx_why.items()))}))
 
 
 def image_reader(path, load):
@@ -255,18 +302,26 @@ def image_reader(path, load):
     return lambda a, n: data[a - load:a - load + n] if a >= load else b""
 
 
-def run_worker(ws, ranges, prefix, out, timeout):
+def run_worker(ws, ranges, prefix, out, timeout, tx=None, tx_mode="mix"):
     cmd = [sys.executable, str(pathlib.Path(__file__).resolve()), "--worker", str(ws), "--ranges",
            json.dumps([[f"{lo:08x}", f"{hi:08x}"] for lo, hi in ranges]), "--prefix", prefix, "--out", str(out)]
+    cmd += ["--tx", str(tx), "--tx-mode", tx_mode] if tx else []
     r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     if r.returncode:
         raise OverlayError(f"workspace {ws}: {r.stderr[-2000:]}")
     return json.loads(r.stdout.strip().splitlines()[-1])
 
 
-def generate(game_dir, out, timeout=600):
-    """Everything for the game's overlays.json; returns the report lines ([] and no overlays.cmake if it has none)."""
+def generate(game_dir, out, timeout=600, tx_root=None, tx_mode=None):
+    """Everything for the game's overlays.json; returns the report lines ([] and no overlays.cmake if it has none).
+    tx_root, tx_mode: --tx, --tx-mode (over overlays.json translator_c)."""
     units = load_units(game_dir)
+    for u in units:
+        if tx_root:
+            u["tx"] = pathlib.Path(tx_root).resolve() / u["ws"].name
+        u["tx_mode"] = tx_mode or u["tx_mode"]
+        if u["tx"] is not None and not u["tx"].is_dir():  # no judged translator C for this workspace
+            u["tx"] = None
     if not units:
         (out / "overlays.cmake").unlink(missing_ok=True)
         return []
@@ -274,9 +329,13 @@ def generate(game_dir, out, timeout=600):
     infos, libs = {}, []
     for prefix in dict.fromkeys(u["prefix"] for u in units):
         mine = [u for u in units if u["prefix"] == prefix]
-        info = infos[prefix] = run_worker(mine[0]["ws"], [r for u in mine for r in u["ranges"]], prefix, out, timeout)
+        if len({(str(u["tx"]), u["tx_mode"]) for u in mine}) > 1:
+            raise OverlayError(f"workspace {prefix}: its units name different translator C")
+        info = infos[prefix] = run_worker(mine[0]["ws"], [r for u in mine for r in u["ranges"]], prefix, out, timeout,
+                                          mine[0]["tx"], mine[0]["tx_mode"])
         if info["files"] is not None:
-            libs.append({"prefix": prefix, "dir": out / prefix, "files": info["files"], "include": info["include"]})
+            libs.append({"prefix": prefix, "dir": out / prefix, "files": info["files"], "include": info["include"],
+                         "tx_files": info["tx_files"], "tc_rt": info["tc_rt"]})
     grp = groups(units)
     reads = [image_reader(infos[u["prefix"]]["image"], infos[u["prefix"]]["load"]) for u in units]
     windows, rows = [], []
@@ -286,7 +345,9 @@ def generate(game_dir, out, timeout=600):
         windows.append(pick_windows(u["id"], reads[i], u["ranges"], [b for b in info["blocks"] if inu(b[0])], rivals))
         rows.append([(int(a, 16), s, n) for a, s, n in info["rows"] if inu(int(a, 16))])
     table = out / "overlay_table.c"
-    text = table_c(units, grp, windows, rows)
+    glue = [(f"{u['prefix']}__txglue", len(infos[u["prefix"]]["glue"])) if infos[u["prefix"]]["glue"] else None
+            for u in units]
+    text = table_c(units, grp, windows, rows, glue)
     if not table.is_file() or table.read_text(encoding="utf-8") != text:
         table.write_text(text, encoding="utf-8")
     (out / "overlays.cmake").write_text(cmake(libs, table), encoding="utf-8")
@@ -302,6 +363,8 @@ def generate(game_dir, out, timeout=600):
     report += [f"  {p}: " + (", ".join(f"{k} {v}" for k, v in i["counts"].items()) if i["files"] is not None else
                              f"no readable C yet ({i['include']} has no types.h): its calls find no function")
                for p, i in infos.items()]
+    for p, i in infos.items():
+        report += [f"  {p} tx {x}: {w}" for x, w in (i.get("tx_why") or {}).items()]
     (out / "overlay_report.txt").write_text("\n".join(report) + "\n", encoding="utf-8")
     return report
 
@@ -310,18 +373,21 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--game", default=None, help="the folder with game.json (default: the current folder)")
     ap.add_argument("--out", default=None, help="default: <game>/build/gen/overlays")
+    ap.add_argument("--tx", default=None, help="translator C: a folder of judged folders by workspace name")
+    ap.add_argument("--tx-mode", default=None, choices=("mix", "only"))
     ap.add_argument("--worker", help=argparse.SUPPRESS)
     ap.add_argument("--ranges", help=argparse.SUPPRESS)
     ap.add_argument("--prefix", help=argparse.SUPPRESS)
     a = ap.parse_args()
     if a.worker:
         ranges = [(int(lo, 16), int(hi, 16)) for lo, hi in json.loads(a.ranges)]
-        worker(pathlib.Path(a.worker), ranges, a.prefix, pathlib.Path(a.out))
+        worker(pathlib.Path(a.worker), ranges, a.prefix, pathlib.Path(a.out), pathlib.Path(a.tx) if a.tx else None,
+               a.tx_mode or "mix")
         return
     game_dir = game_config.find_game(a.game)
     out = pathlib.Path(a.out) if a.out else game_dir / "build" / "gen" / "overlays"
     try:
-        report = generate(game_dir, out)
+        report = generate(game_dir, out, tx_root=a.tx, tx_mode=a.tx_mode)
     except OverlayError as e:
         raise SystemExit(f"gen_overlays: {e}")
     print("\n".join(report) or "gen_overlays: no overlays.json")

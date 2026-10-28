@@ -12,6 +12,13 @@
   python refine.py --project DIR draft ADDR|SYSTEM|@FILE... [--adopt] [--workers N]
                                                                     judge the machine drafts (runs/ADDR/readable/
                                                                     draft.c); --adopt: adopt the passing, readable ones
+  python refine.py --project DIR draft [ADDR|SYSTEM|@FILE...] --fmac [--list | --adopt] [--workers N]
+                                                                    readable files that round the code's fmac, fipr or ftrv more than once
+                                                                    (core/draft_run.fused_gap; no target: every
+                                                                    readable file): --list names them and reads only;
+                                                                    else their machine file (the translator's C,
+                                                                    lifted) is judged, and --adopt replaces the passing
+                                                                    file with it (backed up)
   python refine.py --project DIR adopt ADDR|SYSTEM|@FILE...          a function without a passing file: adopt its newest
                                                                     earlier attempt that passes the current judge
                                                                     (core/readopt; source: readopt attempt-NN)
@@ -132,8 +139,11 @@ def main():
     ad = sub.add_parser("adopt")
     ad.add_argument("targets", nargs="+")
     dr = sub.add_parser("draft")
-    dr.add_argument("targets", nargs="+")
+    dr.add_argument("targets", nargs="*")
     dr.add_argument("--adopt", action="store_true", help="adopt a passing, readable draft (no readable file yet, or a STALE one, backed up)")
+    dr.add_argument("--fmac", action="store_true", help="only readable files that round the code's fmac, fipr or ftrv more than once, only "
+                    "their machine file; with --adopt it replaces them (no target: every readable file)")
+    dr.add_argument("--list", action="store_true", help="with --fmac: name those functions; judge and write nothing")
     dr.add_argument("--workers", type=int, default=4)
     lk = sub.add_parser("lookalike")
     lk.add_argument("--from", dest="source", required=True, help="the source project's workspace")
@@ -149,10 +159,20 @@ def main():
     rq.add_argument("targets", nargs="*")
     rq.add_argument("--json", action="store_true", help="the grouped requests as JSON")
     a = ap.parse_args()
+    if a.cmd == "draft" and (a.list and not a.fmac or a.list and a.adopt or not a.targets and not a.fmac):
+        ap.error("draft: give targets (no target only with --fmac); --list only with --fmac and without --adopt")
     if a.project:
         os.environ["DECOMP_PROJECT"] = str(pathlib.Path(a.project).resolve())
     from core import header_snapshot, oplog, paths
     cfg = paths.config()
+    if a.cmd == "draft" and a.list:  # reads only: no run step, no header snapshot, no claim
+        from core import draft_run, systems
+        _, sys_list = systems.load()
+        found = draft_run.list_fmac(cfg, addresses(a, {s["id"]: s["functions"] for s in sys_list}) if a.targets else [])
+        for addr, gap in found.items():
+            print(f"{addr}: {gap}")
+        print(f"fmac, fipr or ftrv rounded more than once: {len(found)} readable file(s)")
+        return
     if a.cmd in DRIVERS:
         oplog.begin(f"refine.py {a.cmd}", [paths.ROOT])
     agent = getattr(a, "agent", False)
@@ -300,7 +320,9 @@ def command(a, cfg):
     elif a.cmd == "draft":  # core/draft_run: the machine draft of each function, judged (and adopted)
         from core import draft_run
         _, sys_list = systems.load()
-        out = draft_run.command(cfg, addresses(a, {s["id"]: s["functions"] for s in sys_list}), adopt_ok=a.adopt,
+        targets = (addresses(a, {s["id"]: s["functions"] for s in sys_list}) if a.targets else
+                   list(draft_run.list_fmac(cfg, [])))  # --fmac with no target: every file it lists
+        out = draft_run.command(cfg, targets, adopt_ok=a.adopt, fmac=a.fmac,
                                 workers=a.workers, log=lambda m: print(m, flush=True))
         print(f"drafts: {dict(collections.Counter(v.split(':')[0][:40] for v in out.values()))}")
     elif a.cmd == "lookalike":  # core/lookalike_adopt: identical functions of another project, its readable files

@@ -115,7 +115,8 @@ def regression(cfg, o, target, ws, tmp, stop_flag, log):
         try:
             _meta, summ = trial(cfg, a, ws, tmp / a, stop_flag)
             c_file = paths.REFERENCE / f"{a}.c" if a in refs else paths.MATCHED / f"{a}.c"
-            res = check.run_check(cfg, a, str(c_file), build_dir=tmp / a / "build", harness_dir=tmp / a / "harness")
+            res = check.run_check(cfg, a, str(c_file), build_dir=tmp / a / "build", harness_dir=tmp / a / "harness",
+                                  fused=False)  # the oracle's test, not lint R9/fmac's
             old = paths.read_json(paths.HARNESS / a / "oracle_summary.json") or {}
             results[a] = (res["verdict"], res["failing"], res["total"], summ["blocks_hit_all"],
                           old.get("blocks_hit_all", 0))
@@ -140,7 +141,7 @@ def regression(cfg, o, target, ws, tmp, stop_flag, log):
     b_addr, b_file = cfg["broken_control"]
     if (tmp / b_addr / "harness" / "vectors.txt").exists():
         res = check.run_check(cfg, b_addr, str(paths.REFERENCE / b_file), build_dir=tmp / "broken",
-                              harness_dir=tmp / b_addr / "harness")
+                              harness_dir=tmp / b_addr / "harness", fused=False)
         checks.append(("broken control still fails", res["verdict"] == "FAIL", f"{res['failing']}/{res['total']} differ"))
     return checks
 

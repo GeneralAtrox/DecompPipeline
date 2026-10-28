@@ -73,6 +73,8 @@ From tests/test_scorecard.py and tests/test_records.py, the definition-of-done s
 (workers' busy/idle time, manual operator steps, readable attempts' duration_s): records only, verdicts unchanged.
 From tests/test_readable_tx.py, the readable pass's machine files (adopted at any length when they pass, else the
 agent's start) and the lift's rules that keep the raw C's meaning, per target.
+From tests/test_kit_gdfs.py, the kit's gdFs streaming calls over a fake disc (skipped without the 32-bit Visual
+Studio tools).
 
 usage: python tests/test_tooling.py   (or python -m unittest discover -s tests -p "test_*.py")
 """
@@ -154,6 +156,7 @@ from test_scope_runs import Audit as ScopeAudit, FinalAuditExtras, Orchestrator 
 from test_lean_cap import Cap as TypesCap  # noqa: E402,F401  (context cap)
 from test_pch_c4505 import PchCompile, PchWiring  # noqa: E402,F401  (C4505)
 from test_tail import RunOn  # noqa: E402,F401  (TcTail's run-on rule)
+from test_kit_gdfs import Streaming as GdfsStreaming  # noqa: E402,F401  (the kit's gdFs streaming calls)
 from test_translate_stage import (Contract as TxContract, Crash as TxCrash, NoTranslation as TxNone,  # noqa: E402,F401
                                   SaturnAdapter as TxSaturn, Slow as TxSlow, Stopped as TxStopped,
                                   Tamper as TxTamper, Translated)  # (translator stage)

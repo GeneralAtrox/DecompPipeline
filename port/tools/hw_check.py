@@ -35,7 +35,9 @@ are named from the build's port.map (lockstep_watch.py).
 `run` records the emulator (OUT/emu.txt with lockstep's frames and draws, OUT/hw_emu.txt; an existing recording is
 reused: the emulator is deterministic for the same input), runs the port twice (the lists, then the textures they
 pair; each run ends with the emulator's frames) and compares. `emu` only records. The recording serves
-tools/lockstep.py too (--emu OUT/emu.txt). --vmu IMAGE: both sides start from copies of that memory card image
+tools/lockstep.py too (--emu OUT/emu.txt), which also compares the lists' vertex digests (tools/ta_digest.py:
+diff, the list reading and the fields each mode uses live there). --hw-dump R,.. (emu): Flycast also writes those
+renders' masked fields (OUT/hw_emu.txt.dump), and with --hw-dump-stop stops once they are written (ta_digest.py detail). --vmu IMAGE: both sides start from copies of that memory card image
 (tools/emu_card.py), e.g. one with every level open, instead of Flycast's own card and none in the port. --hw-from
 VBLANK: the emulator records renders from that vertical blank on, so the way through the menus runs at lockstep's pace.
 """
@@ -46,62 +48,21 @@ import pathlib
 import re
 import struct
 import sys
+import time
 
 import emu_card
 import lockstep as L
 from lockstep_frames import build_frames, draws_path, read_draws
 from lockstep_watch import report_hits
+from ta_digest import diff, norm, parse_seq, read_lists, undummy  # noqa: F401 (near-clip's tools import them here)
 
 GEOM_REL, GEOM_ABS = 1e-3, 1e-2  # summed extents this close are float rounding (both sides sum in double)
 LAGS = range(-4, 2)              # port frame - emulator frame of a render's pair
-PARA_SPRITE, PCW_TEXTURE, PCW_VOLUME = 5, 0x8, 0x40
-LIST_OPAQUE, MODVOL_LISTS = 0, (1, 3)
-ISP_CULL_BIT, VOLUME_LAST = 0x08000000, 0x04000000
-TSP_BLEND, TCW_ADDR = 0xfc000000, 0x001fffff
-
-
-def parse_seq(tokens):
-    """[(header, vertex count)] from "h pcw isp tsp tcw n n h ..." tokens."""
-    out, hdr, i = [], (0, 0, 0, 0), 0
-    while i < len(tokens):
-        if tokens[i] == "h":
-            hdr = tuple(int(x, 16) for x in tokens[i + 1:i + 5])
-            i += 5
-        else:
-            out.append((hdr, int(tokens[i])))
-            i += 1
-    return out
-
-
-def norm(tokens, lst, emu):
-    """[(header as compared, count, texture address or None)] of one list."""
-    out = []
-    for (pcw, isp, tsp, tcw), n in parse_seq(tokens):
-        addr = None
-        if lst in MODVOL_LISTS:
-            key = (0, isp | (VOLUME_LAST if not emu and pcw & PCW_VOLUME else 0), 0, 0)
-        else:
-            if emu and pcw >> 29 == PARA_SPRITE:
-                isp ^= ISP_CULL_BIT
-            if lst == LIST_OPAQUE:
-                tsp &= ~TSP_BLEND
-            if pcw & PCW_TEXTURE:
-                addr, tcw = (tcw & TCW_ADDR) << 3, tcw & ~TCW_ADDR
-            else:
-                tcw = 0  # not read: what the game left there
-            key = (pcw, isp, tsp, tcw)
-        out.append((key, n, addr))
-    return out
-
-
-def read_lists(p, lists, emu):
-    lst = int(p[1])
-    lists[lst] = {"seq": norm(p[7:], lst, emu), "sum": tuple(float(x) for x in p[4:7])}
 
 
 def read_emu_hw(path):
-    """[(context, tick, lists, textures)] and {context: [(tick, label)] by tick}: hw_emu.lua's renders and the labels
-    of the contexts as the TA took their first block."""
+    """[(context, tick, lists, textures, render)] and {context: [(tick, label)] by tick}: hw_emu.lua's renders and the
+    labels of the contexts as the TA took their first block."""
     renders, labels = [], {}
     for line in open(path, encoding="ascii", errors="replace"):
         p = line.split()
@@ -110,9 +71,9 @@ def read_emu_hw(path):
         if p[0] == "C" and len(p) == 4:
             labels.setdefault(int(p[1], 16), []).append((int(p[2]), int(p[3], 16)))
         elif p[0] == "R" and len(p) == 4:
-            renders.append((int(p[1], 16), int(p[2]), {}, []))
-        elif p[0] == "L" and renders:
-            read_lists(p, renders[-1][2], True)
+            renders.append((int(p[1], 16), int(p[2]), {}, [], int(p[3])))
+        elif p[0] in "LDH" and renders:
+            read_lists(line, renders[-1][2], True)
         elif p[0] == "T" and renders and len(p) == 4:
             renders[-1][3].append((int(p[1], 16), int(p[2], 16), p[3]))
     for v in labels.values():
@@ -128,8 +89,8 @@ def read_port_hw(path):
         if p and p[0] == "R" and len(p) == 3:
             scenes.append((int(p[1]), {}))
             resent.append(int(p[2]))
-        elif p and p[0] == "L" and scenes:
-            read_lists(p, scenes[-1][1], False)
+        elif p and p[0] in "LDH" and scenes:
+            read_lists(line, scenes[-1][1], False)
     return scenes, resent
 
 
@@ -152,47 +113,11 @@ def emu_renders(frames, renders, labels):
     return out, unlabelled
 
 
-def undummy(e, p, lst):
-    """e without the list's first parameter's second copy (the store-queue resend), if p has one copy; and whether."""
-    if not e or not p or e[0][0] != p[0][0]:
-        return e, False
-    if lst in MODVOL_LISTS and e[0][1] == p[0][1] + 1:
-        return [(e[0][0], p[0][1], e[0][2])] + e[1:], True
-    if len(e) > 1 and e[1] == e[0] and e[0][0][0] >> 29 == PARA_SPRITE and (len(p) < 2 or p[1] != p[0]):
-        return e[:1] + e[2:], True
-    return e, False
-
-
-def diff(er, pr, amap=None):
-    """(None or (list, what, strip, emulator count, port count), known): the first difference of a render's lists.
-    amap gets the emulator's texture address -> the port's, from strips that match."""
-    known = False
-    for lst in sorted(set(er) | set(pr)):
-        e, p = er.get(lst), pr.get(lst)
-        if e is None or p is None:
-            return (lst, "the list only on the " + ("port" if e is None else "emulator"), None, None, None), known
-        es, k = undummy(e["seq"], p["seq"], lst)
-        known |= k
-        for i, (a, b) in enumerate(zip(es, p["seq"])):
-            if a[0] != b[0]:
-                return (lst, "header " + " ".join(f"{x:x}" for x in a[0]) + " / port "
-                        + " ".join(f"{x:x}" for x in b[0]), i, a[1], b[1]), known
-            if a[1] != b[1]:
-                return (lst, "vertex count", i, a[1], b[1]), known
-            if amap is not None and a[2] is not None:
-                amap[a[2]] = b[2]
-        if len(es) != len(p["seq"]):
-            return (lst, f"strips {len(es)} / port {len(p['seq'])}", min(len(es), len(p["seq"])), None, None), known
-        if not all(abs(x - y) <= GEOM_ABS + GEOM_REL * max(abs(x), abs(y)) for x, y in zip(e["sum"], p["sum"])):
-            return (lst, "extents " + " ".join(f"{x:.6g}" for x in e["sum"]) + " / port "
-                    + " ".join(f"{x:.6g}" for x in p["sum"]), None, None, None), known
-    return None, known
-
-
-def pair(renders, scenes, baseline=None):
+def pair(renders, scenes, baseline=None, score=None):
     """Each emulator render with a port scene (see LAGS). Returns the result and [(port frame, render, port lists)]
     of the pairs. With baseline (a reference build's scenes), a divergent render whose port scene the reference has
-    too is counted as shared, not divergent."""
+    too is counted as shared, not divergent. With score (render lists, scene lists -> distance), a render no scene
+    matches pairs with the nearest scene within the lags instead of the one at the last lag."""
     res = {"paired": 0, "bad": 0, "known": 0, "emu_only": 0, "first": None, "bad_frames": [], "lags": {}, "shared": 0}
     at = {}
     for i, (g, _) in enumerate(scenes):
@@ -213,6 +138,10 @@ def pair(renders, scenes, baseline=None):
             res["lags"][lag] = res["lags"].get(lag, 0) + 1
         else:  # the scene at the last lag, for the report; a later render may still match past it
             i = next((i for i in at.get(f + lag, []) if i > last), None)
+            if score:
+                near = [(score(r[2], scenes[j][1]), abs(d - lag), j)
+                        for d in LAGS for j in at.get(f + d, []) if j > last]
+                i = min(near)[2] if near else None
             if i is None:
                 res["emu_only"] += 1
                 continue
@@ -224,7 +153,8 @@ def pair(renders, scenes, baseline=None):
         if not hit and d is not None:
             res["bad"] += 1
             res["bad_frames"].append(g)
-            res["first"] = res["first"] or (g, f) + d
+            if not res["first"]:
+                res["first"], res["first_render"] = (g, f) + d, r[4] if len(r) > 4 else None
         res["paired"] += 1
         g, lists = scenes[i]
         res["known"] += diff(r[2], lists)[1]
@@ -320,6 +250,17 @@ def report(rr, tr, unlabelled):
             print(f"  first: port frame {g} address {pa:06x} size {s:x} (the emulator's {ea:06x})")
 
 
+def dumped(hw_emu):
+    """emu_run's drive with --hw-dump: until the dump is written (its END line), Flycast exits or the deadline."""
+    def drive(ctl, proc, deadline):
+        dump = pathlib.Path(f"{hw_emu}.dump")
+        while time.monotonic() < deadline and proc.poll() is None:
+            if dump.exists() and dump.read_bytes().rstrip().endswith(b"END"):
+                return
+            time.sleep(1)
+    return drive
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("step", choices=["run", "emu", "port"])
@@ -333,7 +274,11 @@ def main(argv=None):
     ap.add_argument("--no-watch", action="store_true", help="do not run the port again to name the writers")
     ap.add_argument("--baseline", default=None, help="a reference build's hw_port file: its divergences are shared")
     ap.add_argument("--vmu", default=None, help="a memory card image both sides start from (only read)")
+    ap.add_argument("--hw-dump", default=None, help="R,..: emu: write those renders' masked fields")
+    ap.add_argument("--hw-dump-stop", action="store_true", help="emu: stop once they are written")
     ap.add_argument("--hw-from", type=int, default=None, help="the emulator's renders from this vertical blank on")
+    ap.add_argument("--cable", default=None, help="emu: Dreamcast.Cable (\"default\": Flycast's TV cable; "
+                    "default: lockstep.CONSOLE's VGA box); detail passes the recording's (LS_CABLE)")
     ap.add_argument("--sample-pcs", default=None, help="ADDR,..: where the emulator samples (default: game.json "
                     "lockstep_sample_pcs; empty: at the vertical blank)")
     a, extra = ap.parse_known_args(argv)
@@ -348,7 +293,10 @@ def main(argv=None):
         if a.sample_pcs is not None:
             lua_vars["LS_SAMPLE_PCS"] = "{%s}" % ",".join("0x" + x for x in a.sample_pcs.split(",") if x)
         wall = L.emu_run(game, spec, emu_path, a.seconds, L.parse_input(a.input), a.flycast, hw=hw_emu,
-                         lua_vars=lua_vars, entries=card)
+                         lua_vars={**lua_vars, **({"LS_HW_DUMP": "{%s}" % a.hw_dump} if a.hw_dump else {})},
+                         entries=card, drive=dumped(hw_emu) if a.hw_dump_stop else None,
+                         console=None if a.cable is None else [] if a.cable == "default" else
+                         [f"config:Dreamcast.Cable={a.cable}"])
         emu = L.read_frames(emu_path)
         print(f"emulator: {len(emu)} frames, {(emu[-1][1] / 59.94) if emu else 0:.0f} s played in {wall:.0f} s")
         if a.step == "emu":

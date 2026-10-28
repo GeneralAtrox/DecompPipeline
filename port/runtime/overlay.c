@@ -33,17 +33,19 @@ static int loaded(const PortOverlay *o)
     return o->nwindows != 0;
 }
 
-static const PortDispatch *row_at(const PortOverlay *o, u32 a)
+static const PortDispatch *search(const PortDispatch *rows, u32 n, u32 a)
 {
-    s32 lo = 0, hi = (s32)o->nrows - 1;
+    s32 lo = 0, hi = (s32)n - 1;
     while (lo <= hi) {
         s32 mid = (lo + hi) / 2;
-        if (o->rows[mid].addr == a) return &o->rows[mid];
-        if (o->rows[mid].addr < a) lo = mid + 1;
+        if (rows[mid].addr == a) return &rows[mid];
+        if (rows[mid].addr < a) lo = mid + 1;
         else hi = mid - 1;
     }
     return NULL;
 }
+
+static const PortDispatch *row_at(const PortOverlay *o, u32 a) { return search(o->rows, o->nrows, a); }
 
 /* The function at a of the unit loaded now that has one there: group g's active unit if so, else the one that is
  * (it becomes active). Only units with a function at a compete: one loaded over another's data leaves its code. */
@@ -94,6 +96,18 @@ const PortDispatch *overlay_find(u32 addr)
         if (!in_unit(&port_overlays[i], a)) continue;
         const PortDispatch *d = loaded_row(port_overlays[i].group, a); /* units covering one address share a group */
         return d && d->fn ? d : miss(&port_overlays[i], a);
+    }
+    return NULL;
+}
+
+const PortDispatch *overlay_glue(u32 addr)
+{
+    u32 a = guest_fold(addr);
+    for (int i = 0; i < port_noverlays; i++) {
+        u32 g = port_overlays[i].group, cur;
+        if (!in_unit(&port_overlays[i], a)) continue;
+        if (g >= MAX_GROUPS || !loaded_row(g, a) || (cur = g_active[g]) == 0) return NULL;
+        return search(port_overlays[cur - 1u].glue, port_overlays[cur - 1u].nglue, a);
     }
     return NULL;
 }

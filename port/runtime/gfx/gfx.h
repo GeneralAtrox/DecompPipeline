@@ -52,6 +52,15 @@ void gfx_set_border(u32 argb);        /* the colour around the picture (the cons
 void gfx_resolve(void);               /* the draw target into the frame (--ssaa); nothing otherwise */
 void gfx_shutdown(void);
 
+/* gfx_vmu.c: the VMU screen (host.h has the mode calls) */
+int gfx_vmu_option(const char *arg, const char *value);
+void gfx_vmu_draw(void *back_buffer); /* an ID3D11Resource: the panels over it, after the frame */
+void gfx_vmu_release(void);
+
+/* gfx_movie.c: a movie's frames over the picture (media.h has the calls that hand them over) */
+void gfx_movie_draw(void); /* into the frame, after the renderer, before it is dumped or shown */
+void gfx_movie_release(void);
+
 /* gfx_capture.c */
 int gfx_capture_option(const char *arg, const char *value);
 void gfx_capture_frame(u32 frame); /* writes the frame's PNGs if --dump-frames or --dump-every asks for it */

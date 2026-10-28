@@ -147,6 +147,16 @@ class Serves(ServerCase):
         self.cfg["ghidra_timeout_s"] = 1
         self.assertLess(self.failing(["hang"], "Ghidra timeout"), 15)
 
+    def test_kill_limit_kills_the_server(self):  # ghidra_kill_s, not the facts' ghidra_timeout_s, bounds the wall
+        self.cfg.update(ghidra_timeout_s=900, ghidra_kill_s=1)
+        self.assertLess(self.failing(["hang"], "Ghidra timeout"), 15)
+
+    def test_kill_timeout(self):
+        self.assertEqual(ghidra_server.kill_timeout({"ghidra_timeout_s": 900}), 900)
+        self.assertEqual(ghidra_server.kill_timeout({"ghidra_timeout_s": 900, "ghidra_kill_s": 1800}), 1800)
+        self.assertEqual(ghidra_server.kill_timeout({"ghidra_timeout_s": 900, "ghidra_kill_s": None}), 900)
+
+
     def test_stop(self):
         flag = threading.Event()
         threading.Timer(0.5, flag.set).start()

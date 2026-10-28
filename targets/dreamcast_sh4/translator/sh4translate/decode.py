@@ -33,7 +33,7 @@ class Insn:
         return disasm(self)
 
 
-DELAYED = {"bra", "bsr", "braf", "bsrf", "jmp", "jsr", "rts", "rte", "bt/s", "bf/s"}
+DELAYED = {"bra", "bsr", "braf", "bsrf", "jmp", "jsr", "rts", "rte", "bt/s", "bf/s", "bsrl"}  # bsrl: translate.py
 # Instructions that may not sit in a delay slot (the manual's "slot illegal instruction" list).
 SLOT_ILLEGAL = DELAYED | {"bt", "bf", "trapa"}
 # Privileged or system instructions DP's runtime has no model for (a function using one is not judged).
@@ -268,8 +268,8 @@ def disasm(i):
     if o in ("nop", "rts", "rte", "sleep", "clrt", "sett", "clrmac", "div0u", "clrs", "sets", "ldtlb", "fschg",
              "frchg", "fpchg"):
         return o
-    if o in ("bt", "bf", "bt/s", "bf/s", "bra", "bsr"):
-        return f"{o} 0x{i.ea:08x}"
+    if o in ("bt", "bf", "bt/s", "bf/s", "bra", "bsr", "bsrl"):
+        return f"{o[:3] if o == 'bsrl' else o} 0x{i.ea:08x}"
     if o in ("braf", "bsrf"):
         return f"{o} {m}"
     if o in ("jmp", "jsr"):

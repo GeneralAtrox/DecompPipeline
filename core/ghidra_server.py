@@ -10,7 +10,7 @@ A server is keyed by (project folder, scripts folder, the scripts' names, sizes 
 change in any (a script sync, a slot copy refresh after a catalog change) restarts it. It is also restarted after
 every failed request (a script that threw may leave a decompiler or emulator behind), after `max_requests`
 requests, and stopped after `idle_s` seconds unused, so its memory comes back. Each request has a watchdog: past
-ghidra_timeout_s (or a stop) the server's whole process tree is killed and the request fails as a fresh prepare
+kill_timeout (or a stop) the server's whole process tree is killed and the request fails as a fresh prepare
 would ("Ghidra timeout").
 
 The machine-wide queue (core/ghidra_broker): a server takes one Lease when it starts and holds it until it closes, so
@@ -44,6 +44,14 @@ _reaper = []
 
 def settings(cfg):
     return {**DEFAULTS, **((cfg or {}).get("ghidra_serve") or {})}
+
+
+def kill_timeout(cfg):
+    """Seconds before one function's prepare is killed: "ghidra_kill_s", else "ghidra_timeout_s". The facts' oracle
+    budget comes from ghidra_timeout_s; with oracle_work_per_s it is counted in work, so a loaded or slower machine
+    needs more wall time for the same harness. ghidra_kill_s gives it that time without changing the facts (and so no
+    stamp): it decides only whether a prepare gets to finish, never what it makes."""
+    return int((cfg or {}).get("ghidra_kill_s") or cfg["ghidra_timeout_s"])
 
 
 def serves(cfg, slot_index, staging):
@@ -187,7 +195,7 @@ def run(cfg, slot, project, scripts, stamp, args, env, on_line=None, stop_flag=N
     finally:
         if lease is not None:  # not handed to a server (an error before it started)
             lease.release()
-    return _run(srv, fresh, args, int(cfg["ghidra_timeout_s"]), on_line, stop_flag)
+    return _run(srv, fresh, args, kill_timeout(cfg), on_line, stop_flag)
 
 
 def _run(srv, fresh, args, timeout, on_line, stop_flag):

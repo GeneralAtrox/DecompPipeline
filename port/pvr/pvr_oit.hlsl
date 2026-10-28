@@ -4,11 +4,20 @@
 // Fragments with the same 1/w keep submission order: the batch index, then the triangle within the batch's draw (so
 // the result does not depend on the order the GPU appended them). Adapted from Lodoss's render_d3d_transparency
 // (MIT, the user's own).
+// Translucent modifier volumes act per fragment, as the PowerVR tests each translucent layer against them: a
+// fragment of a shadow-bit polygon (N_SHADOW) has its parity flipped by each volume face in front of it (ps_volume);
+// at a volume's last triangles the parity joins the inside bit (ps_merge, inclusion) or is dropped (exclusion, a
+// to-do: its faces drawn again undo the parity); the resolve scales an inside fragment's colour by the cheap shadow intensity (pvr_modvol.c).
 
 #include "pvr.hlsl"
 
 #define OIT_END 0xffffffffu
 #define OIT_MAX 48u // fragments per pixel the resolve sorts; beyond that the first drawn are dropped
+#define N_SHADOW 0x80000000u // Node.prim's top bits: the polygon has the PCW shadow bit (BF_SHADOW)
+#define N_PARITY 0x40000000u // the faces of the volume being drawn in front of the fragment, odd
+#define N_INSIDE 0x20000000u // an inclusion volume encloses the fragment
+#define N_PRIM 0x1fffffffu   // the triangle within the batch's draw
+#define BF_SHADOW 8u
 
 struct Node { uint color, depth, batch, prim, next; };
 
@@ -33,9 +42,31 @@ void ps_gather(PSIn i, uint prim : SV_PrimitiveID)
                  (uint)(c.a * 255.0 + 0.5) << 24;
     node.depth = asuint(i.invw);
     node.batch = i.batch;
-    node.prim = prim;
+    node.prim = (prim & N_PRIM) | ((b.flags & BF_SHADOW) ? N_SHADOW : 0u);
     InterlockedExchange(heads_out[uint2(i.pos.xy)], n, node.next);
     nodes_out[n] = node;
+}
+
+// A translucent modifier volume's triangle: flips the parity of the shadow fragments behind it.
+void ps_volume(PSIn i)
+{
+    uint count = 0u;
+    for (uint n = heads_out[uint2(i.pos.xy)]; n != OIT_END && count < OIT_MAX; n = nodes_out[n].next, count++)
+        if ((nodes_out[n].prim & N_SHADOW) && i.invw > asfloat(nodes_out[n].depth))
+            InterlockedXor(nodes_out[n].prim, N_PARITY);
+}
+
+// An inclusion volume's triangles again at its last one: the enclosed fragments (parity set) become inside and the
+// parity is cleared for the next volume. Every write in the draw is the same, so overlaps are harmless. (The volume's
+// own triangles carry instruction 0, so the mode is the caller's: pvr_modvol.c.)
+void ps_merge(PSIn i)
+{
+    uint count = 0u;
+    for (uint n = heads_out[uint2(i.pos.xy)]; n != OIT_END && count < OIT_MAX; n = nodes_out[n].next, count++) {
+        uint p = nodes_out[n].prim;
+        if (p & N_PARITY)
+            nodes_out[n].prim = (p & ~N_PARITY) | N_INSIDE;
+    }
 }
 
 float4 vs_full(uint id : SV_VertexID) : SV_Position
@@ -77,12 +108,13 @@ float4 ps_resolve(float4 pos : SV_Position) : SV_Target
     for (uint k = 1u; k < count; k++) {
         uint cur = list[k];
         float d = asfloat(nodes[cur].depth);
-        uint bt = nodes[cur].batch, pr = nodes[cur].prim;
+        uint bt = nodes[cur].batch, pr = nodes[cur].prim & N_PRIM;
         int j = (int)k - 1;
         for (; j >= 0; j--) {
             Node o = nodes[list[j]];
             float od = asfloat(o.depth);
-            if (od < d || (od == d && (o.batch < bt || (o.batch == bt && o.prim < pr))))
+            uint op = o.prim & N_PRIM;
+            if (od < d || (od == d && (o.batch < bt || (o.batch == bt && op < pr))))
                 break;
             list[j + 1] = list[j];
         }
@@ -92,6 +124,8 @@ float4 ps_resolve(float4 pos : SV_Position) : SV_Target
         Node node = nodes[list[f]];
         uint tsp = batches[node.batch].tsp;
         float4 src = unpack(node.color);
+        if ((node.prim & (N_SHADOW | N_INSIDE)) == (N_SHADOW | N_INSIDE))
+            src.rgb *= 1.0 - shadow_alpha; // cheap shadow
         dst = saturate(src * factor(tsp >> 29, src, dst, true) + dst * factor((tsp >> 26) & 7u, src, dst, false));
     }
     return dst;

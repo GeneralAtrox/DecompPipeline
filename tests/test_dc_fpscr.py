@@ -143,7 +143,7 @@ class Wiring(unittest.TestCase):
         # rejection after an lds: modes are state
         self.assertIn("TcFpscr.exit(emu);", text(SCRIPTS / "TcExit.java"))
         self.assertIn("TcFpscr.exit(r.fs) + TcTrack.exit(r.tr);", text(SCRIPTS / "TcHw.java"))
-        self.assertIn('.append(TcFpscr.line(r.fs)).append("\\nC");', text(SCRIPTS / "TcVectors.java"))
+        self.assertIn('.append(TcFpscr.line(r.fs)).append(TcFpscr.Sz.line()).append("\\nC");', text(SCRIPTS / "TcVectors.java"))
 
     def test_context(self):
         self.assertIn("## FPSCR is state", agent.FPSCR_STATE)

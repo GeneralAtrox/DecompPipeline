@@ -23,6 +23,8 @@ static u32 *g_wlist;
 static u32 g_wcount;
 static int g_woverflow;
 static u32 g_gs[7]; /* r8..r14 */
+static u32 g_ro[4]; /* r4..r7 as the last call left them (TcOut): its arguments, a K callee's output added */
+static u32 g_ro_mask; /* header line O: the r4..r7 compared at exit (bit k: r(4+k)), reported as RO */
 static u32 g_low[4]; /* r0..r3 at entry (vectors.txt line L) */
 static u32 g_retx;   /* the extra result word (a nonstandard result register, a u64's high word) */
 static int g_has_retx;
@@ -139,11 +141,13 @@ static u32 next_return(void) { return g_ncalls < TCRT_RETS ? g_rets[g_ncalls] : 
 
 int tcrt_sq_window; /* header line S (TcSq): tcrt_fold maps the store-queue window onto RAM */
 
+char tcrt_sq_line[1024]; /* line S itself: its callee words are for xemu (TcSq.header) */
+
 void tcrt_set_sq_window(void) { tcrt_sq_window = 1; }
 
-/* TcLive: the callees that change r8..r14 (vectors.txt header lines K, kept across vectors) and the vector's draws
- * (line A). After the mocked call number k to such a callee, rN += its delta: the constant, one of its set (draw k),
- * or 0x20 * (1 + draw % 3) when unknown, exactly as the oracle's mocked call. */
+/* TcLive: the callees that change r8..r14, or hand back r4..r7 (TcOut), vectors.txt header lines K, kept across
+ * vectors, and the vector's draws (line A). After the mocked call number k to such a callee, rN += its delta: the
+ * constant, one of its set (draw k), or 0x20 * (1 + draw % 3) when unknown, exactly as the oracle's mocked call. */
 #define MAX_LIVE 256
 static struct { u32 target, reg, n, d[4]; } g_live[MAX_LIVE];
 static u32 g_nlive;
@@ -151,7 +155,7 @@ static u32 g_draws[16];
 
 void tcrt_add_live(u32 target, u32 reg, u32 n, const u32 d[4])
 {
-    if (g_nlive >= MAX_LIVE || reg < 8 || reg > 14 || n > 4) return;
+    if (g_nlive >= MAX_LIVE || reg < 4 || reg > 14 || n > 4) return;
     g_live[g_nlive].target = tcrt_fold(target);
     g_live[g_nlive].reg = reg;
     g_live[g_nlive].n = n;
@@ -167,7 +171,8 @@ static void live_apply(u32 target, u32 k)
     for (u32 i = 0; i < g_nlive; i++) {
         if (g_live[i].target != target) continue;
         u32 n = g_live[i].n;
-        g_gs[g_live[i].reg - 8] += n == 1 ? g_live[i].d[0] : n ? g_live[i].d[draw % n] : 0x20u * (1u + draw % 3u);
+        u32 *rn = g_live[i].reg >= 8 ? &g_gs[g_live[i].reg - 8] : &g_ro[g_live[i].reg - 4];
+        *rn += n == 1 ? g_live[i].d[0] : n ? g_live[i].d[draw % n] : 0x20u * (1u + draw % 3u);
     }
 }
 
@@ -223,12 +228,32 @@ void tc_spin(void)
     longjmp(tcrt_halt_jmp, 1);
 }
 
+/* A run flag (header line f, TcCalls; kept across vectors): the Nth mocked call (from 1) to the listed callee in a
+ * vector stores 0 into the word, as the callee's own store, after the strict judge's writes (TcStrict.call). */
+static u32 g_flag_word, g_flag_callee, g_flag_n, g_flag_seen;
+
+void tcrt_set_run_flag(u32 word, u32 callee, u32 n)
+{
+    g_flag_word = tcrt_fold(word);
+    g_flag_callee = tcrt_fold(callee);
+    g_flag_n = n;
+}
+
+static void flag_apply(u32 target)
+{
+    static const u8 zero[4] = {0};
+    if (!g_flag_n || target != g_flag_callee || ++g_flag_seen != g_flag_n) return;
+    tcs_write(g_flag_word, 4, zero);
+}
+
 u32 tc_call(u32 target, const TcArgs *args)
 {
     u32 rv = next_return();
     log_call(tcrt_fold(target), args);
+    for (int k = 0; k < 4; k++) g_ro[k] = args->r[k]; /* the callee got them; a K line moves its output */
     live_apply(tcrt_fold(target), g_ncalls); /* after the record: the callee saw the old rN */
     if (g_ncalls < MAX_CALLS) tcs_call(g_ncalls, tcrt_fold(target), g_call_log[g_ncalls]); /* tc_strict.h */
+    flag_apply(tcrt_fold(target));
     g_ncalls++;
     tcrt_fpu_result(rv); /* the oracle's mocked callee leaves its result in r0 and fr0 */
     return rv;
@@ -308,11 +333,12 @@ void sh4_fsca(u32 fpul, f32 *s, f32 *c)
     *c = u2f(g_fsca[rc != 0u][i][1]);
 }
 
-u32 sh4_r(int i) { return (i >= 8 && i < 15) ? g_gs[i - 8] : 0; }
+u32 sh4_r(int i) { return (i >= 8 && i < 15) ? g_gs[i - 8] : (i >= 4 && i < 8) ? g_ro[i - 4] : 0; }
 
 void sh4_set_r(int i, u32 v)
 {
     if (i >= 8 && i < 15) g_gs[i - 8] = v;
+    if (i >= 4 && i < 8) g_ro[i - 4] = v;
 }
 
 /* SR (TcSr): set from line I, its interrupt mask reported at exit (line IM); 0 and not reported without a line I. */
@@ -439,11 +465,13 @@ void tcrt_reset(void)
     g_woverflow = 0;
     tcrt_p4_reset();
     g_ncalls = 0;
+    g_flag_seen = 0;
     g_nfaults = 0;
     g_code_read = 0;
     tcrt_fpu_reset();
     tcrt_strict_reset();
     memset(g_gs, 0, sizeof g_gs);
+    memset(g_ro, 0, sizeof g_ro);
     memset(g_low, 0, sizeof g_low);
     memset(g_rets, 0, sizeof g_rets);
     memset(g_draws, 0, sizeof g_draws);
@@ -478,6 +506,16 @@ void tcrt_report_gs(FILE *out)
     fprintf(out, "GH");
     for (int k = 0; k < 7; k++) fprintf(out, " %08x", g_gs[k]);
     fputc('\n', out);
+}
+
+void tcrt_set_ro(const u32 r4_7[4]) { memcpy(g_ro, r4_7, sizeof g_ro); }
+
+void tcrt_set_ro_mask(u32 mask) { g_ro_mask = mask; }
+
+void tcrt_report_ro(FILE *out)
+{
+    if (!g_ro_mask || tcrt_halted) return;
+    fprintf(out, "RO %08x %08x %08x %08x\n", g_ro[0], g_ro[1], g_ro[2], g_ro[3]);
 }
 
 void tcrt_set_low(const u32 bits[4]) { memcpy(g_low, bits, sizeof g_low); }

@@ -13,6 +13,12 @@ class Spec(flow.Target):
     # no effect and no memory read: the translator's bit casts, sign extension and the FPU's value operations
     pure = {"u2f", "f2u", "f_abs", "f_dn", "sx8", "sx16", "sh4_ftrc", "sh4_fsrra", "sh4_fsqrt_rm", "sh4_fmac"}
     u2f, f2u = "u2f", "f2u"
+    # fmac FR0,FRm,FRn (1111nnnnmmmm1110) rounds once; the translator writes it sh4_fmac (core/draft_run --fmac)
+    fused = ((0xF00F, 0xF00E), "sh4_fmac")
+    # fipr FVm,FVn (1111nnmm11101101) and ftrv XMTRX,FVn (1111nn0111111101): one inner product rounded once; written
+    # with their runtime calls (the _fv forms when the whole FPU is state), never as float multiplies and adds
+    once = (((0xF0FF, 0xF0ED), ("sh4_fipr", "sh4_fipr_fv"), "fipr"),
+            ((0xF3FF, 0xF1FD), ("sh4_ftrv", "sh4_ftrv_fv"), "ftrv"))
     helper_types = {"u2f": "f32", "f2u": "u32", "f_abs": "f32", "f_dn": "f32", "sx8": "u32", "sx16": "u32",
                     "sh4_ftrc": "s32", "sh4_fsrra": "f32", "sh4_fsqrt_rm": "f32", "sh4_fmac": "f32"}
     # the bit casts the lift may add where the raw C had none (the translator's own text, runtime/tc_rt.h)

@@ -16,6 +16,9 @@ no inline assembly, no lookup tables, ...). Added:
   result is used. The original read a register the callee never wrote (what the caller left there, e.g. the callee's
   own address reused for a second `jsr`); the judge's mocked callee returns a random r0 unless an oracle hint pins it
   (`genret N 0xADDR`), and a native build gets garbage.
+- RR8 (fused_lint, needs the image): the function's code has the target's fused multiply-add (fmac) and the file never
+  calls the one-rounding function (sh4_fmac): `a*b + c` rounds twice, passes when the vectors cannot tell, and drifts
+  the game (core/fused; `refine.py draft --fmac --adopt` replaces such a file with a machine file that fuses).
 """
 import re
 
@@ -115,6 +118,12 @@ def void_result_lint(src, reg):
                           "register really holds by its name (or use the caller's own value) instead of a value "
                           "carried through the call")
     return sorted(set(errors))
+
+
+def fused_lint(cfg, meta, src):
+    """RR8: the code's fmac written as `a*b + c` (core/fused)."""
+    from . import fused
+    return fused.lint(cfg, meta, src, fused.READABLE)
 
 
 def raw_name_lint(src, reg, allowed):

@@ -12,6 +12,10 @@
 //                           its draw and begin on r8..r14 = 8c100000 (REG -1: a built pointer, nothing drawn)
 //   C CODE P [A+N...]       prints "C P A+N...: REST0 REST1", TcSq.codeRest of both queues ("-": none) with the code
 //                           ranges of file CODE, after begin with r8 = P (a window address) and N bytes stored at A
+//   M NAME R4 SPEC          prints "M NAME: BLOCK0 BLOCK1 | HEADER META": Toy Commander 8c0702b0's sends (TcSq.send)
+//                           with r14 = e0100440 and RAM byte A = A & 0xff: 16 bytes stored at r14 (0xaa), a mocked
+//                           call to 8c074f18 with r4 = R4 storing SPEC (TcSq.callee: "10-17,20-2f", "?" loose, "-"
+//                           none), 4 bytes stored at r14 + 0x20 (0xbb), then pref r14 and pref r14 + 0x20
 import java.nio.file.*;
 
 public class TcP4Stub {
@@ -47,6 +51,30 @@ public class TcP4Stub {
                 q.draw(gi, 1, 0, 0);
                 q.begin(gi);
                 System.out.println("H " + t[2] + ": " + q.header().trim() + " " + q.meta());
+            } else if (t[0].equals("M")) {
+                TcSq q = new TcSq(14, "r14", new java.util.HashMap<>());
+                long[] spec = null;
+                if (!t[3].equals("?")) {
+                    spec = new long[2];
+                    for (String part : t[3].equals("-") ? new String[0] : t[3].split(",")) {
+                        String[] lh = part.split("-");
+                        for (long j = h(lh[0]); j <= h(lh[lh.length - 1]); j++) spec[(int) (j >> 6)] |= 1L << (j & 63);
+                    }
+                }
+                if (!t[3].equals("-")) q.callee.put(0x8c074f18L, new long[][] {spec, new long[2], new long[2], new long[2]});
+                q.begin(new long[] {0, 0, 0, 0, 0, 0, 0xe0100440L});
+                byte[] aa = new byte[16], bb = new byte[4];
+                java.util.Arrays.fill(aa, (byte) 0xaa);
+                java.util.Arrays.fill(bb, (byte) 0xbb);
+                q.store(0xe0100440L, 16, aa);
+                q.callee(0x8c074f18L, new long[] {h(t[2]), 0, 0, 0});
+                q.store(0xe0100460L, 4, bb);
+                StringBuilder sb = new StringBuilder("M " + t[1] + ":");
+                for (long a : new long[] {0xe0100440L, 0xe0100460L}) {
+                    sb.append(' ');
+                    for (byte x : q.send(TcSq.queue(a), TcSq.ram(a & ~0x1fL), m -> (byte) m)) sb.append(String.format("%02x", x & 0xff));
+                }
+                System.out.println(sb + " | " + q.header().trim() + " " + q.meta().replace('\n', ' '));
             } else if (t[0].equals("C")) {
                 TcFacts f = TcFacts.defaults();
                 f.loadCode(t[1]);
@@ -59,7 +87,7 @@ public class TcP4Stub {
                 String key = String.join(" ", java.util.Arrays.copyOfRange(t, 2, t.length));
                 StringBuilder sb = new StringBuilder("C " + key + ":");
                 for (int k = 0; k < 2; k++) {
-                    long c = q.codeRest(f, k);
+                    long c = q.codeRest(f, k, -1);
                     sb.append(' ').append(c < 0 ? "-" : Long.toHexString(c));
                 }
                 System.out.println(sb);

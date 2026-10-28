@@ -169,5 +169,83 @@ class Prepare(Case):
         self.assertEqual(self.lines(), [timing])
 
 
+class KeepOld(Prepare):
+    """4. A prepare in the workspace (not staging) writes under state/prepare_new/ and swaps in only when Ghidra
+    succeeded: a failed or timed-out one (here after writing a meta-only harness, as TcPrepare does) keeps the old
+    harness and packet byte for byte; a good one replaces both whole; neither leaves prepare_new/ behind; a rename
+    that fails during the swap puts both old folders back."""
+    test_steps_in_order = test_failure_recorded = None
+    OLD = {"harness": {"meta.json": '{"addr": "8c010000"}', "vectors.txt": "old\n", "expected.txt": "old\n"},
+           "packets": {"asm.txt": "old\n", "stale.txt": "x\n"}}
+
+    def setUp(self):
+        super().setUp()
+        ws, scripts = self.root / "ws", self.staging()["scripts"]
+        self.ps = [mock.patch.object(paths, n, ws / n.lower()) for n in ("HARNESS", "PACKETS", "HINTS")]
+        self.ps.append(mock.patch.object(paths, "sync_scripts", lambda: scripts))
+        for p in self.ps:
+            p.start()
+        for d, files in self.OLD.items():
+            (ws / d / "8c010000").mkdir(parents=True)
+            for n, text in files.items():
+                (ws / d / "8c010000" / n).write_text(text, encoding="utf-8")
+
+    def tearDown(self):
+        for p in self.ps:
+            p.stop()
+        super().tearDown()
+
+    def folders(self):
+        return {d.parent.name: {f.name: f.read_text(encoding="utf-8") for f in d.iterdir()}
+                for d in (paths.HARNESS / "8c010000", paths.PACKETS / "8c010000")}
+
+    def run_prepare(self, run):
+        cfg = dict(paths.config(), ghidra_home=str(self.root), java_home=str(self.root), ghidra_timeout_s=60,
+                   vectors_dev=48, vectors_hidden=48, ghidra_broker={"slots": 0}, ghidra_serve={"enabled": False})
+        with mock.patch.object(paths, "run_bounded", run):
+            return ghidra.prepare(cfg, "8c010000", on_line=lambda line: None, slot_index=1)
+
+    def test_failure_and_timeout_keep_old(self):
+        good = self.fake_run()
+
+        def timeout(cmd, *a, **k):  # TcPrepare's early meta.json, then the limit
+            harness = pathlib.Path(cmd[cmd.index("TcPrepare.java") + 3])
+            harness.mkdir(parents=True)
+            (harness / "meta.json").write_text(json.dumps(self.META), encoding="utf-8")
+            return None, "", "timed out after 60 s"
+        for run in (self.fake_run(fail=True), timeout, lambda cmd, *a, **k: (good(cmd, *a, **k)[0], "", "killed")):
+            with self.assertRaises(RuntimeError):
+                self.run_prepare(run)
+            self.assertEqual(self.folders(), self.OLD)
+            self.assertFalse((paths.STATE / "prepare_new" / "8c010000.slot1").exists())
+
+    def test_success_replaces_whole(self):
+        meta, summary = self.run_prepare(self.fake_run())
+        got = self.folders()
+        self.assertEqual(set(got["harness"]), {"meta.json", "vectors.txt", "oracle_summary.json"})
+        self.assertEqual(got["harness"]["vectors.txt"], "V 0 dev\nE\n")
+        self.assertNotIn("stale.txt", got["packets"])
+        self.assertEqual(json.loads(got["harness"]["meta.json"])["oracle_stamp"], meta["oracle_stamp"])
+        self.assertEqual(summary, {"dev_valid": 48})
+        self.assertFalse((paths.STATE / "prepare_new" / "8c010000.slot1").exists())
+
+    def test_swap_rename_failure_restores(self):
+        new = paths.STATE / "prepare_new" / "8c010000.slot1"
+        pairs = [(new / "packet", paths.PACKETS / "8c010000"), (new / "harness", paths.HARNESS / "8c010000")]
+        for n, _ in pairs:
+            n.mkdir(parents=True)
+            (n / "new.txt").write_text("new\n", encoding="utf-8")
+        replace = ghidra.os.replace
+
+        def flaky(src, dst):
+            if pathlib.Path(src) == new / "harness":
+                raise PermissionError("held open")
+            return replace(src, dst)
+        with mock.patch.object(ghidra.os, "replace", flaky), self.assertRaises(PermissionError):
+            ghidra._swap_in(new, pairs)
+        self.assertEqual(self.folders(), self.OLD)
+        self.assertTrue(all((n / "new.txt").is_file() for n, _ in pairs))
+
+
 if __name__ == "__main__":
     unittest.main()

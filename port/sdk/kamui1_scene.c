@@ -20,10 +20,10 @@
 
 #define HEAD_TABLE 0u   /* head words: the write pointer of each list */
 #define HEAD_START 5u   /* each list's start */
-#define HEAD_GLOBAL 10u /* the global parameter word */
 #define HEAD_STATE 11u  /* four list state words */
 #define HEAD_BANKS 15u  /* the bank table: one bank, pointing at the starts */
-#define HEAD_WORDS 16u
+#define HEAD_GLOBAL 16u /* the global parameter buffer: 16 words, 32-byte aligned (kamui1_state.c fills it) */
+#define HEAD_WORDS 32u
 #define HEAD_BYTES (HEAD_WORDS * 4u)
 #define LIST_ALIGN 32u
 #define P2_BASE 0xa0000000u /* the lists' pointers are uncached (P2) addresses, as Kamui's are */
@@ -38,6 +38,7 @@
 #define CLIP_WORDS 8u
 
 static K1SysConfig *g_config;
+void (*k1_render_done)(void);
 static u32 *g_head;                         /* the head words (host view of the guest buffer) */
 static u32 g_buffer, g_buffer_size;         /* the vertex buffer (P2) and its bytes */
 static u32 g_wait_vsync = 1u, g_last_flip;
@@ -51,6 +52,11 @@ static u32 g_list_word; /* not given: the game cannot find its lists */
 static void *host(u32 addr) { return (void *)(uintptr_t)guest_fold(addr); }
 
 u32 k1_list_start(u32 list) { return g_head && list < K1_LISTS ? g_head[HEAD_START + list] : 0u; }
+const K1SysConfig *k1_config(void) { return g_config; }
+
+u32 k1_texture_bytes(const K1SysConfig *c) { return ((c->texture_memory_size + 7u) & ~7u) * 4u; }
+u32 *k1_global_param(void) { return g_head ? &g_head[HEAD_GLOBAL] : NULL; }
+u32 *k1_list_state(void) { return g_head ? &g_head[HEAD_STATE] : NULL; }
 
 /* Lays the head and the lists out in the vertex buffer; bytes[i] are the lists' wishes (scaled down if they do not
  * fit), and fills desc as Kamui does. */
@@ -97,7 +103,7 @@ s32 kmSetSystemConfiguration(void *config)
     for (u32 i = 0; i < K1_LISTS; i++)
         bytes[i] = (u32)((double)(g_buffer_size - HEAD_BYTES) * c->list_share[i] / PERCENT);
     port_log("kamui1: system configuration, %u frame buffer(s), texture memory %u KB\n", c->frame_buffer_count,
-             c->texture_memory_size >> 10);
+             k1_texture_bytes(c) >> 10);
     return make_lists(c->buffer_desc ? host(c->buffer_desc) : NULL, bytes);
 }
 
@@ -157,16 +163,19 @@ KMSTATUS kmRender(void)
     hw_check_scene(&pass, 1u);
     pvr_render(&pass, 1u);
     hw_check_rendered(&pass, 1u);
+    if (k1_render_done) k1_render_done();
     return K1_OK;
 }
 
-/* Shows the frame at the vertical blank: at least one, and the vsync count since the last flip. */
+/* Shows the frame once the vsync count of vertical blanks has passed since the last flip. A game loop that waits for
+ * the vertical blank itself and then renders and flips has already waited that blank, so a count of 1 flips at once
+ * and the loop runs at 60 Hz, as on the console (a forced extra blank halved it and dropped one-blank pad edges); a
+ * second flip in the same blank still waits for the next one. */
 KMSTATUS kmFlipFrameBuffer(void)
 {
     u32 target = g_last_flip + g_wait_vsync;
-    do {
+    while ((s32)(port_vblank_count() - target) < 0)
         port_wait_vblank();
-    } while ((s32)(port_vblank_count() - target) < 0);
     g_last_flip = port_vblank_count();
     gfx_present();
     return K1_OK;

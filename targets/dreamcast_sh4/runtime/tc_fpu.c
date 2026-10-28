@@ -5,6 +5,7 @@
  * set at entry, compared at exit with the mode bits (line QH) and at every call (call log fields 36..56). Otherwise
  * only fr12..fr15 (line H) and XMTRX (line X) are state, as before. */
 #include <string.h>
+#include <emmintrin.h>
 #include "tc_rt_internal.h"
 
 #define MODE_FR 0x00200000u
@@ -19,24 +20,30 @@ static int g_fpu;    /* line Q given: the whole FPU is state */
 static u32 f2u(f32 f) { u32 u; memcpy(&u, &f, 4); return u; }
 static f32 u2f(u32 u) { f32 f; memcpy(&f, &u, 4); return f; }
 
+/* fipr FVm,FVn and ftrv XMTRX,FVn: one inner product rounded once, as the reference emulator (Flycast: sh4_fpu.cpp,
+ * shil_canonical.h innerProduct) computes the SH-4's (the software manual's FIPR and FTRV: one hardware inner product,
+ * no rounded intermediate values): each product in double (exact), the four summed in element order 0..3 in double,
+ * the sum converted once to single, all in MXCSR's mode (RC from FPSCR.RM, DAZ|FTZ from FPSCR.DN), as the oracle's
+ * TcRound.fipr. SSE2 operations, never the x87 or a fused multiply-add. */
+static __m128d widen(f32 x) { return _mm_cvtss_sd(_mm_setzero_pd(), _mm_set_ss(x)); }
+
+static __m128d dmul(f32 a, f32 b) { return _mm_mul_sd(widen(a), widen(b)); }
+
 f32 sh4_fipr(const f32 a[4], const f32 b[4])
 {
-    f32 t = a[0] * b[0];
-    t = t + a[1] * b[1];
-    t = t + a[2] * b[2];
-    t = t + a[3] * b[3];
-    return t;
+    __m128d t = dmul(a[0], b[0]);
+    t = _mm_add_sd(t, dmul(a[1], b[1]));
+    t = _mm_add_sd(t, dmul(a[2], b[2]));
+    t = _mm_add_sd(t, dmul(a[3], b[3]));
+    return _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(), t));
 }
 
 void sh4_ftrv(f32 v[4])
 {
     f32 out[4];
-    for (int row = 0; row < 4; row++) {
-        f32 t = u2f(g_xf[row]) * v[0];
-        t = t + u2f(g_xf[row + 4]) * v[1];
-        t = t + u2f(g_xf[row + 8]) * v[2];
-        t = t + u2f(g_xf[row + 12]) * v[3];
-        out[row] = t;
+    for (int row = 0; row < 4; row++) { /* XMTRX is column-major: row r is xf r, r+4, r+8, r+12 */
+        f32 m[4] = {u2f(g_xf[row]), u2f(g_xf[row + 4]), u2f(g_xf[row + 8]), u2f(g_xf[row + 12])};
+        out[row] = sh4_fipr(m, v);
     }
     for (int i = 0; i < 4; i++) v[i] = out[i];
 }
@@ -72,6 +79,8 @@ void sh4_fschg(void)
 }
 
 void sh4_fpchg(void) { g_mode ^= MODE_PR; }
+
+u32 sh4_sz(void) { return (g_mode & MODE_SZ) != 0u; }
 int tcrt_fpu_pr(void) { return (g_mode & MODE_PR) != 0; }
 
 void sh4_ftrv_fv(int n)

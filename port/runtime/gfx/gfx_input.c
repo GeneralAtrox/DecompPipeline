@@ -28,7 +28,7 @@
 #include "host.h"
 #include "session.h"
 
-#define MAX_SCRIPT 64
+#define MAX_SCRIPT 4096 /* scripted presses kept; later ones are dropped with one log line */
 #define SCRIPT_HOLD 6u
 #define SCRIPT_L 0x40000000u /* scripted triggers: not Dreamcast button bits */
 #define SCRIPT_R 0x80000000u
@@ -53,7 +53,7 @@ typedef struct ScriptPress {
 } ScriptPress;
 
 static ScriptPress g_script[MAX_SCRIPT];
-static u32 g_script_n;
+static u32 g_script_n, g_script_dropped;
 static u32 g_script_players = 1u; /* bit p: the script names player p + 1 (player 1 is always connected) */
 static int g_sdl = -1; /* -1 not tried, 0 no host devices, 1 gamepads and keyboard */
 static u32 g_reads;
@@ -142,7 +142,7 @@ int input_option(const char *arg, const char *value)
         return 2;
     }
     if (strcmp(arg, "--input") || !value) return 0;
-    for (const char *p = value; *p && g_script_n < MAX_SCRIPT;) {
+    for (const char *p = value; *p;) {
         const char *entry = p;
         u32 player = script_player(&p);
         size_t n = strcspn(p, "@,="), name = n;
@@ -154,7 +154,11 @@ int input_option(const char *arg, const char *value)
             level = (u32)strtoul(end + 1, &end, 10);
             if (!level || level > 255) bit = 0;
         }
-        if (bit && *end == '@') {
+        if (bit && *end == '@' && g_script_n == MAX_SCRIPT) {
+            if (!g_script_dropped++)
+                port_log("input: --input holds at most %d presses: \"%.*s\" and the ones after it are dropped\n",
+                         MAX_SCRIPT, (int)strcspn(entry, ","), entry);
+        } else if (bit && *end == '@') {
             u32 at = (u32)strtoul(end + 1, &end, 10), hold = SCRIPT_HOLD;
             if (*end == '+') hold = (u32)strtoul(end + 1, &end, 10);
             g_script[g_script_n].buttons = bit;

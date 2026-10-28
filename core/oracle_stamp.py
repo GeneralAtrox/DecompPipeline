@@ -9,7 +9,8 @@ whose stamp matches and re-prepares the rest. The inputs:
   file it names hashed by content (its path differs between a project and a private copy);
 - the function, its dev and hidden vector counts (the seed is the address), its hints file, and whether
   project.json "spin_waits" lists it, and the words its evidence names (TcSpin; an unlisted function's stamp
-  has no such line), and the hardware ops and register values project.json "hw_ops" lists for it (TcHw; likewise);
+  has no such line), and the hardware ops and register values project.json "hw_ops" lists for it (TcHw; likewise),
+  and the run flag project.json "run_flags" lists for it (TcCalls; likewise);
 - the fsca table (its content, core/fsca.FILE_SHA256: every prepare makes the table it reads that one), the
   catalog (the Ghidra project's function bodies), the binary's sha256 and the Ghidra install: what decides its
   output (ghidra_identity), not the folder it is in, so the same install on another machine, or moved, gives the
@@ -24,7 +25,7 @@ import pathlib
 import re
 import threading
 
-from . import callee_drift, compare, fsca, hw_ops, paths
+from . import callee_drift, compare, fsca, hw_ops, paths, sz_entry
 
 _FILE_CACHE = {}
 _LOCK = threading.Lock()
@@ -158,6 +159,10 @@ def stamp_of(cfg, addr, scripts, facts, hints, ndev, nhidden, shared=None):
             h.update(f"spin words {compare.spin_arg(cfg, addr)[5:]}\n".encode())
     if hw_ops.arg(cfg, addr) != "-":
         h.update(f"hw ops {hw_ops.arg(cfg, addr)}\n".encode())
+    if compare.run_flag(cfg, addr):
+        h.update(f"run flag {compare.run_flag_arg(cfg, addr)}\n".encode())
+    if sz_entry.arg(cfg, paths, addr) != "-":
+        h.update(f"fpscr sz {sz_entry.arg(cfg, paths, addr)}\n".encode())
     h.update(f"hints {file_hash(hints) if hints else '-'}\n".encode())
     table = fsca.FILE_SHA256 if cfg.get("fsca_table") else "-"  # every prepare makes it the table TcPrepare reads
     h.update(f"fsca {table} catalog {catalog}\n".encode())

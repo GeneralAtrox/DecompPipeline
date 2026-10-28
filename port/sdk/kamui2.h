@@ -58,6 +58,8 @@ s32 kmSetSystemConfiguration(void *config); /* the documented call; a game's dis
 
 /* kamui2_misc.c */
 u32 k2_frame_lines(void); /* the frame buffer's lines: 480, or a PAL line mode's 496..560 (the line-mode callback) */
+void k2_run_callback(s32 slot); /* a callback slot the kit raises itself: 0 render done, 3 texture memory full */
+u32 k2_palette_mode(void);       /* kmSetPaletteMode's mode */
 
 /* kamui2_tex.c */
 void k2_tex_init(const K2SysConfig *config);

@@ -126,6 +126,12 @@ def bodies(path):
     return _BODIES
 
 
+def _sz_callees(arg):
+    """meta "fpscr_sz" (TcFpscr.Sz, core/sz_entry.arg), "sz:MODES:CALLEE.XY_...", as [(callee, XY)]."""
+    parts = (arg or "").split(":")
+    return [tuple(c.split(".")) for c in parts[2].split("_")] if len(parts) > 2 and parts[2] else []
+
+
 def config_text(meta, fpscr, body=()):
     lines = [f"entry {meta['addr']}"]
     spans = []
@@ -141,6 +147,8 @@ def config_text(meta, fpscr, body=()):
     elif meta.get("ret") == "u64":
         lines.append("u64")
     lines.append(f"fpscr {fpscr:08x}")
+    for c, xy in _sz_callees(meta.get("fpscr_sz")):  # TcFpscr.Sz: a callee that returns with another FPSCR.SZ
+        lines.append(f"szx {c} {''.join(d if d in '01' else '9' for d in xy)}")
     return "\n".join(lines) + "\n"
 
 

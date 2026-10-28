@@ -134,6 +134,24 @@ X 700
 """)
         self.assertEqual(x["X 700"], "700-703")
 
+    def test_local_subroutine_joins_the_extent(self):  # D2: PS2 8c188420's bsr to 8c188b60 (catalog not_entry)
+        x = self.extent(self.RTS + """
+F 900 900 90b
+I 900 fall sts.l PR,@-r15
+I 902 call bsr 920 -> 920
+I 904 slot _nop
+I 906 call bsr 498 -> 498
+I 908 slot _nop
+I 90a fall lds.l @r15+,PR
+I 90c term rts
+I 90e slot _nop
+I 920 fall mov.l @r4+,r0
+I 922 term rts
+I 924 slot _rotcl r9
+X 900
+""")
+        self.assertEqual(x["X 900"], "900-90f 920-925")  # the subroutine with no function; 498 stays a callee
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

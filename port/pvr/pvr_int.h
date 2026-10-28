@@ -111,6 +111,9 @@ void pvr_modvol_draw(const PvrScene *s, u32 pass, ID3D11Buffer *frame_consts);
 /* whether a pass's translucent modifier volumes may change anything: a translucent polygon with the shadow bit
  * overlaps the on-screen volumes' box (Kamui starts every list with a dummy volume off screen) */
 int pvr_modvol_trans_needed(const PvrScene *s, u32 pass);
+/* the pass's translucent modifier volumes, between pvr_oit_begin's gather and pvr_oit_resolve: they mark the shadow
+ * fragments they enclose, which the resolve scales by the cheap shadow intensity */
+void pvr_modvol_trans_draw(const PvrScene *s, u32 pass);
 
 /* pvr_read.c: after each render, keeps a game frame (not an in-between one) for pvr_read_frame */
 void pvr_keep_frame(void);

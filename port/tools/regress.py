@@ -2,7 +2,9 @@
 presenting, so each run repeats exactly. A script fails on
 - an exit other than the watchdog's (a crash, a halt (tc_halt), a run-time check, the entry function returning);
 - a log class missing from its baseline: a TODO line, a stub reached (STUB), or a new TA polygon class (ta: list);
-- a frame it asks for that was not reached, or that differs from its golden (frames.py).
+- a frame it asks for that was not reached, or that differs from its golden (frames.py);
+- a pass that overflowed the renderer's autosort pool (pvr/pvr_oit.c): which translucent fragments it dropped
+  depends on the GPU's order, so its frames do not repeat.
 Log classes in the baseline that a run no longer reaches are reported, not failed.
 
     python port/tools/regress.py [--game DIR] [--only NAME,..] [--accept-log] [--accept-frames]
@@ -32,6 +34,7 @@ from build import run  # noqa: E402
 
 WATCHDOG_EXIT = 2
 CLASS = re.compile(r"^(TODO .*|STUB #\d+ .*|ta: list \d+: (?:polygon|sprite) vertex type \d+)")
+UNSTABLE = re.compile(r"^pvr: a pass drew \d+ translucent fragments, past the autosort pool .*$", re.M)
 
 
 def parse_script(path):
@@ -66,6 +69,11 @@ def log_classes(log_text):
     return out
 
 
+def unstable(log_text):
+    """The log's lines saying a frame was drawn in a way that does not repeat (an autosort pool overflow)."""
+    return UNSTABLE.findall(log_text)
+
+
 def exit_reason(log_text):
     m = re.findall(r"^EXIT: (.*)$", log_text, re.M)
     return m[-1] if m else "no EXIT line"
@@ -94,6 +102,7 @@ def run_script(cfg, script, a):
     if rc != WATCHDOG_EXIT:
         fails.append(f"exit {rc}: {exit_reason(log)}")
     classes = log_classes(log)
+    fails += [f"frames do not repeat: {line}" for line in unstable(log)]
     base_file = game / "tests" / "baseline" / f"{name}.txt"
     if a.accept_log:
         base_file.parent.mkdir(parents=True, exist_ok=True)

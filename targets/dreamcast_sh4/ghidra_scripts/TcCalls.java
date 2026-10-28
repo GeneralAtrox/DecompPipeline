@@ -6,10 +6,53 @@
 // of the body is an invalid input, repaired like a fault: the word holding it becomes a fresh chunk pointer (data in
 // RAM: the oracle never runs a mocked callee, and the readable runner traps and logs a call there). NULL stays a valid
 // target (a pointer legitimately holds it; both judges trap a call to it). Constant targets are unchanged.
+//
+// Run flags (project.json "run_flags", core/compare.run_flag): a function whose loop runs while a word it sets itself
+// is non-zero, and only a callee clears it (Power Stone 2 Game_Main 8c02d2a8 sets 8c5423d4 to 1 and loops while it
+// is; 8c02d930 -> 8c05b54e -> 8c05b32a clears it). Mocked callees store nothing, so every vector ran to the call
+// limit. Opt-in per function with evidence: script arg 12 "rf:WORD_CALLEE_N" (TcPrepare sets `flag`). At the Nth
+// mocked call (from 1) to CALLEE in a run, after TcStrict.call, the 4 bytes at WORD become 0, as the callee's own
+// store: TcExit logs it like any write, Stored does not count it the function's. Only a word wholly in RAM with no
+// instruction byte (TcStrict.writable). The runtimes do the same at their tc_call (vectors.txt header line
+// "f WORD CALLEE N"; tc_rt.c, rd_veh.c), so xemu, the translator's C and the port form see it too. meta "run_flag".
+import ghidra.app.emulator.EmulatorHelper;
 import java.util.*;
 
 final class TcCalls {
     private TcCalls() {
+    }
+
+    static long[] flag;  // {word, callee, n} of the function being prepared (folded), or null: none listed
+
+    static long[] parseFlag(String a) {
+        if (a == null || !a.startsWith("rf:")) return null;
+        String[] p = a.substring(3).split("_");
+        if (p.length != 3) throw new IllegalArgumentException("run_flags arg: " + a);
+        long n = Long.parseLong(p[2]);
+        if (n < 1) throw new IllegalArgumentException("run_flags arg: call " + n);
+        return new long[] {TcBase.fold(Long.parseLong(p[0], 16)), TcBase.fold(Long.parseLong(p[1], 16)), n};
+    }
+
+    // TcOracle, at each mocked call right after TcStrict.call: the Nth call to the listed callee clears the word.
+    static void flagCall(TcOracle o, TcOracle.Result res, EmulatorHelper emu, long pc) {
+        if (flag == null || TcBase.fold(pc) != flag[1]) return;
+        long n = 0;
+        for (String c : res.calls) if (Long.parseLong(c.substring(0, c.indexOf(' ')), 16) == flag[1]) n++;
+        if (n != flag[2] || !TcBase.inRam(flag[0], 4)) return;
+        for (int k = 0; k < 4; k++) if (o.facts.isCode(flag[0] + k)) return;
+        TcStrict s = res.strict;
+        if (s != null && s.stored != null) s.stored.muted = true;  // not the function's own store (Stored)
+        emu.writeMemory(o.toAddr(flag[0]), new byte[4]);
+        if (s != null && s.stored != null) s.stored.muted = false;
+    }
+
+    static String flagHeader() {
+        return flag == null ? "" : "f " + TcBase.hex(flag[0]) + ' ' + TcBase.hex(flag[1]) + ' ' + flag[2] + '\n';
+    }
+
+    static String flagMeta() {
+        return flag == null ? "" : ",\n  \"run_flag\": {\"word\": \"" + TcBase.hex(flag[0]) + "\", \"callee\": \""
+            + TcBase.hex(flag[1]) + "\", \"call\": " + flag[2] + "}";
     }
 
     // A call to t (folded) is from the inputs and invalid: not NULL, outside guest RAM, not a constant of the body.

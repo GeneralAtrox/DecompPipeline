@@ -6,12 +6,19 @@ and fsca table caches, and each function's harness/ and packets/) are copied int
 
 usage: python tools/dp_judge.py --ws <workspace> --out <dir> [--baseline] [--only a,b|@FILE] [--jobs N]
            [--harness-from WORK]
+--sp-input: the port form (translate_function sp_input): what a port compiles (port/tools/tx_port.py); each row
+keeps the C's sha256, so the port takes only the very text judged here.
+--memo FILE: PASSes kept across runs (core/verdict_memo.RawPass, its key over every judge input): a function whose
+C, harness, packet and judge are as at a kept PASS is not judged again (its row says "memo": true).
+--facts FILE: project.json keys (a JSON object) the mirror's project.json takes on top of the workspace's, to judge
+with a game fact (say "written_code") before the game's project.json has it.
 --harness-from WORK: judge on the harnesses of WORK (a tools/oracle_probe.py work dir, tests/.work/probe-TAG: its
 harness/ and packets/), made fresh from today's oracle, instead of the workspace's, for the functions WORK has; the
 functions judged are then WORK's (or --only's).
 """
 import argparse
 import concurrent.futures as cf
+import hashlib
 import json
 import os
 import pathlib
@@ -24,9 +31,10 @@ HERE = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
 
 
-def mirror(ws, dst, addrs, fresh=None):
+def mirror(ws, dst, addrs, fresh=None, facts=None):
     dst.mkdir(parents=True, exist_ok=True)
     proj = json.loads((ws / "project.json").read_text(encoding="utf-8"))
+    proj.update(facts or {})
     src = ws / proj["binary"]
     proj["binary"] = "binary/" + src.name       # inside the mirror: two games' relative paths can name one file
     (dst / "project.json").write_text(json.dumps(proj, indent=2), encoding="utf-8")
@@ -83,7 +91,10 @@ def main():
     ap.add_argument("--compact", action="store_true",
                     help="judge the compact form (what functions near DP's 60 KB cap get) of every function")
     ap.add_argument("--all", action="store_true", help="every function with a harness, not only the matched ones")
+    ap.add_argument("--sp-input", action="store_true", help="the port form: the body takes sp as an input")
+    ap.add_argument("--memo", default="", help="a JSON-lines file of kept PASSes (core/verdict_memo.RawPass)")
     ap.add_argument("--harness-from", default="", help="an oracle_probe work dir: judge on its fresh harnesses")
+    ap.add_argument("--facts", default="", help="a JSON file of project.json keys the mirror takes on top")
     ap.add_argument("--part", default="", help="k/n: only every n-th function from the k-th (k = 0..n-1), so a long "
                     "run goes in bounded pieces; the results file is named after the part")
     args = ap.parse_args()
@@ -106,10 +117,11 @@ def main():
         part = f"_part{k}of{n}"
     name = wsname(ws)
     mws = out / "mirror" / name
-    mirror(ws, mws, addrs, fresh)
+    mirror(ws, mws, addrs, fresh, json.loads(pathlib.Path(args.facts).read_text(encoding="utf-8")) if args.facts else None)
     os.environ["DECOMP_PROJECT"] = str(mws)
     sys.path.insert(0, str(DP))
-    from core import check, paths  # noqa: E402
+    from core import check, paths, verdict_memo  # noqa: E402
+    memo = verdict_memo.RawPass(pathlib.Path(args.memo).resolve()) if args.memo else None
     from sh4translate.translate import Image, Signature, TargetFacts, TranslateError, compact, translate_function
     cfg = paths.config()
     tj = json.loads((paths.TARGET / "target.json").read_text(encoding="utf-8"))
@@ -118,6 +130,7 @@ def main():
     from core import ret_reg
     fr0_listed = ret_reg.listed(paths.STATE)
     kind = "baseline" if args.baseline else "discovered" if args.discover else "translated"
+    kind += "_sp" if args.sp_input else ""
     kind += "_compact" if args.compact else ""
     kind += "_fresh" if fresh is not None else ""
     entries = set()
@@ -130,8 +143,9 @@ def main():
             if len(ln.split()) == 3:
                 e, lo, hi = (int(x, 16) for x in ln.split())
                 ranges.setdefault(e, []).append((lo, hi))
-    from sh4translate.translate import spin_ranges
+    from sh4translate.translate import spin_ranges, sz_from_caller, written_code
     spins = spin_ranges(cfg)
+    written, sz1 = written_code(cfg), sz_from_caller(cfg)
     wd = out / kind / name
     wd.mkdir(parents=True, exist_ok=True)
 
@@ -151,7 +165,9 @@ def main():
                           else tuple(args.simplify.split(",")))
                 src = translate_function(img, int(a, 16), Signature.from_meta(meta), facts, body or None,
                                          entries=entries, comments=not args.nocomments, simplify=passes,
-                                         ranges=ranges.get(int(a, 16)), spin=spins.get(int(a, 16)))
+                                         ranges=ranges.get(int(a, 16)), spin=spins.get(int(a, 16)),
+                                         sp_input=args.sp_input, written=written,
+                                         sz_from_caller=int(a, 16) in sz1)
             except TranslateError as e:
                 return {"addr": a, "verdict": "NOTRANSLATE", "why": str(e)}
             if args.compact:
@@ -159,6 +175,12 @@ def main():
             wf = wd / f"{a}.c"
             wf.write_text(src, encoding="utf-8")
         tt = time.time() - t0
+        sha = hashlib.sha256(wf.read_bytes()).hexdigest()
+        key = memo.key_of(a, wf) if memo else None
+        total = memo.passed(a, key) if memo else None
+        if total is not None:
+            return {"addr": a, "verdict": "PASS", "stage": "memo", "failing": 0, "total": total, "memo": True,
+                    "sha256": sha, "translate_s": round(tt, 3), "judge_s": 0.0}
         bd = out / "build" / kind / name / a
         try:
             res = check.run_check(cfg, a, wf, build_dir=bd)
@@ -167,7 +189,9 @@ def main():
         finally:
             shutil.rmtree(bd, ignore_errors=True)
         d = res.get("first_diffs") or []
-        return {"addr": a, "verdict": res["verdict"], "stage": res["stage"], "failing": res["failing"],
+        if memo and res["verdict"] == "PASS":
+            memo.record(a, key, res["total"])
+        return {"addr": a, "sha256": sha, "verdict": res["verdict"], "stage": res["stage"], "failing": res["failing"],
                 "total": res["total"], "lint": res.get("lint", [])[:3], "build": res.get("build", [])[:4],
                 "run_error": res.get("run_error"), "diff": d[0]["diffs"][:4] if d else [],
                 "translate_s": round(tt, 3), "judge_s": round(time.time() - t0 - tt, 2)}

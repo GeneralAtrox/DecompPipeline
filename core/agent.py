@@ -208,6 +208,8 @@ def abi_notes(meta):
                   "tc_call applies that change, as the original's callee does. So after each such call the register",
                   "holds a new value: read sh4_r(N) again after the call wherever the original uses it, and never keep",
                   "a copy across the call or set it back with sh4_set_r before the next call."]
+    from core.readable_context import out_notes
+    lines += out_notes(meta)  # r4..r7 outputs (TcOut)
     sq = meta.get("sq_window")
     if sq:
         lines += ["", "## The store-queue window", "",
@@ -216,7 +218,31 @@ def abi_notes(meta):
                   "effect is then yours to write: where the original's `pref @a` sends a 32-byte slot it never stored",
                   "to (`pref @r14; add #0x20,r14`), the store queue still holds the block it sent 0x40 bytes earlier,",
                   "so copy those 32 bytes from a - 0x40 to a (word by word with rd32/wr32) before moving on."]
+        own = sq_callee_bytes(meta)
+        if own:
+            lines += [f"Except the bytes a callee stores into the window ({own}: byte offsets from that register at the",
+                      "call): they are in the queue too, so pref sends them as they are. Never copy over them."]
+    flag = meta.get("run_flag")
+    if flag:
+        lines += ["", "## A run flag a callee clears", "",
+                  f"The word at 0x{flag['word']} is a run flag: the function loops while it is non-zero, and in the game "
+                  f"only fn_{flag['callee']}", f"(or its callees) clears it. In the tests, call {flag['call']} to "
+                  f"fn_{flag['callee']} stores 0 there, as tc_call does. So read the word",
+                  "from memory each time the original tests it; never keep a copy across a call or end the loop early."]
+    adv = [w for w in meta.get("mock_writes") or [] if w.get("advance")]  # core/strict_judge.advance
+    if adv:
+        who = ", ".join(f"fn_{w['callee']} ({w['field']})" for w in adv)
+        lines += ["", "## Callees that move a script cursor", "",
+                  f"These callees read a script operand and move the cursor word their pointer argument points to past"
+                  f" it: {who}.", "In the tests tc_call moves it the same way. So after each such call the cursor is "
+                  "the word in memory:", "read it back from there; never keep a local copy across the call."]
     return lines
+
+
+def sq_callee_bytes(meta):
+    """meta "sq_callee" (TcSq) as "fn_8c074f18 through r4: 10-17,20-2f": the callees' exact stores into the window."""
+    return "; ".join(f"fn_{t} through {r}: {v}" for t, regs in (meta.get("sq_callee") or {}).items()
+                     for r, v in regs.items() if v != "?")
 
 
 FPU_STATE = [

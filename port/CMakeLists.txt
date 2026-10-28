@@ -17,7 +17,7 @@ endif()
 include("${PORT_GEN}/port_files.cmake")
 file(GLOB PORT_GENERATED CONFIGURE_DEPENDS "${PORT_GEN}/stubs_*.c" "${PORT_GEN}/dispatch_*.c"
      "${PORT_GEN}/scene_map.c" "${PORT_GEN}/fsca_table.c")
-file(GLOB PORT_RUNTIME CONFIGURE_DEPENDS runtime/*.c runtime/gfx/*.c pvr/*.c)
+file(GLOB PORT_RUNTIME CONFIGURE_DEPENDS runtime/*.c runtime/gfx/*.c runtime/media/*.c pvr/*.c)
 # The desktop host (C++20): entry, data folder, settings, crash reports. Laid out after Lodoss's port (MIT, the
 # user's own); the guest runtime, the renderer and the SDK modules stay C.
 file(GLOB PORT_HOST CONFIGURE_DEPENDS host/*.cpp)
@@ -71,11 +71,23 @@ if(PORT_STACK_ZERO)
 endif()
 set_property(TARGET readable PROPERTY C_STANDARD 11)
 
+# Translator C (tools/tx_port.py, game.json "translator_c"): each judged translator file, compiled byte for byte inside
+# its glue (tx_ADDR.c) against the judge's own tc_rt.h, with the readable C's flags; runtime/tx/tx_rt.c and tc_call's
+# glue join the executable. Without it the build is as before.
+if(PORT_TX)
+  add_library(txc STATIC ${PORT_TX})
+  target_include_directories(txc BEFORE PRIVATE runtime/tx "${PORT_TC_RT}")
+  target_compile_options(txc PRIVATE ${PORT_C_FLAGS} /TC)
+  set_property(TARGET txc PROPERTY C_STANDARD 11)
+  set(PORT_TX_RUNTIME runtime/tx/tx_rt.c ${PORT_TX_CALLS})
+endif()
+
 # The PowerVR renderer's shaders: fxc (Windows SDK) compiles pvr/pvr.hlsl into headers at build time.
 find_program(PORT_FXC fxc REQUIRED)
 set(PORT_SHADERS "${CMAKE_CURRENT_BINARY_DIR}/shaders")
 set(PORT_SHADER_HEADERS "${PORT_SHADERS}/pvr_vs.h" "${PORT_SHADERS}/pvr_ps.h" "${PORT_SHADERS}/pvr_gather.h"
-    "${PORT_SHADERS}/pvr_full.h" "${PORT_SHADERS}/pvr_resolve.h" "${PORT_SHADERS}/pvr_shadow.h")
+    "${PORT_SHADERS}/pvr_full.h" "${PORT_SHADERS}/pvr_resolve.h" "${PORT_SHADERS}/pvr_shadow.h"
+    "${PORT_SHADERS}/pvr_tvolume.h" "${PORT_SHADERS}/pvr_tmerge.h" "${PORT_SHADERS}/gfx_movie_ps.h")
 add_custom_command(OUTPUT ${PORT_SHADER_HEADERS}
   COMMAND ${CMAKE_COMMAND} -E make_directory "${PORT_SHADERS}"
   COMMAND ${PORT_FXC} /nologo /O3 /WX /T vs_5_0 /E vs_main /Vn g_pvr_vs /Fh "${PORT_SHADERS}/pvr_vs.h"
@@ -90,13 +102,19 @@ add_custom_command(OUTPUT ${PORT_SHADER_HEADERS}
           "${CMAKE_CURRENT_SOURCE_DIR}/pvr/pvr_oit.hlsl"
   COMMAND ${PORT_FXC} /nologo /O3 /WX /T ps_5_0 /E ps_resolve /Vn g_pvr_resolve /Fh "${PORT_SHADERS}/pvr_resolve.h"
           "${CMAKE_CURRENT_SOURCE_DIR}/pvr/pvr_oit.hlsl"
-  DEPENDS pvr/pvr.hlsl pvr/pvr_oit.hlsl
-  COMMENT "fxc pvr/pvr.hlsl pvr/pvr_oit.hlsl")
+  COMMAND ${PORT_FXC} /nologo /O3 /WX /T ps_5_0 /E ps_volume /Vn g_pvr_tvolume /Fh "${PORT_SHADERS}/pvr_tvolume.h"
+          "${CMAKE_CURRENT_SOURCE_DIR}/pvr/pvr_oit.hlsl"
+  COMMAND ${PORT_FXC} /nologo /O3 /WX /T ps_5_0 /E ps_merge /Vn g_pvr_tmerge /Fh "${PORT_SHADERS}/pvr_tmerge.h"
+          "${CMAKE_CURRENT_SOURCE_DIR}/pvr/pvr_oit.hlsl"
+  COMMAND ${PORT_FXC} /nologo /O3 /WX /T ps_5_0 /E ps_movie /Vn g_gfx_movie_ps /Fh "${PORT_SHADERS}/gfx_movie_ps.h"
+          "${CMAKE_CURRENT_SOURCE_DIR}/runtime/gfx/gfx_movie.hlsl"
+  DEPENDS pvr/pvr.hlsl pvr/pvr_oit.hlsl runtime/gfx/gfx_movie.hlsl
+  COMMENT "fxc pvr/pvr.hlsl pvr/pvr_oit.hlsl runtime/gfx/gfx_movie.hlsl")
 
-add_executable(port ${PORT_HOST} ${PORT_RUNTIME} ${PORT_SDK_SOURCES} ${PORT_GAME_SOURCES} ${PORT_GENERATED} "${PORT_GEN}/port_entry.c"
+add_executable(port ${PORT_HOST} ${PORT_RUNTIME} ${PORT_TX_RUNTIME} ${PORT_SDK_SOURCES} ${PORT_GAME_SOURCES} ${PORT_GENERATED} "${PORT_GEN}/port_entry.c"
                ${PORT_SHADER_HEADERS})
-target_include_directories(port BEFORE PRIVATE "${PORT_GEN}/include" "${PORT_READABLE_INCLUDE}" runtime pvr sdk host
-                           "${PORT_RD_RT}" "${PORT_SHADERS}")
+target_include_directories(port BEFORE PRIVATE "${PORT_GEN}/include" "${PORT_READABLE_INCLUDE}" runtime runtime/tx pvr
+                           sdk host "${PORT_RD_RT}" "${PORT_SHADERS}")
 target_compile_options(port PRIVATE "$<$<COMPILE_LANGUAGE:C>:${PORT_C_FLAGS};/TC>"
                        "$<$<COMPILE_LANGUAGE:CXX>:${PORT_CXX_FLAGS}>")
 if(PORT_CHECKED)
@@ -105,6 +123,9 @@ endif()
 set_property(TARGET port PROPERTY C_STANDARD 11)
 set_property(TARGET port PROPERTY CXX_STANDARD 20)
 set_property(TARGET port PROPERTY CXX_STANDARD_REQUIRED ON)
+if(PORT_TX)
+  target_link_libraries(port PRIVATE txc)
+endif()
 target_link_libraries(port PRIVATE readable legacy_stdio_definitions SDL3::SDL3 d3d11 dxgi dxguid windowscodecs ole32 uuid
                       dbghelp comctl32 bcrypt)
 # /BASE keeps the executable clear of guest RAM and its mirrors (runtime/guest_mem.c), which are mapped at fixed

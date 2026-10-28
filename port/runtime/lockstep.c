@@ -23,13 +23,20 @@
  *   --lockstep-end exit    ends the run (exit code 0) once the drive's last frame is traced; "live" (the default)
  *                          plays on in live time.
  *   --lockstep-watch W@N   logs each write to trace word W through the port frame that trace line N shows (its state
- *                          is that frame's end), with the stack (lockstep_watch.c). */
+ *                          is that frame's end), with the stack (lockstep_watch.c). On the @rand word: each rand
+ *                          call, with its caller on the stack.
+ *   --lockstep-entry A[,A..]@F-L:W:O:N  logs each call of the guest functions at hex A (up to 4; their host
+ *                          functions) in the port frames that trace lines F..L show, with an x86 execute breakpoint (lockstep_watch.c): W words at its
+ *                          first argument and N at the pointer at argument + hex O, with the frame's label and frames
+ *                          word. The emulator half's LS_ENTRY logs the same (tools/lockstep.py entries pairs them). Not
+ *                          with --lockstep-watch (both use the debug registers). */
 #include <stdlib.h>
 #include <string.h>
 #include "port.h"
 #include "platform.h"
 #include "lockstep.h"
 #include "lockstep_parts.h"
+#include "port_dispatch.h"
 
 #define MAX_WORDS 8192u
 #define NO_WORD 0xffffffffu /* in g_snap_ok: the word is not in guest RAM */
@@ -46,6 +53,7 @@ static int g_drive, g_started, g_ended, g_snapped, g_jumped, g_end_exit;
 static u32 g_frames_seen;
 static int g_scenes; /* scenes begun since the last frame read */
 static u32 g_watch_word, g_watch_frame, g_watching; /* --lockstep-watch */
+static u32 g_entry_addr[ENTRY_MAX], g_entry_count, g_entry_first, g_entry_last, g_entry_words, g_entry_off, g_entry_n, g_entry_on; /* --lockstep-entry */
 static u32 g_snap[MAX_WORDS], g_snap_ok[MAX_WORDS], g_nwords;
 
 int lockstep_option(const char *arg, const char *value)
@@ -69,6 +77,14 @@ int lockstep_option(const char *arg, const char *value)
     } else if (!strcmp(arg, "--lockstep-watch")) {
         if (sscanf_s(value, "%u@%u", &g_watch_word, &g_watch_frame) != 2) exit(2);
         g_watching = 1;
+    } else if (!strcmp(arg, "--lockstep-entry")) {
+        char *at = (char *)value;
+        g_entry_count = 0;
+        do g_entry_addr[g_entry_count++] = strtoul(at + (*at == ','), &at, 16);
+        while (*at == ',' && g_entry_count < ENTRY_MAX);
+        if (*at != '@' || sscanf_s(at, "@%u-%u:%u:%x:%u", &g_entry_first, &g_entry_last, &g_entry_words, &g_entry_off,
+                                   &g_entry_n) != 5 || g_entry_last < g_entry_first || g_entry_words + g_entry_n > 1500u)
+            exit(2);
     } else {
         return ram_frames_option(arg, value) ? 2 : hw_check_option(arg, value);
     }
@@ -198,6 +214,41 @@ static s32 in_frame(void)
     return ++g_value;
 }
 
+/* --lockstep-entry: the frame starting now shows as trace line g_calls - 1; the breakpoint is on over lines F..L. */
+static void entry_frame(void)
+{
+    int in = g_calls >= g_entry_first + 1u && g_calls <= g_entry_last + 1u;
+    if (in && !g_entry_on) {
+        volatile u32 *frames = NULL;
+        u32 n = 0, fn[ENTRY_MAX];
+        for (u32 i = 0; i < g_spec.nitems && &g_spec.items[i] != g_spec.frames; i++) n += g_spec.items[i].words;
+        if (g_spec.frames) frames = lockstep_word_host(&g_spec, n);
+        for (u32 k = 0; k < g_entry_count; k++) {
+            const PortDispatch *d = port_dispatch_find(g_entry_addr[k]);
+            if (!d) {
+                port_log("lockstep entry: no host function at %08x\n", g_entry_addr[k]);
+                g_entry_count = 0;
+                return;
+            }
+            fn[k] = (u32)(uintptr_t)d->fn;
+            port_log("lockstep entry: %08x (%s) at %08x\n", g_entry_addr[k], d->name, fn[k]);
+        }
+        lockstep_entry(fn, g_entry_addr, g_entry_count, g_entry_words, g_entry_off, g_entry_n, frames);
+        g_entry_on = 1;
+    } else if (!in && g_entry_on) {
+        lockstep_entry(NULL, NULL, 0, 0, 0, 0, NULL);
+        g_entry_on = 0;
+        g_entry_count = 0;
+    }
+}
+
+/* --lockstep-entry: the calls from here on are the frame starting now's, under the label it reads (the console's
+ * LS_ENTRY reads the game's copy of it): set once that label is known. */
+static void entry_label(void)
+{
+    if (g_entry_count) lockstep_entry_frame(g_calls - 1u, (u32)g_value);
+}
+
 /* A frame ends: the RAM capture, the write watch and the key of the state it left. */
 static void frame_end(u32 label)
 {
@@ -208,6 +259,7 @@ static void frame_end(u32 label)
         volatile u32 *at = g_calls == g_watch_frame + 1u ? lockstep_word_host(&g_spec, g_watch_word) : NULL;
         lockstep_watch(at, g_watch_frame);
     }
+    if (g_entry_count) entry_frame();
     if (!g_snapped) snap(); /* no vertical blank since the last frame: the state now */
     g_snapped = 0;
     read_key(g_key, 0);
@@ -222,33 +274,40 @@ static void drive_ended(void)
     if (g_end_exit) port_exit("the lockstep drive ended", 0);
 }
 
-s32 lockstep_timer(s32 live)
+/* A frame has ended at a timer read: trace it, and g_value becomes the label the next frame reads. */
+static void next_frame(s32 live)
 {
-    if ((!g_drive && !g_trace) || port_extra_drawing() || g_spec.counter) return live;
-    if (!frame_read()) return g_drive ? in_frame() : live;
-    frame_end((u32)g_value);
     if (!g_drive) {
         if (g_started) trace_frame((u32)g_value, -1);
         g_started = 1;
         g_value = live;
-        return live;
+        return;
     }
     if (!g_started) {
         g_started = 1;
         g_value = (s32)g_emu[0].label;
         memcpy(g_prev_key, g_key, sizeof g_key);
-        return g_value;
+        return;
     }
     pair(g_key);
     trace_frame((u32)g_value, (s32)g_ei);
     if (g_ei + 1u >= g_nemu) {
         if (!g_ended++) drive_ended();
         g_value += (s32)(g_emu[g_ei].label - (g_ei ? g_emu[g_ei - 1u].label : g_emu[g_ei].label));
-        return g_value;
+        return;
     }
     s32 next = (s32)g_emu[g_ei + 1u].label + g_off; /* the emulator's timer itself: the game's clock sums deltas */
     g_value = next - g_value > 0 ? next : g_value + 1;    /* never back past the reads within the frame */
     g_ei++;
+}
+
+s32 lockstep_timer(s32 live)
+{
+    if ((!g_drive && !g_trace) || port_extra_drawing() || g_spec.counter) return live;
+    if (!frame_read()) return g_drive ? in_frame() : live;
+    frame_end((u32)g_value);
+    next_frame(live);
+    entry_label();
     return g_value;
 }
 
@@ -266,6 +325,7 @@ static void counter_vblank(u32 n)
         return;
     }
     frame_end(n);
+    entry_label();
     if (!g_drive) {
         trace_frame(label, -1);
         return;

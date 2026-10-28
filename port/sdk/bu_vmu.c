@@ -10,9 +10,16 @@
  *
  * Cards: --vmu A1[,B1,..] picks the sockets (default A1; "none": no card). runtime/host.c places the files.
  *
- * Needs from the game's headers (game.h): BUS_TIME, BUS_FILEINFO and BUS_DISKINFO as the game's names for the SDK's
- * records (written here by the SDK's offsets), SdkProc, and the function names below as the game's registry has
- * them. List vmu_flash with this module in game.json "sdk". */
+ * Save file images (buMakeBackupFileImage, buAnalyzeBackupFileImage) are the VMS file layout every card holds: a
+ * 0x80-byte header (the two comments, the game name, the icon count and speed, the eye-catch type, a CRC-16/CCITT
+ * over the whole image taken with its own field 0, the data size), the icon palette at 0x60, the icons (512 bytes
+ * each), the eye-catch, then the game's data; the image is a whole number of 512-byte blocks.
+ *
+ * Needs from the game's headers (game.h): BUS_TIME, BUS_FILEINFO, BUS_DISKINFO and BUS_BACKUPFILEHEADER as the
+ * game's names for the SDK's records (written here by the SDK's offsets; the file header's fields as sg_bup.h names
+ * them, vmsComment .. saveSize), SdkProc, and the function names below as the game's registry has them. List
+ * vmu_flash with this module in game.json "sdk". */
+#include "port_config.h"
 #include "game.h"
 #include "vmu_flash.h"
 
@@ -41,10 +48,10 @@ typedef struct Card {
     u8 image[VMFS_SIZE];
 } Card;
 
-static Card g_cards[DRIVES];
-static int g_running;
-static CompleteFn g_complete;
-static ProgressFn g_progress;
+static Card g_bu_cards[DRIVES];
+static int g_bu_running;
+static CompleteFn g_bu_complete;
+static ProgressFn g_bu_progress;
 
 static void file_name(char *out, s32 drive)
 {
@@ -59,7 +66,7 @@ static void file_name(char *out, s32 drive)
 /* A TYPE_B request: done now; its callbacks wait for the next vertical blank (or buStat). */
 static s32 request(s32 drive, s32 op, const char *file, s32 status, u32 moved, int changed)
 {
-    Card *c = &g_cards[drive];
+    Card *c = &g_bu_cards[drive];
     char name[16];
     if (file)
         port_log("vmu: %c%d: %s %.12s: %s%08x, %u blocks\n", 'A' + drive / 2, 1 + drive % 2,
@@ -77,58 +84,46 @@ static s32 request(s32 drive, s32 op, const char *file, s32 status, u32 moved, i
     return ERR_OK;
 }
 
-static int busy(s32 drive) { return drive < 0 || drive >= DRIVES || g_cards[drive].pending; }
+static int busy(s32 drive) { return drive < 0 || drive >= DRIVES || g_bu_cards[drive].pending; }
 
 /* A TYPE_B call's card when it can take a request (NULL: the drive is busy), and *status NO_DISK when unmounted. */
 static Card *take(s32 drive, s32 *status)
 {
     if (busy(drive)) return NULL;
-    *status = g_cards[drive].mounted ? ERR_OK : ERR_NO_DISK;
-    return &g_cards[drive];
+    *status = g_bu_cards[drive].mounted ? ERR_OK : ERR_NO_DISK;
+    return &g_bu_cards[drive];
 }
 
 /* A query's (TYPE_A) card when it can answer, else NULL and the error to return. */
 static Card *ready(s32 drive, s32 *err)
 {
     *err = busy(drive) ? ERR_BUSY : ERR_NO_DISK;
-    return !busy(drive) && g_cards[drive].mounted ? &g_cards[drive] : NULL;
+    return !busy(drive) && g_bu_cards[drive].mounted ? &g_bu_cards[drive] : NULL;
 }
 
 static void deliver(s32 drive)
 {
-    Card *c = &g_cards[drive];
+    Card *c = &g_bu_cards[drive];
     if (!c->pending) return;
     c->pending = 0;
     if (c->op == OP_MOUNT) c->mounted = c->status == ERR_OK;
-    for (u32 k = 1; g_progress && k <= c->moved; k++) g_progress(drive, c->op, (s32)k, (s32)c->moved);
-    if (g_complete) g_complete(drive, c->op, c->status, 0);
+    for (u32 k = 1; g_bu_progress && k <= c->moved; k++) g_bu_progress(drive, c->op, (s32)k, (s32)c->moved);
+    if (g_bu_complete) g_bu_complete(drive, c->op, c->status, 0);
 }
 
 static void server(void *arg)
 {
     (void)arg;
-    for (s32 d = 0; g_running && d < DRIVES; d++) deliver(d);
-}
-
-/* --vmu: socket names (A1..D2) to a drive mask; "none": no card; default A1. */
-static u32 sockets(void)
-{
-    const char *s = host_arg("--vmu");
-    u32 mask = 0;
-    if (!s) return 1u;
-    for (; s[0] && s[1]; s++)
-        if (s[0] >= 'A' && s[0] <= 'D' && (s[1] == '1' || s[1] == '2'))
-            mask |= 1u << ((u32)(s[0] - 'A') * 2u + (u32)(s[1] - '1'));
-    return mask;
+    for (s32 d = 0; g_bu_running && d < DRIVES; d++) deliver(d);
 }
 
 s32 buInit(s32 capacity, s32 drive, void *work, SdkProc func)
 {
-    u32 use = sockets() & (u32)drive;
+    u32 use = maple_card_sockets() & (u32)drive;
     (void)capacity;
     (void)work;
     for (s32 d = 0; d < DRIVES; d++) {
-        Card *c = &g_cards[d];
+        Card *c = &g_bu_cards[d];
         char name[16];
         int got;
         c->mounted = c->pending = 0;
@@ -145,22 +140,25 @@ s32 buInit(s32 capacity, s32 drive, void *work, SdkProc func)
         port_log("vmu: %c%d: %u of %u blocks free\n", 'A' + d / 2, 1 + d % 2, vmfs_free(c->image), VMFS_USER_BLOCKS);
         request(d, OP_MOUNT, NULL, ERR_OK, 0, 0);
     }
-    g_running = 1;
+    g_bu_running = 1;
     port_add_vblank_task(server, NULL);
-    if (func) func();
+    if (func) { /* a guest address, or host code in the game's P0 form (runtime/dispatch.c) */
+        PortCodeFn init = port_code_function((u32)(uintptr_t)func);
+        if (init) init();
+    }
     return ERR_OK;
 }
 
 s32 buExit(void)
 {
     for (s32 d = 0; d < DRIVES; d++)
-        if (g_cards[d].pending) return ERR_BUSY;
-    g_running = 0;
+        if (g_bu_cards[d].pending) return ERR_BUSY;
+    g_bu_running = 0;
     return ERR_OK;
 }
 
-void buSetCompleteCallback(SdkProc func) { g_complete = (CompleteFn)func; }
-void buSetProgressCallback(SdkProc func) { g_progress = (ProgressFn)func; }
+void buSetCompleteCallback(SdkProc func) { g_bu_complete = (CompleteFn)func; }
+void buSetProgressCallback(SdkProc func) { g_bu_progress = (ProgressFn)func; }
 
 s32 buStat(s32 drive)
 {
@@ -305,3 +303,82 @@ static s32 find_from(s32 drive, char *fileName, int first)
 
 s32 buFindFirstFile(s32 drive, char *fileName) { return find_from(drive, fileName, 1); }
 s32 buFindNextFile(s32 drive, char *fileName) { return find_from(drive, fileName, 0); }
+
+/* The file images (sg_bup.h), for a game whose headers name BUS_BACKUPFILEHEADER (gen_port: PORT_BU_FILE_IMAGE). */
+#ifdef PORT_BU_FILE_IMAGE
+#define IMAGE_HEADER 0x80u
+#define IMAGE_PALETTE 0x60u
+#define IMAGE_ICON 512u
+#define IMAGE_BLOCK 512u
+#define ERR_BAD_IMAGE (-1) /* the CRC does not match (nonzero: the game only tests for 0) */
+
+static void wr32(u8 *p, u32 v)
+{
+    vmfs_wr16(p, v & 0xffffu);
+    vmfs_wr16(p + 2, v >> 16);
+}
+
+static u32 rd32(const u8 *p) { return vmfs_rd16(p) | vmfs_rd16(p + 2) << 16; }
+
+static u32 eyecatch_size(u32 type) { return type == 1u ? 8064u : type == 2u ? 4544u : type == 3u ? 2048u : 0u; }
+
+static u16 image_crc(const u8 *p, u32 n)
+{
+    u32 crc = 0;
+    for (u32 i = 0; i < n; i++) {
+        crc ^= (u32)p[i] << 8;
+        for (int b = 0; b < 8; b++) crc = crc & 0x8000u ? (crc << 1) ^ 0x1021u : crc << 1;
+    }
+    return (u16)crc;
+}
+
+/* The file image of header's data in buf; returns its size in blocks. */
+s32 buMakeBackupFileImage(void *buf, const BUS_BACKUPFILEHEADER *header)
+{
+    u8 *b = (u8 *)buf;
+    u32 icons = header->iconCount * IMAGE_ICON, eye = eyecatch_size(header->visualType);
+    u32 size = IMAGE_HEADER + icons + eye + header->saveSize;
+    u32 total = (size + IMAGE_BLOCK - 1u) / IMAGE_BLOCK * IMAGE_BLOCK;
+    memset(b, 0, total);
+    memcpy(b, header->vmsComment, 16);
+    memcpy(b + 0x10, header->btrComment, 32);
+    memcpy(b + 0x30, header->gameName, 16);
+    vmfs_wr16(b + 0x40, header->iconCount);
+    vmfs_wr16(b + 0x42, header->iconSpeed);
+    vmfs_wr16(b + 0x44, header->visualType);
+    wr32(b + 0x48, header->saveSize);
+    if (header->iconPalette) memcpy(b + IMAGE_PALETTE, header->iconPalette, 32);
+    if (icons && header->iconData) memcpy(b + IMAGE_HEADER, header->iconData, icons);
+    if (eye && header->visualData) memcpy(b + IMAGE_HEADER + icons, header->visualData, eye);
+    if (header->saveSize) memcpy(b + IMAGE_HEADER + icons + eye, header->saveData, header->saveSize);
+    vmfs_wr16(b + 0x46, image_crc(b, size));
+    return (s32)(total / IMAGE_BLOCK);
+}
+
+/* The header of the file image in buf, its pointers into buf; ERR_BAD_IMAGE if the CRC does not match. */
+s32 buAnalyzeBackupFileImage(BUS_BACKUPFILEHEADER *header, void *buf)
+{
+    u8 *b = (u8 *)buf;
+    u16 crc = (u16)vmfs_rd16(b + 0x46);
+    u32 icons, eye, size;
+    memset(header, 0, sizeof *header);
+    memcpy(header->vmsComment, b, 16);
+    memcpy(header->btrComment, b + 0x10, 32);
+    memcpy(header->gameName, b + 0x30, 16);
+    header->iconCount = (u16)vmfs_rd16(b + 0x40);
+    header->iconSpeed = (u16)vmfs_rd16(b + 0x42);
+    header->visualType = (u16)vmfs_rd16(b + 0x44);
+    header->saveSize = rd32(b + 0x48);
+    icons = header->iconCount * IMAGE_ICON;
+    eye = eyecatch_size(header->visualType);
+    size = IMAGE_HEADER + icons + eye + header->saveSize;
+    header->iconPalette = b + IMAGE_PALETTE;
+    header->iconData = b + IMAGE_HEADER;
+    header->visualData = eye ? b + IMAGE_HEADER + icons : NULL;
+    header->saveData = b + IMAGE_HEADER + icons + eye;
+    vmfs_wr16(b + 0x46, 0);
+    u16 got = image_crc(b, size);
+    vmfs_wr16(b + 0x46, crc);
+    return got == crc ? ERR_OK : ERR_BAD_IMAGE;
+}
+#endif

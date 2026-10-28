@@ -72,7 +72,7 @@ f32 sh4_fsrra(f32 x);                                 /* fsrra: 1.0f / sqrt(x) *
 f32 sh4_fsqrt_rm(f32 x);                              /* fsqrt: sqrt(x), rounded as FPSCR.RM says (the game's mode) */
 f32 sh4_fmac(f32 fr0, f32 frm, f32 frn);              /* fmac FR0,FRm,FRn: fr0 * frm + frn, rounded once */
 void sh4_fsca(u32 fpul, f32 *sin_out, f32 *cos_out);  /* fsca FPUL,DRn: sin to FRn, cos to FRn+1 */
-f32 sh4_fipr(const f32 a[4], const f32 b[4]);         /* fipr FVm,FVn: ((a0*b0 + a1*b1) + a2*b2) + a3*b3 */
+f32 sh4_fipr(const f32 a[4], const f32 b[4]);         /* fipr FVm,FVn: a0*b0 + .. + a3*b3, rounded once */
 void sh4_ftrv(f32 v[4]);                              /* ftrv XMTRX,FVn: v = XMTRX * v */
 /* Double precision (FPSCR.PR=1, set by the original's lds FPSCR): DRn is the pair fr n (high word) : fr n+1 (low
  * word), n even, kept as two f32 variables carrying the bits. The helpers do the double operation on the pairs; the
@@ -103,6 +103,7 @@ void sh4_set_fr(int index, f32 value);                /* write fr0..fr15 */
 void sh4_frchg(void);                                 /* frchg: swap fr0..fr15 with xf0..xf15, toggle FPSCR.FR */
 void sh4_fschg(void);                                 /* fschg: toggle FPSCR.SZ (fmov moves 64-bit pairs while set) */
 void sh4_fpchg(void);                                 /* fpchg: toggle FPSCR.PR */
+u32 sh4_sz(void);                                     /* FPSCR.SZ: 1 while fmov moves 64-bit pairs (by_mode) */
 
 /* FPSCR, for a function whose original reads or writes it (meta fpscr_state, TcFpscr: Spawn 8c010080, Toy Commander
  * 8c0611d8): sh4_sts_fpscr() where the original has sts FPSCR (or sts.l), sh4_lds_fpscr(v) where it has lds ...,FPSCR

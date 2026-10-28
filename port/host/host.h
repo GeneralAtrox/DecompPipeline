@@ -47,6 +47,9 @@ void extra_set_fps(unsigned fps); /* frame_extra.c: --fps N, 0 uncapped */
 unsigned extra_fps(void);
 void audio_set_volume(int percent, int muted); /* gfx_audio.c: --volume 0..100; muted silences the device */
 int audio_volume(void);
+void gfx_vmu_set_mode(int mode); /* gfx_vmu.c: --vmu-screen off|side|over: 0, 1, 2 */
+int gfx_vmu_mode(void);
+const char *gfx_vmu_mode_name(int mode);
 void input_set_rumble(int on); /* gfx_input.c: --rumble */
 int input_rumble(void);
 int input_device_count(void);           /* gfx_input.c: the gamepads and joysticks open now */

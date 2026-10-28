@@ -166,7 +166,7 @@ public abstract class TcVectors extends TcOracle {
     // Try idTry of vector id, run with its repairs (runRepaired): box[0] the vector as last run, nrep[0] its repairs.
     Result attempt(Proto proto, List<Long> globals, List<String> hints, long seed, int id, int idTry, boolean[] lowPtr,
                    List<Long> consts, boolean rescue, Vec[] box, int[] nrep) {
-        Vec v = makeVec(id % 4, proto, new ArrayList<>(globals));
+        Vec v = makeVec(id % 4, proto, new ArrayList<>(globals)); TcFpscr.Sz.draw(id);  // TcFpscr.Sz: the entry FPSCR.SZ
         entryLate = TcLate.draw(facts, seed, id, idTry, v.rets.length);  // TcLate: calls 17 on
         entryFh = proto.frState != 0 ? stateValues(seed, id, idTry) : null;
         boolean[] w = lowWhich; entryLow = w[0] || w[1] || w[2] || w[3] ? intValues(seed ^ 0x1b873593L, id, idTry, w, lowPtr) : null;
@@ -176,7 +176,7 @@ public abstract class TcVectors extends TcOracle {
         Random h = new Random(seed * 0x2545f4914f6cdd1dL + id * 0x632be59bd9b4e019L + idTry * 0x85ebca6bL);
         if (facts.coverageInputs || rescue) TcGuide.guide(v, proto, consts, globals, h, facts.scrLo, rescue);
         TcFguide.guide(v, proto, listing, body, mem, seed, id, idTry, rescue);
-        applyHints(v, hints);
+        applyHints(v, TcLate.ranges(v, hints, seed, id, idTry));  // TcLate takes the genretfn lines
         entryFq = proto.fpuState ? fpuValues(seed, id, idTry + 1, v.fr) : null;
         box[0] = v; return runRepaired(box, h, consts, rescue, nrep);
     }
@@ -208,7 +208,7 @@ public abstract class TcVectors extends TcOracle {
                 r = runOracle(v);
                 continue;
             }
-            if (r.storeBase >= 0 && !countRepair && TcProvenance.repair(this, v, r)) {
+            if (!countRepair && (r.storeBase >= 0 && TcProvenance.repair(this, v, r) || TcLate.repair(this, v, r))) {
                 repairs++;
                 r = runOracle(v);
                 continue;
@@ -263,7 +263,7 @@ public abstract class TcVectors extends TcOracle {
             vout.append("\nQ");
             for (int x : entryFq) vout.append(' ').append(hex(x));
         }
-        vout.append(TcSr.line(sr, v)).append(TcFpscr.line(r.fs)).append("\nC");  // lines I (TcSr), N (TcFpscr)
+        vout.append(TcSr.line(sr, v)).append(TcFpscr.line(r.fs)).append(TcFpscr.Sz.line()).append("\nC");  // lines I (TcSr), N (TcFpscr), z (TcFpscr.Sz)
         for (long x : v.rets) vout.append(' ').append(hex(x));
         vout.append(TcLate.tail(entryLate, r.calls.size() - v.rets.length)).append('\n');
         for (int i = 0; i < v.patchAddr.size(); i++) {
@@ -291,7 +291,7 @@ public abstract class TcVectors extends TcOracle {
             for (int x : r.fq) eout.append(' ').append(hex(x));
             eout.append(' ').append(hex(r.mode));
         }
-        eout.append(TcStrict.exp(r)).append("\nCOV");  // lines CS, XR (TcStrict)
+        eout.append(TcStrict.exp(r)).append(TcOut.exp(r)).append("\nCOV");  // lines CS, XR (TcStrict)
         for (int c : r.cov) eout.append(' ').append(c);
         eout.append("\nE\n");
     }
