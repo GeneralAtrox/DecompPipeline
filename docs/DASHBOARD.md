@@ -22,6 +22,21 @@ reaches a port milestone or finds or fixes a playtest bug updates the game's `pr
 A milestone is `null` until it is reached, then a short text (a date, or "yes"). `matches` means zero divergence from
 the original game. A bug's `state` is `open` or `fixed`; fixed bugs are not shown.
 
+### Games not on the pipeline
+
+A game made another way (its own native port, research only, not started) is shown too: put a `progress.json` with a
+`console` in its folder, within three levels of the projects folder. It adds `framework` (how the game is being made)
+and its own `road`, which replaces the steps read from a workspace:
+
+```json
+{"console": "Xbox", "game": "PhantomCrash", "framework": "own native Windows port",
+ "road": [{"name": "Disc", "value": "extracted", "state": "done"},
+          {"name": "Playable", "value": "missions 1-3", "state": "now"}],
+ "milestones": {}, "now": "...", "next": "...", "bugs": []}
+```
+
+A step's `state` is `done`, `now` (the one being worked on; at most one), `part` (started, not finished) or `todo`.
+
 ## The work board (config key "board", else PROJECTS_DIR/board.json)
 
 ```json

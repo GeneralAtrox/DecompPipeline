@@ -73,7 +73,7 @@ const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const pct = (a, b) => b ? Math.round(1000 * a / b) / 10 : 0;
 document.getElementById("made").textContent =
-  `Made ${D.made} from the workspaces on this machine. Run Dashboard.bat again to refresh.`;
+  `Made ${D.made} from the workspaces and progress.json files on this machine. Run Dashboard.bat again to refresh.`;
 
 /* ---- games and their road ---- */
 function gameRows() {
@@ -85,6 +85,12 @@ function gameRows() {
   return Object.values(g);
 }
 function road(G) {
+  const own = (G.progress || {}).road;   // a game not on the pipeline: its own steps (docs/DASHBOARD.md)
+  if (own) {
+    const steps = own.map(s => [s.name, s.value || "-", s.state === "done", s.meter, s.state]);
+    const cur = own.findIndex(s => s.state === "now");
+    return {steps, cur: cur < 0 ? steps.length : cur};
+  }
   let fns = 0, harn = 0, raw = 0, rd = 0, bytes = 0;
   for (const p of G.parts) {
     for (const s of D.states) { fns += p.counts[s][0]; bytes += p.counts[s][1]; }
@@ -107,13 +113,13 @@ function road(G) {
 }
 function renderGames() {
   const box = document.getElementById("games"), rows = gameRows();
-  if (!rows.length) { box.innerHTML = '<div class="panel empty">No workspaces found under the console roots.</div>'; return; }
+  if (!rows.length) { box.innerHTML = '<div class="panel empty">No games found: no workspaces under the console roots and no progress.json.</div>'; return; }
   box.innerHTML = rows.map(G => {
     const r = road(G), P = G.progress || {}, bugs = (P.bugs || []).filter(b => b.state !== "fixed");
     const waits = D.work.filter(w => w.state !== "done" && (w.games || []).includes(G.name));
     return `<div class="panel"><div class="game-head"><b>${esc(G.name)}</b>
-      <span class="pct">${esc(G.console)} · ${G.parts.length} workspace(s) · data from ${esc(G.parts.map(p => p.updated).sort().pop())}</span></div>
-      <div class="road">${r.steps.map((s, i) => `<div class="step ${s[2] ? "done" : i === r.cur ? "now" : i < r.cur ? "part" : ""}">
+      <span class="pct">${esc(G.console)} · ${esc(P.framework || "DecompPipeline")} · updated ${esc(G.parts.map(p => p.updated).sort().pop())}</span></div>
+      <div class="road">${r.steps.map((s, i) => `<div class="step ${s[2] ? "done" : i === r.cur ? "now" : i < r.cur || s[4] === "part" ? "part" : ""}">
         <span class="n">${s[0]}</span><span class="v">${esc(s[1])}</span>
         ${s[3] !== undefined && !s[2] ? `<span class="meter"><i style="width:${s[3]}%"></i></span>` : ""}</div>`).join("")}</div>
       ${P.now ? `<div class="now-line"><b>Now:</b> ${esc(P.now)}</div>` : ""}
@@ -207,7 +213,7 @@ function hit(e) {
 function setup() {
   const sel = document.getElementById("scope");
   const opts = [["all", "All games"]];
-  for (const G of gameRows()) { opts.push([G.name, G.name]); if (G.parts.length > 1) for (const p of G.parts) opts.push([G.name + " / " + p.part, "  " + G.name + " / " + p.part]); }
+  for (const G of gameRows()) if (G.parts.some(p => p.units.length)) opts.push([G.name, G.name]);
   sel.innerHTML = opts.map(o => `<option value="${esc(o[0])}">${esc(o[1])}</option>`).join("");
   sel.onchange = () => { VIEW = {scope: sel.value, unit: null}; draw(); };
   document.getElementById("q").oninput = draw;
