@@ -15,6 +15,8 @@ usage: python tools/bounded.py 3600 python tools/translate_backlog.py --project 
             server answers (the server owns the ledger): run it on a private copy, or with the server stopped.
   --json    one row per function: verdict, translate_s, judge_s, the first differences or why there was no C, and the
             ledger's agent figures for it before this run (attempts, tokens, cost, agent seconds), for comparison.
+  Every run also merges its verdicts into state/translator_verdicts.json (the dashboard's view of translator-only
+  progress, for a workspace judged without --record).
 """
 import argparse
 import concurrent.futures as cf
@@ -183,10 +185,25 @@ def report(a, paths, filelock, check, job, oracle_fresh, translate_stage):
         if r["verdict"] != "PASS":
             print(" ", r["addr"], r["status"], r["verdict"], r["harness"], r.get("summary") or r.get("why") or "",
                   r.get("lint") or "", r.get("build") or "", r.get("run_error") or "", r.get("diff") or "")
+    keep_verdicts(paths, st[0], rows)
     if a.json:
         pathlib.Path(a.json).write_text(json.dumps({"workspace": str(paths.ROOT), "translator": st[0],
                                                     "rev": translate_stage.revision(st[2]), "jobs": a.jobs,
                                                     "wall_s": total, "rows": rows}, indent=1), encoding="utf-8")
+
+
+def keep_verdicts(paths, translator, rows):
+    """state/translator_verdicts.json: each function's latest verdict from this tool, merged over earlier runs (an
+    --only run updates only its own). Read by tools/dashboard.py, so translator-only progress shows without a ledger."""
+    f = paths.STATE / "translator_verdicts.json"
+    try:
+        old = json.loads(f.read_text(encoding="utf-8")).get("functions", {}) if f.is_file() else {}
+    except ValueError:
+        old = {}
+    old.update({r["addr"]: r["verdict"] for r in rows})
+    tmp = f.with_suffix(".tmp")
+    tmp.write_text(json.dumps({"translator": translator, "functions": old}, indent=0), encoding="utf-8")
+    os.replace(tmp, f)
 
 
 if __name__ == "__main__":

@@ -6,7 +6,7 @@ The workspace is only read. A function the translator refuses is skipped (the ju
 is read as the judge and the translator stage read it (core/ret_reg.judged: fr0_results.txt).
 
 usage: python tools/struct_check.py --ws <workspace> [--all] [--only a,b|@FILE] [--jobs N] [--out results.json]
-           [--emit DIR]
+           [--emit DIR] [--sp-input]
 --emit DIR: write each function's C to DIR/ADDR.c (the translator is deterministic: two translators' C over one
 workspace, diffed, name the functions a change can affect, so only those need the judge).
 """
@@ -39,8 +39,9 @@ def setup(ws):
     _w.update(ws=ws, facts=facts, img=Image((ws / proj["binary"]).read_bytes(), facts.image_base, facts.little),
               entries={int(ln.split()[0], 16) for ln in fb.read_text().splitlines() if ln.strip()} if fb.exists()
               else set())
-    from sh4translate.translate import spin_ranges
+    from sh4translate.translate import spin_ranges, sz_from_caller, written_code
     _w["spin"] = spin_ranges(proj)
+    _w["written"], _w["sz1"] = written_code(proj), sz_from_caller(proj)     # as tools/dp_judge.py translates
     _w["ranges"] = {}
     for ln in fb.read_text().splitlines() if fb.exists() else ():
         if len(ln.split()) == 3:
@@ -48,7 +49,7 @@ def setup(ws):
             _w["ranges"].setdefault(e, []).append((lo, hi))
 
 
-def one(a, emit=""):
+def one(a, emit="", sp_input=False):
     from core import ret_reg
     from sh4translate.cfgcheck import Mismatch
     from sh4translate.translate import Signature, TranslateError, translate_function
@@ -59,7 +60,8 @@ def one(a, emit=""):
     try:
         src = translate_function(_w["img"], int(a, 16), Signature.from_meta(meta), _w["facts"], body or None,
                                  entries=_w["entries"], ranges=_w["ranges"].get(int(a, 16)),
-                                 spin=_w["spin"].get(int(a, 16)))
+                                 spin=_w["spin"].get(int(a, 16)), written=_w["written"],
+                                 sz_from_caller=int(a, 16) in _w["sz1"], sp_input=sp_input)
     except Mismatch as e:
         return {"addr": a, "verdict": "MISMATCH", "why": str(e)[:600], "s": round(time.time() - t0, 2)}
     except TranslateError:
@@ -79,6 +81,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=6)
     ap.add_argument("--out", default="")
     ap.add_argument("--emit", default="")
+    ap.add_argument("--sp-input", action="store_true", help="the port form (tools/dp_judge.py --sp-input)")
     args = ap.parse_args()
     ws = pathlib.Path(args.ws)
     addrs = sorted(p.stem for p in (ws / "matched").glob("*.c"))
@@ -94,7 +97,7 @@ def main():
         pathlib.Path(args.emit).mkdir(parents=True, exist_ok=True)
     t0 = time.time()
     with cf.ProcessPoolExecutor(args.jobs, initializer=setup, initargs=(str(ws),)) as ex:
-        rows = list(ex.map(one, addrs, [args.emit] * len(addrs), chunksize=8))
+        rows = list(ex.map(one, addrs, [args.emit] * len(addrs), [args.sp_input] * len(addrs), chunksize=8))
     if args.out:
         pathlib.Path(args.out).write_text(json.dumps(rows, indent=1), encoding="utf-8")
     from collections import Counter

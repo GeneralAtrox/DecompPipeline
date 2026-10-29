@@ -86,8 +86,8 @@ class Sources:
         return out
 
 
-def discover(root):
-    """(workspace folders under root: project.json + state/ledger.json, truncated?). Never descends into one."""
+def discover(root, need="state/ledger.json"):
+    """(workspace folders under root: project.json + `need`, truncated?). Never descends into one."""
     found, seen = [], 0
     root = pathlib.Path(root)
     if not root.is_dir():
@@ -98,7 +98,7 @@ def discover(root):
         if seen > MAX_DIRS:
             return found, True
         t = pathlib.Path(top)
-        if "project.json" in names and (t / "state" / "ledger.json").is_file():
+        if "project.json" in names and (t / need).is_file():
             found.append(t)
             dirs[:] = []
             continue

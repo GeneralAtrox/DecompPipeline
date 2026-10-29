@@ -19,6 +19,8 @@ every function Ghidra found (tools/decode_check.py), through the Ghidra broker l
       base plus a CRC of the name, references) and oracle/TcInputs.java from the target's template. --fields merges a
       JSON object of the workspace's own decisions into project.json (e.g. catalog_overrides carried over from an
       earlier workspace of the same game); it may not set target, binary or binary_sha256.
+      The workspace is enrolled on this machine's dashboard (tools/dashboard.enrol: Dashboard.bat lists it, and its
+      game folder gets a starter progress.json).
       Unless --no-ghidra, the `ghidra` step below.
   ghidra <workspace>
       `decomp.py setup` (import, analysis, TcSetup, the catalog fixups, TcCatalog), then `check`.
@@ -205,6 +207,8 @@ def setup(image, ws, target=None, name=None, fields=None, files=(), context=(), 
     shown = {k: cfg[k] for k in ("name", "binary", "port", "image_gaps", "game_ranges", "global_ranges", "fixed_regs",
                                  "seed_functions", "seed_entries") if k in cfg}
     print(f"{ws / 'project.json'}: {json.dumps(shown)}" + (f"; from --fields: {sorted(extra)}" if extra else ""))
+    import dashboard  # this machine's Dashboard.bat lists it from now on, wherever it lives (docs/DASHBOARD.md)
+    dashboard.enrol(ws)
     return cfg
 
 

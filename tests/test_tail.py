@@ -6,6 +6,9 @@ that is not the function's own is part of the extent (Toy Commander 8c061630 int
 8c061a98's `bsr` returning into 8c061aa0); with the function's own PR back (Spawn 8c020560 pops PR and runs into
 8c0205a4) or after a call to a callee that halts, the entry stays a mocked tail call.
 
+With a branch into another branch's delay slot (ds-flow, TcTail.slotEntry) the slot runs on into the next instruction
+(PS2 8c197240 and 8c188422's piece 8c189200); a slot reached only from its own branch does not.
+
 usage: python tests/test_tail.py
 """
 import os
@@ -151,6 +154,58 @@ I 924 slot _rotcl r9
 X 900
 """)
         self.assertEqual(x["X 900"], "900-90f 920-925")  # the subroutine with no function; 498 stays a callee
+
+    # ds-flow (TcTail.slotEntry): a branch into another branch's delay slot runs the slot, then the next instruction
+    def test_branch_into_a_slot_runs_on(self):  # PS2 8c197240: bt/s 8c197258 into the slot of `jmp @r0`
+        x = self.extent("""
+F 240 240 249
+I 240 fall cmp/eq #0x0,r0
+I 242 cjump bt/s 248 -> 248
+I 244 slot _fmov.s fr13,@-r15
+I 246 jump jmp @r0
+I 248 slot _fmov.s fr12,@-r15
+I 24a fall mov r1,r0
+I 24c term rts
+I 24e slot _nop
+X 240
+""")
+        self.assertEqual(x["X 240"], "240-24f")  # was 240-249: the run to 24a left the body
+
+    def test_piece_branch_into_a_slot_runs_on(self):  # PS2 8c188422's piece 8c189200: bf 8c189208 into a bra's slot
+        x = self.extent(self.RTS + """
+F 900 900 90b
+I 900 fall sts.l PR,@-r15
+I 902 call bsr 200 -> 200
+I 904 slot _nop
+I 906 call bsr 498 -> 498
+I 908 slot _nop
+I 90a fall lds.l @r15+,PR
+I 90c term rts
+I 90e slot _nop
+I 200 fall tst r8,r8
+I 202 cjump bf 206 -> 206
+I 204 jump bra 300 -> 300
+I 206 slot _tst #0x1,r0
+I 208 fall mov r8,r0
+I 20a term rts
+I 20c slot _nop
+I 300 term rts
+I 302 slot _nop
+X 900
+""")
+        self.assertEqual(x["X 900"], "200-20d 300-303 900-90f")  # was without 208-20d
+
+    def test_slot_of_its_own_branch_does_not_run_on(self):  # control: no other branch into the slot, as before
+        x = self.extent("""
+F 400 400 403
+I 400 jump bra 500 -> 500
+I 402 slot _nop
+I 404 fall mov r1,r0
+I 500 term rts
+I 502 slot _nop
+X 400
+""")
+        self.assertEqual(x["X 400"], "400-403 500-503")
 
 
 if __name__ == "__main__":
