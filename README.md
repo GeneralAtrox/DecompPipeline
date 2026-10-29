@@ -8,7 +8,7 @@ The tool holds no game data. Each game is a **project workspace** (a folder with
 platform is a **target** under `targets/`. Today: `dreamcast_sh4` (see its README). A new CPU (for example Xbox
 360 PowerPC) is a new target. `port/` builds a game's readable C as a native program (port/README.md).
 
-## Layout (every file at most 400 lines: `decomp.py sizes`)
+## Layout (every file at most 400 lines: `decomp.py sizes`; files listed in tests/sizes_over_400.txt may only shrink)
 
 | Path | Role |
 |------|------|

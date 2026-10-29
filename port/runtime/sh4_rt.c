@@ -20,6 +20,7 @@ static u32 g_mode;  /* FPSCR.FR | SZ | PR in their FPSCR bit positions */
 static u32 g_fpscr = 0x00040001u; /* FPSCR's other fields: sh4_rt_set_fpu_mode's DN=1, RM=1 until sh4_lds_fpscr */
 static u32 g_gs[7]; /* r8..r14 */
 static u32 g_ro[4]; /* r4..r7 as the last tc_call passed them, or as a translated callee handed one back (TcOut) */
+static u32 g_t; /* T: as a translated caller handed it over, or as a translated callee handed it back (TcTflag) */
 extern const unsigned int port_fsca_sin[2][65536]; /* fsca: gen fsca_table.c (core/fsca.py): [0] nearest, [1] to zero */
 
 /* Unions, not memcpy: the kit builds with the judge's /O1, which has no /Oi, so a memcpy here is a CRT call. */
@@ -189,6 +190,10 @@ void sh4_set_r(int i, u32 v)
     if (i >= 8 && i < 15) g_gs[i - 8] = v;
     if (i >= 4 && i < 8) g_ro[i - 4] = v;
 }
+
+u32 sh4_t(void) { return g_t; }
+
+void sh4_set_t(u32 v) { g_t = v & 1u; }
 
 /* SR (rd_rt.h): a word only; the port's interrupts (the vertical-blank hook) do not look at its mask. */
 static u32 g_sr = 0x400000f0u;

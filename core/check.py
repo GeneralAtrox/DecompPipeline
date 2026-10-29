@@ -309,7 +309,8 @@ def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harn
     result = {"addr": addr, "sets": list(sets), "verdict": "FAIL", "stage": "lint", "lint": [], "build": [],
               "vectors": {}, "first_diffs": [], "failing": 0, "total": 0}
     src = pathlib.Path(work_file).read_text(encoding="utf-8", errors="replace")
-    result["lint"] = lint(src, meta) + (fused_lint(cfg, meta, src) if fused else [])  # R9/fmac (core/fused)
+    not_entry = (cfg.get("catalog_overrides") or {}).get("not_entry")  # a module unit's C may pass 60 KB (D2)
+    result["lint"] = lint(src, meta, not_entry) + (fused_lint(cfg, meta, src) if fused else [])  # R9/fmac (core/fused)
     if not result["lint"]:  # R12: frame addresses the original passes (core/frame_args)
         from . import frame_args, sh4_asm
         result["lint"] = frame_args.lint_frame_args(src, sh4_asm.read_packet(paths.PACKETS / addr))

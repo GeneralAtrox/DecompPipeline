@@ -44,8 +44,12 @@ uint32_t port_tx_f2u(float value)
     return w.u;
 }
 
-u8 rd8(u32 addr) { return *(const volatile u8 *)(uintptr_t)addr; }
-u16 rd16(u32 addr) { return *(const volatile u16 *)(uintptr_t)addr; }
+/* Area 5 (external devices, 0x14000000..0x17ffffff in each P0..P3 view): nothing answers on a retail Dreamcast and
+ * a read returns 0 (Flycast sh4_mem.cpp ReadMem_extdev_T; the judge's TcHw "read area5"). Game code can read there, e.g. a table indexed
+ * with its own stack pointer. */
+#define AREA5(a) ((a) < 0xe0000000u && ((a) & 0x1c000000u) == 0x14000000u)
+u8 rd8(u32 addr) { return AREA5(addr) ? 0 : *(const volatile u8 *)(uintptr_t)addr; }
+u16 rd16(u32 addr) { return AREA5(addr) ? 0 : *(const volatile u16 *)(uintptr_t)addr; }
 /* A word the game busy-waits on until an interrupt handler changes it (the game's sources name it: port_spin_word),
  * in a loop the judge's TcSpin cannot turn into tc_spin (it stores counters each pass). Read SPIN_READS times
  * unchanged within one vertical blank, the read waits for the next one, as the interrupt comes while the console
@@ -87,6 +91,7 @@ static u32 spin_read(int i, u32 addr, u32 value)
 
 u32 rd32(u32 addr)
 {
+    if (AREA5(addr)) return 0;
     u32 value = *(const volatile u32 *)(uintptr_t)addr;
     for (int i = 0; i < SPIN_WORDS && g_spin_word[i] != AREA_MASK; i++)
         if ((addr & AREA_MASK) == g_spin_word[i]) return spin_read(i, addr, value);

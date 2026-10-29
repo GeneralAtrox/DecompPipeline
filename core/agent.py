@@ -311,6 +311,9 @@ def hw_notes(hw):
               "sh4_stc_gbr(); a load or store @(disp,gbr) uses sh4_stc_gbr() + disp."] if hw.get("gbr") else []
     lines += ["This function sets SR.BL (exceptions blocked): write SR with sh4_ldc_sr as the original does,"
               " BL included."] if hw.get("bl") else []
+    lines += ["Area 5 (listed: 0x14000000..0x17ffffff in each P0..P3 view, external devices): a load from there"
+              " returns 0, as on a retail Dreamcast; read it with rd8/rd16/rd32 as any load (the test run serves 0),"
+              " never skip the load or assume another value."] if hw.get("area5") else []
     return lines
 
 

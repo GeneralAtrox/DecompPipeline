@@ -135,6 +135,8 @@ def parse_results(path):
             cur["gs"] = [int(x, 16) for x in t[1:8]]
         elif k == "RO":  # r4..r7 at exit: only for a function whose callers read them (TcOut, meta r_exports)
             cur["ro"] = [int(x, 16) for x in t[1:5]]
+        elif k == "RT":  # T at exit: only for a function whose callers read it (TcTflag, meta t_export)
+            cur["rt"] = int(t[1]) & 1
         elif k == "QH":  # fr0..fr15 and the FPSCR mode word at exit: only for vectors with line Q
             cur["fq"] = [int(x, 16) for x in t[1:17]]
             cur["mode"] = int(t[17], 16) if len(t) > 17 else None
@@ -311,14 +313,16 @@ def compare_outputs(meta, exp, act):
     """r4..r7 at exit (RO) that the function's callers read after calling it (meta r_exports, TcOut): a hand-written
     leaf hands a result back there (Spawn 8c0602a0: r4 past the vertex stream). Its C sets them with sh4_set_r."""
     diffs = []
-    if "ro" not in exp:
-        return diffs
     got = act.get("ro")
-    for r in (meta or {}).get("r_exports") or ():
+    for r in ((meta or {}).get("r_exports") or ()) if "ro" in exp else ():
         i = int(r[1:]) - 4
         if got is None or exp["ro"][i] != got[i]:
             diffs.append(f"{r} at exit (its callers read it: sh4_set_r({r[1:]}, ...) before returning): expected "
                          f"0x{exp['ro'][i]:08x}, " + ("got nothing" if got is None else f"got 0x{got[i]:08x}"))
+    if "rt" in exp and (meta or {}).get("t_export") and act.get("rt") != exp["rt"]:
+        # T at exit (RT), which its callers read after calling it (TcTflag): its C hands it back with sh4_set_t
+        diffs.append(f"T at exit (its callers read it: sh4_set_t(...) before returning): expected {exp['rt']}, "
+                     + ("got nothing" if act.get("rt") is None else f"got {act['rt']}"))
     return diffs
 
 

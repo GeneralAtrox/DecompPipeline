@@ -119,6 +119,8 @@ void sh4_fipr_fv(int m, int n);                       /* fipr FVm,FVn: fr n+3 = 
  * leaves them changed (their exit values are compared), and set them before a call to a callee that reads them. */
 u32 sh4_r(int index);                                 /* read r8..r14 */
 void sh4_set_r(int index, u32 value);                 /* write r8..r14 */
+u32 sh4_t(void);                                      /* T as a callee left it (context.md: meta t_out), and */
+void sh4_set_t(u32 value);                            /* T handed back to the caller (meta t_export) */
 /* SR, for the original's `stc sr,Rn` and `ldc Rm,sr` (context.md lists them: masking interrupts around an update).
  * The test run starts each vector with MD=1 and the vector's interrupt mask (SR bits 4..7), and compares the mask
  * at exit: read SR where the original does with sh4_stc_sr, write it where it does with sh4_ldc_sr. */

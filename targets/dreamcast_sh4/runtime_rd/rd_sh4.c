@@ -15,6 +15,8 @@ static u32 g_mode;   /* FPSCR.FR | SZ | PR in their FPSCR bit positions */
 static int g_fpu;    /* line Q given: the whole FPU is state */
 static u32 g_gs[7];  /* r8..r14: runtime state (line G), as in tc_rt.c */
 static u32 g_ro[4], g_ro_mask; /* r4..r7 as the last call left them, and line O's compared ones (TcOut, tc_rt.c) */
+static u32 g_t; static int g_t_export; /* T, and line t: T compared at exit (TcTflag, tc_rt.c) */
+int rd_area5; /* header line y: an area-5 read returns 0 (rd_veh.c maps a zero page there; tc_rt.c) */
 static u32 (*g_fsca)[65536][2]; /* fsca_table.bin: {sin, cos} bits per angle, round to nearest, then toward zero */
 
 static u32 f2u(f32 f) { u32 u; memcpy(&u, &f, 4); return u; }
@@ -184,6 +186,10 @@ void sh4_set_r(int i, u32 v)
     if (i >= 4 && i < 8) g_ro[i - 4] = v;
 }
 
+u32 sh4_t(void) { return g_t; }
+
+void sh4_set_t(u32 v) { g_t = v & 1u; }
+
 /* SR (TcSr), as tc_rt.c. */
 static u32 g_sr;
 static int g_has_sr;
@@ -307,6 +313,7 @@ void rd_sh4_reset(void)
     memset(g_fr, 0, sizeof g_fr);
     memset(g_gs, 0, sizeof g_gs);
     memset(g_ro, 0, sizeof g_ro);
+    g_t = 0;
     memset(g_draws, 0, sizeof g_draws);
     g_sr = 0;
     g_has_sr = 0;
@@ -326,7 +333,7 @@ void tcrt_set_gs(const u32 bits[7]) { memcpy(g_gs, bits, sizeof g_gs); }
 
 void tcrt_add_live(u32 target, u32 reg, u32 n, const u32 d[4])
 {
-    if (g_nlive >= RD_MAX_LIVE || reg < 4 || reg > 14 || n > 4) return;
+    if (g_nlive >= RD_MAX_LIVE || reg < 4 || reg > 14 && reg != 16 || n > 4) return;
     g_live[g_nlive].target = tcrt_fold(target);
     g_live[g_nlive].reg = reg;
     g_live[g_nlive].n = n;
@@ -340,6 +347,15 @@ void tcrt_set_ro(const u32 r4_7[4]) { memcpy(g_ro, r4_7, sizeof g_ro); }
 
 void tcrt_set_ro_mask(u32 mask) { g_ro_mask = mask; }
 
+void tcrt_set_t_export(void) { g_t_export = 1; }
+
+void tcrt_report_t(FILE *out)
+{
+    if (g_t_export && !tcrt_halted) fprintf(out, "RT %u\n", g_t);
+}
+
+void tcrt_set_area5(void) { rd_area5 = 1; }
+
 void tcrt_report_ro(FILE *out)
 {
     if (g_ro_mask && !tcrt_halted) fprintf(out, "RO %08x %08x %08x %08x\n", g_ro[0], g_ro[1], g_ro[2], g_ro[3]);
@@ -351,6 +367,7 @@ void rd_sh4_live(u32 target, u32 k, const u32 r4_7[4])
     memcpy(g_ro, r4_7, sizeof g_ro); /* the callee got them; a K line moves its output (TcOut) */
     for (u32 i = 0; i < g_nlive; i++) {
         if (g_live[i].target != target) continue;
+        if (g_live[i].reg == 16) { g_t = draw >> 8 & 1u; continue; } /* T (TcTflag) */
         u32 n = g_live[i].n;
         u32 *rn = g_live[i].reg >= 8 ? &g_gs[g_live[i].reg - 8] : &g_ro[g_live[i].reg - 4];
         *rn += n == 1 ? g_live[i].d[0] : n ? g_live[i].d[draw % n] : 0x20u * (1u + draw % 3u);

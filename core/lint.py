@@ -40,9 +40,19 @@ def strip_comments(src):
     return "".join(out)
 
 
-def lint(src, meta):
+def module_unit(meta, not_entry):
+    """The function is a module unit (D2, core/asm_modules): a catalog_overrides "not_entry" piece lies in its blocks,
+    so its work.c is the translator's C of the whole unit (PS2 Lib_RenderModelA 8c188422, 114 KB). The 60 KB cap is
+    there so an agent can Read a work.c in one go; nobody reads a unit's C, the translator's fit() bounds it."""
+    pieces = {int(a, 16) & 0x1FFFFFFF for a in not_entry or ()}
+    return any(int(lo, 16) & 0x1FFFFFFF <= a <= int(hi, 16) & 0x1FFFFFFF
+               for lo, hi in meta.get("blocks") or () for a in pieces)
+
+
+def lint(src, meta, not_entry=()):
+    """not_entry: project.json catalog_overrides "not_entry" (core/check); a module unit may pass 60 KB."""
     errors = []
-    if len(src) > 60000:
+    if len(src) > 60000 and not module_unit(meta, not_entry):
         errors.append("work.c is larger than 60 KB")
     code = strip_comments(src)
     lines = code.splitlines()

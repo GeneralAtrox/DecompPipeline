@@ -97,5 +97,39 @@ class MidEntries(unittest.TestCase):
                          (F1, None, None))
 
 
+class ApplyKeepsTheFile(unittest.TestCase):
+    """tools/common.write_project_json, shared by the --apply of mid_entries, asm_modules and data_funcs --add."""
+
+    def roundtrip(self, raw, add):
+        import json
+        import tempfile
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
+        from common import write_project_json
+        with tempfile.TemporaryDirectory() as td:
+            pj = pathlib.Path(td) / "project.json"
+            pj.write_bytes(raw.encode("utf-8"))
+            data = json.loads(raw)
+            data["catalog_overrides"]["entry"] += add
+            write_project_json(pj, raw, data)
+            return pj.read_bytes().decode("utf-8")
+
+    def test_three_space_crlf_stays(self):
+        raw = '{\r\n   "name": "x",\r\n   "catalog_overrides": {\r\n      "entry": [\r\n         "8c010000"\r\n' \
+              '      ]\r\n   }\r\n}\r\n'
+        got = self.roundtrip(raw, ["8c010104"])
+        self.assertEqual(got, raw.replace('"8c010000"\r\n', '"8c010000",\r\n         "8c010104"\r\n'))
+
+    def test_one_space_lf_and_unchanged_file(self):   # Spawn fe's own style; with nothing added the bytes are equal
+        raw = '{\n "name": "Spawn’s fe",\n "catalog_overrides": {\n  "entry": []\n }\n}\n'
+        self.assertEqual(self.roundtrip(raw, []), raw)
+
+    def test_the_tools_use_it(self):
+        tools = pathlib.Path(__file__).resolve().parents[1] / "tools"
+        for name in ("mid_entries.py", "asm_modules.py", "data_funcs.py"):
+            src = (tools / name).read_text(encoding="utf-8")
+            self.assertIn("write_project_json(pj, raw, data)", src, name)
+            self.assertNotIn("indent=2) +", src, name)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -7,7 +7,8 @@ Static (the catalog, state/function_bodies.txt and the binary); writes nothing i
 catalog_overrides "not_entry" (the unit's body then holds them: the oracle runs them, the translator returns from
 them through PR). --all also lists the locals that hand back only r4..r7 (TcOut's class) and the plain private
 callees, which need nothing. --apply writes the local pieces of the modules with those entries into project.json
-"catalog_overrides" "not_entry" (key order, indent and line endings kept, as tools/data_funcs.py --add); then
+"catalog_overrides" "not_entry" (key order, indent and line endings kept, as tools/data_funcs.py --add; a piece
+leaves "entry" and "extra_functions", where it was no longer a function); then
 `decomp.py catalog`, tools/assign_systems.py and a prepare of the entries. An entry with no catalog function (a
 second entry into a piece) goes in with data_funcs.py --add.
 
@@ -22,7 +23,30 @@ import sys
 TOOL = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL / "tools"))
 sys.path.insert(0, str(TOOL))
-from common import use_project  # noqa: E402
+from common import use_project, write_project_json  # noqa: E402
+
+
+def drop_pieces(data, root, pieces):
+    """A piece is no function: an "entry" override for it would win (TcOverride applies entry last; Spawn's
+    8c0602aa, made an entry for a Ghidra delay-slot gap), and an extra_functions line naming it is a doctor FAIL
+    (core/scope). Both leave project.json data (and the extra_functions file it names, under root) with the piece.
+    Returns ([out of entry], [out of extra_functions])."""
+    over = data.get("catalog_overrides") or {}
+    gone = [x for x in over.get("entry", []) if x in pieces]
+    if gone:
+        over["entry"] = [x for x in over["entry"] if x not in pieces]
+    extra, dropped = data.get("extra_functions"), []
+    if isinstance(extra, list):
+        dropped = [x for x in extra if x in pieces]
+        data["extra_functions"] = [x for x in extra if x not in pieces]
+    elif isinstance(extra, str):
+        f = pathlib.Path(root) / extra
+        lines = f.read_text(encoding="utf-8").splitlines(keepends=True)
+        keep = [ln for ln in lines if (ln.split() or [""])[0].lower() not in pieces]
+        dropped = [ln.split()[0] for ln in lines if ln not in keep]
+        if dropped:
+            f.write_text("".join(keep), encoding="utf-8")
+    return gone, dropped
 
 
 def main():
@@ -63,12 +87,16 @@ def main():
         pj = paths.ROOT / "project.json"
         raw = pj.read_bytes().decode("utf-8")
         data = json.loads(raw)
-        ne = data.setdefault("catalog_overrides", {}).setdefault("not_entry", [])
+        over = data.setdefault("catalog_overrides", {})
+        ne = over.setdefault("not_entry", [])
         new = [x for m in mods for x in m["locals"] if x not in ne]
         ne += new
-        text = json.dumps(data, indent=2) + "\n"
-        pj.write_bytes((text.replace("\n", "\r\n") if "\r\n" in raw else text).encode("utf-8"))
-        print(f"project.json: {len(new)} catalog_overrides not_entry added; now run `decomp.py --project DIR catalog`")
+        gone, dropped = drop_pieces(data, paths.ROOT, {x for m in mods for x in m["locals"]})
+        write_project_json(pj, raw, data)
+        print(f"project.json: {len(new)} catalog_overrides not_entry added"
+              + (f"; out of entry: {', '.join(gone)}" if gone else "")
+              + (f"; out of extra_functions: {len(dropped)}" if dropped else "")
+              + "; now run `decomp.py --project DIR catalog`")
     return 0
 
 

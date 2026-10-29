@@ -1,0 +1,5 @@
+# Every file is checked out exactly as it is stored, on every machine. Git for Windows turns core.autocrlf on by
+# default, which rewrites LF files as CRLF on checkout. The judge's oracle stamp hashes the Ghidra scripts' bytes,
+# so such a checkout makes every harness from another machine look stale (and its own look stale elsewhere).
+# Files keep their own line endings: most are LF, some (platform.h, ...) CRLF.
+* -text

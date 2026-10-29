@@ -91,6 +91,10 @@ int main(int argc, char **argv)
     while (fgets(line, sizeof line, in)) {
         if (line[0] == 'P') { /* entry FPSCR, before the first vector (TcVectors.fpscrLine) */
             tcrt_set_fpscr((u32)strtoul(line + 1, NULL, 16));
+        } else if (line[0] == 't') { /* T compared at exit, before the first vector (TcTflag) */
+            tcrt_set_t_export();
+        } else if (line[0] == 'y') { /* area-5 reads return 0, before the first vector (TcHw "read area5") */
+            tcrt_set_area5();
         } else if (line[0] == 'O') { /* the r4..r7 compared at exit, before the first vector (TcOut) */
             tcrt_set_ro_mask((u32)strtoul(line + 1, NULL, 10));
         } else if (line[0] == 'K') { /* a callee changing r8..r14 or r4..r7, before the first vector (TcLive) */
@@ -204,6 +208,7 @@ int main(int argc, char **argv)
             if (has_fh) tcrt_report_fh(out);
             if (has_gs) tcrt_report_gs(out);
             tcrt_report_ro(out);
+            tcrt_report_t(out);
             if (has_fq) tcrt_report_fq(out);
             fprintf(out, "E\n");
             fflush(out);

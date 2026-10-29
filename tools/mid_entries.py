@@ -20,7 +20,7 @@ import sys
 TOOL = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL / "tools"))
 sys.path.insert(0, str(TOOL))
-from common import use_project  # noqa: E402
+from common import use_project, write_project_json  # noqa: E402
 
 
 def main():
@@ -64,8 +64,7 @@ def main():
         entries = data.setdefault("catalog_overrides", {}).setdefault("entry", [])
         new = [x for x in want if x not in entries]
         entries += new
-        text = json.dumps(data, indent=2) + "\n"
-        pj.write_bytes((text.replace("\n", "\r\n") if "\r\n" in raw else text).encode("utf-8"))
+        write_project_json(pj, raw, data)
         print(f"project.json: {len(new)} catalog_overrides entr(ies) added; now run `decomp.py --project DIR catalog`")
     return 0
 

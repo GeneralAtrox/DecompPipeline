@@ -27,7 +27,7 @@ public abstract class TcOracle extends TcInputs {
         long retx;                        // the extra result word (entryRet): a nonstandard result register, u64 high
         int[] xf = new int[16];
         int[] fh = new int[4];            // fr12..fr15 at exit
-        long[] gi = new long[7], ro = new long[4];  // r8..r14, r4..r7 (TcOut) at exit
+        long[] gi = new long[7], ro = new long[5];  // r8..r14, r4..r7 (TcOut) and T (TcTflag) at exit
         int[] fq = new int[16];           // fr0..fr15 at exit (Proto.fpuState)
         long mode; TcFpscr.Run fs; TcTrack.Run tr;  // FPSCR mode bits at exit (modeWord); FPSCR as state; TcTrack's
         List<String> writes = new ArrayList<>();

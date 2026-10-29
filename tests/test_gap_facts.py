@@ -111,6 +111,21 @@ class Listing(unittest.TestCase):
         self.assertIn('"mockwrite"', src)
         self.assertIn('k == "mock_write_facts"', src)  # the baselines' facts: without the list
 
+    def test_every_harness(self):  # --every-harness: a translator-only workspace (Spawn fe) has no matched function
+        import types
+        with tempfile.TemporaryDirectory(dir=TMP) as tmp:
+            h = pathlib.Path(tmp) / "harness"
+            for fn in ("8c4c4066", "8c4b3ad0", "8c4c81c0", "8c4c0000"):  # a catalog function, a gone piece, no meta
+                (h / fn).mkdir(parents=True)
+                if fn != "8c4c0000":
+                    (h / fn / "meta.json").write_text("{}")
+            cat = pathlib.Path(tmp) / "catalog.json"
+            cat.write_text(json.dumps({"functions": [{"addr": a} for a in ("8c4c4066", "8c4b3ad0", "8c4c0000")]}))
+            p = types.SimpleNamespace(CATALOG=cat, HARNESS=h, read_json=lambda f: json.loads(f.read_text()))
+            self.assertEqual(sr.every_harness(p), ["8c4b3ad0", "8c4c4066"])
+        src = text(ROOT / "tools" / "selective_restamp.py")
+        self.assertIn("if x not in matched:  # --every-harness: no raw C to judge", src)
+
 
 STUB = """import java.util.*;
 public class GapStub {

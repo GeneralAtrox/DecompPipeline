@@ -64,6 +64,14 @@ public abstract class TcBase extends GhidraScript {
     }
 
     // [a, a+size) lies in RAM (after fold): Saturn's TcBase has the same test over its two work RAM banks (TcStrict).
+    // Area 5 (external devices): physical 0x14000000..0x17ffffff in each P0..P3 view (Flycast map_area5), the whole
+    // access inside one view (TcHw "read area5"; tc_rt_internal.h tcrt_area5).
+    static boolean area5(long a, long size) {
+        long z = a + size - 1;
+        return z < 0xe0000000L && (a & 0x1c000000L) == 0x14000000L && (z & 0x1c000000L) == 0x14000000L
+            && (a ^ z) < 0x04000000L;
+    }
+
     static boolean inRam(long a, long size) {
         return a >= RAM_LO && a + size <= RAM_HI;
     }

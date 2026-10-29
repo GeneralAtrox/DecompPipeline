@@ -30,6 +30,14 @@ def project_json(ws):
     return json.loads((pathlib.Path(ws) / "project.json").read_text(encoding="utf-8"))
 
 
+def write_project_json(pj, raw, data):
+    """Write data back to project.json pj, read earlier as raw: the file's own indent (that of its first indented
+    line), line endings and ASCII escaping are kept, so an --apply edit changes only the lines it adds."""
+    m = re.search(r"\n([ \t]+)\S", raw)
+    text = json.dumps(data, indent=m.group(1) if m else 2, ensure_ascii=raw.isascii()) + "\n"
+    pathlib.Path(pj).write_bytes((text.replace("\n", "\r\n") if "\r\n" in raw else text).encode("utf-8"))
+
+
 def norm_addr(a):
     a = a.strip().lower().removeprefix("0x")
     if not re.fullmatch(r"[0-9a-f]{1,8}", a):

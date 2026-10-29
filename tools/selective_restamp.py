@@ -41,8 +41,14 @@ a callee's SZ at return): only a function with a script arg 13 (sz_entry.arg) ca
 before. Its stamp gains a line, so its old stamp is never today's: it is re-prepared whatever the baseline says.
 --change mockwrite is a project.json "mock_write_facts" change (core/strict_judge; the facts file, a shared
 stamp input, gains its lines): only callers of a listed callee (meta.json callees) can differ, and the baselines'
-stamps are taken with the facts file as it was without the list (none listed before). Changes join with +
+stamps are taken with the facts file as it was without the list (none listed before). --change regout is TcOut (sp-regout: a callee's r4..r7 outputs; core/regout.py): only a function that calls one that leaves
+r4..r7 changed and reads it after the call, or that leaves them changed with a caller reading them, gets a new record.
+Changes join with +
 (--change fret+fargs: either alters the harness).
+--change tflag is the T-across-a-call change (TcTflag): only a caller that reads T after a call before writing it
+(a scan of the packet asm, tflag_scan) and the callees it calls there can differ. --change zeroread is the
+area-5 listing (project.json hw_ops "read area5", TcHw): only the functions it lists can differ, and the
+baselines' stamps are taken without those ops (none listed before).
 Only harnesses current under the scripts before the change (--old-scripts: that commit's ghidra_scripts folder) are
 refreshable; any other is stale for its own reasons and left to tools/reprepare_stale.py --stamps. --old-scripts can
 be given more than once when the harnesses were stamped at different times (TC: the 2026-10-16 full re-stamp, then
@@ -65,7 +71,11 @@ Phases (each resumable; run under tools/bounded.py, servers stopped):
   --phase must    re-prepare the refreshable candidates (at most --max per run) and judge each one's matched raw C
 usage: python tools/selective_restamp.py --project DIR --old-scripts DIR [--old-scripts DIR ...]
        --phase sample|refresh|must [--sample 100] [--seed 14] [--max 100] [--slots N]
-       [--change r14|fret|fargs|late|spin|dslot|fnrmw|lrep|retfn|fipr|runflag|mockwrite|sz|fret+fargs|none] [--list FILE] [--dry]
+       [--change r14|fret|fargs|late|spin|dslot|fnrmw|lrep|retfn|fipr|runflag|mockwrite|sz|regout|sz+regout|tflag|zeroread|fret+fargs|none] [--list FILE] [--dry]
+       [--every-harness]
+--every-harness: every catalog function with a harness, not only the matched ones (a translator-only workspace such
+as Spawn's fe has no matched function; its translator C is judged against the harness); must then re-prepares a
+candidate with no matched raw C without judging it (its translator C is judged apart: dp_judge).
 Exit 0 when the phase finished clean (all identical; nothing left; every judged raw C passes), 1 otherwise.
 """
 import argparse
@@ -377,11 +387,20 @@ def runflag_candidates(cfg):
     return {x.lower() for x in cfg.get("run_flags") or {} if compare.run_flag(cfg, x)}
 
 
-def sz_candidates(cfg):
+def sz_candidates(cfg, every=False):
     """The functions whose harness the FPSCR.SZ change (TcFpscr.Sz) can alter: those with a script arg 13 (called
-    with SZ=1, or with a callee that returns in the other mode; core/sz_entry.arg). Every other runs as before."""
+    with SZ=1, or with a callee that returns in the other mode; core/sz_entry.arg). Every other runs as before.
+    every: of every harness (--every-harness), not only the matched functions."""
     from core import oracle_fresh, paths, sz_entry
-    return {x for x in oracle_fresh.matched_functions() if sz_entry.arg(cfg, paths, x) != "-"}
+    pop = every_harness(paths) if every else oracle_fresh.matched_functions()
+    return {x for x in pop if sz_entry.arg(cfg, paths, x) != "-"}
+
+
+def regout_candidates(ws):
+    """The functions whose harness TcOut can write into (core/regout.py: a callee handing back r4..r7 that the caller
+    reads, or the function's own r4..r7 that a caller reads). Static: no Ghidra."""
+    from core import regout
+    return regout.candidates(ws)
 
 
 def mockwrite_candidates(cfg, harness):
@@ -398,6 +417,129 @@ def mockwrite_candidates(cfg, harness):
         if any(str(c.get("addr", "")).lower().removeprefix("0x").zfill(8) in listed for c in callees):
             out.add(m.parent.name)
     return out
+
+
+T_READS = {"bt", "bf", "bt/s", "bf/s", "addc", "subc", "negc", "rotcl", "rotcr", "movt", "div1"}  # T read first
+T_WRITES = {"clrt", "sett", "dt", "shll", "shlr", "shal", "shar", "rotl", "rotr", "addv", "subv", "div0s", "div0u",
+            "tas.b", "tst", "tst.b"}  # (and cmp/..., fcmp/..., ldc/ldc.l to sr)
+CALLS = {"jsr", "bsr", "bsrf"}
+CALLED = re.compile(r";\s*call ([0-9a-f]{8})")
+
+
+def t_use(mn, ops):
+    """1: the instruction reads T before writing it, 2: it writes T, 0: neither (asm mnemonic, operands)."""
+    if mn in T_READS or (mn in ("stc", "stc.l") and ops[:1] == ["sr"]):
+        return 1
+    if mn in T_WRITES or mn.startswith(("cmp/", "fcmp/")) or (mn in ("ldc", "ldc.l") and ops[-1:] == ["sr"]):
+        return 2
+    return 0
+
+
+def tflag_scan(packets):
+    """{caller: {callee: [call site, ...]}}: the calls whose T the caller reads (packet asm, forward from the call's
+    delay slot: an unconditional bra followed inside the function, both ways of a bt/bf, another call passed over),
+    before writing it, or hands on by reaching its own return or a tail call (bra/braf/jmp naming a call) with T
+    unwritten while the caller is itself exported (some caller reads its T, the same way, to a fixed point). A tail
+    call's callee counts as handed on. A superset of TcTflag's sites (exportedFn, outs): the sample checks it. A call
+    whose target the asm does not name counts with callee \"?\"."""
+    sites = {}  # caller: [(callee, site, 1: T read after it, 2: handed on)]
+    for d in pathlib.Path(packets).iterdir():
+        rows = []  # (address, mnemonic, operands, comment)
+        for f in sorted(d.glob("asm*.txt")):
+            for ln in f.read_text(encoding="utf-8", errors="replace").splitlines():
+                m = ASM.match(ln)
+                if m:
+                    rows.append((int(ln.split()[0], 16), m.group(1).lower(), [o.strip() for o in m.group(2).split(",")],
+                                 m.group(3) or ""))
+        at = {a: i for i, (a, _, _, _) in enumerate(rows)}
+        for i, (a, mn, ops, note) in enumerate(rows):
+            c = CALLED.search(note)
+            if mn in CALLS:
+                u = t_after(rows, at, i + 2)
+            elif c and mn in TAILS:
+                u = 2
+            else:
+                continue
+            if u:
+                sites.setdefault(d.name, []).append((c.group(1) if c else "?", f"{a:08x}", u))
+    exported, grow = set(), True
+    while grow:
+        grow = False
+        for caller, ss in sites.items():
+            for g, _, u in ss:
+                if g != "?" and g not in exported and (u == 1 or caller in exported):
+                    exported.add(g)
+                    grow = True
+    out = {}
+    for caller, ss in sites.items():
+        for g, site, u in ss:
+            if u == 1 or caller in exported:
+                out.setdefault(caller, {}).setdefault(g, []).append(site)
+    return out
+
+
+TAILS = {"bra", "braf", "jmp"}  # with a "; call" note: a tail call (no return to the caller)
+
+
+def t_after(rows, at, start):
+    """From rows[start] (tflag_scan): 1 when T is read on some path before it is written, else 2 when some path
+    reaches a return (rts, rte, jmp, or a tail call) with T unwritten, else 0. A path running off the listing reads."""
+    work, seen, ret = [start], set(), 0
+    while work:
+        i = work.pop()
+        while i not in seen:
+            if i >= len(rows):
+                return 1
+            seen.add(i)
+            _, mn, ops, note = rows[i]
+            u = t_use(mn, ops)
+            if u == 1:
+                return 1
+            if u == 2:
+                break
+            if mn in ("rts", "rte", "jmp", "braf") or mn == "bra" and CALLED.search(note):
+                s = t_use(*rows[i + 1][1:3]) if i + 1 < len(rows) else 0  # its delay slot runs first
+                if s == 1:
+                    return 1
+                ret = ret or (2 if s != 2 else 0)
+                break
+            if mn == "bra":  # (bt, bf, bt/s, bf/s read T: returned above)
+                s = t_use(*rows[i + 1][1:3]) if i + 1 < len(rows) else 0
+                if s == 1:
+                    return 1
+                m = re.match(r"0x([0-9a-f]{8})", ops[0])
+                t = at.get(int(m.group(1), 16)) if m else None
+                if t is not None and s != 2:
+                    work.append(t)
+                break
+            i += 1
+    return ret
+
+
+def tflag_candidates(packets):
+    """The functions whose harness the T-across-a-call change (TcTflag) can alter: callers that read or hand on T after
+    a call (tflag_scan) and the callees of those calls (their T is compared at exit). Every other harness stays byte for
+    byte (no K line for register 16, no line t)."""
+    scan = tflag_scan(packets)
+    return set(scan) | {c for calls in scan.values() for c in calls if c != "?"}
+
+
+def zeroread_candidates(cfg):
+    """The functions whose harness the area-5 listing can alter: those project.json \"hw_ops\" lists with \"read
+    area5\" (core/hw_ops; TcHw serves 0 there for them only). Every other harness stays byte for byte."""
+    from core import hw_ops
+    return {x for x, ops in hw_ops.listed(cfg).items() if "read area5" in ops}
+
+
+def without_area5(cfg):
+    """cfg with the \"read area5\" ops out of \"hw_ops\" (an entry left with none goes): the baselines' stamps,
+    taken before the listing (--change zeroread)."""
+    hw = {}
+    for x, e in (cfg.get("hw_ops") or {}).items():
+        ops = [op for op in e.get("ops") or [] if str(op).lower() != "read area5"]
+        if ops:
+            hw[x] = dict(e, ops=ops)
+    return dict(cfg, hw_ops=hw)
 
 
 def harness_bytes(d, sig_of=None):
@@ -486,6 +628,13 @@ def listed(path):
     return out
 
 
+def every_harness(paths):
+    """Catalog functions with a harness meta.json, in address order (--every-harness)."""
+    funcs = {f["addr"] for f in (paths.read_json(paths.CATALOG) or {}).get("functions", [])}
+    return sorted((d.name for d in paths.HARNESS.iterdir() if d.name in funcs and (d / "meta.json").exists()),
+                  key=lambda x: int(x, 16))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--project", required=True)
@@ -497,11 +646,13 @@ def main():
     ap.add_argument("--max", type=int, default=100)
     ap.add_argument("--slots", type=int)
     ap.add_argument("--change", choices=("r14", "fret", "fargs", "late", "spin", "dslot", "fnrmw", "lrep", "retfn",
-                                         "fipr", "runflag", "mockwrite", "runflag+mockwrite", "sz", "fret+fargs", "none"),
+                                         "fipr", "runflag", "mockwrite", "runflag+mockwrite", "sz", "regout", "sz+regout",
+                                         "fret+fargs", "none", "tflag", "zeroread", "tflag+zeroread"),
                     default="r14",
                     help="which oracle change (docstring)")
     ap.add_argument("--list", action="append", default=[], help="a file of more candidate addresses")
     ap.add_argument("--dry", action="store_true")
+    ap.add_argument("--every-harness", action="store_true", help="every harness, not only the matched functions")
     a = ap.parse_args()
     ws = use_project(a.project)
     if not a.dry and a.phase != "refresh" and server_state(ws, timeout=3) is not None:
@@ -516,7 +667,8 @@ def main():
         scripts, catalog, ranges = baseline(folder)
         if not scripts:
             sys.exit(f"no *.java in {folder}")
-        olds.append((old_stamper(cfg, scripts, catalog, ranges, "mockwrite" in a.change), catalog))
+        olds.append((old_stamper(without_area5(cfg) if "zeroread" in a.change else cfg, scripts, catalog, ranges,
+                                 "mockwrite" in a.change), catalog))
 
     def was_current(st, x):
         for old, catalog in olds:
@@ -540,11 +692,15 @@ def main():
             | (fipr_candidates(paths.PACKETS) if "fipr" in a.change else set())
             | (runflag_candidates(cfg) if "runflag" in a.change else set())
             | (mockwrite_candidates(cfg, paths.HARNESS) if "mockwrite" in a.change else set())
-            | (sz_candidates(cfg) if a.change == "sz" else set()))
+            | (sz_candidates(cfg, a.every_harness) if "sz" in a.change else set())
+            | (regout_candidates(ws) if "regout" in a.change else set())
+            | (tflag_candidates(paths.PACKETS) if "tflag" in a.change else set())
+            | (zeroread_candidates(cfg) if "zeroread" in a.change else set()))
     for f in a.list:
         cand |= listed(f)
     current, refreshable, other = [], [], []
-    for x in oracle_fresh.matched_functions():
+    matched = oracle_fresh.matched_functions()
+    for x in every_harness(paths) if a.every_harness else matched:
         st = (paths.read_json(paths.HARNESS / x / "meta.json") or {}).get("oracle_stamp")
         (current if st == new.today(x) else refreshable if was_current(st, x) else other).append(x)
     must = [x for x in refreshable if x in cand]
@@ -627,6 +783,8 @@ def main():
         return 0
 
     def judge(x):
+        if x not in matched:  # --every-harness: no raw C to judge
+            return None
         try:
             return refine.harness_stale(cfg, x)
         except refine.infra.InfraError as e:
