@@ -109,6 +109,10 @@ def main():
             os.environ["DECOMP_PROJECT"] = wss[0]
         from core import audit, paths
         sys.exit(audit.main(wss or [str(paths.ROOT)], as_json=a.json, verbose=a.verbose))
+    if a.cmd == "sizes" and not a.project:  # DP's own files and the cap ratchet: no project needed
+        sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / "tools"))
+        import sizes
+        sys.exit(sizes.main([]))
     if a.project:
         os.environ["DECOMP_PROJECT"] = str(pathlib.Path(a.project).resolve())
     from core import check, ghidra, joined, paths  # paths resolves the project at import
@@ -174,15 +178,14 @@ def main():
                   f"tools/assign_systems.py --project {paths.ROOT} --dry, then without --dry")
     elif a.cmd == "export":
         ghidra.export(cfg, [paths.norm_addr(x) for x in a.addrs], pathlib.Path(a.out).resolve())
-    elif a.cmd == "sizes":
-        exts = {".py", ".java", ".c", ".h", ".html", ".md"}
-        dirs = [paths.TOOL, paths.REFERENCE, paths.ROOT / "oracle"]
-        scratch = (paths.TOOL / "tests" / ".work", paths.TOOL / "tests" / "ghidra_work")  # regress.py work dirs
-        files = [p for d in dirs for p in d.rglob("*") if p.suffix in exts and not any(p.is_relative_to(s) for s in scratch)]
-        files += list(paths.ROOT.glob("*.md"))
-        over = [(n, p) for p in files if (n := len(p.read_text(encoding="utf-8").splitlines())) > 400]
-        for n, p in sorted(over, reverse=True):
+    elif a.cmd == "sizes":  # the project's own files (DP's: tools/sizes.py, also run without --project)
+        sys.path.insert(0, str(paths.TOOL / "tools"))
+        import sizes
+        dirs = [paths.REFERENCE, paths.ROOT / "oracle"]
+        files = [p for d in dirs if d.is_dir() for p in d.rglob("*")] + list(paths.ROOT.glob("*.md"))
+        for n, p in sizes.over_cap(files):
             print(f"{n:5d}  {paths.show(p)}")
+        sys.exit(sizes.main([]))
         print("all files <= 400 lines" if not over else f"{len(over)} file(s) over 400 lines")
         sys.exit(1 if over else 0)
     elif a.cmd == "investigate":

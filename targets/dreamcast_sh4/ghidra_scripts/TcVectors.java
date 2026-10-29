@@ -291,7 +291,7 @@ public abstract class TcVectors extends TcOracle {
             for (int x : r.fq) eout.append(' ').append(hex(x));
             eout.append(' ').append(hex(r.mode));
         }
-        eout.append(TcStrict.exp(r)).append(TcOut.exp(r)).append("\nCOV");  // lines CS, XR (TcStrict)
+        eout.append(TcStrict.exp(r)).append(TcOut.exp(r)).append(TcTflag.exp(r)).append("\nCOV");  // lines CS, XR (TcStrict)
         for (int c : r.cov) eout.append(' ').append(c);
         eout.append("\nE\n");
     }

@@ -16,6 +16,9 @@
 //   cache   ocbi / ocbp / ocbwb @Rn: no-ops in the test run (callbacks) and in C (sh4_ocbi, sh4_ocbp, sh4_ocbwb).
 //           Memory is modelled coherent: what the cache would write back is already in RAM. ocbi on hardware drops a
 //           dirty line instead; the evidence must say the line holds nothing the code wrote through the cache.
+//   area5   a load from area 5 (TcBase.area5: external devices, nothing answers on a retail Dreamcast) returns 0
+//           (Flycast sh4_mem.cpp ReadMem_extdev_T), served here instead of a read fault; the C reads it as any
+//           load (the runners: header line y). Power Stone 2 8c0454a0 reads there through its own r15.
 // Static per prepare, as TcBase.sqWindow: TcPrepare sets `on` for every prepare (null: nothing listed, as before).
 import ghidra.app.emulator.EmulatorHelper;
 import ghidra.pcode.emulate.BreakCallBack;
@@ -28,7 +31,7 @@ final class TcHw {
     static TcHw on;  // the function being prepared, or null
     final TreeMap<Long, Long> reads = new TreeMap<>();  // listed register -> the target's value
     final TreeSet<Long> writes = new TreeSet<>();  // listed registers stored to
-    boolean gbr, bl, cache;
+    boolean gbr, bl, cache, area5;
 
     // Script arg 11: "-", or "hw" then "_"-separated items: "r" + register + "." + value (8 hex digits each),
     // "w" + register, "gbr", "bl", "cache" (core/hw_ops.arg; no ",;= ": analyzeHeadless.bat splits arguments at them).
@@ -39,6 +42,7 @@ final class TcHw {
             if (it.equals("gbr")) h.gbr = true;
             else if (it.equals("bl")) h.bl = true;
             else if (it.equals("cache")) h.cache = true;
+            else if (it.equals("z5")) h.area5 = true;
             else if (it.startsWith("r") && it.contains(".")) {
                 String[] p = it.substring(1).split("\\.");
                 h.reads.put(Long.parseLong(p[0], 16), Long.parseLong(p[1], 16));
@@ -89,6 +93,7 @@ final class TcHw {
 
     // TcFold: the bytes of a load inside one listed register (little endian), else null.
     byte[] read(long off, int size) {
+        if (area5 && TcBase.area5(off, size)) return new byte[size];  // area 5: 0 ("read area5")
         Map.Entry<Long, Long> e = reads.floorEntry(off);
         if (e == null || off + size > e.getKey() + 4) return null;
         byte[] b = new byte[size];
@@ -125,7 +130,7 @@ final class TcHw {
         }
         for (long r : writes) w.append(w.length() > 0 ? ", " : "").append('"').append(TcBase.hex(r)).append('"');
         return "{\"reads\": {" + s + "}" + (writes.isEmpty() ? "" : ", \"writes\": [" + w + "]") + ", \"gbr\": " + gbr
-            + ", \"bl\": " + bl + (cache ? ", \"cache\": true" : "") + "}";
+            + ", \"bl\": " + bl + (cache ? ", \"cache\": true" : "") + (area5 ? ", \"area5\": true" : "") + "}";
     }
 
     // vectors.txt header lines (before the first vector): Y per listed register, Z for GBR state.
@@ -135,7 +140,7 @@ final class TcHw {
         for (Map.Entry<Long, Long> e : on.reads.entrySet()) {
             s.append("Y ").append(TcBase.hex(e.getKey())).append(' ').append(TcBase.hex(e.getValue())).append('\n');
         }
-        return s.append(on.gbr ? "Z\n" : "").toString();
+        return s.append(on.gbr ? "Z\n" : "").append(on.area5 ? "y\n" : "").toString();
     }
 
     // expected.txt lines IM (TcSr.exit), GB (Result.gbr, -1 without the listing), FS, FC (TcFpscr.exit) and FN

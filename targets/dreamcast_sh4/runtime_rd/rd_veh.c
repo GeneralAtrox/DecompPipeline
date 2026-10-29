@@ -374,6 +374,10 @@ static LONG CALLBACK handler(EXCEPTION_POINTERS *ep)
     u32 addr = (u32)er->ExceptionInformation[1];
     if (addr == c->Eip) return call_trap(c);
     if (rd_p4_fault(addr, er->ExceptionInformation[0] == 1, c)) return EXCEPTION_CONTINUE_EXECUTION;
+    /* an area-5 read with line y: a read-only zero page there, and the load runs again (a store still faults) */
+    if (rd_area5 && er->ExceptionInformation[0] == 0 && tcrt_area5(addr, 1)
+        && VirtualAlloc((void *)(uintptr_t)(addr & ~(RD_PAGE - 1u)), RD_PAGE, MEM_RESERVE | MEM_COMMIT, PAGE_READONLY))
+        return EXCEPTION_CONTINUE_EXECUTION;
     if (!rd_page_guarded(addr) || g_nrearm >= 4) return EXCEPTION_CONTINUE_SEARCH;
     if (er->ExceptionInformation[0] == 0 && rd_is_code(addr) && !g_code_read) g_code_read = tcrt_fold(addr);
     rd_page_open(addr);

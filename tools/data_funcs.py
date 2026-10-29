@@ -22,7 +22,7 @@ import tempfile
 TOOL = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL / "tools"))
 sys.path.insert(0, str(TOOL))
-from common import expand_addrs, use_project  # noqa: E402
+from common import expand_addrs, use_project, write_project_json  # noqa: E402
 
 
 def ghidra_check(paths, ghidra, cfg, addrs, project):
@@ -60,8 +60,7 @@ def add(paths, addrs):
                      encoding="utf-8")
     elif new_extra:
         data["extra_functions"] = (extra or []) + new_extra
-    text = json.dumps(data, indent=2) + "\n"
-    pj.write_bytes((text.replace("\n", "\r\n") if "\r\n" in raw else text).encode("utf-8"))
+    write_project_json(pj, raw, data)
     print(f"project.json: {len(addrs)} catalog_overrides entr(ies), {len(new_extra)} new extra_functions; now run "
           "`decomp.py --project DIR catalog`, tools/assign_systems.py and prepare them (servers stopped)")
 

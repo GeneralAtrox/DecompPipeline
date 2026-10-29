@@ -15,6 +15,12 @@ One entry in "ops" per instruction:
   write R     a store to the hardware register R: logged and compared as a memory write (as the P4 cache-array
               stores, tc_p4.c); the C stores with tc_hw_write32(R, v) or tc_hw_write16(R, v)
   ocbi, ocbp, ocbwb   a cache block op: a no-op on both sides (memory is modelled coherent; sh4_ocbi etc. in C)
+  read area5  a load from area 5 (external devices: 0x14000000..0x17ffffff in each P0..P3 view) returns 0, as on a
+              retail Dreamcast where nothing answers there (Flycast sh4_mem.cpp ReadMem_extdev_T). The C reads it
+              with rd8/rd16/rd32 as any load (the runners serve 0: vectors.txt header line y). Opt-in, never global:
+              random input pointers land in area 5 about one time in eight, and serving those would change the
+              vectors of every function that reads through one. Stores there stay writes outside RAM (refused).
+              Power Stone 2 8c0454a0 indexes a pad table with its own r15 and reads area 5 in every vector
 
 Opt-in per address, as "spin_waits": the catalog (TcCatalog) counts the function's hardware ops, and the queue stops
 excluding it (core/orch.tier) only when the listing covers every one it counts: hw_refs no more than the listed reads
@@ -23,7 +29,7 @@ sys_ops and must be rebuilt). TcPrepare checks the body instruction by instructi
 does not name leaves the function unsupported."""
 import re
 
-KINDS = ("read", "write", "ldc gbr", "stc gbr", "ldc sr.bl", "ocbi", "ocbp", "ocbwb")
+KINDS = ("read", "write", "ldc gbr", "stc gbr", "ldc sr.bl", "ocbi", "ocbp", "ocbwb", "read area5")
 _READ = re.compile(r"read ([0-9a-f]{8})")
 _WRITE = re.compile(r"write ([0-9a-f]{8})")
 CACHE = ("ocbi", "ocbp", "ocbwb")
@@ -83,8 +89,8 @@ def covered(ops, f):
 def arg(cfg, addr):
     """TcPrepare's script arg 11: "-" for a function hw_ops does not list, else "hw:" and "_"-separated items
     (TcHw.parse): "r" + register + "." + value per register read (2 hex digits per byte of the register's width: 8
-    for the default 4), "w" + register per register stored to, "gbr", "bl", "cache". No ",;= ": analyzeHeadless.bat
-    splits arguments at them."""
+    for the default 4), "w" + register per register stored to, "gbr", "bl", "cache", "z5" (area-5 reads return 0).
+    No ",;= ": analyzeHeadless.bat splits arguments at them."""
     ops = listed(cfg).get(addr.lower())
     if ops is None:
         return "-"
@@ -93,5 +99,5 @@ def arg(cfg, addr):
              for r in sorted({m.group(1) for m in map(_READ.fullmatch, ops) if m})]
     items += [f"w{r}" for r in sorted({m.group(1) for m in map(_WRITE.fullmatch, ops) if m})]
     items += ["gbr"] * any(op.endswith("gbr") for op in ops) + ["bl"] * ("ldc sr.bl" in ops)
-    items += ["cache"] * any(op in CACHE for op in ops)
+    items += ["cache"] * any(op in CACHE for op in ops) + ["z5"] * ("read area5" in ops)
     return "hw:" + "_".join(items)

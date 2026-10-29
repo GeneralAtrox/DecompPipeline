@@ -24,6 +24,16 @@ static inline u32 tcrt_fold(u32 a)
     return (a >= 0x0c000000u && a < 0x0d000000u) ? (a | 0x80000000u) : a;
 }
 #define TCRT_STACK_LO 0x8cff0000u
+/* Area 5 (external devices, physical 0x14000000..0x17ffffff in every P0..P3 view): on a retail Dreamcast nothing
+ * answers there and a read returns 0 (Flycast, the project's reference: sh4_mem.cpp ReadMem_extdev_T, mapped by
+ * map_area5 for each of the 8 mirrors below P4). Served only for a function whose listed hardware ops say so
+ * (TcHw "read area5", vectors.txt header line y): Power Stone 2 8c0454a0 indexes a table with its own r15. */
+static inline int tcrt_area5(u32 a, u32 size)
+{
+    u32 z = a + size - 1u;
+    return a < 0xe0000000u && z >= a && (a & 0x1c000000u) == 0x14000000u && (z & 0x1c000000u) == 0x14000000u
+           && (a ^ z) < 0x04000000u;
+}
 /* P4 operand-cache address array (tc_p4.c): stores there are logged and compared, not faults */
 #define TCRT_P4_OCA_LO 0xf4000000u
 #define TCRT_P4_OCA_HI 0xf5000000u
@@ -57,6 +67,9 @@ void tcrt_set_low(const u32 bits[4]);    /* r0..r3 at entry (line L) */
 void tcrt_set_ro(const u32 r4_7[4]);     /* r4..r7 at entry (line R): sh4_r(4..7) until a call (TcOut) */
 void tcrt_set_ro_mask(u32 mask);        /* header line O: r(4+k) compared at exit for bit k (TcOut) */
 void tcrt_report_ro(FILE *out);         /* line RO: r4..r7 at exit, only after a line O */
+void tcrt_set_t_export(void);          /* header line t: T compared at exit (TcTflag) */
+void tcrt_report_t(FILE *out);         /* line RT: T at exit, only after a line t */
+void tcrt_set_area5(void);             /* header line y: area-5 reads return 0 (TcHw "read area5") */
 u32 tcrt_low(int index);                 /* for the generated thunk: a parameter in r0..r3 */
 void tcrt_set_retx(u32 value);           /* for the generated thunk: the extra result word (line RETX) */
 void tcrt_set_call_returns(const u32 rets[TCRT_RETS]);

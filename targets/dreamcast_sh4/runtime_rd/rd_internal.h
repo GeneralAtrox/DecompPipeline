@@ -92,6 +92,10 @@ void rd_sh4_live(u32 target, u32 k, const u32 r4_7[4]); /* after call k: r4..r7 
 void tcrt_set_ro(const u32 r4_7[4]); /* r4..r7 at entry (line R), as tc_rt.c */
 void tcrt_set_ro_mask(u32 mask);    /* header line O (TcOut) */
 void tcrt_report_ro(FILE *out);     /* line RO: r4..r7 at exit, only after a line O */
+void tcrt_set_t_export(void);      /* header line t (TcTflag) */
+void tcrt_report_t(FILE *out);     /* line RT: T at exit, only after a line t */
+void tcrt_set_area5(void);         /* header line y: area-5 reads return 0 (rd_veh.c) */
+extern int rd_area5;
 void rd_sh4_set_fq(const u32 bits[16]); /* fr0..fr15 at entry (line Q) */
 void rd_sh4_report_fq(FILE *out);       /* line QH: fr0..fr15 and the FPSCR mode word at exit */
 

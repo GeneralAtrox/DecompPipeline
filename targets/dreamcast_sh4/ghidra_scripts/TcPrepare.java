@@ -188,6 +188,7 @@ public class TcPrepare extends TcVectors {
                 hex(c.getEntryPoint().getOffset()), regs, esc(cSignature("fn_" + hex(c.getEntryPoint().getOffset()), cp))));
         }
         TcOut.prepare(this, facts.paramSummaries);  // r4..r7 outputs: its own, then its callees' (TcLive.of)
+        TcTflag.prepare(this, facts.paramSummaries);  // T handed back: its own, then its callees' (TcLive.of)
         live = facts.paramSummaries ? TcLive.of(this, calledBy(fn, body)) : null;  // callees changing r8..r14, r4..r7
         TcTrack.on = TcTrack.of(listing, body, calledBy(fn, body), proto);  // pointer calls' arguments, float NaN words
         TcStrict.callees(this, calledBy(fn, body), regsOf);  // mock_junk: what each callee may change (TcStrict)
@@ -230,7 +231,7 @@ public class TcPrepare extends TcVectors {
             extra.append(",\n  \"r_state\": [\"").append(TcSig.names(proto.giState).replace(", ", "\",\"")).append("\"]");
         }
         if (live != null && !live.meta().equals("{}")) extra.append(",\n  \"r_live\": ").append(live.meta());  // TcLive
-        extra.append(TcOut.meta());  // r_out, r_out_left, r_exports (TcOut)
+        extra.append(TcOut.meta()).append(TcTflag.meta());  // r_out, r_out_left, r_exports (TcOut); t_out, t_export
         if (sq != null) extra.append(",\n  \"sq_window\": ").append(sq.meta());  // TcSq
         if (TcFpscr.Sz.on != null) extra.append(",\n  \"fpscr_sz\": \"").append(a[13]).append('"');  // TcFpscr.Sz: the translator's facts
         if (proto.fpuState) extra.append(",\n  \"fpu_state\": true");  // TcSig.fpuProto: the whole FPU is state
@@ -281,6 +282,7 @@ public class TcPrepare extends TcVectors {
         String once = why == null ? TcFpu.once(this, proto, seed) : null;  // fipr/ftrv: one rounding vs seven
         String head = fpscrLine() + TcHw.header() + TcCalls.flagHeader() + (live != null ? live.header() : "")
             + (sq != null ? sq.header() : "") + TcOut.header();
+        head += TcTflag.header();  // T handed back (TcTflag)
         Files.write(harness.resolve("vectors.txt"), (head + TcStrict.header(facts) + vout).getBytes("UTF-8"));  // J, U
         Files.write(harness.resolve("expected.txt"), eout.toString().getBytes("UTF-8"));
         for (int s = 0; s < 2; s++) {  // chosen vectors whose strict replay failed: not written (TcStrict.replay)

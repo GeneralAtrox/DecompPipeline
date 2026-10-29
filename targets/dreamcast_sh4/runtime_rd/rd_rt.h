@@ -64,6 +64,8 @@ void sh4_fipr_fv(int m, int n);                       /* fipr FVm,FVn: fr n+3 = 
 u32 sh4_r(int index);                                 /* read r8..r14 as runtime state (hand-written code keeps a */
 void sh4_set_r(int index, u32 value);                 /* pointer in r14 across calls), or the r4..r7 a callee handed
                                                        * back (meta r_out); write it */
+u32 sh4_t(void);                                      /* T as a callee left it (meta t_out), and T handed back */
+void sh4_set_t(u32 value);                            /* to the caller (meta t_export; tc_rt.h) */
 u32 sh4_stc_sr(void);                                 /* stc sr,Rn: SR (the interrupt mask is compared at exit, */
 void sh4_ldc_sr(u32 value);                           /* as tc_rt.h); ldc Rm,sr */
 u32 tc_hw_read32(u32 reg);                            /* a listed hardware register's load (tc_rt.h): the target's */

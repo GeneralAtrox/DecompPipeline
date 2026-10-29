@@ -231,6 +231,17 @@ def out_notes(meta):
         lines += ["", "## Results handed back in " + ", ".join(meta["r_exports"]), "",
                   "Its callers read these registers after calling it, and they are compared at exit: before",
                   "returning, set each with sh4_set_r(N, value) to the value the original leaves there, as raw.c does."]
+    if meta.get("t_out"):  # T after a call (TcTflag)
+        lines += ["", "## Callees that hand T back", "",
+                  "This function reads the T flag after calling these callees, before setting it (meta t_out: "
+                  + ", ".join(f"fn_{t}" for t in meta["t_out"]) + "): T is what the callee left. Before each call",
+                  "hand T over with sh4_set_t(t) and after it read it with t = sh4_t(), as raw.c does; never keep the",
+                  "T it had before the call."]
+    if meta.get("t_export"):
+        lines += ["", "## T handed back", "",
+                  "Its callers read the T flag after calling it, and T is compared at exit: before returning, set it",
+                  "with sh4_set_t(t) to the T the original leaves (a path that never sets T hands back the T it got:",
+                  "t = sh4_t() at entry), as raw.c does."]
     return lines
 
 

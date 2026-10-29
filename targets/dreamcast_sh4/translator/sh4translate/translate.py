@@ -101,6 +101,8 @@ class Signature:
                                     # or the function's own, read by its callers (meta "r_exports"; TcOut)
     sz_entry: tuple = (0,)          # the FPSCR.SZ its callers run it with (meta "fpscr_sz", TcFpscr.Sz)
     sz_exits: dict | None = None    # {callee: "XY"}: its SZ at return entered with 0 (X) and 1 (Y), "u" unknown
+    t_state: bool = False           # T handed over like r8..r14: a callee's T read after it (meta "t_out"), or the
+                                    # function's own, read by its callers (meta "t_export"; TcTflag)
 
     @classmethod
     def from_meta(cls, meta):
@@ -115,7 +117,7 @@ class Signature:
                    bool(meta.get("fpscr_state")), sq_callee_bytes(meta.get("sq_callee")),
                    frozenset(r for regs in (meta.get("r_out") or {}).values() for r in regs.split(","))
                    | frozenset(meta.get("r_exports") or ()),
-                   *fpscr_sz(meta.get("fpscr_sz")))
+                   *fpscr_sz(meta.get("fpscr_sz")), t_state=bool(meta.get("t_out") or meta.get("t_export")))
 
     @classmethod
     def generic(cls, addr):
@@ -164,7 +166,7 @@ def R(i):
 
 def regkey(r):
     """Sort key of a register variable: r0..r15, then fr0..fr15."""
-    return (r.startswith("f"), int(r.lstrip("fr")))
+    return (2, 0) if r == "t" else (r.startswith("f"), int(r.lstrip("fr")))     # t: T as state (TcTflag)
 
 
 # ------------------------------------------------------------------------------------------------ register effects
@@ -2261,6 +2263,8 @@ class FunctionTranslator:
         # runtime state: r8..r14 and fr12..fr15 always (what a callee may read and what the exit leaves), the whole
         # fr bank when the FPU is state
         self.state = set(STATE) | {F(k) for k in (range(16) if self.fpu_all else range(12, 16))} | set(self.sig.r_out)
+        if self.sig.t_state:
+            self.state.add("t")     # sh4_t / sh4_set_t at calls and exits (TcTflag)
         allv = [self.insns[a] for a in sorted(self.primary)] + [self.insns[a] for a in sorted(self.slots)]
         self.pr_read = any(x.op in ("sts", "sts.l") and x.imm == 2 for x in allv)
         if self.pr_targets:
@@ -2453,12 +2457,16 @@ class FunctionTranslator:
         sig = self.sig
         regs = sorted((x for x in self.used if x.startswith("r") and x[1:].isdigit()), key=regkey)
         frs = sorted((x for x in self.used if x.startswith("fr") and x[2:].isdigit()), key=regkey)
-        state = [r for r in regs + frs if r in self.state]
+        state = [r for r in regs + frs if r in self.state] + ["t"] * ("t" in self.state and "t" in self.used)
 
         def put(r):
+            if r == "t":
+                return "sh4_set_t(t);"
             return f"sh4_set_fr({r[2:]}, {r});" if r.startswith("fr") else f"sh4_set_r({r[1:]}, {r});"
 
         def get(r):
+            if r == "t":
+                return "t = sh4_t();"
             return f"{r} = sh4_fr({r[2:]});" if r.startswith("fr") else f"{r} = sh4_r({r[1:]});"
         ret_clean = None
         if sig.ret == "void" and self.sp_input:
@@ -2670,6 +2678,8 @@ class FunctionTranslator:
                 out.append(f"    {r} = in_{r};")
             elif r in self.state and r in self.live_in[self.entry]:
                 out.append(f"    {r} = sh4_fr({r[2:]});")
+        if "t" in state and "t" in decl and "t" in self.live_in[self.entry]:
+            out.append("    t = sh4_t();")     # its callers' T, handed back on a path that keeps it (TcTflag)
         if "pr" in self.used and "pr" in decl:
             out.append(f"    pr = {'ret_addr' if self.recursive or self.sp_input else h(self.f.sentinel)};")
         if self.recursive or self.sp_input:

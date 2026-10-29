@@ -42,13 +42,13 @@ final class TcLive {
         TcLive out = new TcLive();
         Deltas d = new Deltas(s.getCurrentProgram());
         for (Function g : callees) {
-            long[][] e = new long[11][];  // all NONE; d's memo stays whole
+            long[][] e = new long[12][];  // all NONE; d's memo stays whole
             boolean any = false;
             for (int i = 0; i < 7 && (s.sig.summary(g).writes & TcFlow.ISTATE) != 0; i++) {
                 e[i] = (s.sig.summary(g).writes & (1 << (24 + i))) == 0 || Arrays.equals(d.of(g)[i], KEPT) ? NONE : d.of(g)[i];
                 any |= e[i] != NONE;
             }
-            any |= TcOut.outs(s, g, e);  // r4..r7 (TcOut)
+            any |= TcOut.outs(s, g, e) | TcTflag.outs(s, g, e);  // r4..r7 (TcOut), T (TcTflag: entry 11)
             if (any) out.table.put(g.getEntryPoint().getOffset(), e);
         }
         return out.table.isEmpty() ? null : out;
@@ -63,7 +63,7 @@ final class TcLive {
         long[][] e = table.get(target);
         if (e == null) return;
         for (int i = 0; i < e.length; i++) {
-            if (e[i] == NONE) continue;
+            if (e[i] == NONE || i == 11 && TcTflag.apply(o, emu, draws[k % 16])) continue;  // T (TcTflag)
             String r = "r" + (i < 7 ? 8 + i : i - 3);
             long was = o.reg(emu, r), now = (was + amount(e[i], draws[k % 16])) & 0xffffffffL;
             emu.writeRegister(r, o.u(now));
@@ -87,7 +87,7 @@ final class TcLive {
             for (int i = 0; i < e.getValue().length; i++) {
                 long[] d = e.getValue()[i];
                 if (d == NONE) continue;
-                b.append(String.format("K %08x %d %d", e.getKey(), i < 7 ? 8 + i : i - 3, d.length));
+                b.append(String.format("K %08x %d %d", e.getKey(), i < 7 ? 8 + i : i < 11 ? i - 3 : 16, d.length));
                 for (long x : d) b.append(String.format(" %08x", x & 0xffffffffL));
                 b.append('\n');
             }

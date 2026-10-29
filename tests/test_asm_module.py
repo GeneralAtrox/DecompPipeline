@@ -12,9 +12,13 @@ call (r4 and r9 kept, the subroutine's work lost). Pass and fail controls:
    built by rotcl in a local subroutine bound `shll2 r9; braf r9` the same way; an unbounded braf gets no table;
 4. core/asm_modules: the leaf is a local piece of a module (reads r9 at entry, hands back r9 and r4); a leaf
    handing back only r4 is TcOut's class; a leaf sharing nothing is a plain private callee; a leaf whose address a
-   word of the image holds is no local.
+   word of the image holds is no local;
+5. lint's 60 KB cap: a unit (a catalog_overrides not_entry piece in its blocks) may pass it, through check.run_check
+   as the judge reads project.json; a function without a piece in its blocks still fails it, and a unit's other lint
+   errors still fail.
 Synthetic data. Run: python -W error tests/test_asm_module.py.
 """
+import json
 import os
 import pathlib
 import struct
@@ -29,7 +33,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 sys.path.insert(0, str(ROOT / "targets" / "dreamcast_sh4" / "translator"))
 from test_sync import TMP  # noqa: E402,F401  (sets DECOMP_PROJECT when run alone)
 from sh4translate import translate as tx  # noqa: E402
-from core import asm_modules, check, mid_entries, toolcfg  # noqa: E402
+from core import asm_modules, check, lint, mid_entries, toolcfg  # noqa: E402
 
 SH4 = ROOT / "targets" / "dreamcast_sh4"
 WORK = ROOT / "tests" / ".work"
@@ -201,6 +205,63 @@ class Detect(unittest.TestCase):
     def test_pointer_word_makes_it_public(self):
         got = self.find(CALLER + LEAF, [(BASE, BASE + 0x14), (LEAF_AT, LEAF_AT + 8)], extra_words=(LEAF_AT,))
         self.assertEqual(got["modules"], [])
+
+
+class ApplyDropsPieces(unittest.TestCase):
+    """tools/asm_modules --apply: a piece leaves "entry" (Spawn 8c0602aa) and extra_functions (a list or its file)."""
+
+    def test_entry_and_extra_list(self):
+        sys.path.insert(0, str(ROOT / "tools"))
+        from asm_modules import drop_pieces
+        data = {"catalog_overrides": {"entry": ["8c05fec2", "8c0602aa"]}, "extra_functions": ["8c05fec2", "8c0602a0"]}
+        self.assertEqual(drop_pieces(data, ".", {"8c0602a0", "8c0602aa"}), (["8c0602aa"], ["8c0602a0"]))
+        self.assertEqual(data, {"catalog_overrides": {"entry": ["8c05fec2"]}, "extra_functions": ["8c05fec2"]})
+
+    def test_extra_file_and_nothing_to_drop(self):
+        sys.path.insert(0, str(ROOT / "tools"))
+        from asm_modules import drop_pieces
+        with tempfile.TemporaryDirectory() as td:
+            f = pathlib.Path(td) / "extra.txt"
+            f.write_text("8c05fec2  # drawer\n8c0602a0\n", encoding="utf-8")
+            data = {"extra_functions": "extra.txt"}
+            self.assertEqual(drop_pieces(data, td, {"8c0602a0"}), ([], ["8c0602a0"]))
+            self.assertEqual(f.read_text(encoding="utf-8"), "8c05fec2  # drawer\n")
+            self.assertEqual(drop_pieces(data, td, {"8c999999"}), ([], []))   # control: the file stays
+            self.assertEqual(f.read_text(encoding="utf-8"), "8c05fec2  # drawer\n")
+
+
+class UnitSizeCap(unittest.TestCase):
+    META = {"name": "fn_8c000000", "signature": "u32 fn_8c000000(u32 param_r4)",
+            "blocks": [["8c000000", "8c000013"], ["8c000014", "8c00001b"]]}
+    BIG = ('#include "tc_rt.h"\nu32 fn_8c000000(u32 param_r4)\n{\n' + "    param_r4 = param_r4 + 1u;\n" * 2500
+           + "    return param_r4;\n}\n")
+    GLOBAL = "static u32 g;\n"          # R6: a global, another lint error
+    SIZE = "work.c is larger than 60 KB"
+
+    def test_big_unit_passes(self):
+        self.assertGreater(len(self.BIG), 60000)
+        self.assertEqual(lint.lint(self.BIG, self.META, ["8c000014"]), [])
+
+    def test_big_non_unit_fails(self):      # controls: no piece, a piece outside the blocks, the old call
+        for ne in ((), ["8c000020"], None):
+            self.assertEqual(lint.lint(self.BIG, self.META, ne), [self.SIZE])
+        self.assertEqual(lint.lint(self.BIG, self.META), [self.SIZE])
+
+    def test_unit_other_errors_fail(self):
+        errs = lint.lint(self.BIG + self.GLOBAL, self.META, ["0c000014"])   # P0 form of the piece
+        self.assertNotIn(self.SIZE, errs)
+        self.assertTrue(any(e.startswith("R6:") for e in errs), errs)
+
+    def test_run_check_reads_project_not_entry(self):
+        with tempfile.TemporaryDirectory() as d:
+            h = pathlib.Path(d)
+            (h / "meta.json").write_text(json.dumps(self.META), encoding="utf-8")
+            (h / "work.c").write_text(self.BIG + self.GLOBAL, encoding="utf-8")
+            for over, size in (({"not_entry": ["8c000014"]}, False), ({"entry": ["8c000014"]}, True), (None, True)):
+                cfg = {"catalog_overrides": over} if over is not None else {}
+                r = check.run_check(cfg, "8c000000", h / "work.c", harness_dir=h, fused=False)
+                self.assertEqual((r["verdict"], r["stage"]), ("FAIL", "lint"))
+                self.assertEqual(self.SIZE in r["lint"], size, (over, r["lint"]))
 
 
 if __name__ == "__main__":

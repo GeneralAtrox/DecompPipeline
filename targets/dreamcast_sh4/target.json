@@ -80,6 +80,7 @@
     "TcSum.java",
     "TcTail.java",
     "TcText.java",
+    "TcTflag.java",
     "TcTrack.java",
     "TcVectors.java"
   ],

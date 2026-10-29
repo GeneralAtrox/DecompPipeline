@@ -25,6 +25,9 @@ static int g_woverflow;
 static u32 g_gs[7]; /* r8..r14 */
 static u32 g_ro[4]; /* r4..r7 as the last call left them (TcOut): its arguments, a K callee's output added */
 static u32 g_ro_mask; /* header line O: the r4..r7 compared at exit (bit k: r(4+k)), reported as RO */
+static u32 g_t; /* T as the C handed it over (sh4_set_t), or as a K line for register 16 left it after a call */
+static int g_t_export; /* header line t: T compared at exit, reported as RT (TcTflag) */
+static int g_area5; /* header line y: a read in area 5 returns 0 (tcrt_area5, TcHw "read area5") */
 static u32 g_low[4]; /* r0..r3 at entry (vectors.txt line L) */
 static u32 g_retx;   /* the extra result word (a nonstandard result register, a u64's high word) */
 static int g_has_retx;
@@ -51,6 +54,7 @@ static void fault(const char *kind, u32 addr)
 
 static int check(u32 addr, u32 size, int write)
 {
+    if (!write && g_area5 && tcrt_area5(addr, size)) return 0; /* reads 0, no fault (the caller returns 0) */
     if (addr < TCRT_VALID_LO || addr > 0x8d000000u - size) {
         fault(write ? "write" : "read", addr);
         return 0;
@@ -147,7 +151,8 @@ void tcrt_set_sq_window(void) { tcrt_sq_window = 1; }
 
 /* TcLive: the callees that change r8..r14, or hand back r4..r7 (TcOut), vectors.txt header lines K, kept across
  * vectors, and the vector's draws (line A). After the mocked call number k to such a callee, rN += its delta: the
- * constant, one of its set (draw k), or 0x20 * (1 + draw % 3) when unknown, exactly as the oracle's mocked call. */
+ * constant, one of its set (draw k), or 0x20 * (1 + draw % 3) when unknown, exactly as the oracle's mocked call.
+ * Register 16 is T (TcTflag): T = (draw k >> 8) & 1. */
 #define MAX_LIVE 256
 static struct { u32 target, reg, n, d[4]; } g_live[MAX_LIVE];
 static u32 g_nlive;
@@ -155,7 +160,7 @@ static u32 g_draws[16];
 
 void tcrt_add_live(u32 target, u32 reg, u32 n, const u32 d[4])
 {
-    if (g_nlive >= MAX_LIVE || reg < 4 || reg > 14 || n > 4) return;
+    if (g_nlive >= MAX_LIVE || reg < 4 || reg > 14 && reg != 16 || n > 4) return;
     g_live[g_nlive].target = tcrt_fold(target);
     g_live[g_nlive].reg = reg;
     g_live[g_nlive].n = n;
@@ -170,6 +175,7 @@ static void live_apply(u32 target, u32 k)
     u32 draw = g_draws[k % 16];
     for (u32 i = 0; i < g_nlive; i++) {
         if (g_live[i].target != target) continue;
+        if (g_live[i].reg == 16) { g_t = draw >> 8 & 1u; continue; } /* T (TcTflag) */
         u32 n = g_live[i].n;
         u32 *rn = g_live[i].reg >= 8 ? &g_gs[g_live[i].reg - 8] : &g_ro[g_live[i].reg - 4];
         *rn += n == 1 ? g_live[i].d[0] : n ? g_live[i].d[draw % n] : 0x20u * (1u + draw % 3u);
@@ -341,6 +347,10 @@ void sh4_set_r(int i, u32 v)
     if (i >= 4 && i < 8) g_ro[i - 4] = v;
 }
 
+u32 sh4_t(void) { return g_t; }
+
+void sh4_set_t(u32 v) { g_t = v & 1u; }
+
 /* SR (TcSr): set from line I, its interrupt mask reported at exit (line IM); 0 and not reported without a line I. */
 static u32 g_sr;
 static int g_has_sr;
@@ -472,6 +482,7 @@ void tcrt_reset(void)
     tcrt_strict_reset();
     memset(g_gs, 0, sizeof g_gs);
     memset(g_ro, 0, sizeof g_ro);
+    g_t = 0;
     memset(g_low, 0, sizeof g_low);
     memset(g_rets, 0, sizeof g_rets);
     memset(g_draws, 0, sizeof g_draws);
@@ -511,6 +522,15 @@ void tcrt_report_gs(FILE *out)
 void tcrt_set_ro(const u32 r4_7[4]) { memcpy(g_ro, r4_7, sizeof g_ro); }
 
 void tcrt_set_ro_mask(u32 mask) { g_ro_mask = mask; }
+
+void tcrt_set_t_export(void) { g_t_export = 1; }
+
+void tcrt_report_t(FILE *out)
+{
+    if (g_t_export && !tcrt_halted) fprintf(out, "RT %u\n", g_t);
+}
+
+void tcrt_set_area5(void) { g_area5 = 1; }
 
 void tcrt_report_ro(FILE *out)
 {
