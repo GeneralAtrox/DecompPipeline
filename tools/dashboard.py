@@ -109,14 +109,38 @@ def collect(projects_dir, mirrors=()):
                         g = ws.parent
                     part = ws.relative_to(g).as_posix() if ws != g else "main"
                     home = pathlib.Path(projects_dir) / g.relative_to(base)
-                    w = {"console": con.get("name", key), "game": g.name, "part": part,
+                    w = {"console": con.get("name", key), "game": g.name, "part": part, "home": g.relative_to(base),
                          "where": "mirror" if base != pathlib.Path(projects_dir) else "here",
                          "port": (home / "port" / "game.json").is_file(),
                          "progress": load(home / "progress.json", {}) or {}, **workspace(ws)}
                     k = (w["game"], part)
                     if k not in best or w["_t"] > best[k]["_t"]:
                         best[k] = w
+    homes = {(pathlib.Path(projects_dir) / g).resolve() for g in {w["home"] for w in best.values()}}
+    for w in own_projects(projects_dir, homes):
+        best[(w["game"], "main")] = w
+    for w in best.values():
+        w.pop("home")
     return sorted(best.values(), key=lambda w: (w["console"], w["game"], w["part"]))
+
+
+def own_projects(projects_dir, homes, depth=3):
+    """Games made some other way (their own port, research only, not on DecompPipeline yet): any folder within
+    `depth` levels of the projects folder whose progress.json has a "console", outside the workspaces' game folders.
+    Its "road" (docs/DASHBOARD.md) stands in for the steps the page would otherwise read from a workspace."""
+    base = pathlib.Path(projects_dir)
+    for top, dirs, names in os.walk(base):
+        t = pathlib.Path(top)
+        dirs[:] = [] if len(t.relative_to(base).parts) >= depth else             [d for d in dirs if not d.startswith((".", "DecompPipeline")) and d not in ("External", "node_modules")]
+        if "progress.json" not in names or t.resolve() in homes:
+            continue
+        pr = load(t / "progress.json", {}) or {}
+        if not isinstance(pr, dict) or not pr.get("console"):
+            continue
+        when = (t / "progress.json").stat().st_mtime
+        yield {"console": pr["console"], "game": pr.get("game") or t.name, "part": "main", "where": "here",
+               "port": False, "progress": pr, "units": [], "counts": {k: [0, 0] for k in STATES}, "harnesses": 0,
+               "updated": datetime.datetime.fromtimestamp(when).strftime("%Y-%m-%d %H:%M"), "_t": when, "home": ""}
 
 
 def main(argv=None):
