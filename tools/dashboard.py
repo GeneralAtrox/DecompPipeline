@@ -37,7 +37,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))  # also under p
 import scorecard_data as sd  # noqa: E402
 
 TOOL = sd.TOOL
-from core import toolcfg  # noqa: E402
+from core import scope, toolcfg  # noqa: E402
 
 SPEC = TOOL / "tools" / "scorecard" / "spec.json"
 PAGE = TOOL / "tools" / "dashboard" / "page.html"
@@ -66,12 +66,22 @@ def state_of(row, rd, verdict=None):
 
 
 def workspace(ws):
-    """{name, units: [[unit name, [[addr, bytes, state index, source], ...]], ...], counts} for one workspace. A
-    workspace without a ledger (judged by the translator only, or not started) lists its catalog's functions."""
+    """{name, units: [[unit name, [[addr, bytes, state index, source], ...]], ...], counts} for one workspace: every
+    function of its decompile scope (core/scope), so one with no ledger row yet counts as not done (refused if it
+    touches hardware: core/coverage.excluded_functions, the port kit's), plus any other ledger row. A workspace without
+    a ledger (judged by the translator only, or not started) lists its catalog's functions."""
     led = (load(ws / "state" / "ledger.json", {}) or {}).get("functions", {})
-    verdicts = (load(ws / "state" / "translator_verdicts.json", {}) or {}).get("functions", {})
     cat = load(ws / "state" / "catalog.json", {}) or {}
-    size = {f["addr"]: f.get("bytes") or 0 for f in cat.get("functions", []) if isinstance(f, dict) and "addr" in f}
+    fs = [f for f in cat.get("functions", []) if isinstance(f, dict) and "addr" in f]
+    size = {f["addr"]: f.get("bytes") or 0 for f in fs}
+    if led:
+        hw = {f["addr"] for f in fs if f.get("hw_refs") or f.get("sys_ops") or f.get("hw")}  # hw: a mirror's flag
+        try:
+            led = {**{a: {"status": "skipped", "source": "hardware"} if a in hw else None
+                      for a in scope.scope_functions(ws)}, **led}
+        except (OSError, ValueError):  # a scope the copy cannot read (e.g. an extras file a mirror lacks)
+            pass
+    verdicts = (load(ws / "state" / "translator_verdicts.json", {}) or {}).get("functions", {})
     rds = load(ws / "state" / "readable.json", {}) or {}
     rds = rds.get("functions", rds) if isinstance(rds, dict) else {}
     systems = (load(ws / "state" / "systems.json", {}) or {}).get("systems", [])
