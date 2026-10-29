@@ -25,6 +25,7 @@ platform is a **target** under `targets/` with its own README: `dreamcast_sh4`, 
 | docs/PROOF_GATES.md, docs/CALL_COVERAGE.md | Coverage gate, mutation check, call-site coverage |
 | docs/READABLE_STAGE.md | The readable stage: argument placement, lean sandbox, drafts, sync, library, headers |
 | docs/TOOLS.md | Every operator tool, `decomp.py audit`, the regression suite |
+| docs/DASHBOARD.md | `Dashboard.bat`: each game's road from disc to port, the work board, the function treemap; the two files agents keep current |
 | docs/DEFINITION_OF_DONE.md | When a game counts as done |
 | port/README.md | The port kit's modules and what a game turns on in its game.json |
 

@@ -2,7 +2,7 @@
  "_doc": "docs/DEFINITION_OF_DONE.md. Every number tools/scorecard.py judges against lives here. Paths are relative: roots and own_translator (the user's own translator not yet imported into targets/<target>/translator/: partial until it is) to the projects folder (config key projects_dir, else DecompPipeline's parent folder), probes to the DecompPipeline checkout.",
  "consoles": {
   "dreamcast": {"name": "Dreamcast", "target": "dreamcast_sh4", "cpu": "sh4",
-                "roots": ["DreamCast/ToyCommander", "DreamCast/Spawn In the Demon's Hand", "DreamCast/PowerStone2"],
+                "roots": ["DreamCast/ToyCommander", "DreamCast/Spawn In the Demon's Hand", "DreamCast/PowerStone2", "DreamCast/Vigilante8"],
                 "own_translator": null},
   "saturn": {"name": "Saturn", "target": "saturn_sh2", "cpu": "sh2", "roots": ["SegaSaturn/Dragon Force", "SegaSaturn/Dragon Force 2",
                                                                      "SegaSaturn/SaturnBomberman", "SegaSaturn/Robopit"],
