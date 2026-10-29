@@ -20,7 +20,7 @@ from core import toolcfg  # noqa: E402
 
 # what the repository tracks (live's git ls-files: these roots); the rest of a stage folder is not shipped
 TRACKED_DIRS = ("core", "docs", "port", "targets", "tests", "tools", "ui")
-TRACKED_TOP = (".gitignore", "LICENSE", "README.md", "config.json", "decomp.py", "refine.py", "xproject.py")
+TRACKED_TOP = (".gitignore", "AGENTS.md", "LICENSE", "README.md", "config.json", "decomp.py", "refine.py", "xproject.py")
 IGNORED_PARTS = {"__pycache__", ".work", "ghidra_work", "backup"}
 IGNORED_NAMES = {toolcfg.LOCAL, "patterns.local.json"}
 TEXT = {".py", ".md", ".json", ".java", ".c", ".h", ".txt", ".html", ".js", ".css", ".gitignore", ".bat", ".sh",

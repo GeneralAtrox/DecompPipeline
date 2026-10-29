@@ -1,4 +1,4 @@
-"""sizes.py: the files over the 400-line cap (README "Layout"), and the ratchet that keeps it from drifting again.
+"""sizes.py: the files over the 400-line cap (AGENTS.md "Layout"), and the ratchet that keeps it from drifting again.
 
 The cap counts the kinds an agent reads whole (.py .java .c .h .html .md); data and proof json are exempt. DP had 65
 such files over the cap when this landed (the four translators' translate.py the largest), so the cap is a ratchet:

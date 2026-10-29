@@ -1,0 +1,105 @@
+# Operator tools, the audit and the regression suite
+
+Moved from the README; the entry point is AGENTS.md.
+
+### tools/
+
+Every tool takes `--project DIR` like `decomp.py` (repeatable where several make sense) and reads address lists
+from `@FILE` (one or more per line, `#` comments). Never put long hex address lists on a command line: Windows
+Defender kills such processes as Trojan:Win32/Commando.A!ml.
+
+| Tool | Does |
+|------|------|
+| `bounded.py SECONDS CMD...` | Runs CMD with a hard limit and kills its whole process tree (`taskkill /T /F`) on expiry, exit 124. Git Bash `timeout` leaves java.exe/python.exe grandchildren running. |
+| `watchdog.py --project DIR... [--workers N] [--minutes M]` | Polls the running servers each minute; exits 1 with `ACTION:` as soon as one is unreachable, usage-blocked, finished, short of workers or has its loop off. Always bounded. |
+| `requeue.py --project DIR --note TEXT (--rx REGEX \| ADDR... \| @FILE) [--status S,S] [--seed NOTE [--stale]] [--dry]` | Requeues by verdict_detail regex (statuses default `skipped,failed`) or by address. `--seed` starts the re-match from the current matched C (`--stale`: from `matched_stale/` first, to get back C a faulty harness forced out), judged before any agent run. Through the server's `/api/requeue` when it runs; otherwise on the ledger directly, exactly as the server does, after a backup to `state/ledger.before-requeue-<time>.json`. |
+| `sigdrift.py --project DIR [--list FILE] [--all] [--json FILE]` | After a checker deploy: matched functions whose stored harness disagrees with the current prototypes (TcSigs.java on a private read-only Ghidra copy). Tier `signature` (signature, result register or support changed: lint R3 fails, requeue) and `compared` (a callee or runtime state compared on more registers: re-judge; or a call records an older callee signature than the callee's own harness: re-prepare it before readable work). `--list` writes the signature tier (with `--all` both) for `requeue.py @FILE`. |
+| `reprepare_stale.py --project DIR [--dry] [--rounds 8] [--per-fn 2] [--stamps [--max N] [--slots N]]` | Servers stopped. The callee-record cascade (core/cascade.py): re-prepares matched harnesses whose callee records differ from the callees' own harness signatures until a scan finds none (each caller at most --per-fn times, since a re-prepared caller's new signature can leave its own callers stale; the callees are the reference, never touched). Every re-prepared matched function's raw C is judged on its new harness; a FAIL is listed for tools/requeue.py. Exit 1 while anything is left. `--stamps [--max 100] [--slots N]` first re-prepares the matched harnesses whose oracle stamp is not today's (no stamp, or other oracle inputs), `ghidra_parallel` (or `--slots N`) at once in Ghidra slots, at most --max per run; resumable (a re-prepared harness carries today's stamp): repeat it under bounded.py until none is left. |
+| `prepare_list.py --project DIR ADDR\|@FILE... [--slots N] [--out FILE.tsv] [--dry]` | Servers stopped. Prepares a list of functions in Ghidra ahead of the workers, `ghidra_parallel` (or `--slots N`) at once in Ghidra slots (slot 0 the master, the rest read-only copies), and prints or writes (TSV) each one's signature, unsupported reason, valid vectors and block coverage. A function whose harness is already current is left alone; with config `harness_reuse` on, a worker reuses a current harness without opening Ghidra (core/job.reusable_harness: packet and harness files present, today's oracle stamp, no callee record drift). Resumable under bounded.py. Exit 1 on any prepare error. |
+| `fresh_oracle.py --project DIR [--recount] [--workers N] [--list FILE]` | Read-only. Lists every matched harness that is not current (no harness, no stamp, an old stamp, callee records that differ), today's stamp computed in memory (core/oracle_fresh); `--recount` re-judges every matched raw C on its own harness with check.py (parallel, builds in a temp folder) and prints passed/total against the catalog's matched count. Exit 0 only when all are current (and all pass). |
+| `final_audit.py --project DIR [--recount] [--workers N] [--no-sync]` | The goal's final audit in one process (run it under bounded.py): one PASS/FAIL line each for the fresh oracle, the headers (`refine.py header`'s checks on a snapshot, live game.h current), `refine.py verify` (N/N, N = catalog game functions minus the excluded hw/sys ones; 0 missing, STALE, HARNESS_STALE, failed, FLAKY, RAW_NOT_MATCHED, errors), `refine.py coverage` (all zero), call-site coverage (`calls`: no unreached call site the reach pass has not tried), the proof gates (`proof`: no `matched_low_coverage` function while the coverage gate enforces), raw fn_ names, `refine.py library`, completeness, the consistency check, the excluded functions' intent notes (project.json `intent_notes`, default HARDWARE_FUNCTIONS.md), then the readable usage report (INFO) and a verdict (PASS needs `--recount`; else at best INCOMPLETE). Full output in `state/final_audit-<timestamp>.txt`. Writes nothing else but what verify writes (sync-names, readable.json), header snapshots and build/ output. |
+| `coverage_gate.py --project DIR... [--report] [--top N] [--list FILE] [--json FILE] [--min-pct P] [--allow N] [--min-blocks N]` | Read-only. Per project: matched functions below the coverage gate (`matched_low_coverage`), the share, the block-coverage distribution and the worst ones; `--list` writes them for `@FILE` (the reach pass, hints, requeue); the gate options try other settings for this run only. |
+| `proof_backlog.py queue\|status\|enforce --project DIR...` | The proof backlog (docs/PROOF_GATES.md, Rollout). `queue [--out DIR] [--dry] [--mutation FILE]`: each project's flagged functions as `@FILE` queues in `state/proof_backlog/` (reach: an untried unreached call site, for `call_coverage.py reach`; vectors: other unreached blocks; harness: weak_harness; no_data). `status [--check]`: the backlog per project, CLEAR when none is below the coverage gate (the signal to enforce). `enforce on\|off [--apply]`: the project's `coverage_gate.enforce` in project.json. Runs no Ghidra; the queued work does (free slots, servers stopped). |
+| `mutation_check.py --project DIR [ADDR... \| @FILE \| --references] [--sample N] [--report] [--gate] [--json FILE] [--workers N]` | Host only (no agent, no Ghidra). Seeded mutants (relational, arithmetic, bitwise and shift operators, constants ±1, negated conditions, deleted stores, swapped arguments, return 0) of each matched C, judged with check.py on its own harness, dev + hidden; per function tried/killed/survived/dropped and the score; survivors classed logic / arg_slot / stack. `--report` writes nothing in the workspace; else records go to `state/mutation.json`. `--gate`: exit 1 unless every function's baseline passes and some mutant is killed. Run it under bounded.py. |
+| `open_list.py --project DIR [--out MD]` | Markdown list of every unmatched function with tier, size, attempts, blocker kind and reason. |
+| `import_from.py --from SRC --project DIR...` | `xproject.py` match + stage (bounded), then sets each target's `priority` to its staged imports. Servers stopped. |
+| `usage_report.py ledger\|attempts --project DIR...`, `usage_report.py sessions --hours H` | Token spend by project/model/outcome/tier/size; attempt token anatomy from `runs/`; Claude Code session spend. |
+| `usage_report.py readable --project DIR [--since 6h\|ISO] [--summary]` | Readable attempts: cache writes/reads, output, thinking, first call, turns, files read, refused commands, effort, PASS or not from state/readable.json; medians by verdict and effort (an effort A/B). |
+| `regress.py` | The pattern regression suite (below). |
+| `completeness.py --project DIR [--check] [--state DIR] [--known FILE]` | Accounts for every game-range byte: code, pool, switch table, padding, or a run the project explains in `state/known_runs.tsv` (data with the pointer words naming it, dead code with the references into it, all checked); writes COMPLETENESS.md. `--check` exits 1 on an unexplained byte (unknown or orphan) or a stale entry, and also runs the consistency check below (bytes alone cannot see a removed function's leftover files). |
+| `retire.py --project DIR [--dry] [--note TEXT] [--force] [--max N]` | Moves every artefact keyed by an address that is not a function of state/catalog.json to `retired/<kind>/` (never deletes): ledger and readable.json rows, systems.json membership, escalate.json, harness, packets, matched, matched_stale, work, runs, sandbox (ADDR, rd_ADDR), build, import, oracle/hints, readable/src, and readable/names entries nothing refers to (a tail entry current functions call, or a key that is another form of a function by target.json `address_mirrors`, is reported as kept). `retired/manifest.json` lists each move with its reason (the `ledger_removed.json` / `pruned_ledger.json` clause naming it, the known_runs.tsv run or function body that now holds its bytes, else the last ledger backup with its row). Idempotent. Refuses while the server answers, while readable.json has `running` rows, or past `--max` addresses (default max(50, 5% of the catalog)) unless `--force`. `decomp.py setup/catalog/seed` run it after every catalog change; the server shows "removed functions with artefacts left" until it has run. |
+| `assign_systems.py --project DIR [--dry] [--attach]` | Puts every game function in no system into one (core/sysassign.py), never renumbering or moving an existing id or member: by call/pointer edges with members (hubs ignored), then shared globals, then being enclosed by one system in address order, repeating until stable; ties go to the system with the nearest member. Edges come from state/graph.tsv and each function's harness/packet meta.json (functions newer than the graph export). Functions with no affinity become new systems, one per address-contiguous or call-connected cluster, numbered after the highest id (`--attach`: the system just before them instead). Records each placement in state/systems_assigned.json; idempotent. Run after `retire.py`. Also places `extra_functions` in systems of their own (Louvain over their own call graph; game systems never change). Before it on a project with a stale graph: `decomp.py systems --graph --extend` (never without `--extend`: that rebuilds and renumbers the systems). |
+| `sdk_fid.py build\|apply ...` | `build`: a Ghidra Function ID database for one Katana SDK release (a folder, an installer .iso or an InstallShield data1.hdr) via the SDK's libsplit/elfcnv, re-runnable (skip-if-done stamps). `apply`: one or more databases over a fresh import of the game with the catalog's function boundaries (-> tc_fid.tsv). Rerun steps: STAGE_REPORT_sdkfid.md in the stage history. |
+| `sdk_classify.py ...` | Labels every library function sdk / engine / unknown from FID names, library objects and the call graph; writes `classify.tsv`, `validate.tsv` (FID vs readable/names) and `engine_functions.txt` (the engine's decompile scope, for `extra_functions`). |
+| `doctor.py --project DIR... [--json]` | Read-only consistency check (core/doctor.py; `completeness.py --check` runs it): fails on any orphan artefact (as retire finds them), a matched function without harness meta or matched C, a project.json reference/priority address that is not a function, a game function in no system (once systems.json exists), a readable file using a raw name the registry has named (fn_ADDR, g_/DAT_ADDR; refine.py verify syncs them), or a matched function's harness whose callee record differs from the callee's own harness signature (re-prepare it, or tools/reprepare_stale.py); notes the raw names left for unnamed functions, readable files whose readable.json status does not describe them, and prints the readable denominator (readable files of current functions next to the matched functions). |
+| `storage_pins.py --project DIR [--ledger FILE] [--apply] [--pin-unjudged]` | Readable stage: names entries whose prototype means something else under placement by storage than by position (batch 14), classified by the readable files that judge them (PIN: they pass by position; NATURAL: they failed by position; UNJUDGED: none yet). `--apply` adds `"storage"` pins to readable/names (a data step). Also lists prototypes the placement refuses. |
+| `sig_override.py --project DIR [--candidates] [--apply] [--json FILE]` | Validates every names `"raw_ret"` (refused: no catalog function, a bad kind, void while a call site reads the result); `--candidates` lists core/ret_use candidates; `--apply` (servers stopped) rewrites the harness meta, the matched C (kept only on PASS, else listed to requeue), the callers' callee records and judges their matched C, and lists readable files for `refine.py verify`. Backups in state/sig_override_backup/. |
+| `stack_uninit.py --project DIR [targets\|@FILE] [--pin] [--json]` | Functions that read a frame word no path wrote first. `--pin` appends `genrange 0xADDR 0 0` to oracle/hints/ADDR.txt (the game's TcInputs must support genrange): re-prepare, then the word is 0 in every vector and readable C writes 0 with a comment. |
+| `stack_overread.py --project DIR [--src DIR] [--only ADDR...] [--workers N] [--json FILE] [--write]` | Readable C that hands the port host stack garbage (core/stack_overread.py, docs/PROOF_GATES.md section 6): R1, a local's address that reaches an access or a callee chain past the local's end (TC 8c017382's lone `hit_pos`); R2, a local without an initializer copied out (block copy source, or whole by value) before every copied byte is written (TC 8c06fc14's pose frame). cl /EP + pycparser, whole program; `--src` checks other versions of files. Writes state/stack_overread/ with `--write`; requeues nothing. Exit 1 on hits. |
+| `param_unread.py --project DIR [targets|@FILE] [--json FILE] [--write]` | Readable parameters never read while the original reads their storage (core/param_unread.py, docs/PROOF_GATES.md section 7; TC 8c0117f4's 12 discarded camera arguments, which the judge passed). Readable side: a parameter named only in `(void)name;`. Original side: its register or stack word reaches a use in the asm (moves, spills and arithmetic followed; callee records say which arguments a call reads). Static, seconds. project.json `param_unread.waive` takes a hit by hand. Writes state/param_unread/ with `--write`; requeues nothing. Exit 1 on hits. |
+| `data_funcs.py --project DIR [--ghidra-project DIR] [--no-ghidra] [--json FILE]`, `--add @FILE` | Code-region addresses that function code uses as values but no function owns, checked read-only by tools/ghidra_tools/TcEntryCheck.java (valid, code, invalid, data, inside). `--add` (re-checked; refuses anything not valid/code) writes project.json catalog_overrides entry (+ extra_functions); then catalog, assign_systems, prepare. Never in bulk. |
+
+### decomp.py audit
+
+`python decomp.py audit --project A [--project B ...] [--verbose] [--json]` groups every unmatched function by
+blocker kind, one column per project. The kinds are data: `targets/<target>/target.json` `blocker_kinds`, in
+priority order, each `{id, status: [ledger statuses], detail: regex on verdict_detail, diff: regex on the last
+attempt's first-diff lines (diff_all: every line), stage: regex on its stage, fix}`; the first kind with a listed
+status and any matching condition wins. A failed/skipped/error function no kind matches is **UNDECLARED** and the
+exit code is 2: declare the new kind (or fix its cause) so nothing hides in a long tail. Queued, running, stopped and
+not-started functions are counted as pending. `known_blockers` (parking during a run, `core/job.py`) is separate.
+
+### tests/ and tools/regress.py: the gate for every checker change
+
+`tests/patterns.json` lists the project keys (each key's workspace path is this machine's, in the git-ignored
+`tests/patterns.local.json` `{"projects": {key: path}}`; a selected key without one stops regress). The fixtures
+are game-derived C, so they live with each game, never in this repository: `WORKSPACE/regress/fixtures.json`
+`{"fixtures": [{id, pattern, addr, pass, fail}]}`, with `pass` and `fail` file names in that folder
+(core/toolcfg.patterns adds them with their project key). `pass` is C a correct checker must PASS, `fail` C it must FAIL on behaviour (a minimal semantic change, described in
+`fail_change`; failing on lint or the build does not count). Seeded with every project's `references` and
+`broken_control`, plus one Toy Commander function per already-fixed checker pattern: stack arguments s0..s7, a tail
+branch, fr12..fr15 runtime state, a switch table (TcSwitch), a shared tail (TcTail), float callee arguments, writes
+through pointer arguments, a float return. Spawn workspaces each hold a copy of the shared reference files (`spawn-*.c`). A fixture
+with `"runtime": "readable"` judges its raw C with the readable runtime (`readable_check.check_raw`, the 32-bit
+build refine.py uses) on the same harness; the readable runtime implements the whole raw API (r0..r3 parameters,
+r8..r14 and FPU state, RETX results, callees taking r0..r3, P4 stores), so every matched function runs there. One
+with `"runtime": "readable-src"` judges readable C (`#include "game.h"`) as refine.py does, with raw names and
+prototypes plus only the fixture's own `"names"` (a `readable/names` file: `{"functions": {...}, "globals": {...}}`).
+
+`--parity` also judges each sampled or listed function's raw C with the readable runtime (item `rd.ADDR`, expected
+PASS), so both judges must agree; `--list FILE` (one project) judges exactly the matched functions listed in FILE
+instead of a sample. The full Toy Commander parity run, in bounded chunks of about 550:
+`python tools/bounded.py 7300 python tools/regress.py --projects tc --parity --list CHUNK.txt --timeout 7000`
+(a chunk of 558 took 66 minutes in batch 14 on a busy machine, more than a 3600 s bound).
+
+`python tools/regress.py [--projects tc,sp|all] [--only RX] [--sample N] [--seed S] [--jobs N] [--catalog]` judges
+every selected fixture plus N seeded random matched functions per project (default 15; 0 with `--only`) with the
+**current working tree**, against harnesses prepared afresh: per project, a private copy of the Ghidra project
+(a fresh `ghidra_slots/slot1`, else the master) plus `--jobs` slot copies in `tests/ghidra_work/<key>/` (Ghidra
+refuses project paths with a `.`-element), and state copies, scripts, packets, harnesses and builds in
+`tests/.work/<key>/`. Both are gitignored and reused while the live catalog is unchanged. No live harness, packet,
+ledger or Ghidra slot is written. `--catalog` re-runs the catalog fixups (TcPools, TcDead, TcRuns, TcOrphans, TcPrune,
+TcSwitch, TcCont) and TcCatalog on the private copy first (needed when those scripts change; changed scripts make a new copy). A fixture
+with `"needs_catalog": true` (its function exists only after a new catalog rule) does the same for its project
+without `--catalog`. The table's `live` column says whether the fresh harness is byte-identical to the
+live one (harnesses of functions matched before a checker change keep their old vectors). Exit 1 when any
+PASS-expected item fails, any FAIL-expected item passes, or anything errors. `--reuse` (and `--parity`) reuse a
+harness whose meta.json `oracle_stamp` (core/oracle_stamp.py: a hash of the oracle scripts, facts, counts, hints,
+catalog, fsca table, binary and Ghidra install) is current and re-prepare the rest; the run prints how many were
+reused and prepared. `--reuse` is never a gate run. `--jobs` defaults to a quarter of the cores, at most what free
+RAM holds (3 GB a preparation), 1..8. An item judged on no vector (0/0) reads ORACLE, never FAIL; a group with
+ORACLE or an out-of-time refusal is prepared once more alone after the parallel run (the oracle's deadline is
+wall-clock, so load can cause it). `python tests/test_tooling.py` checks the tooling itself (effort, output cap,
+ORACLE mapping, --jobs bounds, oracle stamp, usage parsing, lean selection, tests/test_retire.py: retire, the
+consistency check, honest redo status, and tests/test_locks_systems.py: two processes hammering the readable ledger
+lose no entry, the bounded lock wait, system assignment) in seconds, without Ghidra.
+
+**Deploy rule.** Any change to the checker (`core/check.py`, `core/lint.py`, `targets/*/runtime/`,
+`targets/*/ghidra_scripts/`, the input template) runs, with all servers stopped and before any restarts:
+
+```
+python tools/bounded.py 7200 python tools/regress.py --projects all --sample 15
+```
+
+across every project (fixtures, the seeded sample and the broken controls), and must exit 0. A failing item is
+investigated, never waved through by loosening the check. A newly fixed checker pattern gets its own fixture.
