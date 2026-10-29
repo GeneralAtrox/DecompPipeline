@@ -55,7 +55,6 @@
   436  targets/dreamcast_sh4/runtime_rd/rd_veh.c
   430  tools/scorecard.py
   428  targets/dreamcast_sh4/runtime_rd/rd_sh4.c
-  426  README.md
   422  tests/test_track.py
   418  tests/test_overlays.py
   414  tests/test_fmac.py

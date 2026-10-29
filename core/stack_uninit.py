@@ -13,7 +13,7 @@ word some code could have written:
 A listing it cannot follow (a computed jump, braf, r15 set from a register, unbalanced r15 at a join, fschg: fmov
 sizes unknown) gives status other than "ok" and no reads.
 
-The rule (README, batch 27): such a word holds whatever the caller left there, so the harness pins it to 0 in every
+The rule (AGENTS.md "Layout", batch 27): such a word holds whatever the caller left there, so the harness pins it to 0 in every
 vector (an oracle hint `genrange 0xADDR 0 0`, written by tools/stack_uninit.py --pin), the judge stays strict, and
 readable C uses 0 there with a comment saying the original reads an uninitialized stack word.
 """

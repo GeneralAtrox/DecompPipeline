@@ -1,4 +1,4 @@
-"""The 400-line cap ratchet (tools/sizes.py, README "Layout"): no tracked file goes over the cap unless it is listed in
+"""The 400-line cap ratchet (tools/sizes.py, AGENTS.md "Layout"): no tracked file goes over the cap unless it is listed in
 tests/sizes_over_400.txt, and no listed file grows. Needs git (skipped without it). Run: python tests/test_sizes.py
 """
 import pathlib

@@ -1,5 +1,7 @@
 # Standing rules for every session and agent working on DecompPipeline
 
+How the pipeline works (layout, judge, tools, docs map): read `AGENTS.md` first.
+
 ## No redundant work
 
 Waste has been fixed several times in this pipeline and keeps coming back (see `docs/WASTE_AUDIT_2026-10-22.md` and `docs/WASTE_AUDIT_2.md`). So every session and agent checks, every time, that what it builds or runs isn't redundant and doesn't waste time.
