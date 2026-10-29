@@ -64,8 +64,8 @@ python tools/bounded.py 3600 -- python tools/game_setup.py setup <image.gdi|.cue
 `targets/xbox360_ppc/tools/x360setup.py`.) The hand steps it replaces follow; you still need the scan below to
 find overlays and the library list.
 
-Setup also puts the game on this machine's progress page (`Dashboard.bat`, docs/DASHBOARD.md), wherever the
-workspace lives, and writes a starter `progress.json` in the game folder. Keep that file current as the game moves:
+Then add the game to this machine's progress page (`Dashboard.bat`, docs/DASHBOARD.md); nothing is added by itself:
+`python tools/dashboard.py add "<game folder>"`. It writes a starter `progress.json` there. Keep that file current:
 what is being done now and next, the port milestones (builds, boots, playable, matches the original) and open
 playtest bugs. Everything else on the page is read from the workspace.
 
