@@ -35,6 +35,7 @@ import re
 from dataclasses import dataclass, field
 
 from .decode import CTRL, SYSR, SYSTEM, Insn, decode, disasm
+from .gconst import in_const, table_unsigned, wide_const
 
 
 class TranslateError(Exception):
@@ -535,7 +536,7 @@ class FunctionTranslator:
 
     def _decide(self, a):
         i = self.insns[a]
-        c = self.reg_const(a, R(i.m))
+        c = wide_const(self, a, R(i.m))
         if c is not None:
             return ("const", fold_p0((c + a + 4) & U32 if i.op in ("bsrf", "braf") else c))
         if i.op in ("jmp", "braf"):
@@ -837,8 +838,6 @@ class FunctionTranslator:
                 else:
                     p = st[m]
                     v = ("ld", size, 0, p[1], p[2], p[3]) if p[0] == "x" else None
-                    if v is None and p[0] == "x":
-                        v = None
                 st[n] = v or ("?",)
             elif o.endswith(("@-_st", "@+_ld")) or o in ("sts.l", "stc.l"):
                 # a push or pop moves its pointer by the size it moved (so r15 stays known across pushes)
@@ -896,7 +895,7 @@ class FunctionTranslator:
         if rv[0] != "x":
             return None
         src, mul, off = int(rv[1][1:]), rv[2], rv[3]
-        rn, rm = self.const_in(start, st[R(c.n)]), self.const_in(start, st[R(c.m)])
+        rn, rm = in_const(self, start, st[R(c.n)]), in_const(self, start, st[R(c.m)])
         if c.n == src and rm[0] == "c":
             N = rm[1]
             if c.op == "cmp/hs" and not on_true:
@@ -942,19 +941,19 @@ class FunctionTranslator:
         n, mul, off = b
         if n <= 0 or n > 4096 or scale * mul != size:
             return None
-        out = []
+        out, uns = [], table_unsigned(self, blk, a, R(i.m))
         for k in range(n):
             ea = (base + size * k + scale * off + add) & U32
             if any(ea + j in self.written for j in range(size)):
                 return None     # a table the program writes at run time has no targets to read here
             if size == 2:
                 e = self.img.u16(ea)
-                e = e - 0x10000 if e & 0x8000 else e
+                e = e - 0x10000 if e & 0x8000 and not uns else e
             elif size == 4:
                 e = self.img.u32(ea)
             else:
                 e = self.img.data[ea - self.img.base]
-                e = e - 0x100 if e & 0x80 else e
+                e = e - 0x100 if e & 0x80 and not uns else e
             t = (e + extra + (a + 4 if i.op == "braf" else 0)) & U32
             if t & 1 or not self.img.has(t, 2):
                 return None
@@ -1026,8 +1025,9 @@ class FunctionTranslator:
         listed = cal is not None and target_expr.startswith("0x") and int(target_expr[:-1], 16) in cal
         if cal is not None:
             # an address in the function's own frame goes along even where DP does not compare it (its R12 rule):
-            # the callee may read or fill the local there
-            regs |= self.frame_regs(self.cur) & {"r4", "r5", "r6", "r7"}
+            # the callee may read or fill the local there. So does an r_out rK: the runtime's rK after the call is
+            # the TcArgs one, a callee's output (TcOut) added; an exported rK reaches the exit that way too
+            regs |= (self.frame_regs(self.cur) | self.sig.r_out) & {"r4", "r5", "r6", "r7"}
         self.call_reads.setdefault(self.cur, set()).update(r for r in regs if not r.startswith("s"))
         pre, L = [], []
         for k in range(4):

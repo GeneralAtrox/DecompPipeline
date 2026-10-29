@@ -62,6 +62,7 @@ font-size:12px;display:none;max-width:340px;z-index:5}
   <div id="crumb"></div>
   <canvas id="tm"></canvas>
   <div class="legend" id="legend"></div>
+  <div class="now-line sub" id="nofns"></div>
 </div>
 <div id="tip"></div>
 </main>
@@ -117,7 +118,7 @@ function renderGames() {
   box.innerHTML = rows.map(G => {
     const r = road(G), P = G.progress || {}, bugs = (P.bugs || []).filter(b => b.state !== "fixed");
     const waits = D.work.filter(w => w.state !== "done" && (w.games || []).includes(G.name));
-    return `<div class="panel"><div class="game-head"><b>${esc(G.name)}</b>
+    return `<div class="panel"><div class="game-head"><b>${esc(P.game || G.name)}</b>
       <span class="pct">${esc(G.console)} · ${esc(P.framework || "DecompPipeline")} · updated ${esc(G.parts.map(p => p.updated).sort().pop())}</span></div>
       <div class="road">${r.steps.map((s, i) => `<div class="step ${s[2] ? "done" : i === r.cur ? "now" : i < r.cur || s[4] === "part" ? "part" : ""}">
         <span class="n">${s[0]}</span><span class="v">${esc(s[1])}</span>
@@ -211,6 +212,9 @@ function hit(e) {
   return HITS.find(h => x >= h.x && x < h.x + h.w && y >= h.y && y < h.y + h.h);
 }
 function setup() {
+  const none = gameRows().filter(G => !G.parts.some(p => p.units.length)).map(G => G.name);
+  document.getElementById("nofns").textContent = none.length ? "No function list (own ports, research, or not " +
+    "catalogued yet), so not in the map: " + none.join(", ") + "." : "";
   const sel = document.getElementById("scope");
   const opts = [["all", "All games"]];
   for (const G of gameRows()) if (G.parts.some(p => p.units.length)) opts.push([G.name, G.name]);

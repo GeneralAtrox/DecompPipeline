@@ -15,12 +15,12 @@
   883  tools/jobreg.py
   875  tests/test_ghidra_broker.py
   838  core/rtx/flow.py
-  803  tools/selective_restamp.py
   743  tests/test_gamecube_disc.py
   740  targets/xbox360_ppc/translator/xenontranslate/passes.py
   735  targets/gamecube_ppc/tools/gcdisc.py
   722  docs/proofs/2026-10-23/PROOFS.md
   715  targets/gamecube_ppc/translator/ppctranslate/passes.py
+  701  tools/selective_restamp.py
   670  core/rtx/cast.py
   649  targets/gamecube_ppc/tools/rvz.py
   635  tests/test_lockstep.py

@@ -188,7 +188,10 @@ public class TcTail {
         List<Address> out = new ArrayList<>();
         Address pr = prTarget(prog, in); // a PR continuation (prContinuations) runs after the redirected jump's callee
         if (pr != null) out.add(pr);
-        if (in.isInDelaySlot()) return out;
+        if (in.isInDelaySlot()) {
+            if (slotEntry(in) != null) out.add(in.getMaxAddress().next()); // a branch into the slot runs on (slotEntry)
+            return out;
+        }
         Address ft = in.getFallThrough();
         if (ft != null) out.add(ft);
         Instruction slot = in.getDelaySlotDepth() > 0 ? in.getNext() : null;
@@ -210,6 +213,24 @@ public class TcTail {
             }
         }
         return out;
+    }
+
+    // The branch that jumps straight into delay slot `in` (not its own branch), or null. Run that way the slot is a
+    // plain instruction and the CPU runs on to the next one, which Ghidra's flow never reaches (a slot has no
+    // fall-through there): PS2 8c189204 `bf 0x8c189208` into the slot of `8c189206 bra` runs on into 8c18920a,
+    // 8c197252 `bt/s 0x8c197258` into the slot of `8c197256 jmp @r0` into 8c19725a. exits follows it; TcCont
+    // decodes it and gives its code to the branch's function (ds-flow). The lowest such branch when several.
+    static Address slotEntry(Instruction in) {
+        if (!in.isInDelaySlot()) return null;
+        Instruction own = in.getPrevious();
+        Address from = null;
+        for (Reference r : in.getProgram().getReferenceManager().getReferencesTo(in.getAddress())) {
+            RefType t = r.getReferenceType();
+            Address a = r.getFromAddress();
+            if (t.isJump() && !t.isCall() && (own == null || !own.getAddress().equals(a))
+                    && (from == null || a.compareTo(from) < 0)) from = a;
+        }
+        return from;
     }
 
     // The entries of other functions an extent branches to without a call (SP 8c0587b0 `bra 0x8c0588d0`: a tail call

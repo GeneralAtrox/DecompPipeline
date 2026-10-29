@@ -10,7 +10,7 @@
   "gamecube": {"name": "GameCube", "target": "gamecube_ppc", "cpu": "ppc", "roots": ["GameCube"],
                "own_translator": null},
   "xbox": {"name": "Xbox", "target": "xbox_x86", "cpu": "x86", "roots": ["Xbox"], "own_translator": null},
-  "xbox360": {"name": "Xbox 360", "target": "xbox360_ppc", "cpu": "xenon", "roots": ["TooHuman"],
+  "xbox360": {"name": "Xbox 360", "target": "xbox360_ppc", "cpu": "xenon", "roots": ["Xbox360"],
               "own_translator": null}
  },
  "stages": [

@@ -52,6 +52,9 @@ A step's `state` is `done`, `now` (the one being worked on; at most one), `part`
 
 Functions found (state/catalog.json), tests built (harness/*/meta.json), raw C proven and in progress
 (state/ledger.json), readable C (state/readable.json), units (state/systems.json), port set up (port/game.json). A
-workspace is any folder with project.json + state/ledger.json under a console root of tools/scorecard/spec.json; a new
-game folder needs its root added there. `dashboard_mirrors` / `dashboard_refresh` in config.local.json add another
+workspace is any folder with project.json + state/catalog.json under a console root of tools/scorecard/spec.json, or
+any workspace enrolled on this machine: `tools/game_setup.py setup` enrols each new one (its path in
+%LOCALAPPDATA%/DecompPipeline/workspaces.json, wherever it lives) and writes a starter progress.json in its game folder.
+A workspace without a ledger (judged by the translator only) shows the translator's latest verdict per function,
+from state/translator_verdicts.json (tools/translate_backlog.py writes it on every run). `dashboard_mirrors` / `dashboard_refresh` in config.local.json add another
 machine's live copies (the newest copy wins).

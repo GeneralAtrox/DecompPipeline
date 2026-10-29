@@ -105,7 +105,8 @@ final class TcStrict {
 
     // The r1..r7 some path from the return address reads before writing (TcFlow masks), over the function's p-code
     // (TcTail.extent, the walk of TcLive.Deltas): a mocked call writes none of them, a return or a jump out of the
-    // extent ends a path. All of them when the walk cannot finish (no instruction there, a loop past MAX_VISITS).
+    // extent (a tail call: exitLive is read at both) ends a path. All of them when the walk cannot finish (no
+    // instruction there, a loop past MAX_VISITS).
     static int readsAfter(Program prog, Function f, long ret) {
         return reads.computeIfAbsent(ret, a -> {
             if (extent == null) extent = TcTail.extent(prog, f);
@@ -131,12 +132,10 @@ final class TcStrict {
                 ends |= op.getOpcode() == PcodeOp.RETURN;
             }
             if (ends) { live |= exitLive & ~w; continue; }  // a function's own outputs (TcOut)
-            List<Address> next = new ArrayList<>();
-            if (!ins.getFlowType().isCall()) {
-                for (Address t : ins.getFlows()) if (body.contains(t)) next.add(t);
-            }
-            Address ft = ins.getFallThrough();
-            if (ft != null && body.contains(ft)) next.add(ft);
+            List<Address> to = new ArrayList<>(ins.getFlowType().isCall() ? List.of() : List.of(ins.getFlows()));
+            if (ins.getFallThrough() != null) to.add(ins.getFallThrough());
+            List<Address> next = to.stream().filter(body::contains).toList();  // the rest leave the extent: a tail call
+            if (next.size() < to.size() || to.isEmpty()) live |= exitLive & ~w;  // its rK is the exit's (`jmp @r3`)
             for (Address n : next) {
                 Integer old = in.get(n);
                 if (old != null && (old & w) == old) continue;

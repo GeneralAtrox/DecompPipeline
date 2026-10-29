@@ -49,8 +49,9 @@ def load(p, default=None):
         return default
 
 
-def state_of(row, rd):
-    """One function's state from its ledger row and its readable.json row."""
+def state_of(row, rd, verdict=None):
+    """One function's state from its ledger row, its readable.json row and, for one the ledger has not tried, the
+    translator's latest verdict (state/translator_verdicts.json: PASS is raw C proven, any other is tried)."""
     st = (row or {}).get("status") or "queued"
     if st == "matched":
         return "readable" if (rd or {}).get("status") == "readable" else "matched"
@@ -58,12 +59,14 @@ def state_of(row, rd):
         return "blocked"
     if st in ("failed", "running", "stopped") or (row or {}).get("attempts"):
         return "progress"
-    return "todo"
+    return ("matched" if verdict == "PASS" else "progress") if verdict else "todo"
 
 
 def workspace(ws):
-    """{name, units: [[unit name, [[addr, bytes, state index, source], ...]], ...], counts} for one workspace."""
+    """{name, units: [[unit name, [[addr, bytes, state index, source], ...]], ...], counts} for one workspace. A
+    workspace without a ledger (judged by the translator only, or not started) lists its catalog's functions."""
     led = (load(ws / "state" / "ledger.json", {}) or {}).get("functions", {})
+    verdicts = (load(ws / "state" / "translator_verdicts.json", {}) or {}).get("functions", {})
     cat = load(ws / "state" / "catalog.json", {}) or {}
     size = {f["addr"]: f.get("bytes") or 0 for f in cat.get("functions", []) if isinstance(f, dict) and "addr" in f}
     rds = load(ws / "state" / "readable.json", {}) or {}
@@ -75,52 +78,95 @@ def workspace(ws):
         for a in s.get("functions", []):
             unit_of.setdefault(a, name)
     units, counts = {}, {k: [0, 0] for k in STATES}
-    for addr, row in led.items():
-        k = state_of(row, rds.get(addr))
+    for addr, row in (led or dict.fromkeys(size)).items():
+        k = state_of(row, rds.get(addr), verdicts.get(addr))
         b = size.get(addr) or 2
         src = (row or {}).get("source") or ""
         units.setdefault(unit_of.get(addr) or f"{addr[:4]}xxxx", []).append([addr, b, STATES.index(k), src])
         counts[k][0] += 1
         counts[k][1] += b
     st = ws / "state"
-    when = float((st / "ledger_mtime.txt").read_text()) if (st / "ledger_mtime.txt").is_file()         else (st / "ledger.json").stat().st_mtime
+    stamp = st / "ledger_mtime.txt"  # a mirror carries the copy's own time
+    when = float(stamp.read_text()) if stamp.is_file() else max(
+        (st / n).stat().st_mtime for n in ("ledger.json", "translator_verdicts.json", "catalog.json") if (st / n).is_file())
     harn = ws / "harness"
     if harn.is_dir():
         built = sum(1 for d in os.scandir(harn) if (pathlib.Path(d.path) / "meta.json").is_file())
     else:  # a mirror carries the count
         built = int((st / "harness_count.txt").read_text()) if (st / "harness_count.txt").is_file() else 0
     return {"units": sorted([u, sorted(fs)] for u, fs in units.items()), "counts": counts, "harnesses": built,
-            "updated": datetime.datetime.fromtimestamp(when).strftime("%Y-%m-%d %H:%M"), "_t": when}
+            "updated": datetime.datetime.fromtimestamp(when).strftime("%Y-%m-%d %H:%M"), "_t": when,
+            "_ws": ws.resolve()}
+
+
+def registry():
+    """The workspaces enrolled on this machine (enrol(), called by tools/game_setup.py setup), wherever they live."""
+    return pathlib.Path(os.environ.get("LOCALAPPDATA") or pathlib.Path.home()) / "DecompPipeline" / "workspaces.json"
+
+
+def enrol(ws):
+    """Put a new workspace on this machine's dashboard: its path in registry(), and a starter progress.json in its game
+    folder (never over an existing one). Best effort: a failure here never stops a setup."""
+    ws = pathlib.Path(ws).resolve()
+    try:
+        reg = registry()
+        known = (load(reg, {}) or {}).get("workspaces", [])
+        if str(ws) not in known:
+            reg.parent.mkdir(parents=True, exist_ok=True)
+            reg.write_text(json.dumps({"workspaces": known + [str(ws)]}, indent=1) + "\n", encoding="utf-8")
+        g = sd.game_root(ws)
+        if g == ws and ws.name in ("decomp", "research"):
+            g = ws.parent
+        pr = g / "progress.json"
+        if not pr.exists():
+            pr.write_text(json.dumps({
+                "updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+                "milestones": {"builds": None, "boots": None, "playable": None, "matches": None},
+                "now": "Set up from the disc; the functions are catalogued.",
+                "next": "Prepare each function's tests (decomp.py prepare), then the translator and judge.",
+                "bugs": []}, indent=1) + "\n", encoding="utf-8")
+    except OSError as e:
+        print("dashboard enrol skipped:", e)
 
 
 def collect(projects_dir, mirrors=()):
     """Every workspace under the spec's console roots, in the projects folder and in each mirror of it (a folder with
-    the same layout, e.g. another machine's live copies); the newest ledger of each (game, part) wins. progress.json
-    and port/game.json are always read from the projects folder's own game folder."""
+    the same layout, e.g. another machine's live copies), plus every enrolled one (registry()); the newest copy of
+    each (game, part) wins. progress.json and port/game.json are read from the projects folder's own game folder (an
+    enrolled workspace outside it: its own game folder)."""
     spec = load(SPEC, {}) or {}
+    pdir = pathlib.Path(projects_dir)
+    name_of = {c.get("target"): c.get("name", k) for k, c in spec.get("consoles", {}).items()}
     best = {}
+
+    def add(ws, base, console):
+        g = sd.game_root(ws)
+        if g == ws and ws.name in ("decomp", "research"):  # a mirror has no port/ to find the game by
+            g = ws.parent
+        part = ws.relative_to(g).as_posix() if ws != g else "main"
+        home = pdir / g.relative_to(base) if base else g
+        w = {"console": console, "game": g.name, "part": part, "home": home.resolve(),
+             "where": "mirror" if base and base != pdir else "here",
+             "port": (home / "port" / "game.json").is_file(),
+             "progress": load(home / "progress.json", {}) or {}, **workspace(ws)}
+        k = (w["game"], part)
+        if k not in best or w["_t"] > best[k]["_t"]:
+            best[k] = w
+
     for key, con in spec.get("consoles", {}).items():
         for root in con.get("roots", []):
-            for base in [pathlib.Path(projects_dir), *map(pathlib.Path, mirrors)]:
-                found, _ = sd.discover(base / root)
-                for ws in found:
-                    g = sd.game_root(ws)
-                    if g == ws and ws.name in ("decomp", "research"):  # a mirror has no port/ to find the game by
-                        g = ws.parent
-                    part = ws.relative_to(g).as_posix() if ws != g else "main"
-                    home = pathlib.Path(projects_dir) / g.relative_to(base)
-                    w = {"console": con.get("name", key), "game": g.name, "part": part, "home": g.relative_to(base),
-                         "where": "mirror" if base != pathlib.Path(projects_dir) else "here",
-                         "port": (home / "port" / "game.json").is_file(),
-                         "progress": load(home / "progress.json", {}) or {}, **workspace(ws)}
-                    k = (w["game"], part)
-                    if k not in best or w["_t"] > best[k]["_t"]:
-                        best[k] = w
-    homes = {(pathlib.Path(projects_dir) / g).resolve() for g in {w["home"] for w in best.values()}}
-    for w in own_projects(projects_dir, homes):
+            for base in [pdir, *map(pathlib.Path, mirrors)]:
+                for ws in sd.discover(base / root, need="state/catalog.json")[0]:
+                    add(ws, base, con.get("name", key))
+    for p in (load(registry(), {}) or {}).get("workspaces", []):
+        ws = pathlib.Path(p)
+        if (ws / "state" / "catalog.json").is_file() and ws.resolve() not in {w["_ws"] for w in best.values()}:
+            add(ws, None, name_of.get((load(ws / "project.json", {}) or {}).get("target"), "?"))
+    for w in own_projects(pdir, {w["home"] for w in best.values()}):
         best[(w["game"], "main")] = w
     for w in best.values():
         w.pop("home")
+        w.pop("_ws")
     return sorted(best.values(), key=lambda w: (w["console"], w["game"], w["part"]))
 
 
@@ -131,7 +177,9 @@ def own_projects(projects_dir, homes, depth=3):
     base = pathlib.Path(projects_dir)
     for top, dirs, names in os.walk(base):
         t = pathlib.Path(top)
-        dirs[:] = [] if len(t.relative_to(base).parts) >= depth else             [d for d in dirs if not d.startswith((".", "DecompPipeline")) and d not in ("External", "node_modules")]
+        deep = len(t.relative_to(base).parts) >= depth
+        dirs[:] = [] if deep else [d for d in dirs if not d.startswith((".", "DecompPipeline"))
+                                   and d not in ("External", "node_modules")]
         if "progress.json" not in names or t.resolve() in homes:
             continue
         pr = load(t / "progress.json", {}) or {}
@@ -140,7 +188,8 @@ def own_projects(projects_dir, homes, depth=3):
         when = (t / "progress.json").stat().st_mtime
         yield {"console": pr["console"], "game": pr.get("game") or t.name, "part": "main", "where": "here",
                "port": False, "progress": pr, "units": [], "counts": {k: [0, 0] for k in STATES}, "harnesses": 0,
-               "updated": datetime.datetime.fromtimestamp(when).strftime("%Y-%m-%d %H:%M"), "_t": when, "home": ""}
+               "updated": datetime.datetime.fromtimestamp(when).strftime("%Y-%m-%d %H:%M"), "_t": when, "home": "",
+               "_ws": ""}
 
 
 def main(argv=None):
