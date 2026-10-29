@@ -7,6 +7,24 @@ small files are kept by the agents, so a person can see where things stand witho
 **Keep them current.** Whoever starts, finishes or blocks a piece of work updates the board in the same step. Whoever
 reaches a port milestone or finds or fixes a playtest bug updates the game's `progress.json`.
 
+## Which games are on the page: only the ones an agent added
+
+Nothing is searched for. The page shows the game folders in this machine's list
+(%LOCALAPPDATA%/DecompPipeline/dashboard/projects.json), and only an agent changes it:
+
+- **A new game the agent sets up:** add it once its workspace exists (`tools/game_setup.py setup` prints the command).
+- **An existing game:** only when the user asks for it.
+
+```
+python tools/dashboard.py add "<game folder>"      # the folder that holds decomp/ (or research/), or progress.json
+python tools/dashboard.py remove "<game folder>"
+python tools/dashboard.py list
+```
+
+`add` records the folder's workspaces (project.json + state/catalog.json, also at the same place in each mirror) so
+the page never walks the disk; run it again when the game gains a workspace. A game with a workspace and no
+progress.json gets a starter one; a game with no workspace needs a progress.json with a `console` first (below).
+
 ## GAME/progress.json (the game's own folder, next to port/)
 
 ```json
@@ -24,9 +42,9 @@ the original game. A bug's `state` is `open` or `fixed`; fixed bugs are not show
 
 ### Games not on the pipeline
 
-A game made another way (its own native port, research only, not started) is shown too: put a `progress.json` with a
-`console` in its folder, within three levels of the projects folder. It adds `framework` (how the game is being made)
-and its own `road`, which replaces the steps read from a workspace:
+A game made another way (its own native port, research only, not started) can be added too: its `progress.json`
+has a `console`, `framework` (how the game is being made) and its own `road`, which replaces the steps read from a
+workspace:
 
 ```json
 {"console": "Xbox", "game": "PhantomCrash", "framework": "own native Windows port",
@@ -52,9 +70,6 @@ A step's `state` is `done`, `now` (the one being worked on; at most one), `part`
 
 Functions found (state/catalog.json), tests built (harness/*/meta.json), raw C proven and in progress
 (state/ledger.json), readable C (state/readable.json), units (state/systems.json), port set up (port/game.json). A
-workspace is any folder with project.json + state/catalog.json under a console root of tools/scorecard/spec.json, or
-any workspace enrolled on this machine: `tools/game_setup.py setup` enrols each new one (its path in
-%LOCALAPPDATA%/DecompPipeline/workspaces.json, wherever it lives) and writes a starter progress.json in its game folder.
-A workspace without a ledger (judged by the translator only) shows the translator's latest verdict per function,
+workspace is one `add` listed for the game. A workspace without a ledger (judged by the translator only) shows the translator's latest verdict per function,
 from state/translator_verdicts.json (tools/translate_backlog.py writes it on every run). `dashboard_mirrors` / `dashboard_refresh` in config.local.json add another
 machine's live copies (the newest copy wins).
