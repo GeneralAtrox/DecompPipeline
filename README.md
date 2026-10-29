@@ -10,7 +10,8 @@ C into a native port.
 - **No game data here.** Each game is its own workspace folder.
 
 This repository is run by agents. Everything they need, and the full reference, is in **[AGENTS.md](AGENTS.md)**.
-A new game, from disc to port: [docs/NEW_GAME.md](docs/NEW_GAME.md).
+A new game, from disc to port: [docs/NEW_GAME.md](docs/NEW_GAME.md). Progress at a glance: run `Dashboard.bat`
+([docs/DASHBOARD.md](docs/DASHBOARD.md)).
 
 Needs Python 3.12, JDK 21, Ghidra 12 and Visual Studio 2022 (C++). `python -m pip install -r requirements.txt`; machine
 paths go in a git-ignored `config.local.json`.
