@@ -31,7 +31,7 @@ from core import compare, ghidra, paths, strict_judge  # noqa: E402
 import ppc_compare  # noqa: E402
 
 T = ROOT / "targets"
-TARGETS, ON_TARGETS = ("dreamcast_sh4", "saturn_sh2", "gamecube_ppc"), {"dreamcast_sh4", "saturn_sh2"}
+TARGETS, ON_TARGETS = ("dreamcast_sh4", "saturn_sh2", "gamecube_ppc"), {"dreamcast_sh4", "saturn_sh2", "gamecube_ppc"}
 FLAGS = list(strict_judge.FLAGS)
 M = (1 << 64) - 1
 WORK = ROOT / "tests" / ".work"

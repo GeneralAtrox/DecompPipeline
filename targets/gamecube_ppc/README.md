@@ -161,3 +161,15 @@ handlers use. Each entry: what the p-code does, and what the target does about i
 What the audit does not cover: instructions the 32 audited handlers do not use (string loads and stores, `lswi`/`stswi`,
 `eciwx`/`ecowx`, the remaining paired-single forms), and FPSCR exception bits (the commented-out flag CALLOTHERs in
 the SLEIGH): no check observes FPSCR.
+
+## Test truth (tools/gc_truth.py)
+
+Five fully matched public decomps (pikmin, melee, ac-decomp, pikmin2, tp, cloned locally)
+are the answer key for this target. `tools/gc_truth.py` reads only their `config/` (dtk symbols, splits, hashes)
+and scores a workspace: catalog boundaries (exact / boundary_differs / split / merged / missed), translator pass
+rate per judged function, readable naming agreement as numbers. Clean room: nothing of theirs enters DP or reaches
+an agent; reports hold addresses and numbers and are refused inside the repository or a workspace. `check-disc`
+tells which version a dumped .iso's main.dol is. REL modules are scored too, per module, through the workspace's
+`gcrel` link record (`link.json`). Code: `tools/gc_truth.py` (commands), `gc_truth_decomp.py` (the decomp's
+config), `gc_truth_dp.py` (DP's side and the scores). Tests: `python -W error tests/test_gc_truth.py`. Games, discs
+and REL scoring: [TRUTH_GAMES.md](TRUTH_GAMES.md).

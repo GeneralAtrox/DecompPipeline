@@ -1,0 +1,331 @@
+{
+ "skies": {
+  "80090a20": {
+   "outcomes": "KKKSKKKKKK",
+   "sha": "6757e0222ff6e06e2b5309c214128b456f849118fead8142b924656806044c3b"
+  },
+  "80090a7c": {
+   "outcomes": "KKKBBKKKBK",
+   "sha": "8e9baf7dd05d328d96995fa3f8899cd59bced5356bf2bfec6099e0b4c222c93b"
+  },
+  "80090b68": {
+   "outcomes": "KKBBKSKKKK",
+   "sha": "f3ba22038ea6b9ef8bc7f6938d8dffa7d9f6a5e12a2709ffa75bff2404ab4e16"
+  },
+  "80090f9c": {
+   "outcomes": "SSSBSSKBSK",
+   "sha": "623525f4047b4c0631cf2f2afeba7d083289a3fa1c5f00f21c007f7d6bd1c81a"
+  },
+  "80091228": {
+   "outcomes": "KKKKKKKKSK",
+   "sha": "0f8beb091aa3979e5d62019f04b6bdcb8f408447bf1917406c518a338fb9359d"
+  },
+  "800912a8": {
+   "outcomes": "SKKKKKKKKK",
+   "sha": "217d5bf761be4e27061db4092ba26578d7f53354c34e89b46d3463a3e5786e7e"
+  },
+  "80095220": {
+   "outcomes": "KSKKKKKKKK",
+   "sha": "e33623063f881f10fcdd749177a1b5fc77bec624ed46e2bcb7982e966c9b30e2"
+  },
+  "80095360": {
+   "outcomes": "KSKKKSSKKS",
+   "sha": "716b379f327ff24df09a4b022c1cc7be6bc2badbab189ef46352498b0b7d5436"
+  },
+  "80096260": {
+   "error": "baseline FAIL at compare: the matched C does not pass its harness here (42/96 failing)"
+  },
+  "800967f0": {
+   "outcomes": "KKKKKKKBKK",
+   "sha": "96596fc8f499b0edaf93ac4740992e07c11f03238db2655e8456493aecb10b98"
+  },
+  "80096814": {
+   "outcomes": "SKKKKKKKKS",
+   "sha": "2a97b91a0008b3994d48308de9df9d22c7eb8f5317d0078ea08498546ca89040"
+  },
+  "8009701c": {
+   "outcomes": "KKKBKBBKBK",
+   "sha": "10c926d8a8db9db44785bcbb6671e6e11011fdb7a0246c4332e054f880e2b2a2"
+  },
+  "80097294": {
+   "outcomes": "KKKBKBBKKB",
+   "sha": "1d417f54441bf35328f455edfc6faa9f09781254f11d297a9de193531a93ed9b"
+  },
+  "80097318": {
+   "outcomes": "KKKKKBKKBK",
+   "sha": "defccb8966315d73e7ed6367756e2df0b66905bb825d664424ee2da6ae0e7603"
+  },
+  "8009761c": {
+   "outcomes": "SKKBKKKKBK",
+   "sha": "c4a2753f97cdf15c33ef1f3af5ca883bde1d85211808e64c6e7d7f1938eec3e7"
+  },
+  "800c1a50": {
+   "outcomes": "KKSKSKKSKS",
+   "sha": "503efbeb21e212a7a5492508ae0ef0777046ceabb78202144b0a994d4e681b8d"
+  },
+  "800c5530": {
+   "outcomes": "KKSKKKKKSK",
+   "sha": "069837f797171ace4adbd8014f18e0fd15b8bb586c4ea71c2bf78b4a48ffb199"
+  },
+  "800c56ac": {
+   "outcomes": "KKKSKKKBKS",
+   "sha": "5ddea2b8d9a91e40601fd3e8b8e2b433936b52a9c97b8d1976c989dc706c5745"
+  },
+  "800c5940": {
+   "outcomes": "KKKKKKKBKK",
+   "sha": "68ce0260fe4d8aa39d955021bb3fea62d3ddcff6f1e5498d2d6ebe978e8c8c0d"
+  },
+  "800c79c4": {
+   "outcomes": "KKKKKKBBKS",
+   "sha": "aac5d5128e11779b5322e13f3788bd6cfe535db758ee126e4d4487a5331c3977"
+  },
+  "800c7f64": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "bb486d7fce345342aa1441428d8f691400a636b1231428ca8121fdfd9570cf14"
+  },
+  "800c86ec": {
+   "error": "baseline FAIL at compare: the matched C does not pass its harness here (3/96 failing)"
+  },
+  "800c879c": {
+   "outcomes": "KKKKBKKKKK",
+   "sha": "8617ac0d47d3ed3ab90066e5f5c0d0a22d45443cecdf0cb32b728bf55fd5b850"
+  },
+  "800c8c54": {
+   "outcomes": "SSKKSKKKKK",
+   "sha": "7734d87c179e73c68194c237796a96b015b5d75e04a25db55a6869467a467e9c"
+  },
+  "800cf6a8": {
+   "outcomes": "KKKKSSBSKS",
+   "sha": "adc085b4803340f49d9f5df8b0940516f09f246d812f70e2f269f13cc0a65059"
+  },
+  "800cf988": {
+   "error": "baseline FAIL at compare: the matched C does not pass its harness here (1/96 failing)"
+  },
+  "800cfab8": {
+   "outcomes": "KKKKBKKSKK",
+   "sha": "926527e109ebbc54a368299d5fa2936d125670b341a212a905b29a52c04072d3"
+  },
+  "800cfbf4": {
+   "outcomes": "SKKKKKKKSK",
+   "sha": "0c9f7341c40e3a5dcea0237fa146d0a7ef354815cea723d24397369a697af985"
+  },
+  "800d07f8": {
+   "outcomes": "KSKKKKBKKK",
+   "sha": "12475409cec33764e8df52b847159c1b9345fbbb7138a1dff460a521e62c2933"
+  },
+  "800d1324": {
+   "outcomes": "KSKKKSKKSK",
+   "sha": "d042853feae2f94ffe33415e778ffb02d8ed7df79c39ec38e23595232b4cb433"
+  },
+  "800d1630": {
+   "outcomes": "SKKKSKSBBK",
+   "sha": "683a58c6d92552c2d6d556df2c4752465e19941cc49caddbb4e9590011971b82"
+  },
+  "800d1a34": {
+   "error": "baseline FAIL at compare: the matched C does not pass its harness here (1/96 failing)"
+  },
+  "800d1b5c": {
+   "outcomes": "SKKKKBKKKK",
+   "sha": "f016394ae92edc882b0717351e21a555366ccc0e693b24e2fcb60bfbbaa937de"
+  },
+  "800d1e58": {
+   "outcomes": "KKKKKBBKKK",
+   "sha": "ff7ccfbc172f6b68a746919b32fb1c0f7c594551e7e5497f6d94eacca39076aa"
+  },
+  "800d8e1c": {
+   "outcomes": "KKKKKKKBSS",
+   "sha": "359d36994dc54f04b423efc09842caffd096ec33ddd9d4eea216d931b3b94b1f"
+  },
+  "800d9ba0": {
+   "outcomes": "KSKKSKBKKK",
+   "sha": "9d770363b28157145741d9980d0543af143e607de366b29b26d1864abb402df1"
+  },
+  "800dcb78": {
+   "outcomes": "KKKKKKKKSK",
+   "sha": "fc38f6b9a9ac75fabadbf9d8fd355daffd5125380bec46138e8c024f90d930f0"
+  },
+  "80100b74": {
+   "outcomes": "KSKKBSKKKK",
+   "sha": "18b1fd633615a487b0dd291b3c0c8a55e57f4a30353deb294b1a81f3c09816be"
+  },
+  "80100bf8": {
+   "outcomes": "SKKKKKKKKK",
+   "sha": "5a810ae2ad976ec694de84e4e989662e0d39141274d3c6f540b3b7c010ac9681"
+  },
+  "80101060": {
+   "outcomes": "KSKKBKKBKK",
+   "sha": "ae5645971761144d14dbe8ad4a82c59991230ab476f59ab57b5ad735cf3aa838"
+  },
+  "80118368": {
+   "outcomes": "KKSKBBKKSK",
+   "sha": "e2d014d95a023b37bc21a2b1eeb57b731ef79e58fa3e5c691d2744778eb3eaa1"
+  },
+  "801dce18": {
+   "outcomes": "KKKKKKKKSK",
+   "sha": "68a396dfb6d863877983be8b6e23836cc5e7f8f14d5c1491f384157dd57688c3"
+  },
+  "801dceb0": {
+   "outcomes": "SSSKKKKKKS",
+   "sha": "23a7760e3adacbc68d331660e0f685f4b596b2607b8e74fdadcbe46f9c26b32a"
+  },
+  "801f53a4": {
+   "outcomes": "KKKKBKKKKK",
+   "sha": "c24c30e430ac0c077885057b58b0f9bcfbb4d0b18209360569b2d0948fd57ae0"
+  },
+  "801f58b8": {
+   "outcomes": "KKKKKKKKKB",
+   "sha": "140c3b14c88983be40205fdafea3f98d0a295d1bccedea8c047a4e9a21d0fae6"
+  },
+  "801fddb0": {
+   "outcomes": "KKKSKSKKSK",
+   "sha": "6b1df68767e5ee95a034881ca788e05d1545687542083925005edf88f1035a6c"
+  },
+  "801fdfb8": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "0d6289304e1940d3401d2049188e53831deba2fd9e46d8fa301c4a3b6a768e6a"
+  },
+  "801fe06c": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "25b7c30a9d70ec212a78262fc2d7d420eee46031ba5ff8ce22c03626540b8990"
+  },
+  "801fe21c": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "4c489f071c5b65dda1a8d3c167e92a22dbab210b4d548e3d4b2b692d0af7d159"
+  },
+  "801fed58": {
+   "outcomes": "KKKKKSSKKK",
+   "sha": "41ae31506cf38eaee79d04a9ad4c817dc6e0b2f2550079f5c228943e09158ab8"
+  },
+  "80200f88": {
+   "outcomes": "KKKSKSKKKS",
+   "sha": "7cdd0aedcd631a1f1704e0ac42d9c3bdbab55dcbcb1521127da00c1927d58207"
+  },
+  "80201228": {
+   "outcomes": "KKSKSKKKKS",
+   "sha": "07657bf8904f9520c14df6a343ed3b8b9b9388226da61fd4cfb79245dff16c94"
+  },
+  "802019f8": {
+   "outcomes": "KKSKBKBKKK",
+   "sha": "fd814462c855fec6d94df5d8c4d49e24114cb964ef1e85e58dbe85bff2a11ef2"
+  },
+  "80202004": {
+   "outcomes": "KKKKKSKKKK",
+   "sha": "d498b16d5de60c6990a3b3ee96fe38ffebb88fe37ee935df26c0ac6de91dbc83"
+  },
+  "802056a8": {
+   "outcomes": "KKKKKKBKKK",
+   "sha": "42e2dc7c92ef775f11bf7ebea8f344c4261f3011aae5441f398727e8589f31fb"
+  },
+  "802057e0": {
+   "outcomes": "KSKKKKKKSS",
+   "sha": "c42018873bbedf10944f210d72c44f83467033fd0b63ea4f502bf5876c1a2f3b"
+  },
+  "80207130": {
+   "outcomes": "KKKKKKKKKS",
+   "sha": "b862b150f823999cea4db2223934f32aaa689ee6fe34b2be8653a713fd09c4aa"
+  },
+  "8020b94c": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "7093b21cd8f430d7f37d17213a5ebbd05b9912c67f1408a2cf3509172c8b4204"
+  },
+  "8020cba4": {
+   "outcomes": "KKKKSKKKKS",
+   "sha": "31a66df2b79beff3ded32168367b12849fa64865c1569dc859ce5cac9df02e13"
+  },
+  "802138e0": {
+   "outcomes": "KKKKKBKKKK",
+   "sha": "dd99c830c6834fe8ee042b068394d84f94af22f6dc83bf3ec4974ee1bd23065a"
+  },
+  "80213920": {
+   "outcomes": "KKKSKBKKKK",
+   "sha": "aeff0ddf8bf7feaae41411dbbe79f5d9ea015b96d71f3f55ff16ed6153d0d897"
+  },
+  "80213fe8": {
+   "outcomes": "KSKKKSBSKK",
+   "sha": "fc421e5b6cb120b776d78cec166d548ca04b4ed5290ed2ff2ca1038c0fb1fde3"
+  },
+  "80214270": {
+   "outcomes": "KKKSKKKKKK",
+   "sha": "523cc96d2a543bb5ead8b2b95020d4e7790b4da18e5edee1ce3e85032c8a9441"
+  },
+  "80214954": {
+   "outcomes": "KKKKKBKKKK",
+   "sha": "c394a8d9ef5e72d09be3d636044de9396ce31e0e50d4c2edd8f7b2b53b348e87"
+  },
+  "80214994": {
+   "outcomes": "KKKKKKKKKB",
+   "sha": "041e0d35b58680690bdf06993d2903131d13c3638392260e74a8ef935e0d191c"
+  },
+  "802149e0": {
+   "outcomes": "KKKKKBKKKK",
+   "sha": "fe588e74bda604e01bf7a624f04c60e9def4f6176df88c21599125c788dcb150"
+  },
+  "80214a20": {
+   "outcomes": "KKKSKKKKKK",
+   "sha": "156f06742e97e782657a5dc12aeda0691ca26241eaa14d591cb8683d6d4f7db6"
+  },
+  "80214a60": {
+   "outcomes": "KKKKKBKKKK",
+   "sha": "28eb2eaee90bb3b3d5ee28815b6d529488bef6d63e36948777f0a876c92ae815"
+  },
+  "80214dfc": {
+   "outcomes": "KKKKKBKKKK",
+   "sha": "492aa9fd2e3179d6123621992257ca2e5d148c4de7082f84d7eaa08534ac56a0"
+  },
+  "80214e8c": {
+   "outcomes": "KKKKKBKKKK",
+   "sha": "a1e96f2196fb837740c435329ba858fc4559ba6d51c7a1e1367b2beda274be82"
+  },
+  "80214fac": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "87ed0acab49d1644178c71e41ccefd93f90c36cd7cf74c8a7be3eea49e09ece6"
+  },
+  "8021503c": {
+   "outcomes": "KKKKKSKKKK",
+   "sha": "3f63f3a3a72a2b739fd1e77ca23c8c9dd3f6ca9381597b231831cc9d04622963"
+  },
+  "8021507c": {
+   "outcomes": "KKKSKKKKKK",
+   "sha": "cdd38fa49efa80da5363af8164959707ab9e592cd409ff10e1f0b4a976aaea7a"
+  },
+  "802150bc": {
+   "outcomes": "KKSKSKKKSS",
+   "sha": "3e1992429887e88c336224a2f597413a6fe5eaf2cbecad6e4144d626a64e395f"
+  },
+  "80215444": {
+   "outcomes": "KKKSKKKKKS",
+   "sha": "8a2fd75e783b07e4513e2a847e7e674eeebeece9fa9b028da3d8b86c395d5bed"
+  },
+  "80222930": {
+   "outcomes": "KKKSSK",
+   "sha": "d378c9774abd219680872fef88c60626a3541926beb5d5aedda327781a61ba27"
+  },
+  "802229f8": {
+   "outcomes": "KSSKSBKKKS",
+   "sha": "b9e83c81ea937a76ccf586de4acfdde46617991a38746cf20bade77b984c8e88"
+  },
+  "80222c80": {
+   "outcomes": "KKKSKSKKKK",
+   "sha": "abf80cfba4004ac20f811eb670bc082f8692658089a845a3cac0187172ad8450"
+  },
+  "802258bc": {
+   "outcomes": "KKKKBBKBKB",
+   "sha": "31020155d48398aaad082c71e029d13edabacd18b2412ffa630b54a1d66327c2"
+  },
+  "80225930": {
+   "outcomes": "KKKBKKKBKK",
+   "sha": "7da4d102e47c71e0ff2c26458583fc68b40d8f9b9a7db0201538006db498b6bd"
+  },
+  "80226984": {
+   "error": "baseline FAIL at compare: the matched C does not pass its harness here (76/96 failing)"
+  },
+  "80226ae8": {
+   "outcomes": "SKKKBKSKKK",
+   "sha": "e0e7333321c851f77f6853a5c1f66de825841783f367965baa6d864c365f671e"
+  },
+  "802918dc": {
+   "outcomes": "KSKKKKKKKB",
+   "sha": "86f338f03b9e00774ddd5a25e7a330b70b4ac9b63f7d5559113791899f4e99bd"
+  }
+ }
+}
