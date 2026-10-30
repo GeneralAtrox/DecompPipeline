@@ -82,6 +82,23 @@ void pvr_seen(const char *fmt, ...);
 u32 pvr_decode(u32 tcw, u32 w, u32 h, u32 stride, u32 *out, u32 out_texels);
 u32 pvr_decode_texels(u32 tcw, u32 w, u32 h); /* out_texels pvr_decode needs */
 u32 pvr_texture_bytes(u32 tcw, u32 w, u32 h, u32 stride); /* the bytes of texture memory it reads */
+u32 pvr_tcw_layout(u32 tcw); /* the TCW without a palettized texture's selector bits (they are no layout bits) */
+int pvr_palette_range(u32 tcw, u32 *first, u32 *count); /* the palette entries it reads; 0: not palettized */
+
+/* pvr_pal.c: palette RAM and PAL_RAM_CTRL. pvr_palette_stamp changes when any of the entries (or the format) does. */
+u32 pvr_palette_entry(u32 index);
+u32 pvr_palette_format(void);
+u32 pvr_palette_stamp(u32 first, u32 count);
+
+/* pvr_pack.c: a texture pack's image for the texture (key: format bits, size, stride and the texture memory bytes
+ * read); its level count (mip-mapped guests get the image's whole box-filtered chain), 0 for none. The texels stay
+ * the pack's. pvr_pack_generation changes when the pack is switched on or off. */
+u32 pvr_pack_levels(u32 tcw, u32 w, u32 h, u32 stride, const u32 **texels, u32 *pw, u32 *ph);
+u64 pvr_pack_key(const u8 *vram, u32 tcw, u32 w, u32 h, u32 stride);
+u32 pvr_pack_generation(void);
+
+/* pvr_state.c: --dump-vram SCENE writes the texture memory as it is when that scene is parsed */
+void pvr_vram_dump(u32 scene);
 
 /* pvr_tex.c */
 void pvr_tex_invalidate(u32 offset, u32 size);

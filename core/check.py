@@ -12,7 +12,7 @@ import shutil
 import threading
 import time
 
-from . import filelock, paths, proof, readable_stack, strict_judge, target_hooks, toolcfg
+from . import filelock, junk_ram, paths, proof, readable_stack, strict_judge, target_hooks, toolcfg
 from .compare import (IMAGE_BASE, REG_INDEX, SP, STACK_LO, Memory, _f, compare_vector, is_nan,  # noqa: F401
                       parse_results, parse_vectors, same_f32)
 from .lint import fused_lint, lint
@@ -28,7 +28,7 @@ def output_cap(harness):
         return OUTPUT_CAP_MIN
 
 
-def run_runner(cmd, timeout, out, cap):
+def run_runner(cmd, timeout, out, cap, env=None):
     """Run a runner whose result file is out, bounded in time (timeout) and in output (cap bytes).
 
     C that writes across the whole guest RAM in a loop keeps the runner bounded, but its result file grows to GBs,
@@ -49,7 +49,7 @@ def run_runner(cmd, timeout, out, cap):
     t = threading.Thread(target=watch, daemon=True)
     t.start()
     try:
-        rc, log, reason = paths.run_bounded(cmd, timeout, stop_flag=over)
+        rc, log, reason = paths.run_bounded(cmd, timeout, env=env, stop_flag=over)
     finally:
         done.set()
         t.join()
@@ -114,15 +114,14 @@ void tc_thunk(const u32 *r, const f32 *fr, u32 *out_r0, f32 *out_fr0)
 # What a Visual Studio environment cache keeps (state/msvc_env.json, msvc_env_x86.json; port/tools/build.py keeps
 # the same): the compiler's and linker's variables, Visual Studio's and the Windows SDK's, and the Windows ones a
 # process needs. Nothing else the shell had is written to disk: no session token, pass key or address.
-CAPTURED = ("PATH", "INCLUDE", "LIB", "LIBPATH", "EXTERNAL_INCLUDE", "CL", "_CL_", "LINK", "_LINK_",
-            "SYSTEMROOT", "WINDIR", "SYSTEMDRIVE", "COMSPEC", "PATHEXT", "TEMP", "TMP", "OS", "NUMBER_OF_PROCESSORS",
-            "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER", "PROCESSOR_LEVEL", "PROCESSOR_REVISION",
-            "PROGRAMFILES", "PROGRAMFILES(X86)", "PROGRAMW6432", "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(X86)",
-            "COMMONPROGRAMW6432", "PROGRAMDATA", "ALLUSERSPROFILE", "USERPROFILE", "APPDATA", "LOCALAPPDATA",
-            "PLATFORM", "COMMANDPROMPTTYPE", "DEVENVDIR", "EXTENSIONSDKDIR", "HTMLHELPDIR", "NETFXSDKDIR",
-            "UCRTVERSION", "UNIVERSALCRTSDKDIR", "VCIDEINSTALLDIR", "VCINSTALLDIR", "VCTOOLSINSTALLDIR",
-            "VCTOOLSREDISTDIR", "VCTOOLSVERSION", "VSINSTALLDIR", "VISUALSTUDIOVERSION", "WINDOWSLIBPATH",
-            "VCPKG_ROOT")  # the port build's vcpkg toolchain
+CAPTURED = ("PATH", "INCLUDE", "LIB", "LIBPATH", "EXTERNAL_INCLUDE", "CL", "_CL_", "LINK", "_LINK_", "SYSTEMROOT",
+            "WINDIR", "SYSTEMDRIVE", "COMSPEC", "PATHEXT", "TEMP", "TMP", "OS", "NUMBER_OF_PROCESSORS",
+            "PROCESSOR_ARCHITECTURE", "PROCESSOR_IDENTIFIER", "PROCESSOR_LEVEL", "PROCESSOR_REVISION", "PROGRAMFILES",
+            "PROGRAMFILES(X86)", "PROGRAMW6432", "COMMONPROGRAMFILES", "COMMONPROGRAMFILES(X86)", "COMMONPROGRAMW6432",
+            "PROGRAMDATA", "ALLUSERSPROFILE", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PLATFORM", "COMMANDPROMPTTYPE",
+            "DEVENVDIR", "EXTENSIONSDKDIR", "HTMLHELPDIR", "NETFXSDKDIR", "UCRTVERSION", "UNIVERSALCRTSDKDIR",
+            "VCIDEINSTALLDIR", "VCINSTALLDIR", "VCTOOLSINSTALLDIR", "VCTOOLSREDISTDIR", "VCTOOLSVERSION",
+            "VSINSTALLDIR", "VISUALSTUDIOVERSION", "WINDOWSLIBPATH", "VCPKG_ROOT")  # the port build's vcpkg toolchain
 CAPTURED_RE = re.compile(r"VS\d+COMNTOOLS|VSCMD_\w+|__VSCMD_\w+|__DOTNET_\w+|FRAMEWORK\w*|WINDOWSSDK\w*", re.I)
 
 
@@ -131,8 +130,7 @@ def kept(name):
 
 
 def env_cache(path):
-    """A cached Visual Studio environment, only its kept() variables; a cache written before that rule is cleaned in
-    place."""
+    """A cached Visual Studio environment, only its kept() variables; an older cache is cleaned in place."""
     env = paths.read_json(path)
     if env and not all(kept(k) for k in env):
         env = {k: v for k, v in env.items() if kept(k)}
@@ -265,8 +263,7 @@ def build(cfg, meta, work_file, build_dir):
 
 
 def _build(build_dir, env, cl, rt):
-    # Zero-warning build: every warning at /W4 is an error, in work.c and in our own runtime alike.
-    srcs = list(RUNTIME_SRCS)
+    srcs = list(RUNTIME_SRCS)  # zero-warning build: every warning at /W4 is an error, in work.c and our runtime alike
     head = [cl, *CL_FLAGS, f"/I{paths.RUNTIME}", f"/Fo{build_dir}\\", "/FA", f"/Fa{build_dir}\\",
             f"/Fe{build_dir / 'runner.exe'}"]
     cmd = ([*head, "/Tc", str(build_dir / "work.c"), "/Tc", str(build_dir / "thunk.c"), *map(str, rt)] if rt else
@@ -276,10 +273,9 @@ def _build(build_dir, env, cl, rt):
     if rc != 0 or reason:
         errs = keep or out.splitlines()[-15:]
         return False, [re.sub(r"^.*\\work\.c", "work.c", e) for e in errs][:20]
-    # The runner computes under DAZ (FPSCR.DN=1), and the optimizer turns a float compare-and-select into
-    # minss/maxss, which takes a denormal operand as zero: the SH-4 moves the selected register bit for bit
-    # (Toy Commander 8c01484a stores a denormal it chose with fcmp/gt; the /O1 build stored 0). Unoptimized,
-    # the select stays a compare, a branch and a move, as in the C source.
+    # The runner computes under DAZ (FPSCR.DN=1), and the optimizer turns a float compare-and-select into minss/maxss,
+    # which takes a denormal operand as zero: the SH-4 moves the selected register bit for bit (TC 8c01484a stores a
+    # denormal it chose with fcmp/gt; the /O1 build stored 0). Unoptimized, it stays a compare, branch and move.
     if MINMAX.search((build_dir / "work.asm").read_text(encoding="utf-8", errors="replace")):
         cmd = [cl, "/nologo", "/c", "/Od", "/fp:strict", "/W4", "/WX", "/TC", f"/I{paths.RUNTIME}",
                f"/Fo{build_dir}\\", str(build_dir / "work.c")]
@@ -298,6 +294,7 @@ def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harn
     """Full check of work_file. Returns a result dict; result['verdict'] is 'PASS' or 'FAIL'.
 
     harness_dir: test vectors from somewhere else (the watcher gate checks staged oracle output); fused: R9/fmac."""
+    jmode = junk_ram.mode(cfg)  # the junk-RAM pass (core/junk_ram): None while off; refused off the Dreamcast
     hook = target_hooks.get("run_check")  # a target with its own runtime and harness format (core/target_hooks)
     if hook:
         return hook(cfg, addr, work_file, sets=sets, build_dir=build_dir, harness_dir=harness_dir)
@@ -354,6 +351,8 @@ def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harn
         result["vectors"][s] = {"total": len(ids), "failing": len(fails), "failing_ids": fails[:50]}
         result["failing"] += len(fails)
         result["total"] += len(ids)
+    if jmode and not result["failing"] and "run_error" not in result:  # the second pass, on junk RAM
+        junk_ram.judge(cfg, jmode, addr, meta, harness, cmd, out, vecs, exp, image, sets, lo, strict, result)
     if not result["first_diffs"] and result["failing"]:
         result["first_diffs"].append({"vector": None, "inputs": "", "diffs": ["(failures are only in the hidden set)"]})
     return _finish(result, sets, summary)
@@ -402,8 +401,7 @@ def _finish(result, sets, summary):
                                                      for a in unreached[:20]}})
     if summary.get("stack_balance"):  # report only (TcBalance): unpushed callee-saved pops, r15 off at exit
         result["stack_balance"] = summary["stack_balance"]
-    # Mismatch score used for "is the agent still making progress": lower is better.
-    big = 10 ** 6
+    big = 10 ** 6  # mismatch score used for "is the agent still making progress": lower is better
     result["score"] = {"lint": big * 3, "build": big * 2, "run": big}.get(result["stage"], result["failing"])
     if result["stage"] == "compare" and "run_error" in result:
         result["score"] = max(result["failing"], 1) + big // 2
@@ -426,6 +424,8 @@ def format_for_agent(result):
         lines.append("Stop now. (The hidden set is checked after your session ends.)")
         return "\n".join(lines)
     lines.append(f"DEV FAIL - {v.get('failing')} of {v.get('total')} dev vectors differ from the original.")
+    if (result.get("junk_ram") or {}).get("failing") and result["junk_ram"]["mode"] == "enforce":
+        lines.append(f"  and {result['junk_ram']['failing']} vectors differ with unset RAM filled with junk")
     if result.get("run_error"):
         lines.append(f"  runner: {result['run_error']}")
     for fd in result["first_diffs"]:

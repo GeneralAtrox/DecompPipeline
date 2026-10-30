@@ -197,6 +197,26 @@ STUB = [
 ]
 
 
+class PortAbsent(unittest.TestCase):
+    """The port's translator-C loads (tx_rt.c ABSENT) read 0 in area 5 and in P4's reserved space: PS2's
+    stack-indexed read with the console's stack (area 3, near 8c00f400) lands at 0xec77..-0xec7a.. there."""
+
+    def test_absent(self):
+        import re
+        src = (ROOT / "port" / "runtime" / "tx" / "tx_rt.c").read_text()
+        m = dict(re.findall(r"#define (AREA5|P4_RESERVED|ABSENT)\(a\) (.+)", src))
+        py = {k: re.sub(r"(0x[0-9a-f]+)u", r"\1", v).replace("&&", " and ").replace("||", " or ")
+              for k, v in m.items()}
+        env = {"AREA5": lambda a: eval(py["AREA5"], {"a": a}),
+               "P4_RESERVED": lambda a: eval(py["P4_RESERVED"], {"a": a})}
+        absent = lambda a: eval(py["ABSENT"], dict(env, a=a))  # noqa: E731
+        stack_read = lambda sp: (sp * 40 + 0x0c542a54) & 0xffffffff  # noqa: E731  (8c045596..8c0455aa)
+        for a in (0x144f2564, 0x944f2564, 0xe4000000, 0xefffffff, stack_read(0x8c00e000), stack_read(0x8c00f3fc)):
+            self.assertTrue(absent(a), hex(a))
+        for a in (0x8c000000, 0x0c542a54, 0x18000000, 0xe0000000, 0xe3ffffff, 0xf0000000, 0xff000000, 0xb8000000):
+            self.assertFalse(absent(a), hex(a))
+
+
 class Wiring(unittest.TestCase):
     def test_runners_and_port(self):
         for runner in (SH4 / "runtime" / "runner.c", SH4 / "runtime_rd" / "rd_runner.c"):
@@ -204,8 +224,8 @@ class Wiring(unittest.TestCase):
         self.assertIn("tcrt_area5(addr, size)) return 0;", (SH4 / "runtime" / "tc_rt.c").read_text())
         self.assertIn("tcrt_area5(addr, 1)", (SH4 / "runtime_rd" / "rd_veh.c").read_text())
         tx_rt = (ROOT / "port" / "runtime" / "tx" / "tx_rt.c").read_text()
-        for fn in ("u8 rd8(u32 addr) { return AREA5(addr) ? 0", "u16 rd16(u32 addr) { return AREA5(addr) ? 0",
-                   "    if (AREA5(addr)) return 0;\n    u32 value"):
+        for fn in ("u8 rd8(u32 addr) { return ABSENT(addr) ? 0", "u16 rd16(u32 addr) { return ABSENT(addr) ? 0",
+                   "    if (ABSENT(addr)) return 0;\n    u32 value"):
             self.assertIn(fn, tx_rt)
         self.assertIn("TcBase.area5(off, size)", (SH4 / "ghidra_scripts" / "TcHw.java").read_text())
         self.assertEqual(BASE, "14a59a7")

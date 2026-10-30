@@ -68,8 +68,11 @@ typedef struct K1SysConfig {
     u32 vertex_buffer_size;
     f32 list_share[K1_LISTS]; /* percent of the vertex buffer per list */
     u32 unknown_40[7];
-    u32 buffer_model;
+    u32 buffer_model; /* with flags K1_CONFIG_BUFFER_MODEL: K1_BUFFER_DIRECT | the list Kamui sends straight to the TA */
 } K1SysConfig;
+
+#define K1_CONFIG_BUFFER_MODEL 0x10u /* K1SysConfig.flags: buffer_model is on */
+#define K1_BUFFER_DIRECT 0x20u       /* buffer_model: one list (the low bits: 0, 2 or 4) is not buffered */
 
 /* kamui1_scene.c */
 s32 kmSetSystemConfiguration(void *config); /* the documented call; a game's display set-up shim calls it */

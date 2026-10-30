@@ -12,13 +12,20 @@ with X even, inside the loaded image and outside every function body. tools/data
 (tools/ghidra_tools/TcEntryCheck.java, read-only) whether X disassembles as a subroutine, and lists the result; the
 coordinator adds the chosen ones (`--add`: project.json catalog_overrides "entry", plus extra_functions outside the
 game ranges), never in bulk.
+
+tables() finds the same kind of address held in a data table of functions (core/mid_entries' table rule) instead of a
+literal pool: a handler table whose other words are function starts, often in the 0x0c mirror form (PS2's object
+handlers 0x0c06b31c, 0x0c06b352 between 0x0c06aed0 and 0x0c06b356). TcOrphans' pointer-table rule did not make them,
+and mid_entries reports only table words inside a body.
 """
 import bisect
 import re
+import struct
 
-from core import sh4_asm
+from core import mid_entries, sh4_asm
 
 LOOKAHEAD = 16
+NEAR = 0x100  # a table word outside every body is taken as code when it is this close to a body (after or before)
 
 
 def _use(insns, i, reg):
@@ -39,7 +46,7 @@ def _use(insns, i, reg):
 
 
 def bodies(path):
-    """Sorted [(lo, hi)] of state/function_bodies.txt ("entry lo hi", hi inclusive)."""
+    """Sorted [(lo, hi)] of state/function_bodies.txt ("entry lo hi", hi exclusive, as TcCatalog writes it)."""
     rows = []
     if path.exists():
         for line in path.read_text(encoding="utf-8").splitlines():
@@ -50,9 +57,43 @@ def bodies(path):
 
 
 def inside(rows, a):
-    """Is a inside one of the (disjoint) body ranges?"""
+    """Is a inside one of the (disjoint) body ranges? The first byte after a body is not (the next function's start
+    when two functions touch: PS2's 8c04f506 right after 8c04f458's body)."""
     k = bisect.bisect_right(rows, (a, 1 << 40)) - 1
-    return k >= 0 and rows[k][0] <= a <= rows[k][1]
+    return k >= 0 and rows[k][0] <= a < rows[k][1]
+
+
+def tables(image, base, body_rows, starts, pools=frozenset()):
+    """{addr: [("table", word address)]}: words of data tables of functions (mid_entries.TABLE_RUN code addresses in a
+    row, at least half of them function starts; the words outside every body and every literal pool the listings
+    load) that point outside every body, less than NEAR bytes after a body's end or before a body's start, even and
+    no function start."""
+    ends = [hi for _, hi in body_rows]
+    los = [lo for lo, _ in body_rows]
+    out = {}
+    run = []
+
+    def near(a):
+        k = bisect.bisect_right(ends, a) - 1
+        j = bisect.bisect_right(los, a)
+        return not inside(body_rows, a) and ((k >= 0 and a - ends[k] < NEAR) or (j < len(los) and los[j] - a < NEAR))
+
+    def close():
+        if len(run) >= mid_entries.TABLE_RUN and 2 * sum(a in starts for _, a in run) >= len(run):
+            for at, a in run:
+                if a not in starts and not inside(body_rows, a):
+                    out.setdefault(f"{a:08x}", []).append(("table", f"{at:08x}"))
+        run.clear()
+
+    for i, w in enumerate(struct.unpack_from(f"<{len(image) // 4}I", image, 0)):
+        at, a = base + 4 * i, mid_entries.p1(w)
+        if (not inside(body_rows, at) and at not in pools and a is not None and a % 2 == 0
+                and base <= a < base + len(image) and (a in starts or inside(body_rows, a) or near(a))):
+            run.append((at, a))
+        else:
+            close()
+    close()
+    return out
 
 
 def candidates(packets_dir, image_lo, image_hi, body_rows, functions):

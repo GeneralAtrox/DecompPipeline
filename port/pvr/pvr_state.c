@@ -44,6 +44,20 @@ u8 *port_texture_window(u32 addr, u32 size)
 
 void port_texture_written(u32 addr, u32 size) { pvr_vram_written((addr & AREA_MASK) - TEX_WINDOW, size); }
 
+/* --dump-vram SCENE (ta_parse.c): the 8 MB of texture memory as the decoder reads it (the linear view), to
+ * ta_vram_SCENE.bin beside --ta-dump's ta_scene_SCENE.txt, for decoding a scene's textures by hand
+ * (tests/test_pvr_pack.py's driver decodes a texture word from it with the renderer's own decoder). */
+void pvr_vram_dump(u32 scene)
+{
+    char name[64];
+    FILE *f;
+    snprintf(name, sizeof name, "ta_vram_%u.bin", scene);
+    if (fopen_s(&f, name, "wb") || !f) return;
+    fwrite(g_vram, 1, PVRX_VRAM_SIZE, f);
+    fclose(f);
+    port_log("pvr: texture memory of scene %u (vblank %u) written to %s\n", scene, port_vblank_count(), name);
+}
+
 /* An in-between frame's settings are put back after it (runtime/frame_extra.c); the fog table is uploaded again. */
 static void state_undone(void *p, u32 size)
 {

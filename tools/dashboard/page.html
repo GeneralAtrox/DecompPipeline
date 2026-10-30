@@ -6,7 +6,7 @@
 <title>Decomp Progress</title>
 <style>
 :root{--bg:#0b0f17;--panel:#121826;--line:#263042;--text:#e6e9ef;--dim:#8a93a6;--readable:#2fbf5b;--matched:#1d7f3c;
---progress:#3b7fd9;--blocked:#c98a2b;--todo:#1a2130;--done:#2fbf5b;--now:#3b7fd9}
+--progress:#3b7fd9;--blocked:#c98a2b;--todo:#1a2130;--kit:#6b5a8e;--done:#2fbf5b;--now:#3b7fd9}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:14px/1.45 system-ui,Segoe UI,sans-serif}
 main{max-width:1200px;margin:0 auto;padding:20px 16px 40px}
 h1{font-size:20px;margin:0 0 2px}h2{font-size:15px;margin:22px 0 10px;color:var(--dim);font-weight:600;letter-spacing:.02em}
@@ -68,8 +68,9 @@ font-size:12px;display:none;max-width:340px;z-index:5}
 </main>
 <script>
 const D = /*DATA*/null;
-const COL = {readable:"--readable", matched:"--matched", progress:"--progress", blocked:"--blocked", todo:"--todo"};
-const LABEL = {readable:"Readable C", matched:"Raw C proven", progress:"In progress", blocked:"Refused (needs a fix)", todo:"Not started"};
+const COL = {readable:"--readable", matched:"--matched", progress:"--progress", blocked:"--blocked", todo:"--todo", kit:"--kit"};
+const LABEL = {readable:"Readable C", matched:"Raw C proven", progress:"In progress", blocked:"Refused (needs a fix)", todo:"Not started",
+  kit:"Hardware (port kit)"};
 const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const pct = (a, b) => b ? Math.round(1000 * a / b) / 10 : 0;
@@ -92,15 +93,16 @@ function road(G) {
     const cur = own.findIndex(s => s.state === "now");
     return {steps, cur: cur < 0 ? steps.length : cur};
   }
-  let fns = 0, harn = 0, raw = 0, rd = 0, bytes = 0;
+  // hardware functions the port kit replaces (state kit) are counted apart: 100% means every function that can be C
+  let fns = 0, harn = 0, raw = 0, rd = 0, bytes = 0, kit = 0;
   for (const p of G.parts) {
-    for (const s of D.states) { fns += p.counts[s][0]; bytes += p.counts[s][1]; }
+    for (const s of D.states) { if (s === "kit") { kit += p.counts[s][0]; continue; } fns += p.counts[s][0]; bytes += p.counts[s][1]; }
     harn += p.harnesses; raw += p.counts.readable[0] + p.counts.matched[0]; rd += p.counts.readable[0];
   }
   const m = (G.progress || {}).milestones || {}, share = (a, b) => Math.min(100, pct(a, b));
   const steps = [
     ["Disc", "extracted", true],
-    ["Functions", fns.toLocaleString() + " found", fns > 0],
+    ["Functions", (fns + kit).toLocaleString() + " found" + (kit ? ` (${kit.toLocaleString()} port kit)` : ""), fns > 0],
     ["Tests", share(harn, fns) + "% built", fns > 0 && harn >= fns, share(harn, fns)],
     ["Raw C", share(raw, fns) + "% proven", fns > 0 && raw >= fns, share(raw, fns)],
     ["Readable C", share(rd, fns) + "% done", fns > 0 && rd >= fns, share(rd, fns)],

@@ -27,6 +27,8 @@ the facts file, a harness or a check result.
 config.json (or config.local.json, project.json) "strict_judge": {"call_snapshots": "report", "exit_frame":
 "report"} makes either comparison report-only, with no new harness: its differences then go to the check result's
 "strict_report" and do not fail the verdict ("enforce", the default, fails it).
+A fifth judge flag, "junk_ram" (core/junk_ram: a second pass on junk RAM, judged against xemu's run of the original),
+is no oracle input: it adds no facts line, and "strict_judge" {"junk_ram": "report"} is its report mode.
 
 project.json "mock_write_facts": {"<callee hex>": {"<field>": size, ..., "why": "<evidence>"}}: field one of the
 target's integer argument registers (abi int_args) or a stack word s0..s7, size 1..256 bytes, why required (the
@@ -125,7 +127,7 @@ def facts_lines(cfg):
 def modes(cfg):
     """{"call_snapshots": mode, "exit_frame": mode} from config "strict_judge" (default "enforce")."""
     sj = cfg.get("strict_judge") or {}
-    if not isinstance(sj, dict) or any(k not in REPORTABLE for k in sj):
+    if not isinstance(sj, dict) or any(k not in REPORTABLE + ("junk_ram",) for k in sj):  # junk_ram: core/junk_ram
         raise ValueError(f'config "strict_judge": only {" and ".join(REPORTABLE)} have a mode ("enforce" or "report")')
     out = {k: sj.get(k, "enforce") for k in REPORTABLE}
     if any(m not in MODES for m in out.values()):

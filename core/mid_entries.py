@@ -171,6 +171,21 @@ def from_tables(image, base, bodies, gaps=(), pools=frozenset()):
     return out
 
 
+def fragments(listings, bodies, decided=()):
+    """{F: [evidence]}: the opposite case, a catalogued function that is another function's code (a catalog_overrides
+    "not_entry" candidate): F's listing restores PR from the stack (lds.l @r15+,PR) and never saves it there, so it
+    ends a frame other code built. The evidence names the function whose body runs up to F. PS2's 8c0cab42 is the
+    case 9..11 arm of 8c0ca9ac's switch; split off, the port has no code there and 8c0ca9ac's switch loops on it."""
+    out = {}
+    for entry, insns in listings.items():
+        ops = {(x.mn, ",".join(x.ops).replace(" ", "").lower()) for x in insns}
+        if ("lds.l", "@r15+,pr") in ops and ("sts.l", "pr,@-r15") not in ops and f"{entry:08x}" not in decided:
+            before = bodies.owner(entry - 2)
+            out[entry] = ["restores PR it never saved" + (f"; {before:08x}'s body runs up to it"
+                                                          if before not in (None, entry) else "")]
+    return dict(sorted(out.items()))
+
+
 def find(listings, bodies, image, base, decided=(), gaps=()):
     """{a: [evidence]} of every rule, without the decided addresses (catalog_overrides entry and not_entry)."""
     out = {}

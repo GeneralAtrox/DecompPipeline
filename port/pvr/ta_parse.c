@@ -5,7 +5,8 @@
  *
  * The log gets each class the stream uses once ("ta: ..."), what the renderer does not handle as a to-do, and a
  * per-scene count line at the first scene and every STATS_EVERY scenes. --ta-dump SCENE writes that scene's lists as
- * words to ta_scene_SCENE.txt, for reading the stream by hand. */
+ * words to ta_scene_SCENE.txt, for reading the stream by hand; --dump-vram SCENE writes the texture memory at that
+ * scene to ta_vram_SCENE.bin (pvr_state.c). */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -277,7 +278,7 @@ static void parse_list(Parse *p, u32 start, u32 end)
     }
 }
 
-static u32 g_dump_scene = 0xffffffffu;
+static u32 g_dump_scene = 0xffffffffu, g_vram_scene = 0xffffffffu;
 static int g_dump_odd;
 
 int pvr_option(const char *arg, const char *value)
@@ -286,6 +287,10 @@ int pvr_option(const char *arg, const char *value)
         g_pvr_debug |= strstr(value, "nocull") ? PVR_DBG_NOCULL : 0u;
         g_pvr_debug |= strstr(value, "nofog") ? PVR_DBG_NOFOG : 0u;
         g_pvr_debug |= strstr(value, "nodepth") ? PVR_DBG_NODEPTH : 0u;
+        return 2;
+    }
+    if (value && !strcmp(arg, "--dump-vram")) {
+        g_vram_scene = (u32)strtoul(value, NULL, 10);
         return 2;
     }
     if (!value || strcmp(arg, "--ta-dump")) return 0;
@@ -322,6 +327,7 @@ void ta_parse(PvrScene *s, const PvrPass *passes, u32 count)
     static u32 scenes;
     Parse p;
     if (scenes == g_dump_scene) dump(scenes, passes, count);
+    if (scenes == g_vram_scene) pvr_vram_dump(scenes);
     memset(&p, 0, sizeof p);
     p.s = s;
     tb_reset(s);

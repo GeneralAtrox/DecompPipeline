@@ -24,6 +24,11 @@ static u32 g_sp = TX_STACK_TOP, g_low = TX_STACK_TOP, g_reported = TX_STACK_TOP,
 static PortTcRet g_last;
 static int g_fpu_whole;
 static u32 g_rlo[4]; /* r0..r3 of the last tc_call, until a translated callee takes them */
+/* The 8 stack words of the last tc_call (TcArgs.s), until a translated callee's frame takes them: the original's
+ * callee finds them at its r15, also those its registry prototype does not name (a va_list pointer, the words
+ * after a variadic function's format), which its judged body reads there. */
+static u32 g_slo[8];
+static int g_slo_set;
 
 typedef union {
     u32 u;
@@ -48,8 +53,13 @@ uint32_t port_tx_f2u(float value)
  * a read returns 0 (Flycast sh4_mem.cpp ReadMem_extdev_T; the judge's TcHw "read area5"). Game code can read there, e.g. a table indexed
  * with its own stack pointer. */
 #define AREA5(a) ((a) < 0xe0000000u && ((a) & 0x1c000000u) == 0x14000000u)
-u8 rd8(u32 addr) { return AREA5(addr) ? 0 : *(const volatile u8 *)(uintptr_t)addr; }
-u16 rd16(u32 addr) { return AREA5(addr) ? 0 : *(const volatile u16 *)(uintptr_t)addr; }
+/* P4's reserved space (0xe4000000..0xefffffff, between the store queues and the cache arrays) answers nothing either
+ * and a read returns 0 (Flycast's P4 read of an unknown address). The same stack-indexed table read lands here, not in
+ * area 5, when the stack is where the console's is (area 3, TX_STACK_TOP; the judge's oracle stack gives area 5). */
+#define P4_RESERVED(a) ((a) >= 0xe4000000u && (a) < 0xf0000000u)
+#define ABSENT(a) (AREA5(a) || P4_RESERVED(a))
+u8 rd8(u32 addr) { return ABSENT(addr) ? 0 : *(const volatile u8 *)(uintptr_t)addr; }
+u16 rd16(u32 addr) { return ABSENT(addr) ? 0 : *(const volatile u16 *)(uintptr_t)addr; }
 /* A word the game busy-waits on until an interrupt handler changes it (the game's sources name it: port_spin_word),
  * in a loop the judge's TcSpin cannot turn into tc_spin (it stores counters each pass). Read SPIN_READS times
  * unchanged within one vertical blank, the read waits for the next one, as the interrupt comes while the console
@@ -91,7 +101,7 @@ static u32 spin_read(int i, u32 addr, u32 value)
 
 u32 rd32(u32 addr)
 {
-    if (AREA5(addr)) return 0;
+    if (ABSENT(addr)) return 0;
     u32 value = *(const volatile u32 *)(uintptr_t)addr;
     for (int i = 0; i < SPIN_WORDS && g_spin_word[i] != AREA_MASK; i++)
         if ((addr & AREA_MASK) == g_spin_word[i]) return spin_read(i, addr, value);
@@ -113,6 +123,9 @@ uint32_t port_tx_enter(uint32_t frame, uint32_t args)
         port_exit("translator C: guest stack overflow", 3);
     }
     g_sp = sp - frame;
+    if (g_slo_set && args >= 32u)
+        for (u32 i = 0; i < 8u; i++) wr32(sp + 4u * i, g_slo[i]);
+    g_slo_set = 0;
     if (g_sp < g_low) {
         g_low = g_sp;
         if (g_reported - g_low >= TX_REPORT_STEP) {
@@ -204,8 +217,11 @@ static void call(u32 target, const PortTcArgs *a, PortTcRet *o, int want_f, cons
         g = glue_of(guest_fold(target));
     if (g) {
         for (int i = 0; i < 4; i++) g_rlo[i] = a->rlo[i];
+        for (int i = 0; i < 8; i++) g_slo[i] = a->s[i];
+        g_slo_set = 1;
         g(a, o);
         for (int i = 0; i < 4; i++) g_rlo[i] = 0; /* a readable callee left them */
+        g_slo_set = 0;
         return;
     }
     if (!fn) {

@@ -4,7 +4,8 @@
  * line-mode callback (slot 11) as Kamui does, and the vertical blank callback (slot 8) runs at every vertical blank
  * the kit waits for. Slot 0 runs when kmRender has drawn (Kamui calls it last in its end-of-render interrupt) and
  * slot 3 when kmCreateTextureSurface finds texture memory full (Kamui calls it when the allocator returns 3). Fog
- * and the background plane go to pvr/ in the hardware's own terms.
+ * and the background plane go to pvr/ in the hardware's own terms, as does the palette (pvr/pvr_pal.c, which Kamui 1
+ * feeds the same way).
  *
  * Needs from the game's headers: KmCallbackFunc (void (*)(void *)), KmVersionInfo (12 bytes) and the function
  * names below as the game's registry has them (the Km_* ones are registry names for library functions with no SDK
@@ -24,6 +25,7 @@
 #define LINES_PAL_STEP 16u
 #define LINE_MODES 5u
 #define PALETTE_MODES 4u /* kmSetPaletteMode: ARGB1555, RGB565, ARGB4444, ARGB8888 */
+#define PALETTE_ENTRIES 1024u
 
 static KmCallbackFunc g_lines_fn;
 static KmCallbackFunc g_slot_fn[SLOT_TEXTURE_FULL + 1];
@@ -84,12 +86,20 @@ void k2_run_callback(s32 slot)
     if (slot >= 0 && slot <= SLOT_TEXTURE_FULL && g_slot_fn[slot]) g_slot_fn[slot](g_slot_arg[slot]);
 }
 
-/* The palette's entry format, kept for PAL_RAM_CTRL; pvr/ decodes no palettized textures yet. A mode above 3 is
- * refused, as Kamui refuses it. */
+/* The palette's entry format, PAL_RAM_CTRL. A mode above 3 is refused, as Kamui refuses it. */
 s32 kmSetPaletteMode(s32 mode)
 {
     if ((u32)mode >= PALETTE_MODES) return K2_ERROR;
     g_palette_mode = (u32)mode;
+    pvr_set_palette_format(g_palette_mode);
+    return K2_OK;
+}
+
+/* PAL_RAM: all 1024 entries, as the mode's format holds them (a 16-bit format in each word's low half). */
+s32 kmSetPaletteData(const u32 *palette)
+{
+    if (!palette) return K2_ERROR;
+    pvr_set_palette(0, palette, PALETTE_ENTRIES);
     return K2_OK;
 }
 

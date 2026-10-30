@@ -162,6 +162,8 @@ public abstract class TcInputs extends TcBase {
     //                    holding the caller's saved PR (VAL "sentinel" is the oracle's return address)
     //   genretfn 0xCALLEE LO HI   every call to CALLEE (any call number up to the 64th) returns a value drawn from
     //                    LO..HI, e.g. a table index; the locked TcLate takes these lines, so applyHints never sees them
+    //   range rN LO HI with N 0..3 or 8..14, and range gbr LO HI   a start value for a register outside r4..r7 (a hook
+    //                    reading its caller's r10/r11, a routine reading its caller's GBR); TcLate.regs takes these lines
     // LOC is rN or 0xADDR (a global), optionally followed by +0xOFF steps; each step dereferences the
     // pointer before it: "r4+0x10c" is the word at r4+0x10c, "0x8c0c78a0+0x1c8" the word at *(0x8c0c78a0)+0x1c8.
     void applyHints(Vec v, List<String> hints) {

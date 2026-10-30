@@ -202,6 +202,7 @@ figures and the causes of the rest). How the stage works: docs/TRANSLATOR_STAGE.
   names (`readable/names/SNN.json`: functions, globals, read-only strings) and requests. The rules are in
   `docs/DESIGN_BRIEF_HEADERS.md`; Toy Commander's `readable/DESIGN_BRIEF.md` is a complete example.
 - `refine.py header` must end with `headers OK` after every design edit.
+- Cheat codes name globals: with the user's yes to get the game's list (libretro-database `cht/Sega - Dreamcast` first), `tools/cheat_names.py` writes `readable/cheat_hints.md` before the designers start; a designer names a global from it only when the code that uses the address agrees.
 - A raw return type the decompiler got wrong is corrected in the names entry (`"raw_ret": "s32"`), never in raw C:
   `tools/sig_override.py --candidates` lists likely ones, `--apply` (servers stopped) carries the harness, matched
   C and callers, then `refine.py verify` the files it lists.
@@ -212,6 +213,8 @@ figures and the causes of the rest). How the stage works: docs/TRANSLATOR_STAGE.
 pointers, structs, named callees and globals), judged on the same harness. A machine draft goes first and is
 adopted when it passes and reads as named C. `docs/HAIKU_WORKFLOW.md` describes what an attempt sees and costs.
 Never hand-fix a readable file: fix the design or the pipeline and re-run.
+
+The round also writes the game's `docs/ENGINE.md` (in the game's folder): how its code and data are organised (systems, main loop, memory layout, file formats, quirks) and what the round learned, in one place, kept current by each later round.
 
 ## 7. Gate and audit
 

@@ -32,9 +32,15 @@ void pvr_set_background(const f32 xyz[3][3], const u32 argb[3]); /* the backgrou
 void pvr_set_clip(u32 x0, u32 y0, u32 x1, u32 y1); /* global tile clip, in pixels (inclusive) */
 void pvr_set_stride(u32 width);                    /* TEXT_CONTROL: the row width of stride textures, texels */
 void pvr_set_border(u32 argb);                     /* the border colour, around the picture */
+/* pvr_pal.c: palette RAM, what palettized textures (pixel formats 5 and 6) index */
+void pvr_set_palette_format(u32 format); /* PAL_RAM_CTRL: 0 ARGB1555, 1 RGB565, 2 ARGB4444, 3 ARGB8888 */
+void pvr_set_palette(u32 first, const u32 *entries, u32 count); /* PAL_RAM: entries first.. of the 1024 */
 /* FPU_SHAD_SCALE: cheap shadow, where modifier volumes scale the shadow polygons' colours by intensity / 256
  * (0..255); a negative intensity selects the two-parameter polygons instead. */
 void pvr_set_cheap_shadow(s32 intensity);
+
+/* pvr_pack.c: --texture-pack DIR|on|off (texture packs: replacement images, host-side only); the arguments taken */
+int pvr_pack_option(const char *arg, const char *value);
 
 /* pvr_draw.c: draws a scene's passes into the frame target. Returns 0 when nothing could be drawn. */
 int pvr_render(const PvrPass *passes, u32 count);

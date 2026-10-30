@@ -5,6 +5,8 @@
 2. the translator: meta "fpscr_sz" "sz:1" gives the SZ=1 body alone (fmov moves 8 bytes: a copy loop's pair), "sz:01"
    a body per mode chosen by sh4_sz(), and a callee that returns with SZ changed makes the code after its call run
    in that mode, with the C setting the mode after the (mocked) call; without the fact the C is as before (4 bytes);
+   a local subroutine (hand-written asm, `bsr` into the body) returns only to its own call, in the mode it ran in
+   (PS2 8c18bf20), and one entered in both modes is still refused;
 3. the runners, xemu and the oracle take the entry mode (line z; TcFpscr.Sz's hooks).
 Synthetic machine code. Run: python -W error tests/test_dc_sz_entry.py.
 """
@@ -142,6 +144,29 @@ class EntryMode(unittest.TestCase):
         meta = {"addr": "8c010014", "blocks": [], "fpscr_sz": f"sz:0:{FLIP:08x}.1u"}
         self.assertIn(f"szx {FLIP:08x} 19\n", xemu_check.config_text(meta, 0x00040001))
         self.assertNotIn("szx", xemu_check.config_text({"addr": "8c010014", "blocks": []}, 0x00040001))
+
+
+class LocalReturns(unittest.TestCase):
+    """A local subroutine's rts goes back where PR points (translate.py pr_flow), not to every return point."""
+    # 00 sts.l pr,@-r15; fschg; bsr S1; nop | 08 fschg; bsr S0; nop | 0e lds.l @r15+,pr; rts; nop | 14 S1 | 1c S0
+    TWO = [0x4F22, FSCHG, 0xB006, NOP, FSCHG, 0xB007, NOP, 0x4F26, RTS, NOP] + COPY + COPY
+    # 00 sts.l pr,@-r15; fschg; bsr S; nop | 08 fschg; bsr S; nop | 0e lds.l @r15+,pr; rts; nop | 14 S
+    BOTH = [0x4F22, FSCHG, 0xB006, NOP, FSCHG, 0xB003, NOP, 0x4F26, RTS, NOP] + COPY
+
+    def tr(self, words):
+        img = Image(struct.pack(f"<{len(words)}H", *words), BASE)
+        return translate_function(img, BASE, sig(None), body=[(BASE, BASE + 2 * len(words) - 1)], entries={BASE},
+                                  sp_input=True)
+
+    def test_each_return_in_its_own_mode(self):
+        src = self.tr(self.TWO)     # S1 runs with SZ=1 (8 bytes), S0 with SZ=0; their returns meet nowhere
+        self.assertEqual(len(re.findall(r"fr3 = rdf32\((r4|a0) \+ 4u\);", src)), 1, src)
+        self.assertEqual(len(re.findall(r"wrf32\((r5|a1) \+ 4u, fr3\);", src)), 1, src)
+
+    def test_entered_in_both_modes_refused(self):
+        from sh4translate.translate import TranslateError
+        with self.assertRaisesRegex(TranslateError, "FPU modes .FPSCR.SZ. differ where paths meet"):
+            self.tr(self.BOTH)
 
 
 if __name__ == "__main__":

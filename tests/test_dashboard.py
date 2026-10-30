@@ -78,7 +78,7 @@ class Added(unittest.TestCase):
         (ws / "state" / "ledger.json").write_text(json.dumps({"functions": {"8c010000": {"status": "matched"}}}),
                                                   encoding="utf-8")
         c = dashboard.workspace(ws)["counts"]
-        self.assertEqual((c["matched"][0], c["todo"][0], c["blocked"][0]), (1, 1, 1))
+        self.assertEqual((c["matched"][0], c["todo"][0], c["blocked"][0], c["kit"][0]), (1, 1, 0, 1))
 
     def test_unlisted_folders_are_not_shown(self):
         other = self.d / "Saturn" / "Other"

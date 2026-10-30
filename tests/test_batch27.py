@@ -16,6 +16,7 @@ Synthetic data. Run: python -W error tests/test_batch27.py (also from test_tooli
 """
 import json
 import pathlib
+import struct
 import sys
 import tempfile
 import unittest
@@ -176,6 +177,28 @@ class DataFuncs(unittest.TestCase):
         # value-used, even, outside every body (P2 form normalized); not the address use, the body, the odd one
         self.assertEqual(sorted(got), ["8c0811fe", "8c081500"])
         self.assertEqual(got["8c0811fe"], [("8c000000", "8c000000")])
+
+    def test_body_end_is_exclusive(self):
+        rows = [(0x8c000000, 0x8c000010)]  # function_bodies.txt: "entry lo hi", hi exclusive (PS2 8c04f458..8c04f506)
+        self.assertTrue(data_funcs.inside(rows, 0x8c00000e))
+        self.assertFalse(data_funcs.inside(rows, 0x8c000010))  # the next function's start, right after the body
+
+    def test_tables(self):
+        base = 0x8c000000
+        rows = [(base, base + 0x20), (base + 0x40, base + 0x60), (base + 0x80, base + 0xa0)]
+        starts = {base, base + 0x40, base + 0x80}
+        img = bytearray(0x200)
+        # a handler table in the 0x0c mirror form: starts, one function no body has (6 bytes after a body's end) and a
+        # word inside a body (mid_entries' case, not listed here); a non-address word ends it
+        struct.pack_into("<6I", img, 0x100, 0x0c000000, 0x0c000026, 0x0c000040, 0x0c000080, 0x0c000046, 5)
+        struct.pack_into("<3I", img, 0x180, 0x0c000000, 0x0c000028, 0x0c000040)  # too short for a table
+        got = data_funcs.tables(bytes(img), base, rows, starts)
+        self.assertEqual(got, {"8c000026": [("table", "8c000104")]})
+        far = [(base, base + 0x20), (base + 0x340, base + 0x360), (base + 0x380, base + 0x3a0)]
+        struct.pack_into("<4I", img, 0x1c0, 0x0c000000, 0x0c000300, 0x0c000340, 0x0c000380)  # 0x2e0 after, 0x40 before
+        got = data_funcs.tables(bytes(img) + bytes(0x200), base, far, {base, base + 0x340, base + 0x380})
+        self.assertEqual(got["8c000300"], [("table", "8c0001c4")])
+        self.assertEqual(data_funcs.tables(bytes(img), base, rows, starts, {base + 0x104}), {})  # a literal pool
 
     def test_refused(self):
         v = {"8c0811fe": ("code", "mov.l r13,@-r15 (prologue)"), "8c09f660": ("invalid", "add #0x25,r3"),

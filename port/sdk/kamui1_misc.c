@@ -7,8 +7,8 @@
  * vertical sync at each vertical blank the kit waits for. The others need hardware the port has none of (an
  * overflowing texture memory, an overrunning strip, the horizontal sync), so they never fire.
  *
- * Fog, the border, the background plane and the pixel clip go to pvr/ in the hardware's own terms. The palette, the
- * colour clamp, the culling value and the fog vertex colour have no pvr/ counterpart yet: they are kept, and a call
+ * Fog, the border, the background plane, the pixel clip and the palette (pvr/pvr_pal.c, which Kamui 2 feeds the same
+ * way) go to pvr/ in the hardware's own terms. The colour clamp, the culling value and the fog vertex colour have no pvr/ counterpart yet: they are kept, and a call
  * that sets them to something the picture would show goes to the to-do log (pvr_todo, each text once per run).
  *
  * Needs from the game's headers: KmCallbackFunc (void (*)(void *)), KMPACKEDARGB (u32), KMVERTEXCONTEXT and the
@@ -35,7 +35,6 @@ static struct {
 } g_cb[SLOTS];
 static int g_vsync_task;
 static s32 g_hsync_line;
-static u32 g_palette_mode, g_palette[PALETTE_ENTRIES];
 static u32 g_clamp_max = 0xffffffffu, g_clamp_min;
 static f32 g_cull_value;
 static u32 g_enable_value;
@@ -155,16 +154,15 @@ KMSTATUS kmSetFogDensity(u32 density)
 /* PAL_RAM_CTRL: the palette entries' format (0 ARGB1555, 1 RGB565, 2 ARGB4444, 3 ARGB8888). */
 KMSTATUS kmSetPaletteMode(s32 mode)
 {
-    g_palette_mode = (u32)mode;
+    pvr_set_palette_format((u32)mode);
     return K1_OK;
 }
 
-/* PAL_RAM: the 1024 entries; palettized textures are not decoded yet, so the first load is reported. */
+/* PAL_RAM: the 1024 entries. */
 KMSTATUS kmSetPaletteData(const u32 *palette)
 {
     if (!palette) return K1_ERROR;
-    memmove(g_palette, palette, sizeof g_palette);
-    pvr_todo("kamui1: palette data (mode %u)", g_palette_mode);
+    pvr_set_palette(0, palette, PALETTE_ENTRIES);
     return K1_OK;
 }
 

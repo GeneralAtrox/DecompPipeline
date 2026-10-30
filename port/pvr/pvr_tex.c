@@ -1,6 +1,8 @@
 /* Decoded textures, cached by what the texture unit reads: the TCW, the TSP's size bits and (stride textures) the
  * stride. Each entry remembers the texture-memory range it was decoded from; a write there (kmLoadTexture) drops
- * it, and the next draw decodes it again. */
+ * it, and the next draw decodes it again; a palettized one is decoded again when the palette entries it reads change
+ * (pvr_palette_stamp). A texture pack's image (pvr_pack.c), when it has one, replaces the
+ * decoded texels; switching the pack on or off decodes everything again. */
 #include <stdlib.h>
 #include <string.h>
 #include "pvr_int.h"
@@ -15,6 +17,7 @@
 typedef struct TexEntry {
     u32 tcw, size, stride, used;
     int failed; /* not decodable: not retried until its memory is written */
+    u32 pal_stamp; /* palettized: the palette's stamp it was decoded with */
     u32 start, end; /* texture memory read */
     ID3D11ShaderResourceView *srv;
 } TexEntry;
@@ -74,6 +77,7 @@ static TexEntry *find(u32 tcw, u32 size, u32 stride)
 
 static const char *layout_name(u32 tcw)
 {
+    tcw = pvr_tcw_layout(tcw);
     if (tcw & (1u << 30)) return tcw & (1u << 31) ? "VQ mip-mapped" : "VQ";
     if (tcw & TCW_NON_TWIDDLED) return tcw & TCW_STRIDE ? "stride" : "rectangle";
     return tcw & (1u << 31) ? "twiddled mip-mapped" : "twiddled";
@@ -82,19 +86,26 @@ static const char *layout_name(u32 tcw)
 static int create(TexEntry *e, u32 w, u32 h)
 {
     D3D11_TEXTURE2D_DESC d;
-    D3D11_SUBRESOURCE_DATA init[12];
+    D3D11_SUBRESOURCE_DATA init[16];
+    const u32 *texels = NULL;
     u32 need = pvr_decode_texels(e->tcw, w, h), levels, at = 0;
-    if (need > g_texels_cap) {
+    levels = pvr_pack_levels(e->tcw, w, h, e->stride, &texels, &w, &h);
+    if (levels) {
+        if (levels > 16u) levels = 16u;
+    } else if (need > g_texels_cap) {
         u32 *p = realloc(g_texels, (size_t)need * sizeof *g_texels);
         if (!p) return 0;
         g_texels = p;
         g_texels_cap = need;
     }
-    levels = pvr_decode(e->tcw, w, h, e->stride, g_texels, g_texels_cap);
+    if (!levels) {
+        levels = pvr_decode(e->tcw, w, h, e->stride, g_texels, g_texels_cap);
+        texels = g_texels;
+    }
     if (!levels) return 0;
     for (u32 i = 0; i < levels; i++) {
         u32 lw = w >> i ? w >> i : 1u, lh = h >> i ? h >> i : 1u;
-        init[i].pSysMem = g_texels + at;
+        init[i].pSysMem = texels + at;
         init[i].SysMemPitch = lw * 4u;
         init[i].SysMemSlicePitch = 0;
         at += lw * lh;
@@ -124,10 +135,20 @@ static int create(TexEntry *e, u32 w, u32 h)
 
 ID3D11ShaderResourceView *pvr_tex_get(u32 tcw, u32 tsp)
 {
+    static u32 generation;
+    if (generation != pvr_pack_generation()) {
+        generation = pvr_pack_generation();
+        flush_all();
+    }
     u32 size = tsp & TSP_SIZE_MASK, w = 8u << ((size >> 3) & 7u), h = 8u << (size & 7u);
-    u32 stride = (tcw & TCW_NON_TWIDDLED) && (tcw & TCW_STRIDE) ? g_pvr.stride : 0u;
+    u32 layout = pvr_tcw_layout(tcw), pal_first, pal_count, pal_stamp = 0;
+    u32 stride = (layout & TCW_NON_TWIDDLED) && (layout & TCW_STRIDE) ? g_pvr.stride : 0u;
     TexEntry *e = find(tcw, size, stride);
     if (!e || e->failed) return NULL;
+    if (pvr_palette_range(tcw, &pal_first, &pal_count)) {
+        pal_stamp = pvr_palette_stamp(pal_first, pal_count);
+        if (e->srv && e->pal_stamp != pal_stamp) drop(e);
+    }
     if (!e->srv) {
         e->start = (tcw & TCW_ADDR_MASK) << 3;
         e->end = e->start + pvr_texture_bytes(tcw, w, h, stride);
@@ -135,6 +156,7 @@ ID3D11ShaderResourceView *pvr_tex_get(u32 tcw, u32 tsp)
             e->failed = 1;
             return NULL;
         }
+        e->pal_stamp = pal_stamp;
     }
     return e->srv;
 }

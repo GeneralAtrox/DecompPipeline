@@ -71,7 +71,8 @@ A step's `state` is `done`, `now` (the one being worked on; at most one), `part`
 Functions found (state/catalog.json), tests built (harness/*/meta.json), raw C proven and in progress
 (state/ledger.json), readable C (state/readable.json), units (state/systems.json), port set up (port/game.json). A
 workspace is one `add` listed for the game. Every function of the decompile scope (core/scope.py: the game ranges plus
-`extra_functions`) counts, so 100% means all of them: one with no ledger row yet is not started, or refused when it
-touches hardware (core/coverage.excluded_functions; the port kit replaces it). A workspace without a ledger (judged by the translator only) shows the translator's latest verdict per function,
+`extra_functions`) counts, so 100% means all of them: one with no ledger row yet is not started. A function that
+touches hardware (core/coverage.excluded_functions) and is not proven is the port kit's ("Hardware (port kit)"): the
+kit replaces it, so it is counted apart, shown beside the functions found, and left out of the percentages. A workspace without a ledger (judged by the translator only) shows the translator's latest verdict per function,
 from state/translator_verdicts.json (tools/translate_backlog.py writes it on every run). `dashboard_mirrors` / `dashboard_refresh` in config.local.json add another
 machine's live copies (the newest copy wins).

@@ -85,6 +85,28 @@ class MidEntries(unittest.TestCase):
         listings, bodies, img = setup()
         self.assertNotIn(0x8C010104, me.find(listings, bodies, img, BASE, decided={"8c010104"}))
 
+    def test_fragments(self):
+        """A switch arm the catalog split off (PS2 8c0cab42): it calls, then pops the frame of the function before
+        it. A function that saves PR is no fragment, nor is one that never touches it; decided ones are left out."""
+        f4, f5 = 0x8C0100C0, 0x8C0100D0
+        listings = {k: sh4_asm.parse(v) for k, v in {F3: LISTINGS[F3], F2: LISTINGS[F2], f4: """
+  8c0100c0  mov.l 0x8c0100f0,r3                  ; = 0x0c010040  (function 8c010040)
+  8c0100c2  jsr @r3                              ; call 8c010040
+  8c0100c4  _mov r14,r4
+  8c0100c6  lds.l @r15+,PR
+  8c0100c8  rts
+  8c0100ca  _mov.l @r15+,r14
+""", f5: """
+  8c0100d0  sts.l PR,@-r15
+  8c0100d2  lds.l @r15+,PR
+  8c0100d4  rts
+  8c0100d6  _nop
+"""}.items()}
+        bodies = me.Bodies(BODIES + "8c0100c0 8c0100c0 8c0100cc\n8c0100d0 8c0100d0 8c0100d8\n", [F1, F2, F3, f4, f5])
+        self.assertEqual(me.fragments(listings, bodies), {f4: ["restores PR it never saved; 8c010080's body runs "
+                                                               "up to it"]})
+        self.assertEqual(me.fragments(listings, bodies, decided={"8c0100c0"}), {})
+
     def test_pool_is_no_table(self):
         listings, bodies, img = setup()
         self.assertEqual(me.pool_words(listings), {0x8C010288, 0x8C010070})

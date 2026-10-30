@@ -2,8 +2,9 @@
 
 usage: python tools/data_funcs.py --project DIR [--ghidra-project DIR] [--no-ghidra] [--json FILE]
        python tools/data_funcs.py --project DIR --add @FILE
-  (list)   candidates from the packets' listings, then a read-only Ghidra check of each (TcEntryCheck.java on the
-           project's master Ghidra project, or --ghidra-project: a copy, e.g. tests/ghidra_work/<key>/master): valid
+  (list)   candidates from the packets' listings and from the image's data tables of functions, then a read-only
+           Ghidra check of each (TcEntryCheck.java on the project's master Ghidra project, or --ghidra-project: a
+           copy, e.g. tests/ghidra_work/<key>/master): valid
            (decodes as a subroutine that terminates), invalid, data, code (decoded, no function), inside a function.
            Writes nothing in the workspace. Servers stopped (Ghidra locks the project it opens, even read-only).
   --add    the coordinator's choice, checked first by TcEntryCheck (nothing is written when one address is not
@@ -89,7 +90,13 @@ def main():
     lo = int(str(cfg["load_address"]), 16)
     hi = lo + cfg["binary_path"].stat().st_size
     funcs = {int(f["addr"], 16) for f in paths.read_json(paths.CATALOG)["functions"]}
-    cands = data_funcs.candidates(paths.PACKETS, lo, hi, data_funcs.bodies(paths.FUNCTION_BODIES), funcs)
+    rows = data_funcs.bodies(paths.FUNCTION_BODIES)
+    cands = data_funcs.candidates(paths.PACKETS, lo, hi, rows, funcs)
+    from core import mid_entries
+    pools = mid_entries.pool_words(mid_entries.listings_of(paths.PACKETS))
+    for x, users in data_funcs.tables(cfg["binary_path"].read_bytes(), lo, rows, funcs, pools).items():
+        if int(x, 16) not in funcs:
+            cands.setdefault(x, []).extend(users)
     checked = {} if a.no_ghidra or not cands else ghidra_check(
         paths, ghidra, cfg, sorted(cands), pathlib.Path(a.ghidra_project) if a.ghidra_project else None)
     rows = []
@@ -99,7 +106,7 @@ def main():
     by = {}
     for r in rows:
         by[r["verdict"]] = by.get(r["verdict"], 0) + 1
-    print(f"{len(rows)} value-used addresses outside every function body: "
+    print(f"{len(rows)} value-used or table-held addresses outside every function body: "
           + ", ".join(f"{k} {n}" for k, n in sorted(by.items())))
     for r in rows:
         if r["verdict"] in ("valid", "code", "unchecked"):

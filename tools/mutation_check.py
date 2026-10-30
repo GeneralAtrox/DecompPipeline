@@ -3,7 +3,7 @@ function's own harness with the official check; survivors mark a weak harness. H
 
 usage: python tools/bounded.py 7200 python tools/mutation_check.py --project DIR [ADDR... | @FILE | --references]
            [--sample N] [--seed S] [--report] [--gate] [--json OUT] [--workers N] [--max-mutants N] [--time-cap S]
-           [--build-dir DIR] [-v]
+           [--build-dir DIR] [--planted FILE] [-v]
 
   ADDR/@FILE     the functions (matched ones only); else every matched function, or --sample N of them (seeded)
   --references   the project's references (project.json "references", the regress suite's reference functions)
@@ -14,6 +14,9 @@ usage: python tools/bounded.py 7200 python tools/mutation_check.py --project DIR
   --max-mutants  mutants per function (default config mutation_check.max_mutants, 16)
   --time-cap     seconds per function (default mutation_check.time_cap_s, 240): the rest is not tried
   --workers      functions judged at once (default 4)
+  --planted FILE judge these mutants instead of the generated ones: JSON {addr: [{"id", "op", "line", "what", "cls",
+                 "src"}]} (core/mutation.generate's shape; hand-planted ones, e.g. wrong reads); the functions default
+                 to the file's
 Without --report the records are merged into state/mutation.json (the proof state reads them: core/proof.py).
 Prints per function: tried, killed, survived (and the logic ones), dropped (refused by lint or the /W4 /WX build),
 score (logic survivors only) and score_raw (every survivor); then the project figure: score distribution, survivors
@@ -81,6 +84,7 @@ def main():
     ap.add_argument("--max-mutants", type=int)
     ap.add_argument("--time-cap", type=float)
     ap.add_argument("--build-dir")
+    ap.add_argument("--planted")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args()
     ws = use_project(a.project)
@@ -94,6 +98,11 @@ def main():
     led = (paths.read_json(paths.LEDGER) or {}).get("functions") or {}
     matched = sorted(x for x, r in led.items() if r.get("status") == "matched" and (paths.MATCHED / f"{x}.c").exists()
                      and (paths.HARNESS / x / "expected.txt").exists())
+    if a.planted:
+        planted = json.loads(pathlib.Path(a.planted).read_text(encoding="utf-8"))
+        mutation.generate = lambda src, addr, cap=16, seed=1: planted.get(addr, [])[:cap]  # check_function's mutants
+        if not (a.addrs or a.references):
+            a.addrs = sorted(planted)
     if a.addrs or a.references:
         want = expand_addrs(a.addrs) + [x for x in (paths.PROJECT.get("references") or []) if a.references]
         want = list(dict.fromkeys(want))
