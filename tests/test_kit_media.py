@@ -21,16 +21,41 @@ sys.path.insert(0, str(TOOL / "tests"))
 import game_config  # noqa: E402
 from test_lockstep import HAVE_VC, NO_VC  # noqa: E402
 
+# What adx_mw.c needs from a game's headers (as PS2's sys/sdk.h has them) and the ADXT calls the harness makes
+GAME_H = r"""#ifndef GAME_H
+#define GAME_H
+#include "rd_rt.h"
+typedef struct AdxTalk *ADXT;
+typedef void (*AdxtErrFunc)(void *obj, char *message);
+typedef struct GdfsHandle *GDFS;
+typedef void *GDFS_DIRREC;
+typedef struct { u32 w[8]; } MWS_PLY_INIT_SFD;
+GDFS gdFsOpen(const char *fileName, GDFS_DIRREC dirRec);
+s32 gdFsGetFileSize(GDFS gdfs, s32 *size);
+s32 gdFsRead(GDFS gdfs, s32 sectors, void *buffer);
+void gdFsClose(GDFS gdfs);
+ADXT ADXT_Create(s32 maxChannels, void *work, s32 workSize);
+void ADXT_StartFname(ADXT adxt, const char *fname);
+void ADXT_Stop(ADXT adxt);
+s32 ADXT_GetStat(ADXT adxt);
+void ADXT_Pause(ADXT adxt, s32 sw);
+s32 ADXT_GetErrCode(ADXT adxt);
+#endif
+"""
+
 MEDIA = ["adx.c", "media_mix.c", "mpv_tables.c", "mpv_idct.c", "mpv_pic.c", "mpv_mb.c", "sfd.c", "movie.c"]
 
-# The harness: "adx F" decodes an ADX file (once, then looping), "talk F" plays it through the mix at -6 dB, "sfd F"
-# demultiplexes and decodes a movie, "movie F" plays one as a port does (vertical blanks, mix, frames drawn).
+# The harness: "adx F" decodes an ADX file (once, then looping), "talk F" plays it through the mix at -6 dB, "adxt F"
+# plays it through the adx_mw module's ADXT calls (port/sdk/adx_mw.c, on the fixture game.h below and a gdFs that
+# reads F), "sfd F" demultiplexes and decodes a movie, "movie F" plays one as a port does (vertical blanks, mix, frames
+# drawn).
 MAIN_C = r"""#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "platform.h"
 #include "media.h"
 #include "sfd.h"
+#include "game.h"
 
 static PortVblankFn g_task;
 static void *g_task_arg;
@@ -48,6 +73,19 @@ void gfx_movie_show(const u8 *y, const u8 *cb, const u8 *cr, u32 ys, u32 cs, u32
     if (w != 16 || h != 16) printf("size %u %u\n", w, h);
 }
 void gfx_movie_hide(void) { g_hides++; }
+static u8 *g_file;
+static u32 g_file_n;
+GDFS gdFsOpen(const char *fileName, GDFS_DIRREC dirRec) { (void)dirRec; return strcmp(fileName, "T.ADX") ? NULL : (GDFS)(void *)&g_file; }
+s32 gdFsGetFileSize(GDFS gdfs, s32 *size) { (void)gdfs; *size = (s32)g_file_n; return 0; }
+s32 gdFsRead(GDFS gdfs, s32 sectors, void *buffer) { (void)gdfs, (void)sectors; memcpy(buffer, g_file, g_file_n); return 0; }
+void gdFsClose(GDFS gdfs) { (void)gdfs; }
+
+static s32 loudness(const s16 *pcm, u32 n)
+{
+    s32 sum = 0;
+    for (u32 i = 0; i < 2 * n; i++) sum += pcm[i] < 0 ? -pcm[i] : pcm[i];
+    return sum;
+}
 
 static u8 *load(const char *path, u32 *n)
 {
@@ -95,6 +133,22 @@ int main(int argc, char **argv)
         memset(pcm, 0, sizeof pcm);
         media_mix(pcm, 4096);
         printf("%d %u %d %d %d\n", media_talk_state(t), media_talk_pos(t), media_gain(-60), pcm[0], pcm[1]);
+    } else if (!strcmp(argv[1], "adxt")) {
+        ADXT a = ADXT_Create(2, NULL, 0);
+        g_file = p, g_file_n = n;
+        printf("%d", ADXT_GetStat(a));
+        ADXT_StartFname(a, "T.ADX");
+        printf(" %d %d", ADXT_GetStat(a), ADXT_GetErrCode(a));
+        ADXT_Pause(a, 1);
+        memset(pcm, 0, sizeof pcm);
+        media_mix(pcm, 64);
+        printf(" %d %d", ADXT_GetStat(a), loudness(pcm, 64) > 0);
+        ADXT_Pause(a, 0);
+        memset(pcm, 0, sizeof pcm);
+        media_mix(pcm, 4096);
+        printf(" %d %d", ADXT_GetStat(a), loudness(pcm, 4096) > 0);
+        ADXT_Stop(a);
+        printf(" %d %d\n", ADXT_GetStat(a), ADXT_GetStat(NULL));
     } else if (!strcmp(argv[1], "sfd")) {
         SfdDemux d;
         Mpv m;
@@ -236,9 +290,10 @@ def build(d):
         {"name": "Fixture", "entry": {"name": "Fx_Main", "addr": "8c011000"}, "image_base": "8c010000",
          "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}), encoding="utf-8")
     (d / "media_main.c").write_text(MAIN_C, encoding="utf-8")
+    (d / "game.h").write_text(GAME_H, encoding="utf-8")
     rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
     media = KIT / "runtime" / "media"
-    srcs = " ".join(f'"{p}"' for p in [media / f for f in MEDIA] + [d / "media_main.c"])
+    srcs = " ".join(f'"{p}"' for p in [media / f for f in MEDIA] + [KIT / "sdk" / "adx_mw.c", d / "media_main.c"])
     cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /wd4996 /I"{d}" /I"{media}" '
           f'/I"{KIT / "runtime"}" /I"{rd}" {srcs} /Fe:media.exe')
     vc = str(game_config.vcvars32()).replace("/", "\\")
@@ -291,6 +346,13 @@ class KitMedia(unittest.TestCase):
         out = self.run_exe("talk", "t.adx", adx_file(FRAMES, 128))[0].split()
         self.assertEqual(out[:3], ["5", "128", "16423"])
         self.assertEqual([int(out[3]), int(out[4])], [want[0] * 16423 >> 15] * 2)
+
+    def test_adxt_stat_pause_errcode(self):
+        """Through adx_mw's ADXT calls: a handle answers STOP (0) before its stream starts, PLAYING (3) once it has,
+        with no error code; paused, the mix gets none of its sound and it stays PLAYING; played on, it ends (PLAYEND,
+        5, its header has no loop) and was heard; stopped, STOP again; no handle answers STOP."""
+        out = self.run_exe("adxt", "x.adx", adx_file(FRAMES, 128))[0].split()
+        self.assertEqual(out, ["0", "3", "0", "3", "0", "5", "1", "0", "0"])
 
     def test_movie_demux_and_pictures(self):
         """The system stream splits into its video and sound (the ADX file whole); the sequence reads as 16x16 at

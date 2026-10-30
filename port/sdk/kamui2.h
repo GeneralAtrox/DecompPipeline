@@ -54,6 +54,14 @@ typedef struct K2SysConfig {
 
 /* kamui2_scene.c */
 extern K2SysConfig *g_k2_config; /* from kmSetSystemConfiguration */
+/* The vertex buffer's bytes the kit uses: the configured size, cut to end at main RAM's end. A buffer past
+ * RAM's end would wrap onto RAM's start (the game's code), e.g. a game's default size left in place when the game's
+ * own pass sizing (which shrinks it to fit) is not running. */
+static inline u32 k2_vertex_buffer_size(u32 buffer, u32 size)
+{
+    u32 room = 0x01000000u - (buffer & 0x00ffffffu);
+    return size < room ? size : room;
+}
 s32 kmSetSystemConfiguration(void *config); /* the documented call; a game's display set-up calls it */
 
 /* kamui2_misc.c */

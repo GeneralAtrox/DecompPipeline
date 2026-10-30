@@ -77,6 +77,7 @@ int main(int argc, char **argv)
     const char *want = argv[5];
     static char line[1 << 16];
     static u8 buf[1 << 15];
+    static u32 rflag[4]; /* a settable run flag (line f): offset, callee, n, reg (0: none) */
     int id = -1, active = 0;
     u32 r[4] = {0}, xf[16] = {0}, rets[TCRT_RETS] = {0};
     /* fr12..fr15 from line H (reported at exit as FH only when the vector had H). Static, like line and buf:
@@ -113,10 +114,17 @@ int main(int argc, char **argv)
             tcrt_add_hw(reg, (u32)strtoul(p, &p, 16));
         } else if (line[0] == 'Z') { /* GBR is state, before the first vector (TcHw): reported at exit as GB */
             tcrt_set_gbr_state();
-        } else if (line[0] == 'f') { /* a run flag, before the first vector (TcCalls): "f word callee n" */
+        } else if (line[0] == 'f') { /* a run flag, before the first vector (TcCalls): "f word callee n", or the
+                                      * settable form "f offset callee n reg bits" (tc_flag.h; its word at each E) */
             char *p = line + 1;
-            u32 word = (u32)strtoul(p, &p, 16), callee = (u32)strtoul(p, &p, 16);
-            tcrt_set_run_flag(word, callee, (u32)strtoul(p, &p, 10));
+            u32 word = (u32)strtoul(p, &p, 16), callee = (u32)strtoul(p, &p, 16), n = (u32)strtoul(p, &p, 10);
+            u32 reg = (u32)strtoul(p, &p, 10);
+            if (reg >= 4 && reg <= 7) {
+                rflag[0] = word, rflag[1] = callee, rflag[2] = n, rflag[3] = reg;
+                tcrt_set_run_bits((u32)strtoul(p, &p, 16));
+            } else {
+                tcrt_set_run_flag(word, callee, n);
+            }
         } else if (line[0] == 'J' || line[0] == 'U') { /* the stricter judge's flags and facts (tc_strict.h) */
             tcrt_strict_line(line);
         } else if (line[0] == 'V') {
@@ -162,6 +170,8 @@ int main(int argc, char **argv)
             u32 dr[16];
             for (int i = 0; i < 16; i++) dr[i] = (u32)strtoul(p, &p, 16);
             tcrt_set_draws(dr);
+        } else if (line[0] == 'b') { /* after V's reset: GBR at entry (a range gbr hint, TcLate.regs) */
+            sh4_ldc_gbr((u32)strtoul(line + 1, NULL, 16));
         } else if (line[0] == 'I') { /* after V's reset: the entry SR mask (TcSr) */
             tcrt_set_sr((u32)strtoul(line + 2, NULL, 16));
         } else if (line[0] == 'N') { /* after V's reset: the entry FPSCR, FPSCR is state (TcFpscr) */
@@ -187,6 +197,7 @@ int main(int argc, char **argv)
             }
             tcrt_poke(addr, buf, n);
         } else if (line[0] == 'E') {
+            if (rflag[3]) tcrt_set_run_flag(r[rflag[3] - 4] + rflag[0], rflag[1], rflag[2]); /* rREG at entry + offset */
             tcrt_set_xf(xf);
             tcrt_set_fh(fh);
             tcrt_set_gs(gs);

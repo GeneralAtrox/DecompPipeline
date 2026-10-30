@@ -234,23 +234,7 @@ void tc_spin(void)
     longjmp(tcrt_halt_jmp, 1);
 }
 
-/* A run flag (header line f, TcCalls; kept across vectors): the Nth mocked call (from 1) to the listed callee in a
- * vector stores 0 into the word, as the callee's own store, after the strict judge's writes (TcStrict.call). */
-static u32 g_flag_word, g_flag_callee, g_flag_n, g_flag_seen;
-
-void tcrt_set_run_flag(u32 word, u32 callee, u32 n)
-{
-    g_flag_word = tcrt_fold(word);
-    g_flag_callee = tcrt_fold(callee);
-    g_flag_n = n;
-}
-
-static void flag_apply(u32 target)
-{
-    static const u8 zero[4] = {0};
-    if (!g_flag_n || target != g_flag_callee || ++g_flag_seen != g_flag_n) return;
-    tcs_write(g_flag_word, 4, zero);
-}
+#include "tc_flag.h" /* a run flag (header line f, TcCalls): the Nth call to the listed callee clears or sets a word */
 
 u32 tc_call(u32 target, const TcArgs *args)
 {

@@ -122,7 +122,7 @@ class Wiring(unittest.TestCase):
         self.assertLess(fault, oracle.index("String srWhy = sr == null ? null : sr.after(emu, pc);"))
         self.assertIn("if (o.sr != null) res.imask = TcSr.exitMask(emu);", text(SCRIPTS / "TcExit.java"))
         vectors = text(SCRIPTS / "TcVectors.java")
-        self.assertIn('vout.append(TcSr.line(sr, v)).append(TcFpscr.line(r.fs)).append(TcFpscr.Sz.line()).append("\\nC");',
+        self.assertIn('vout.append(TcLate.gbrLine(v)).append(TcSr.line(sr, v)).append(TcFpscr.line(r.fs)).append(TcFpscr.Sz.line()).append("\\nC");',
                       vectors)  # I, N, z
         self.assertIn(".append('\\n').append(TcHw.exit(r));", vectors)  # IM first (TcSr.exit), then GB
         self.assertIn("return TcSr.exit(r.imask) + (r.gbr < 0 ?", text(SCRIPTS / "TcHw.java"))

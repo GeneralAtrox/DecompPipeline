@@ -62,6 +62,7 @@ void tcrt_report_sr(FILE *out);         /* line IM: the interrupt mask at exit, 
 void tcrt_add_hw(u32 reg, u32 value);   /* header line Y: a listed hardware register and its value (TcHw) */
 void tcrt_set_gbr_state(void);          /* header line Z: GBR is state (TcHw) */
 void tcrt_set_run_flag(u32 word, u32 callee, u32 n); /* header line f: callee's Nth call clears word (TcCalls) */
+void tcrt_set_run_bits(u32 bits); /* line f's settable form: that call sets bits in the word (tc_flag.h) */
 void tcrt_report_gbr(FILE *out);        /* line GB: GBR at exit, only after a line Z */
 void tcrt_set_low(const u32 bits[4]);    /* r0..r3 at entry (line L) */
 void tcrt_set_ro(const u32 r4_7[4]);     /* r4..r7 at entry (line R): sh4_r(4..7) until a call (TcOut) */

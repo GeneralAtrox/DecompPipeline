@@ -36,6 +36,8 @@ from dataclasses import dataclass, field
 
 from .decode import CTRL, SYSR, SYSTEM, Insn, decode, disasm
 from .gconst import in_const, table_unsigned, wide_const
+from .framestore import nan_stores
+from .sqmodel import SQ_HELPERS, SQ_WRITE, sq_callee_bytes, sq_callee_helpers
 
 
 class TranslateError(Exception):
@@ -56,8 +58,7 @@ class TargetFacts:
         jm = tj.get("judge_memory", {})
         base = jm.get("image_base") or tj.get("load_address", "0x8c010000")
         return cls(int(base, 16), int(a.get("entry_sp", "0x8cffe000"), 16),
-                   int(a.get("return_sentinel", "0x8cfff000"), 16), True,
-                   frozenset(int(k, 16) for k in tj.get("hw_reads", {})))
+                   int(a.get("return_sentinel", "0x8cfff000"), 16), True, frozenset(int(k, 16) for k in tj.get("hw_reads", {})))
 
 
 class Image:
@@ -172,9 +173,8 @@ def regkey(r):
 
 # ------------------------------------------------------------------------------------------------ register effects
 def fpu_writes(i: Insn):
-    """The registers an FPU or FPUL instruction writes (fr0..fr15, fpul, t, and the integer address register of a
-    post-increment or pre-decrement move), or None when i is no such instruction. xf0..xf15 (XMTRX) are runtime state
-    (sh4_xf), not variables."""
+    """The registers an FPU or FPUL instruction writes (fr0..fr15, fpul, t, and the integer address register of a post-increment or
+    pre-decrement move), or None when i is no such instruction. xf0..xf15 (XMTRX) are runtime state (sh4_xf), not variables."""
     o, n, m = i.op, i.n, i.m
     if o in ("fadd.dr", "fsub.dr", "fmul.dr", "fdiv.dr", "fsqrt.dr", "float.dr", "fcnvsd.dr"):
         return {F(n), F(n + 1)}
@@ -236,15 +236,13 @@ def writes(i: Insn):
         return {"mach", "macl"}
     if o == "div0u":
         return {"t", "mq"}
-    if o in ("cmp/eq", "cmp/hs", "cmp/ge", "cmp/hi", "cmp/gt", "cmp/pl", "cmp/pz", "cmp/str", "tst", "cmp/eq#", "tst#",
-             "tst.b@gbr"):
+    if o in ("cmp/eq", "cmp/hs", "cmp/ge", "cmp/hi", "cmp/gt", "cmp/pl", "cmp/pz", "cmp/str", "tst", "cmp/eq#", "tst#", "tst.b@gbr"):
         return {"t"}
     if o == "div0s":
         return {"t", "mq"}
     if o == "div1":
         return {n, "t", "mq"}
-    if o in ("addc", "addv", "subc", "subv", "negc", "rotcl", "rotcr", "rotl", "rotr", "shll", "shlr", "shal",
-             "shar", "dt"):
+    if o in ("addc", "addv", "subc", "subv", "negc", "rotcl", "rotcr", "rotl", "rotr", "shll", "shlr", "shal", "shar", "dt"):
         return {n, "t"}
     if o in ("mul.l", "muls.w", "mulu.w"):
         return {"macl"}
@@ -254,8 +252,7 @@ def writes(i: Insn):
         return {n, m, "mach", "macl"}
     if o == "tas.b":
         return {"t"}
-    if o in ("and#", "or#", "xor#", "mova", "cmp/eq#") or o.endswith("@gbr_ld") or (o.endswith("@disp_ld")
-                                                                                    and o[4] in "bw"):
+    if o in ("and#", "or#", "xor#", "mova", "cmp/eq#") or o.endswith("@gbr_ld") or (o.endswith("@disp_ld") and o[4] in "bw"):
         return {"r0"}
     if o in ("and.b@gbr", "or.b@gbr", "xor.b@gbr") or o.endswith("_st") and not o.endswith("@-_st"):
         return set()
@@ -401,8 +398,7 @@ class FunctionTranslator:
         # conditional branch. Off for the judged C, which is then exactly what it is without this.
         self.instrument = False
         self.cov: list[dict] = []            # counter k -> {"kind": "block" | "taken" | "fallthrough", "addr"}
-        # Mutation test (tools/coverage.py): (address, function(lines) -> lines) applied to one instruction's C.
-        self.mutation = None
+        self.mutation = None  # Mutation test (tools/coverage.py): (address, function(lines) -> lines) applied to one instruction's C.
         self.slot_handover = set()  # branches inside the body with a frchg in the slot (it hands over the banks)
         self.direct_rets = set()    # returns by `jmp @rN` with the entry PR in rN (no dispatch on PR)
         self._entry_pr = None       # holds_entry_pr: the registers that certainly hold the entry PR
@@ -410,6 +406,7 @@ class FunctionTranslator:
         self._set_in = None         # set_args: the argument registers set since the entry or the last call
         self._ident_in = None       # float_idents: the identity constants each float register may hold
         self._arith_in = None       # float_arith: the float registers that certainly hold an arithmetic result
+        self._nan_st = None         # nan_stores: the stores of such a result whose word is read back as an integer
         self._fpscr_free = None     # fpscr_free: the sts/lds fpscr that only set FPSCR's untracked bits
         self.fpscr_why = None       # fpscr_free: why it refused, where the reason is known
         self.recursive = False      # the function calls itself: the body is the helper `body`, given r15 and PR
@@ -437,10 +434,9 @@ class FunctionTranslator:
         return i.op == "bra" and i.ea == a and self.img.insn(a + 2).op == "nop"
 
     def holds_entry_pr(self, a, reg):
-        """reg at a (before the instruction) is certainly the function's own return address: a forward
-        must-analysis from the entry, where PR holds it; `sts pr,rN`, `lds rN,pr` and register moves carry it, and
-        a call (it sets PR) or any other write ends it. A callee returns to one of the body's PR targets with
-        everything but r0 and fr0 as it left them (DP's mocked callee)."""
+        """reg at a (before the instruction) is certainly the function's own return address: a forward must-analysis from the entry, where
+        PR holds it; `sts pr,rN`, `lds rN,pr` and register moves carry it, and a call (it sets PR) or any other write ends it. A callee
+        returns to one of the body's PR targets with everything but r0 and fr0 as it left them (DP's mocked callee)."""
         if self._entry_pr is None:
             def step(e, i):
                 o, n, m = i.op, R(i.n), R(i.m)
@@ -549,12 +545,11 @@ class FunctionTranslator:
         return None
 
     def width_table(self, a):
-        """Targets of a braf into the code after it whose offset the code before it bounds (hand-written asm: `and
-        #7,r0; shll2 r0; braf r0` jumps into a run of bra's; PS2 8c189000 shifts flag bits into r9 by rotcl in a
-        local subroutine, then `shll2 r9; braf r9`). A forward pass from the entry values each register by its bit
-        width and its known-zero low bits (a local subroutine's rts returns to its own call; a mocked callee changes
-        r0); the targets are a + 4 + (k << tz) below 1 << w. None when that is more than 64 targets or one is no code
-        of the body."""
+        """Targets of a braf into the code after it whose offset the code before it bounds (hand-written asm: `and #7,r0; shll2 r0; braf
+        r0` jumps into a run of bra's; PS2 8c189000 shifts flag bits into r9 by rotcl in a local subroutine, then `shll2 r9; braf r9`). A
+        forward pass from the entry values each register by its bit width and its known-zero low bits (a local subroutine's rts returns to
+        its own call; a mocked callee changes r0); the targets are a + 4 + (k << tz) below 1 << w. None when that is more than 64 targets
+        or one is no code of the body."""
         reg = int(R(self.img.insn(a).m)[1:])
         st = self._widths().get(a)
         if st is None:
@@ -766,8 +761,7 @@ class FunctionTranslator:
                 succ = [x for x in succ if x not in out]
             self.succ[a] = succ
             work.extend(succ)
-        # a branch into a delay slot: that slot also runs as an instruction of its own
-        for a in list(self.leaders):
+        for a in list(self.leaders):  # a branch into a delay slot: that slot also runs as an instruction of its own
             if a in self.slots and a not in self.primary:
                 raise TranslateError(f"branch into the delay slot at {a:08x}")
 
@@ -875,8 +869,7 @@ class FunctionTranslator:
         if taken and fall:
             return None
         on_true = (br.op.startswith("bt")) == taken  # the block runs when T is 1
-        # the T setter: last T writer before the branch in its straight-line run
-        start = self.block_start(a)
+        start = self.block_start(a)  # the T setter: last T writer before the branch in its straight-line run
         k = a - 2
         while k >= start and "t" not in writes(self.insns[k]):
             k -= 2
@@ -1007,14 +1000,13 @@ class FunctionTranslator:
                 "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "r0", "r1", "r2", "r3")
 
     def call_args(self, target_expr):
-        """The TcArgs block's field assignments for a call, as the agents' C writes them (DP's draft step reads the
-        arguments from these statements right before tc_call). A callee DP's meta lists gets the registers DP
-        compares at the call to it (the rest stay 0); any other call gets them all: r4..r7, the 8 stack words at
-        r15 and r0..r3. A computed target gets what any callee the original was seen calling takes, and every
-        argument register the function set since its entry or last call (set_args): the target may be one meta
-        does not list, which takes those. A stack word the callee takes is read into arg_sK first (a field's value
-        must be free of calls for the draft step). The port form (sp_input) gives every call them all: its C runs
-        the callee for real, which reads its arguments whether DP compares them or not."""
+        """The TcArgs block's field assignments for a call, as the agents' C writes them (DP's draft step reads the arguments from these
+        statements right before tc_call). A callee DP's meta lists gets the registers DP compares at the call to it (the rest stay 0); any
+        other call gets them all: r4..r7, the 8 stack words at r15 and r0..r3. A computed target gets what any callee the original was
+        seen calling takes, and every argument register the function set since its entry or last call (set_args): the target may be one
+        meta does not list, which takes those. A stack word the callee takes is read into arg_sK first (a field's value must be free of
+        calls for the draft step). The port form (sp_input) gives every call them all: its C runs the callee for real, which reads its
+        arguments whether DP compares them or not."""
         cal = self.sig.callees
         if cal is None or self.sp_input:
             regs = set(self.ALL_ARGS)
@@ -1053,9 +1045,8 @@ class FunctionTranslator:
         return pre + L
 
     def frame_regs(self, a):
-        """The registers that may hold an address in the function's own stack frame (r15 plus or minus something)
-        right before the call at a takes its arguments (after its delay slot): a forward may-analysis over the
-        body from the entry, where r15 is one."""
+        """The registers that may hold an address in the function's own stack frame (r15 plus or minus something) right before the call at
+        a takes its arguments (after its delay slot): a forward may-analysis over the body from the entry, where r15 is one."""
         if self._frame_in is None:
             def step(f, i):
                 o, n, m = i.op, R(i.n), R(i.m)
@@ -1089,10 +1080,9 @@ class FunctionTranslator:
         return set(self._frame_step(set(self._frame_in.get(a, ())), a))
 
     def set_args(self, a):
-        """The argument registers (r4..r7, fr4..fr11) the function may have set since its entry (its parameters) or
-        its last call, right before the call at a takes its arguments (after its delay slot): a forward
-        may-analysis. At a call DP's meta does not list, these are what the original hands over and what DP's judge
-        compares (the oracle's CA: TcTrack); a callee leaves them undefined."""
+        """The argument registers (r4..r7, fr4..fr11) the function may have set since its entry (its parameters) or its last call, right
+        before the call at a takes its arguments (after its delay slot): a forward may-analysis. At a call DP's meta does not list, these
+        are what the original hands over and what DP's judge compares (the oracle's CA: TcTrack); a callee leaves them undefined."""
         if self._set_in is None:
             def step(f, i):
                 return f | (set(writes(i)) & ARG_REGS)
@@ -1121,11 +1111,10 @@ class FunctionTranslator:
         return set(self._set_step(set(self._set_in.get(a, ())), a)) & ARG_REGS
 
     def float_idents(self, a):
-        """{float register: the identity constants (1.0, -1.0, 0.0, -0.0) it may hold} right before the instruction at
-        a (a delay slot included): a forward may-analysis from fldi0/fldi1 through fmov, fneg, fabs and arithmetic
-        on such constants. A C compiler that sees one of them in `x * 1.0f` (x / 1.0f, x - 0.0f, x + -0.0f) drops the
-        operation as exact, and with it the SH-4's DN flush of a denormal x (the runner's SSE DAZ acts only on an
-        operation that runs): emit_fpu flushes x itself there."""
+        """{float register: the identity constants (1.0, -1.0, 0.0, -0.0) it may hold} right before the instruction at a (a delay slot
+        included): a forward may-analysis from fldi0/fldi1 through fmov, fneg, fabs and arithmetic on such constants. A C compiler that
+        sees one of them in `x * 1.0f` (x / 1.0f, x - 0.0f, x + -0.0f) drops the operation as exact, and with it the SH-4's DN flush of a
+        denormal x (the runner's SSE DAZ acts only on an operation that runs): emit_fpu flushes x itself there."""
         if self._ident_in is None:
             vals = {"1": 1.0, "-1": -1.0, "0": 0.0, "-0": -0.0}
 
@@ -1244,15 +1233,13 @@ class FunctionTranslator:
         return set()
 
     def fpscr_free(self):
-        """The addresses of `sts fpscr,Rn` and `lds Rm,fpscr` that leave out nothing DP's judge compares: the value
-        read goes only through `and`/`or` with constants that keep FR, SZ and PR (and RM and DN, where the function
-        rounds anything) as they are, and register moves, into an lds of FPSCR; it is never stored, compared,
-        handed to a callee that DP compares it on, returned or left in r8..r14. DP's runtime keeps FPSCR's FR, SZ
-        and PR only, so such a read and write change nothing (TC 8c0611d8 sets the exception enables, Spawn
-        8c010080 clears RM before its own main loop). An `and` may also clear SZ and PR where the function has no
-        fschg/fpchg: they are then 0 throughout, the mode the code is translated in (Spawn's library goes back to
-        single precision before its calls). An `or` that sets either is double precision or paired moves, which
-        DP's raw C (f32 only) cannot hold: `fpscr_why` says so."""
+        """The addresses of `sts fpscr,Rn` and `lds Rm,fpscr` that leave out nothing DP's judge compares: the value read goes only through
+        `and`/`or` with constants that keep FR, SZ and PR (and RM and DN, where the function rounds anything) as they are, and register
+        moves, into an lds of FPSCR; it is never stored, compared, handed to a callee that DP compares it on, returned or left in r8..r14.
+        DP's runtime keeps FPSCR's FR, SZ and PR only, so such a read and write change nothing (TC 8c0611d8 sets the exception enables,
+        Spawn 8c010080 clears RM before its own main loop). An `and` may also clear SZ and PR where the function has no fschg/fpchg: they
+        are then 0 throughout, the mode the code is translated in (Spawn's library goes back to single precision before its calls). An
+        `or` that sets either is double precision or paired moves, which DP's raw C (f32 only) cannot hold: `fpscr_why` says so."""
         if self._fpscr_free is not None:
             return self._fpscr_free
         stss = [a for a, i in self.insns.items() if i.op == "sts" and SYSR.get(i.imm) == "fpscr"]
@@ -1261,8 +1248,7 @@ class FunctionTranslator:
                                                   "ftrv", "fcnvsd", "fcnvds") for i in self.insns.values())
         keep = 0x00380000 | (0x00040003 if rounds else 0)   # FR, SZ, PR (and DN, RM)
         modes0 = not any(i.op in ("fschg", "fpchg") for i in self.insns.values())   # SZ = PR = 0 throughout
-        if not stss or any(self.insns[a].op in ("sts.l", "lds.l") and SYSR.get(self.insns[a].imm) == "fpscr"
-                           for a in self.insns):
+        if not stss or any(self.insns[a].op in ("sts.l", "lds.l") and SYSR.get(self.insns[a].imm) == "fpscr" for a in self.insns):
             self._fpscr_free = set()
             return self._fpscr_free
 
@@ -1389,8 +1375,7 @@ class FunctionTranslator:
                     self.helpers.update(("sq", "sqc"))
                     s = marks + s  # before the argument lines (fill_call_args wants them next to the call)
             if q and q in STATE:
-                # a callee that moves the queue pointer up through the window filled the blocks it passed
-                self.helpers.add("sq")
+                self.helpers.add("sq")  # a callee that moves the queue pointer up through the window filled the blocks it passed
                 s = [f"sq_p = sh4_r({q[1:]});"] + s + [f"sq_moved(&sq, sq_p, sh4_r({q[1:]}));"]
         if halt:
             return [f"@SYNC_OUT:{a}@"] + s + ["tc_halt();"]
@@ -1416,7 +1401,7 @@ class FunctionTranslator:
         """The port form's further body inputs: each argument register DP's signature does not list (a value the
         function may only pass on, as its C runs the callee for real) and r0..r3 (which a function that does not
         write them hands back or passes on as they came), in_REG after the parameters. The judged function passes
-        0, which is what such a register held before."""
+        0, which is what such a register held before; an r4..r7 in sig.r_out gets the runtime's value (sh4_r)."""
         if not self.sp_input:
             return []
         given = {st for _, _, st in self.sig.params}
@@ -1909,6 +1894,10 @@ class FunctionTranslator:
                 L += [f"{fn} = rdf32({rm});", f"{rm} += 4u;"]
             elif mode == "@r0_ld":
                 L.append(f"{fn} = rdf32(r0 + {rm});")
+            elif i.addr in nan_stores(self):   # (its bits are read back: as the reference holds them)
+                self.helpers |= {"f2u", "f_bits"}
+                at = {"@_st": rn, "@-_st": rn, "@r0_st": f"r0 + {rn}"}[mode]
+                L += [f"{rn} -= 4u;"] * (mode == "@-_st") + [f"wr32({at}, f_bits({fm}));"]
             elif mode == "@_st":
                 L.append(f"wrf32({rn}, {fm});")
             elif mode == "@-_st":
@@ -2071,8 +2060,7 @@ class FunctionTranslator:
             return L, None
         if o == "rts":
             if slot and slot.op == "frchg":
-                # the banks swap on the way out: everything is handed over first, and nothing comes back
-                if self.sig.ret == "f32":
+                if self.sig.ret == "f32":  # the banks swap on the way out: everything is handed over first, and nothing comes back
                     raise TranslateError(f"a float result with frchg in the return's delay slot at {a + 2:08x}")
                 return [f"@SYNC_OUT:{a}@", "sh4_frchg();", f"@RETURN_SWAPPED:{a}@"], None
             L += slot_lines
@@ -2125,8 +2113,7 @@ class FunctionTranslator:
                     L += self.call_stmt(h(const), tail=True)
                 return L, None
             if o == "jmp" and not tgts and self.holds_entry_pr(a, reg):
-                # a return through the copy of PR the function kept (`sts pr,rN` ... `jmp @rN`): to the caller,
-                # whatever PR now holds
+                # a return through the copy of PR the function kept (`sts pr,rN` ... `jmp @rN`): to the caller, whatever PR now holds
                 L += slot_lines
                 self.direct_rets.add(a)
                 L.append(f"@RETURN:{a}@")
@@ -2184,49 +2171,17 @@ class FunctionTranslator:
                 pr = fp.get(m)  # None: not known here (TC 8c0611d8 or-s a shifted constant), as where paths meet
             return sz, pr, fp2, self.const_step(x, c)
 
-        mode = {self.entry: (self.entry_sz, 0, {}, {})}
-        at = {}
-        work = [self.entry]
-        while work:
-            a = work.pop()
-            st = mode[a]
-            i = self.insns[a]
-            for x in [i] + ([self.insns[a + 2]] if i.delayed and a + 2 in self.insns else []):
-                at[x.addr] = st[:2]
-                st = step(st, x)
-            sz, pr, fp, c = st
-            if i.op in ("bsr", "bsrf", "jsr"):
-                self.sz_call[a] = sz    # (after its delay slot: `bsr f; fschg` runs f in the other mode)
-            x = self.sz_exit(i, c, sz)
-            if x is not None:   # a callee that returns with SZ changed (sz_exits): the C sets it after the call
-                sz = x
-            if i.op in ("bsr", "bsrf", "jsr"):     # the callee returns with the modes as they were (DP's mock)
-                lost = {f"r{k}" for k in range(8)} | {"pr"}
-                fp = {k: v for k, v in fp.items() if k not in lost}
-                c = {k: v for k, v in c.items() if k not in lost}
-            nxt = list(self.succ.get(a, ()))
-            if (i.op == "lds" and i.imm == 2) or (i.op == "rts" and self.local_calls):
-                nxt += sorted(self.pr_targets)     # (a local subroutine's rts returns to one of them)
-            for b in nxt:
-                if b not in self.insns:
-                    continue
-                if b not in mode:
-                    mode[b] = (sz, pr, fp, c)
-                    work.append(b)
-                    continue
-                osz, opr, ofp, oc = mode[b]
-                if osz != sz:
-                    raise TranslateError(f"FPU modes (FPSCR.SZ) differ where paths meet at {b:08x}")
-                npr = opr if opr == pr else None
-                nfp = {k: (v if fp.get(k) == v else None) for k, v in ofp.items() if k in fp}
-                nc = {k: v for k, v in oc.items() if c.get(k) == v}
-                if (npr, nfp, nc) != (opr, ofp, oc):
-                    mode[b] = (sz, npr, nfp, nc)
-                    work.append(b)
+        # A return goes where PR points (pr_flow): a local subroutine's rts to its own call's return only, in the
+        # modes it was called with (PS2 8c18bf20 calls one subroutine with SZ=0 and SZ=1). Where PR is not followed
+        # (an `lds Rm,pr`, or it is lost), every return goes to every pr_targets address, as it always did.
+        at = None
+        if self.local_calls and not any(i.op == "lds" and i.imm == 2 for i in self.insns.values()):
+            at = self.pr_flow(step, sens=True)
+        if at is None:
+            at = self.pr_flow(step, sens=False)
         for a, i in list(self.insns.items()):
             sz, pr = at.get(a, (0, 0))
-            if pr is None and (i.op in PR_OPS and not (i.op in ("fneg", "fabs") and i.n % 2 == 0)
-                               or i.op in ("fldi0", "fldi1")):
+            if pr is None and (i.op in PR_OPS and not (i.op in ("fneg", "fabs") and i.n % 2 == 0) or i.op in ("fldi0", "fldi1")):
                 raise TranslateError(f"FPSCR.PR not known (paths meet with it different, or loaded) at {a:08x}: {disasm(i)}")
             if pr and i.op in DR_OPS:
                 regs = [i.n] + ([i.m] if i.op in ("fadd", "fsub", "fmul", "fdiv", "fcmp/eq", "fcmp/gt") else [])
@@ -2241,6 +2196,70 @@ class FunctionTranslator:
                 raise TranslateError(f"{i.op} with FPSCR.PR=0 (undefined) at {a:08x}")
             if sz and (i.op == "fmov" or i.op.startswith("fmov.s@")):
                 self.insns[a] = dataclasses.replace(i, op=i.op.replace("fmov.s", "fmov.d") if "@" in i.op else "fmov.d")
+
+    def pr_flow(self, step, sens):
+        """fpu_modes' flow: (SZ, PR) at every instruction. Each path's state is followed per (address, PR, saved PRs) when sens: PR is the
+        caller's at the entry (-1), a call's return after it, pushed by `sts.l pr,@-r15` and popped by `lds.l @r15+,pr`; an rts goes to PR
+        (nowhere for the caller's), or to every pr_targets address where PR is not known. Without sens (or past a bound, then None) each
+        address has one state and a local subroutine's rts goes to every pr_targets address."""
+        k0 = (self.entry, -1, ()) if sens else (self.entry, None, ())
+        mode = {k0: (self.entry_sz, 0, {}, {})}
+        atk = {}
+        work = [k0]
+        while work:
+            key = work.pop()
+            a, pv, sv = key
+            st = mode[key]
+            i = self.insns[a]
+            for x in [i] + ([self.insns[a + 2]] if i.delayed and a + 2 in self.insns else []):
+                atk[x.addr, pv, sv] = st[:2]
+                st = step(st, x)
+                if sens and x.op == "sts.l" and x.imm == 2 and x.n == 15:
+                    sv = sv + (pv,)
+                elif sens and x.op == "lds.l" and x.imm == 2:
+                    pv, sv = (sv[-1], sv[:-1]) if sv and x.m == 15 else (None, sv)
+            sz, pr, fp, c = st
+            if i.op in ("bsr", "bsrf", "jsr"):
+                self.sz_call[a] = sz    # (after its delay slot: `bsr f; fschg` runs f in the other mode)
+            x = self.sz_exit(i, c, sz)
+            if x is not None:   # a callee that returns with SZ changed (sz_exits): the C sets it after the call
+                sz = x
+            if i.op in ("bsr", "bsrf", "jsr"):     # the callee returns with the modes as they were (DP's mock)
+                lost = {f"r{k}" for k in range(8)} | {"pr"}
+                fp = {k: v for k, v in fp.items() if k not in lost}
+                c = {k: v for k, v in c.items() if k not in lost}
+            if sens and i.op in ("bsr", "bsrf", "jsr", "bsrl"):
+                pv = a + 4
+            nxt = [(b, pv, sv) for b in self.succ.get(a, ())]
+            if not sens and ((i.op == "lds" and i.imm == 2) or (i.op == "rts" and self.local_calls)):
+                nxt += [(b, None, ()) for b in sorted(self.pr_targets)]  # (a local subroutine's rts: one of them)
+            elif sens and i.op == "rts" and pv != -1:
+                nxt += [(pv, pv, sv)] if pv in self.pr_targets else [(b, b, sv) for b in sorted(self.pr_targets)]
+            if len(sv) > 8 or len(mode) > 64 * len(self.insns):
+                return None     # (PR saved deeper than any library does, or too many states: not followed)
+            for kb in nxt:
+                b = kb[0]
+                if b not in self.insns:
+                    continue
+                if kb not in mode:
+                    mode[kb] = (sz, pr, fp, c)
+                    work.append(kb)
+                    continue
+                osz, opr, ofp, oc = mode[kb]
+                if osz != sz:
+                    raise TranslateError(f"FPU modes (FPSCR.SZ) differ where paths meet at {b:08x}")
+                npr = opr if opr == pr else None
+                nfp = {k: (v if fp.get(k) == v else None) for k, v in ofp.items() if k in fp}
+                nc = {k: v for k, v in oc.items() if c.get(k) == v}
+                if (npr, nfp, nc) != (opr, ofp, oc):
+                    mode[kb] = (sz, npr, nfp, nc)
+                    work.append(kb)
+        at = {}
+        for (a, _, _), (sz, pr) in sorted(atk.items(), key=lambda kv: kv[0][0]):
+            if a in at and at[a][0] != sz:  # (one address run in both modes: a subroutine called with each)
+                raise TranslateError(f"FPU modes (FPSCR.SZ) differ where paths meet at {a:08x}")
+            at[a] = (sz, pr if a not in at or at[a][1] == pr else None)
+        return at
 
     def sz_exit(self, i, consts, sz):
         """The FPSCR.SZ a call (bsr, jsr @rN of a constant) returns with when its callee changes it (Signature.sz_exits)
@@ -2300,8 +2319,7 @@ class FunctionTranslator:
                 if slot:
                     consts = self.const_step(slot, consts)
                 if i.op in ("bsr", "bsrf", "jsr"):
-                    consts = {k: v for k, v in consts.items() if k not in ("r0", "r1", "r2", "r3", "r4", "r5", "r6",
-                                                                        "r7", "pr")}
+                    consts = {k: v for k, v in consts.items() if k not in ("r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7", "pr")}
             else:
                 lines = self.emit_insn(i, consts)
                 self.emitted[a] = lines
@@ -2368,11 +2386,10 @@ class FunctionTranslator:
         return rd, wr, call
 
     def dataflow(self, items):
-        """Dirtiness (forward) of r8..r14, then liveness (backward) of r8..r14 and pr, over the instruction graph.
-        r8..r14 are the runtime's at every call and at exit: a call first hands over the ones written since the
-        last hand-over on some path (dirty), and after it copies back only the ones read later (live). A hand-over
-        reads its variables, so it counts as a use: on a path where the register was not written, the variable
-        must still hold the runtime's value."""
+        """Dirtiness (forward) of r8..r14, then liveness (backward) of r8..r14 and pr, over the instruction graph. r8..r14 are the
+        runtime's at every call and at exit: a call first hands over the ones written since the last hand-over on some path (dirty), and
+        after it copies back only the ones read later (live). A hand-over reads its variables, so it counts as a use: on a path where the
+        register was not written, the variable must still hold the runtime's value."""
         st = self.state | {"pr", "fr0"}     # fr0: the callee's result is copied in only where it is read
         self.pre_wr = {}
         self.tail_rets = set()
@@ -2392,8 +2409,7 @@ class FunctionTranslator:
         for a in rets:
             rd, wr, call = eff[a]
             # (after a tail call the result is the callee's r0)
-            eff[a] = (rd | (set() if a in self.tail_rets else ret_reads) | ({"pr"} if self.pr_targets else set()),
-                      wr, call)
+            eff[a] = (rd | (set() if a in self.tail_rets else ret_reads) | ({"pr"} if self.pr_targets else set()), wr, call)
         self.eff = eff
         preds = {a: [] for a in self.primary}
         for a, ss in self.succ.items():
@@ -2517,8 +2533,7 @@ class FunctionTranslator:
                     body.append(ind + " ".join(regs_))
             elif y.startswith("@SYNC_IN:"):
                 a = int(y[9:-1])
-                regs_ = sorted((r for r in self.live_out[a] & self.handover.get(a, self.state) if r in state),
-                               key=regkey)
+                regs_ = sorted((r for r in self.live_out[a] & self.handover.get(a, self.state) if r in state), key=regkey)
                 if regs_:
                     body.append(ind + " ".join(get(r) for r in regs_))
             elif y.startswith("@FR0:"):
@@ -2583,8 +2598,7 @@ class FunctionTranslator:
             head = sig.text[:k].replace(sig.name, "body")
             if sig.ret == "void" and self.sp_input:
                 head = head.replace("void", "u32", 1)
-            out.append("static " + head + "(u32 sp, u32 ret_addr" +
-                       (")" if rest.strip() in ("void)", ")") else ", " + rest))
+            out.append("static " + head + "(u32 sp, u32 ret_addr" + (")" if rest.strip() in ("void)", ")") else ", " + rest))
         else:
             out.append(sig.text)
         out.append("{")
@@ -2593,15 +2607,13 @@ class FunctionTranslator:
         decl += sorted(set(_re.findall(r"\barg_s\d\b", "\n".join(body))))
         direct = {}
         if "params" in self.simplify:
-            # a parameter whose register the body never writes is used by its own name (no register copy); so is
-            # a u32 one whose register the body only steps from its own value (r4 += 4u, r5 = r5 << 2): the body
-            # assigns to the parameter itself
+            # a parameter whose register the body never writes is used by its own name (no register copy); so is a u32 one whose register
+            # the body only steps from its own value (r4 += 4u, r5 = r5 << 2): the body assigns to the parameter itself
             code = [x for x in body if not x.strip().startswith("/*")]
             for name, kind, st in sig.params:
                 if not (kind in ("u32", "s32") and st in [f"r{k}" for k in range(8)] and st in self.sim_live_in):
                     continue
-                if not any(_re.search(rf"\b{st}\s*(?:[-+*/%&|^]|<<|>>)?=(?!=)|\b{st}\s*(?:\+\+|--)", x)
-                           for x in code):
+                if not any(_re.search(rf"\b{st}\s*(?:[-+*/%&|^]|<<|>>)?=(?!=)|\b{st}\s*(?:\+\+|--)", x) for x in code):
                     direct[st] = name if kind == "u32" else f"(u32){name}"
                     continue
                 plain = [m.group(1) for x in code for m in _re.finditer(rf"\b{st}\s*=(?!=)([^;]*);", x)]
@@ -2634,8 +2646,7 @@ class FunctionTranslator:
             out.append("    SqQueues sq;")
             if any(re.search(r"\bsq_p\b", x) for x in body):
                 out.append("    u32 sq_p = 0;")
-            # the stream before the queue pointer went out through the queues (a pointer the function builds itself:
-            # empty queues)
+            # the stream before the queue pointer went out through the queues (a pointer the function builds itself: empty queues)
             out.append(f"    sq_start(&sq, {'sh4_r(' + q[1:] + ')' if q in STATE else '0u'});")
         pmap = {}
         for name, kind, st in sig.params:
@@ -2643,8 +2654,7 @@ class FunctionTranslator:
                 pmap[st] = name
         live0 = self.sim_live_in if self.simplify else None
         for name, kind, st in sig.params:
-            # (simplified: a parameter register the body overwrites before reading it is not copied in)
-            if st.startswith("fr"):
+            if st.startswith("fr"):  # (simplified: a parameter register the body overwrites before reading it is not copied in)
                 if st not in frs or (live0 is not None and st not in live0):
                     out.append(f"    (void){name};")
                 continue
@@ -2684,14 +2694,15 @@ class FunctionTranslator:
             out.append(f"    pr = {'ret_addr' if self.recursive or self.sp_input else h(self.f.sentinel)};")
         if self.recursive or self.sp_input:
             named = " ".join(out[out.index("{"):] + body)
-            out += [f"    (void){x};" for x in ["sp", "ret_addr"] + [f"in_{r}" for r in extra]
-                    if not re.search(rf"= {x};", named)]
+            out += [f"    (void){x};" for x in ["sp", "ret_addr"] + [f"in_{r}" for r in extra] if not re.search(rf"= {x};", named)]
         if decl or frs:
             out.append("    " + " ".join(f"(void){d};" for d in decl + frs))
         out += body
         out.append("}")
         if self.recursive or self.sp_input:
-            zero = ["0.0f" if x.startswith("fr") else "0u" for x in extra]
+            # an r4..r7 handed over (sig.r_out: a callee's output, or the function's own read by its callers) enters
+            # as the runtime holds it, as in the plain form: a path that leaves it hands back the caller's value
+            zero = ["0.0f" if x.startswith("fr") else f"sh4_r({x[1:]})" if x in self.sig.r_out else "0u" for x in extra]
             call = f"body({', '.join([h(self.f.entry_sp), h(self.f.sentinel)] + [n for n, _, _ in sig.params] + zero)})"
             out += ["", sig.text, "{", f"    {call};" if sig.ret == "void" else f"    return {call};", "}"]
         k = out.index("@HELPERS@")
@@ -2751,8 +2762,7 @@ def sink_steps(body):
         return not x.strip().startswith("/*")
 
     def names(x):
-        return set(NAME.findall(re.sub(r"\b0x[0-9a-f]+u\b|\b\d+u?\b", "", x))) - {"u32", "s32", "u16", "s16", "u8",
-                                                                                  "s8", "f32"}
+        return set(NAME.findall(re.sub(r"\b0x[0-9a-f]+u\b|\b\d+u?\b", "", x))) - {"u32", "s32", "u16", "s16", "u8", "s8", "f32"}
 
     def writes(x):
         out = set()
@@ -2779,8 +2789,7 @@ def sink_steps(body):
         if not hit:
             i += 1
             continue
-        # units: a statement with the comments right before it
-        k, units, cur = i, [], []
+        k, units, cur = i, [], []  # units: a statement with the comments right before it
         while same(k):
             cur.append(out[k])
             if code(out[k]):
@@ -2845,131 +2854,7 @@ def store_ea(i: Insn):
     return None
 
 
-# The SH-4 store queues as DP's judge models them (DP's TcSq; tc_rt.h maps the window onto RAM for these functions):
-# a store in the window 0xe0000000..0xe3ffffff lands in RAM at once and fills its bytes of queue SQ[address bit 5]
-# (at the address' bits 0..4: a block 0x40 on shares them); `pref @a` sends a's queue to a's 32-byte RAM block: the
-# bytes stored since, and the rest from the block that queue last held (when that is a's own block, those bytes stay
-# as they are, unread: it may be machine code, which the C must not read, R8; a store hands its bytes to the queue for
-# the same reason). At entry the stream before the pointer is taken as sent (the queues hold the blocks 0x40 and 0x20
-# before it), and a callee that moves the pointer up through the window sends each block it passes.
 SPIN_GOTO = re.compile(r"^goto L_([0-9a-f]{8});$")
-SQ_WRITE = re.compile(r"\bwr(8|16|32|f32)\(")
-SQ_HELPERS = [
-    "/* The SH-4 store queues: a store in the window 0xe0000000..0xe3ffffff lands in RAM and fills its bytes of queue",
-    " * (address bit 5); pref @a sends a's queue to a's RAM block: the bytes stored since, the rest from the block the",
-    " * queue last held. */",
-    "typedef struct { u32 from[2]; u32 marked[2]; u8 bytes[2][32]; } SqQueues;",
-    "static u32 sq_in(u32 a) { return a - 0xe0000000u < 0x04000000u; }",
-    "static void sq_held(SqQueues *q, u32 b)",
-    "{",
-    "    if (sq_in(b)) { q->from[(b >> 5) & 1u] = 0x8c000000u | (b & 0x00ffffe0u); q->marked[(b >> 5) & 1u] = 0; }",
-    "}",
-    "static void sq_start(SqQueues *q, u32 p)",
-    "{",
-    "    q->from[0] = 0; q->from[1] = 0; q->marked[0] = 0; q->marked[1] = 0;",
-    "    p &= 0xffffffe0u;",
-    "    if (sq_in(p)) { sq_held(q, p - 0x40u); sq_held(q, p - 0x20u); }",
-    "}",
-    "static void sq_put(SqQueues *q, u32 a, u32 n, u32 v)",
-    "{",
-    "    u32 i;",
-    "    for (i = 0; i < n; i++)",
-    "        if (sq_in(a + i)) {",
-    "            q->marked[((a + i) >> 5) & 1u] |= 1u << ((a + i) & 31u);",
-    "            q->bytes[((a + i) >> 5) & 1u][(a + i) & 31u] = (u8)(v >> (8u * i));",
-    "        }",
-    "}",
-    "/* A store that also fills its bytes of queue. */",
-    "static void sq_wr8(SqQueues *q, u32 a, u8 v) { wr8(a, v); sq_put(q, a, 1u, v); }",
-    "static void sq_wr16(SqQueues *q, u32 a, u16 v) { wr16(a, v); sq_put(q, a, 2u, v); }",
-    "static void sq_wr32(SqQueues *q, u32 a, u32 v) { wr32(a, v); sq_put(q, a, 4u, v); }",
-    "static void sq_wrf32(SqQueues *q, u32 a, f32 v) { union { u32 u; f32 f; } b; b.f = v; wrf32(a, v); "
-    "sq_put(q, a, 4u, b.u); }",
-    "static void sq_pref(SqQueues *q, u32 a)",
-    "{",
-    "    u8 b[32];",
-    "    u32 k, to, from, j;",
-    "    if (!sq_in(a)) return;",
-    "    k = (a >> 5) & 1u;",
-    "    to = 0x8c000000u | (a & 0x00ffffe0u);",
-    "    from = q->from[k] ? q->from[k] : to;",
-    "    for (j = 0; j < 32u; j++)",
-    "        b[j] = ((q->marked[k] >> j) & 1u) ? q->bytes[k][j] : from != to ? rd8(from + j) : 0;",
-    "    for (j = 0; j < 32u; j++)",
-    "        if (((q->marked[k] >> j) & 1u) || from != to) wr8(to + j, b[j]);   /* a's own bytes stay as they are */",
-    "    q->from[k] = to;",
-    "    q->marked[k] = 0;",
-    "}",
-    "static void sq_moved(SqQueues *q, u32 p, u32 r)",
-    "{",
-    "    u32 b;",
-    "    if (!sq_in(p) || r <= p || r - p > 0x1000u) return;",
-    "    for (b = p & 0xffffffe0u; b < r; b += 0x20u) sq_held(q, b);",
-    "}",
-]
-
-
-def sq_callee_bytes(meta):
-    """meta "sq_callee" {"8c074f18": {"r4": "10-17,20-2f"}} as {0x8c074f18: {"r4": (bits 0..63, bits 64..127)}};
-    a loose register ("?": the callee's stores depend on data) stores nothing in DP's model."""
-    out = {}
-    for c, regs in (meta or {}).items():
-        for r, spec in regs.items():
-            if spec == "?":
-                continue
-            bits = 0
-            for part in spec.split(","):
-                lo, _, hi = part.partition("-")
-                for j in range(int(lo, 16), int(hi or lo, 16) + 1):
-                    bits |= 1 << j
-            out.setdefault(int(c, 16), {})[r] = (bits & (1 << 64) - 1, bits >> 64)
-    return out or None
-
-
-def sq_callee_helpers():
-    """SQ_HELPERS with the bytes a callee stored (sq_mark): a pref sends each from its RAM byte, unread when that is
-    the byte it sends to (the block's own byte stays: the callee wrote it there; it may be machine code, R8)."""
-    h = list(SQ_HELPERS)
-    swap = {
-        "typedef struct { u32 from[2]; u32 marked[2]; u8 bytes[2][32]; } SqQueues;":
-            ["typedef struct { u32 from[2]; u32 marked[2]; u8 bytes[2][32]; u32 src[2][32]; } SqQueues;",
-             "static void sq_clr(u32 *s, u32 n) { while (n) s[--n] = 0; }"],
-        "    if (sq_in(b)) { q->from[(b >> 5) & 1u] = 0x8c000000u | (b & 0x00ffffe0u); q->marked[(b >> 5) & 1u] = 0; }":
-            ["    if (sq_in(b)) { q->from[(b >> 5) & 1u] = 0x8c000000u | (b & 0x00ffffe0u); q->marked[(b >> 5) & 1u] = 0;",
-             "                    sq_clr(q->src[(b >> 5) & 1u], 32u); }"],
-        "    q->from[0] = 0; q->from[1] = 0; q->marked[0] = 0; q->marked[1] = 0;":
-            ["    q->from[0] = 0; q->from[1] = 0; q->marked[0] = 0; q->marked[1] = 0; sq_clr(q->src[0], 64u);"],
-        "            q->bytes[((a + i) >> 5) & 1u][(a + i) & 31u] = (u8)(v >> (8u * i));":
-            ["            q->bytes[((a + i) >> 5) & 1u][(a + i) & 31u] = (u8)(v >> (8u * i));",
-             "            q->src[((a + i) >> 5) & 1u][(a + i) & 31u] = 0;"],
-        "        b[j] = ((q->marked[k] >> j) & 1u) ? q->bytes[k][j] : from != to ? rd8(from + j) : 0;":
-            ["        b[j] = ((q->marked[k] >> j) & 1u) ? q->bytes[k][j] : q->src[k][j] ? (q->src[k][j] != to + j ? "
-             "rd8(q->src[k][j]) : 0)",
-             "             : from != to ? rd8(from + j) : 0;"],
-        "        if (((q->marked[k] >> j) & 1u) || from != to) wr8(to + j, b[j]);   /* a's own bytes stay as they are */":
-            ["        if (((q->marked[k] >> j) & 1u) || (q->src[k][j] ? q->src[k][j] != to + j : from != to))",
-             "            wr8(to + j, b[j]);   /* a's own bytes stay as they are */"],
-        "    q->marked[k] = 0;":
-            ["    q->marked[k] = 0;", "    sq_clr(q->src[k], 32u);"],
-    }
-    out = []
-    for ln in h:
-        out += swap.pop(ln, [ln])
-    if swap:
-        raise AssertionError(f"SQ_HELPERS lines moved: {list(swap)}")
-    return out + [
-        "/* A mocked callee stored the bytes lo/hi mark (offsets 0..127) through a: those in the window are its own. */",
-        "static void sq_mark(SqQueues *q, u32 a, unsigned long long lo, unsigned long long hi)",
-        "{",
-        "    u32 j, b;",
-        "    for (j = 0; j < 128u; j++) {",
-        "        b = a + j;",
-        "        if (!(((j < 64u ? lo >> j : hi >> (j - 64u)) & 1u) && sq_in(b))) continue;",
-        "        q->marked[(b >> 5) & 1u] &= ~(1u << (b & 31u));",
-        "        q->src[(b >> 5) & 1u][b & 31u] = 0x8c000000u | (b & 0x00ffffffu);",
-        "    }",
-        "}",
-    ]
 
 
 FIELD_LINE = re.compile(r"^\s*a\.(r|fr|s|rlo)\[(\d)\] = (.*);$")
@@ -3117,9 +3002,8 @@ def fit(make, comments=True):
 
 
 def compact(src, helper_min=5):
-    """The same C without optional whitespace. A space is kept only between two identifier/number characters (`u32
-    r0`, `goto L_x`) or between two operator characters (where `a - -b` must not become `a--b`), so no token changes.
-    (The output has no string literals.)"""
+    """The same C without optional whitespace. A space is kept only between two identifier/number characters (`u32 r0`, `goto L_x`) or
+    between two operator characters (where `a - -b` must not become `a--b`), so no token changes. (The output has no string literals.)"""
     def idc(c):
         return c.isalnum() or c == "_"
     ops = set("+-*/%&|^<>=!~")

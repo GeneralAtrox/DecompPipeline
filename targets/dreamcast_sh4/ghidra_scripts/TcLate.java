@@ -26,6 +26,16 @@
 // Vec.rets or entryLate, so line C carries them. TcVectors passes the other lines on to TcInputs.applyHints (each
 // workspace's own TcInputs.java needs no change); a hints file without the line draws nothing, so its harness stays
 // byte for byte (tools/selective_restamp.py --change retfn: the functions whose hints have the line).
+//
+// Register start values (the user's decision, 2026-10-30): "range rN LO HI" for r0..r3 and r8..r14, and "range gbr LO HI",
+// take the same uniform draw as TcInputs' r4..r7 line. A hook entered with its caller's frame live reads the caller's
+// r10/r11 (Spawn 8c06218a stores through @(r0,r10)), and a library routine reads its caller's GBR (PS2 8c17a960:
+// mov.b @(1,gbr),r0 with GBR = g_clipState), which no line could set: every run faulted at address 0. regs takes those
+// lines (TcVectors, before ranges), so each workspace's own TcInputs.java needs no change. r0..r3 land in entryLow (line
+// L), r8..r14 in entryGi (line G and expected GH, every one of r8..r14 compared at exit), each made all zero first when
+// the function had none; GBR goes to GBRS, which TcOracle.setEntry loads (enter) and line b carries (the C runners and xemu
+// load it with sh4_ldc_gbr). Their draws come from their own generator; a hints file without such a line draws nothing
+// and writes no line b, so its harness stays byte for byte (tools/selective_restamp.py --change reghint).
 import java.util.*;
 
 final class TcLate {
@@ -40,10 +50,14 @@ final class TcLate {
     static final Map<TcInputs.Vec, Marks> MARKS = Collections.synchronizedMap(new WeakHashMap<>());
     // genretfn: one vector try's draws, by callee (each RETS long; never changed once drawn); TcReach.copy shares them.
     static final Map<TcInputs.Vec, Map<Long, long[]>> RANGED = Collections.synchronizedMap(new WeakHashMap<>());
+    // range gbr: one vector try's GBR at entry; TcReach.copy shares it.
+    static final Map<TcInputs.Vec, Long> GBRS = Collections.synchronizedMap(new WeakHashMap<>());
 
     static void copy(TcInputs.Vec from, TcInputs.Vec to) {
         Map<Long, long[]> d = RANGED.get(from);
         if (d != null) RANGED.put(to, d);
+        Long gb = GBRS.get(from);
+        if (gb != null) GBRS.put(to, gb);
         Marks m = MARKS.get(from), c = new Marks();
         if (m == null) return;
         c.callees.addAll(m.callees);
@@ -105,6 +119,60 @@ final class TcLate {
         if (rest == null) return hints;
         RANGED.put(v, got);
         return rest;
+    }
+
+    // hints without their register start lines (range r0..r3, r8..r14, gbr; the same list when it has none), which
+    // set g.entryLow, g.entryGi and GBRS for v. A malformed line is refused like any bad hint line.
+    static List<String> regs(TcOracle g, TcInputs.Vec v, List<String> hints, long seed, int id, int attempt) {
+        List<String> rest = null;
+        Random h = null;
+        for (int i = 0; i < hints.size(); i++) {
+            String[] t = hints.get(i).trim().split("\\s+");
+            boolean mine = t[0].equals("range") && t.length > 1 && t[1].matches("r([0-3]|[89]|1[0-4])|gbr");
+            if (!mine) {
+                if (rest != null) rest.add(hints.get(i));
+                continue;
+            }
+            if (rest == null) rest = new ArrayList<>(hints.subList(0, i));
+            long lo, hi;
+            try {
+                if (t.length != 4) throw new NumberFormatException();
+                lo = num(t[2]);
+                hi = num(t[3]);
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("bad register range line (range rN|gbr LO HI): " + hints.get(i).trim());
+            }
+            if (lo > hi || lo < -0x80000000L || hi > 0xffffffffL) {
+                throw new IllegalArgumentException("bad register range (LO <= HI in 32 bits): " + hints.get(i).trim());
+            }
+            if (h == null) h = new Random(seed * 0x9e3779b97f4a7c15L + id * 0x632be59bd9b4e019L + attempt * 0x85ebca6bL + 0x3b);
+            long x = (lo + (long) (h.nextDouble() * (hi - lo + 1))) & 0xffffffffL;
+            if (t[1].equals("gbr")) {
+                GBRS.put(v, x);
+                continue;
+            }
+            int n = Integer.parseInt(t[1].substring(1));
+            if (n < 4) {
+                if (g.entryLow == null) g.entryLow = new long[4];
+                g.entryLow[n] = x;
+            } else {
+                if (g.entryGi == null) g.entryGi = new long[7];
+                g.entryGi[n - 8] = x;
+            }
+        }
+        return rest == null ? hints : rest;
+    }
+
+    // GBR at entry for v (range gbr; TcOracle.setEntry); without the line the emulator's own start value, 0, stays.
+    static void enter(ghidra.app.emulator.EmulatorHelper emu, TcInputs.Vec v) {
+        Long x = GBRS.get(v);
+        if (x != null) emu.writeRegister("GBR", java.math.BigInteger.valueOf(x));
+    }
+
+    // vectors.txt line b (GBR at entry), only for a vector with a range gbr line.
+    static String gbrLine(TcInputs.Vec v) {
+        Long x = GBRS.get(v);
+        return x == null ? "" : "\nb " + TcBase.hex(x);
     }
 
     static long num(String s) {

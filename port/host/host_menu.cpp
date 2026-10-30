@@ -2,7 +2,7 @@
 // reached through a window subclass. Every choice applies at once and goes into the settings file (as the option it
 // stands for), so the next run starts the same way. The menu shows while windowed; full screen hides it.
 //   Display: full screen, window size, aspect (pillarbox; wide after the look review), VSync, in-between frames,
-//            frame-rate cap, frame-rate counter, VMU screen
+//            frame-rate cap, frame-rate counter, VMU screen, texture pack (when the game has one)
 //   Audio:   volume, mute when unfocused
 //   Input:   rumble, pause when unfocused
 //   Help:    copy agent prompt (F9; the bar's copy icon is the same command: host_copy_button.cpp)
@@ -25,6 +25,7 @@ enum : UINT {
     kInterp = 130,
     kFpsCap = 140, // kFpsCap + N: kFpsCaps[N]
     kVmuScreen = 150, // kVmuScreen + N: --vmu-screen mode N (off, side, over)
+    kTexturePack = 160,
     kVolume0 = 200, // kVolume0 + N: N x 25 %
     kVolume100 = 204,
     kMuteUnfocused = 210,
@@ -72,6 +73,7 @@ HMENU display_menu()
     AppendMenuW(m, MF_STRING, kFpsCounter, L"Frame-rate &counter");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(vmu), L"V&MU screen");
+    AppendMenuW(m, MF_STRING | (pvr_pack_available() ? 0u : MF_GRAYED), kTexturePack, L"&Texture pack");
     return m;
 }
 
@@ -117,6 +119,7 @@ void sync()
     for (UINT n = 0; n < kFpsCapCount; n++) check(kFpsCap + n, extra_fps() == kFpsCaps[n]);
     check(kFpsCounter, p.fps_counter);
     for (UINT n = 0; n <= 2; n++) check(kVmuScreen + n, gfx_vmu_mode() == static_cast<int>(n));
+    check(kTexturePack, pvr_pack_enabled() != 0);
     for (UINT n = 0; n <= 4; n++) check(kVolume0 + n, volume == static_cast<int>(n) * 25);
     check(kMuteUnfocused, p.mute_unfocused);
     check(kRumble, input_rumble() != 0);
@@ -145,6 +148,9 @@ void command(UINT id)
     } else if (id >= kVmuScreen && id <= kVmuScreen + 2) {
         gfx_vmu_set_mode(static_cast<int>(id - kVmuScreen));
         host::settings_set("vmu-screen", gfx_vmu_mode_name(gfx_vmu_mode()));
+    } else if (id == kTexturePack && pvr_pack_available()) {
+        pvr_pack_set_enabled(!pvr_pack_enabled());
+        host::settings_set("texture-pack", on_off(pvr_pack_enabled() != 0));
     } else if (id >= kVolume0 && id <= kVolume100) {
         audio_set_volume(static_cast<int>(id - kVolume0) * 25, 0);
         host::settings_set("volume", std::to_string(audio_volume()));

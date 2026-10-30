@@ -105,7 +105,7 @@ class Wiring(unittest.TestCase):
 
     def test_runtimes(self):
         for p in (SH4 / "runtime" / "runner.c", SH4 / "runtime_rd" / "rd_runner.c"):
-            self.assertIn("tcrt_set_run_flag(word, callee, (u32)strtoul(p, &p, 10));", text(p), p.name)
+            self.assertIn("tcrt_set_run_flag(word, callee, n);", text(p), p.name)
         self.assertIn("    flag_apply(tcrt_fold(target));\n    g_ncalls++;", text(SH4 / "runtime" / "tc_rt.c"))
         rd = text(SH4 / "runtime_rd" / "rd_veh.c")
         self.assertEqual(rd.count("    flag_apply("), 2)  # the raw-C call API and the trapped call

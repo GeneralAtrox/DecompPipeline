@@ -126,7 +126,7 @@ class Wiring(unittest.TestCase):
         oracle, vectors, late = (text(SCRIPTS / n) for n in ("TcOracle.java", "TcVectors.java", "TcLate.java"))
         self.assertIn("(v.rets[calls] = TcLate.ranged(v, pc, calls, TcFret.at(floatRet, pc, v.rets[calls])))", oracle)
         self.assertIn("(entryLate[k] = TcLate.ranged(v, pc, calls, TcFret.at(floatRet, pc, TcLate.pooled(", oracle)
-        self.assertIn("applyHints(v, TcLate.ranges(v, hints, seed, id, idTry));", vectors)
+        self.assertIn("applyHints(v, TcLate.ranges(v, TcLate.regs(this, v, hints, seed, id, idTry), seed, id, idTry));", vectors)
         self.assertNotIn("applyHints(v, hints)", vectors)
         self.assertIn("RANGED.put(to, d);", late)
         for n in ("TcOracle.java", "TcVectors.java", "TcLate.java"):

@@ -40,17 +40,16 @@ sys.path.insert(0, str(TOOL / "tools"))
 sys.path.insert(0, str(TOOL))
 from common import expand_addrs, use_project  # noqa: E402
 
-XEMU_SRCS = ["xe_main.c", "xe_int.c", "xe_mac.c", "xe_fpu.c", "xe_ghmem.c"]
-RUNTIME_SRCS = ["runner.c", "tc_rt.c", "tc_fpu.c", "tc_p4.c"]
 IMAGE_BASE = 0x8c010000
 MODEL = ""  # --model: xemu's triage switches (xe.h)
 
 
 def build(cfg, paths, check, out):
-    """runner.exe with xemu as tc_thunk, once per workspace. Returns its path; exits 2 on a failed build."""
-    bdir = out / "build"
+    """runner.exe with xemu as tc_thunk, once per workspace (core/junk_ram.xemu_cmd). Returns its path; exits 2 on a
+    failed build."""
+    from core import junk_ram
+    bdir = out.resolve() / "build"  # the compiler runs in it: a relative --out would double
     bdir.mkdir(parents=True, exist_ok=True)
-    xdir = paths.TARGET / "xemu"
     env = check.msvc_env(cfg)
     env_path = next((v for k, v in env.items() if k.upper() == "PATH"), "")
     import shutil
@@ -58,9 +57,7 @@ def build(cfg, paths, check, out):
     if not cl:
         sys.exit("cl.exe not found in the Visual Studio environment")
     exe = bdir / "runner.exe"
-    cmd = [cl, "/nologo", "/O1", "/fp:strict", "/W4", "/WX", "/TC", f"/I{paths.RUNTIME}", f"/I{xdir}", f"/Fo{bdir}\\",
-           f"/Fe{exe}", *(str(paths.RUNTIME / s) for s in RUNTIME_SRCS), *(str(xdir / s) for s in XEMU_SRCS)]
-    rc, log, reason = paths.run_bounded(cmd, 180, cwd=bdir, env=env)
+    rc, log, reason = paths.run_bounded(junk_ram.xemu_cmd(cl, bdir, exe), 180, cwd=bdir, env=env)
     if rc != 0 or reason:
         print(log[-3000:])
         sys.exit(2)
@@ -112,44 +109,16 @@ def strict_flags(harness):
     return 0
 
 
-_BODIES = {}
-
-
 def bodies(path):
-    """entry -> [(lo, hi)]: the function bodies Ghidra has (state/function_bodies.txt, TcCatalog), the oracle's body:
-    meta blocks can leave out a body's last instruction."""
-    if not _BODIES and path and pathlib.Path(path).exists():
-        for ln in pathlib.Path(path).read_text(encoding="utf-8").splitlines():
-            w = ln.split()
-            if len(w) == 3:
-                _BODIES.setdefault(w[0], []).append((int(w[1], 16), int(w[2], 16)))
-    return _BODIES
-
-
-def _sz_callees(arg):
-    """meta "fpscr_sz" (TcFpscr.Sz, core/sz_entry.arg), "sz:MODES:CALLEE.XY_...", as [(callee, XY)]."""
-    parts = (arg or "").split(":")
-    return [tuple(c.split(".")) for c in parts[2].split("_")] if len(parts) > 2 and parts[2] else []
+    """core/junk_ram.bodies (one copy: the judge's junk pass runs xemu too)."""
+    from core import junk_ram
+    return junk_ram.bodies(path)
 
 
 def config_text(meta, fpscr, body=()):
-    lines = [f"entry {meta['addr']}"]
-    spans = []
-    ranges = [(int(lo, 16), int(hi, 16) + 1) for lo, hi in meta.get("blocks") or []] + list(body)
-    for lo, hi in sorted(ranges):
-        if spans and lo <= spans[-1][1]:
-            spans[-1][1] = max(spans[-1][1], hi)
-        else:
-            spans.append([lo, hi])
-    lines += [f"body {lo:08x} {hi:08x}" for lo, hi in spans]
-    if meta.get("ret_reg"):
-        lines.append(f"retx {meta['ret_reg']}")
-    elif meta.get("ret") == "u64":
-        lines.append("u64")
-    lines.append(f"fpscr {fpscr:08x}")
-    for c, xy in _sz_callees(meta.get("fpscr_sz")):  # TcFpscr.Sz: a callee that returns with another FPSCR.SZ
-        lines.append(f"szx {c} {''.join(d if d in '01' else '9' for d in xy)}")
-    return "\n".join(lines) + "\n"
+    """core/junk_ram.config_text: xemu's function config."""
+    from core import junk_ram
+    return junk_ram.config_text(meta, fpscr, body)
 
 
 def run(exe, args, env, timeout):

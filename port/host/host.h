@@ -50,6 +50,9 @@ int audio_volume(void);
 void gfx_vmu_set_mode(int mode); /* gfx_vmu.c: --vmu-screen off|side|over: 0, 1, 2 */
 int gfx_vmu_mode(void);
 const char *gfx_vmu_mode_name(int mode);
+void pvr_pack_set_enabled(int on); /* pvr_pack.c: --texture-pack on|off|DIR */
+int pvr_pack_enabled(void);
+int pvr_pack_available(void); /* a pack folder is set (game.json texture_pack or --texture-pack DIR) */
 void input_set_rumble(int on); /* gfx_input.c: --rumble */
 int input_rumble(void);
 int input_device_count(void);           /* gfx_input.c: the gamepads and joysticks open now */

@@ -75,7 +75,8 @@ translator, never in the judged C by hand:
 - **`x * 1.0f` is folded away**, and with it the SH-4's flush of a denormal (FPSCR.DN): the operand is flushed
   explicitly (`f_dn`).
 - **The reference makes one NaN** (0x7fc00000) for any arithmetic NaN result; its bits are taken that way where they
-  move to an integer register (`f_bits`).
+  move to an integer register (`f_bits`), or are stored to a word of the own frame that the function reads back
+  with an integer load (`nan_stores`: Toy Commander 8c09a518 tests a stored NaN's sign).
 - **Machine code must not be read** (DP's R8): the store-queue model hands stored bytes over directly instead of
   reading them back.
 - **Wait loops** the project names (`spin_waits`) call `tc_spin()` where they repeat.

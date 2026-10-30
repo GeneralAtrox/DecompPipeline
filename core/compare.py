@@ -12,7 +12,7 @@ import pathlib
 import re
 import struct
 
-from . import strict_judge
+from . import run_flag_set, strict_judge
 
 
 def _judge_memory():
@@ -358,13 +358,13 @@ def run_flag(cfg, addr):
     word the function sets is non-zero, and only a callee clears it (TcCalls). {"8c02d2a8": {"word": "8c5423d4",
     "callee": "8c02d930", "call": 3, "why": "<the store of 0 and the call path to it>"}}: in the test run and every
     runtime the Nth mocked call (from 1) to callee stores 0 into the word. Opt-in, one per function; an entry without
-    its evidence, or with a bad address or count, is refused."""
+    its evidence, or with a bad address or count, is refused. An entry with "base" sets bits in an argument-relative
+    word instead: (offset, callee, n, register, bits), core/run_flag_set."""
     flags = cfg.get("run_flags") or {}
     if not isinstance(flags, dict):
         raise ValueError('project.json "run_flags" must map each function address to its flag')
-    e = flags.get(addr.lower())
-    if e is None:
-        return None
+    if (e := flags.get(addr.lower())) is None or isinstance(e, dict) and "base" in e:
+        return e and run_flag_set.parse(addr, e)
     if not isinstance(e, dict) or not isinstance(e.get("why"), str) or not e["why"].strip():
         raise ValueError(f'project.json "run_flags" {addr}: no evidence ("why": which callee stores 0 there, and how)')
     try:
@@ -381,7 +381,7 @@ def run_flag_arg(cfg, addr):
     """TcPrepare's script arg 12: "-" for a function run_flags does not list, else "rf:WORD_CALLEE_N" (8 hex digits
     each, N decimal; no ",;= ": analyzeHeadless.bat splits arguments at them)."""
     f = run_flag(cfg, addr)
-    return "-" if f is None else f"rf:{f[0]:08x}_{f[1]:08x}_{f[2]}"
+    return "-" if f is None else run_flag_set.arg(f) if len(f) == 5 else f"rf:{f[0]:08x}_{f[1]:08x}_{f[2]}"
 
 
 def compare_halt(exp, act):

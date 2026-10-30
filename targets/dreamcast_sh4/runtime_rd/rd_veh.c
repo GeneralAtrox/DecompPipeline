@@ -110,23 +110,7 @@ static void tcs_scratch(int i, u32 bits) { rd_sh4_scratch(i, bits); }
 
 #include "tc_strict.h"
 
-/* A run flag (header line f, TcCalls), as tc_rt.c: the Nth call to the listed callee stores 0 into the word, after
- * the strict judge's writes. */
-static u32 g_flag_word, g_flag_callee, g_flag_n, g_flag_seen;
-
-void tcrt_set_run_flag(u32 word, u32 callee, u32 n)
-{
-    g_flag_word = tcrt_fold(word);
-    g_flag_callee = tcrt_fold(callee);
-    g_flag_n = n;
-}
-
-static void flag_apply(u32 target)
-{
-    static const u8 zero[4] = {0};
-    if (!g_flag_n || target != g_flag_callee || ++g_flag_seen != g_flag_n) return;
-    tcs_write(g_flag_word, 4, zero); /* only where the oracle writes (TcStrict.writable) */
-}
+#include "tc_flag.h" /* a run flag (header line f, TcCalls), as tc_rt.c */
 
 /* The raw-C call API (runs raw matched C through this runtime, for its own regression, and for the original's bytes
  * at out-pointer calls: vectors line B). */

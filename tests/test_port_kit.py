@@ -490,6 +490,8 @@ void pvr_set_fog_density(u32 reg) { (void)reg; }
 void pvr_set_background(const f32 xyz[3][3], const u32 argb[3]) { (void)xyz, (void)argb; }
 void pvr_set_border(u32 argb) { (void)argb; }
 void pvr_set_cheap_shadow(s32 intensity) { (void)intensity; }
+void pvr_set_palette_format(u32 format) { (void)format; }
+void pvr_set_palette(u32 first, const u32 *entries, u32 count) { (void)first, (void)entries, (void)count; }
 
 static u32 g_calls, g_mode, g_pick;
 static void lines(void *arg)
@@ -542,18 +544,21 @@ class GameConfig(unittest.TestCase):
         self.assertEqual(cfg["tx_first"], [])
         self.assertEqual(self.load(tx_first=["0x8C058560"])["tx_first"], ["8c058560"])
         self.assertEqual(cfg["not_code"], {})
-        self.assertEqual(self.load(not_code={"0x8C0B0242": "inside a table"})["not_code"],
-                         {"8c0b0242": "inside a table"})
+        self.assertEqual(self.load(not_code={"0x8C0B0242": "inside a table"})["not_code"], {"8c0b0242": "inside a table"})
+        self.assertIsNone(cfg["texture_pack"])  # pvr/pvr_pack.c: no pack unless the game names one
+        pack = self.load(texture_pack="artifacts/texture_pack")["texture_pack"]
+        self.assertEqual(pack, (self.dir / "artifacts" / "texture_pack").resolve())  # need not exist yet
+        self.assertIn(f'#define PORT_TEXTURE_PACK "{pack.as_posix()}"', game_config.port_config_h(dict(cfg, texture_pack=pack)))
+        self.assertNotIn("PORT_TEXTURE_PACK", game_config.port_config_h(cfg))
 
     def test_errors(self):
         for over in ({"sdk": ["no_such_module"]}, {"image_base": "8c01"}, {"sources": ["src/missing.c"]},
                      {"console": {"country": 1}}, {"surprise": 1}, {"entry": {"name": "1bad", "addr": "8c011000"}},
                      {"boot_file": "../X.BIN"}, {"tx_first": "8c058560"}, {"tx_first": ["8c0585"]},
-                     {"not_code": ["8c0b0242"]}, {"not_code": {"8c0b0242": ""}}, {"not_code": {"8c0b02": "x"}}):
+                     {"not_code": ["8c0b0242"]}, {"not_code": {"8c0b0242": ""}}, {"not_code": {"8c0b02": "x"}}, {"texture_pack": True}):
             with self.subTest(over=over), self.assertRaises(SystemExit):
                 self.load(**over)
-        (self.dir / "game.json").write_text(json.dumps({k: v for k, v in GAME.items() if k != "entry"}),
-                                            encoding="utf-8")
+        (self.dir / "game.json").write_text(json.dumps({k: v for k, v in GAME.items() if k != "entry"}), encoding="utf-8")
         with self.assertRaises(SystemExit):
             game_config.load(self.dir)
 
@@ -587,10 +592,8 @@ class GameConfig(unittest.TestCase):
 
     def test_lockstep_sample_pcs(self):
         self.assertEqual(self.load()["lockstep_sample_pcs"], [])
-        self.assertEqual(self.load(lockstep_sample_pcs=["0x8C06CC48", "8c06c090"])["lockstep_sample_pcs"],
-                         ["8c06cc48", "8c06c090"])
-        for over in ({"lockstep_sample_pcs": "8c06cc48"}, {"lockstep_sample_pcs": ["8c06"]},
-                     {"lockstep_sample_pcs": ["8c06cc48"] * 9}):
+        self.assertEqual(self.load(lockstep_sample_pcs=["0x8C06CC48", "8c06c090"])["lockstep_sample_pcs"], ["8c06cc48", "8c06c090"])
+        for over in ({"lockstep_sample_pcs": "8c06cc48"}, {"lockstep_sample_pcs": ["8c06"]}, {"lockstep_sample_pcs": ["8c06cc48"] * 9}):
             with self.subTest(over=over), self.assertRaises(SystemExit):
                 self.load(**over)
 
@@ -620,8 +623,7 @@ class GameConfig(unittest.TestCase):
         self.assertEqual(got, {"8c011000": ["Fx_Draw=Fx_DrawWrap"]})  # not its own file, not Fx_Drawn
         with self.assertRaises(SystemExit):  # the game's sources must define the wrapper
             gen_port.wrap_defines(src, files, {"8c011800": "Fx_DrawWrap"}, names, set())
-        self.assertEqual(gen_port.wrapper_proto("void Fx_Draw(void);", "Fx_Draw", "Fx_DrawWrap"),
-                         "void Fx_DrawWrap(void);")
+        self.assertEqual(gen_port.wrapper_proto("void Fx_Draw(void);", "Fx_Draw", "Fx_DrawWrap"), "void Fx_DrawWrap(void);")
         (src / "8c011a00.c").write_text('#include "game.h"\nvoid Fx_Four(void) {}\n', encoding="utf-8")
         self.assertEqual(gen_port.no_pch(src, files + ["8c011a00"], got), files)  # wrap defines, or not game.h first
 
@@ -820,8 +822,7 @@ class RuntimeCompiles(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-1000:])
             run = subprocess.run([str(d / "layout.exe")], capture_output=True, text=True, timeout=60)
             # x, q (units from the base), q's units, the words past q's buffer, three frees, x's free, the whole block
-            self.assertEqual((run.returncode, run.stdout.split()),
-                             (0, ["224", "221", "3", "0", "33", "1", "0", "0", "1", "1", "0"]))
+            self.assertEqual((run.returncode, run.stdout.split()), (0, ["224", "221", "3", "0", "33", "1", "0", "0", "1", "1", "0"]))
         finally:
             shutil.rmtree(d, ignore_errors=True)
 
@@ -871,8 +872,7 @@ class RuntimeCompiles(unittest.TestCase):
             self.assertNotIn("warning", r.stdout.lower())
             run = subprocess.run([str(d / "k2.exe")], capture_output=True, text=True, timeout=60)
             self.assertEqual(run.returncode, 0)
-            self.assertEqual(run.stdout.split("\n")[:7], ["0 0 480", "0 0 480", "0 0 480", "1 42 560", "1 43 560",
-                                                           "0 0 480", "480"])
+            self.assertEqual(run.stdout.split("\n")[:7], ["0 0 480", "0 0 480", "0 0 480", "1 42 560", "1 43 560", "0 0 480", "480"])
         finally:
             shutil.rmtree(d, ignore_errors=True)
 

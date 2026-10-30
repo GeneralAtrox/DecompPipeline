@@ -6,7 +6,7 @@ import re
 import shutil
 import stat
 
-from . import asm_pool, check, ghidra, paths, target_hooks, warm_check
+from . import asm_pool, check, ghidra, paths, run_flag_set, target_hooks, warm_check
 from .agent_cli import SYSTEM_PROMPT, OutputCap, SpendMeter, agent_env, claude_command, readable_effort  # noqa: F401
 
 SANDBOX_FILES = ("TASK.md", "context.md", "tc_rt.h", "check.py")  # plus the packet files (asm*.txt, ghidra*.c)
@@ -224,11 +224,7 @@ def abi_notes(meta):
                       "call): they are in the queue too, so pref sends them as they are. Never copy over them."]
     flag = meta.get("run_flag")
     if flag:
-        lines += ["", "## A run flag a callee clears", "",
-                  f"The word at 0x{flag['word']} is a run flag: the function loops while it is non-zero, and in the game "
-                  f"only fn_{flag['callee']}", f"(or its callees) clears it. In the tests, call {flag['call']} to "
-                  f"fn_{flag['callee']} stores 0 there, as tc_call does. So read the word",
-                  "from memory each time the original tests it; never keep a copy across a call or end the loop early."]
+        lines += run_flag_set.note(flag)  # the clearing or the settable form
     adv = [w for w in meta.get("mock_writes") or [] if w.get("advance")]  # core/strict_judge.advance
     if adv:
         who = ", ".join(f"fn_{w['callee']} ({w['field']})" for w in adv)

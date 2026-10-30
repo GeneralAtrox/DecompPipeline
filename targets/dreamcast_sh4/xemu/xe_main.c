@@ -20,7 +20,6 @@
 #include <windows.h>
 #include "tc_rt_internal.h"
 #include "xe.h"
-
 #define STEP_LIMIT 4000000L /* instructions; the oracle stops at 500000 steps (TcBase.STEP_LIMIT) */
 #define IMAGE_BASE 0x8c010000u
 
@@ -352,6 +351,7 @@ void tc_thunk(const u32 *r, const f32 *fr, u32 *out_r0, f32 *out_fr0)
         x.r[4 + i] = r[i];
     }
     for (int i = 8; i < 15; i++) x.r[i] = sh4_r(i);
+    x.gbr = sh4_stc_gbr(); /* line b (0 without it) */
     x.r[15] = TCRT_SP;
     x.pr = XE_SENTINEL;
     for (int i = 0; i < 16; i++) {

@@ -33,7 +33,8 @@ typedef struct {
 } PortTcChunk;
 
 /* A translated function's frame on the guest stack: args bytes above the returned sp for its stack arguments, frame
- * bytes below it for what its body pushes. port_tx_leave(sp, args) gives them back. */
+ * bytes below it for what its body pushes. port_tx_leave(sp, args) gives them back. Called
+ * from tc_call's glue, the frame's first 8 words are the call's stack words (TcArgs.s), named or not. */
 uint32_t port_tx_enter(uint32_t frame, uint32_t args);
 void port_tx_leave(uint32_t sp, uint32_t args);
 void port_tx_wr32(uint32_t addr, uint32_t value);

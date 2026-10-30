@@ -15,7 +15,12 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "tools"))
 from test_sync import TMP  # noqa: E402  (sets DECOMP_PROJECT when run alone)
 
-import wave  # noqa: E402
+import importlib.util  # noqa: E402
+# tools/wave.py by its path: a test file collected first may have loaded Python's own wave module under that name
+_SPEC = importlib.util.spec_from_file_location("dp_wave", pathlib.Path(__file__).resolve().parents[1] / "tools" / "wave.py")
+wave = importlib.util.module_from_spec(_SPEC)
+sys.modules["dp_wave"] = wave
+_SPEC.loader.exec_module(wave)
 
 CHUNK = """stamps: 812 matched harness(es) not current by oracle stamp; this run re-prepares 300 \
 (2 Ghidra slot(s) at once)

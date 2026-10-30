@@ -11,6 +11,7 @@
   "coverage_inputs": false,
   "branch_coverage": true, "targeted_vectors": true,
   "mock_junk": true, "mock_writes": true, "call_snapshots": true, "exit_frame": true,
+  "junk_ram": true,
   "reach_calls": {"runs": 800, "seconds": 150},
   "oracle_work_per_s": 65000,
   "fpu_state": true,

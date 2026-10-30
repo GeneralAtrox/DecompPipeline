@@ -20,7 +20,7 @@ NAME = re.compile(r"[A-Za-z_]\w*")
 REQUIRED = ("name", "decomp", "entry", "image_base")
 KNOWN = set(REQUIRED) | {"boot_file", "disc", "fsca_table", "must_work", "sdk", "sources", "hardware", "wrap",
                          "console", "id", "boot_sha256", "arrows", "widescreen", "aica_arm", "kamui1", "lockstep_sample_pcs",
-                         "lockstep_rtc_pcs", "lockstep_scene_pcs", "translator_c", "tx_first", "not_code"}
+                         "lockstep_rtc_pcs", "lockstep_scene_pcs", "translator_c", "tx_first", "not_code", "texture_pack"}
 CONSOLE = ("country", "language", "broadcast")
 
 
@@ -143,6 +143,9 @@ def load(game_dir):
     if not isinstance(widescreen, bool):
         raise ConfigError(f"game.json widescreen: {widescreen!r} "
                           "(true: the game widens its culling by port_widescreen())")
+    if raw.get("texture_pack") is not None and not isinstance(raw["texture_pack"], str):
+        raise ConfigError(f"game.json texture_pack: {raw['texture_pack']!r} (a folder, relative to game.json, that "
+                          "holds a texture pack's index.txt: pvr/pvr_pack.c; it may be built later)")
     aica_arm = raw.get("aica_arm", False)
     if not isinstance(aica_arm, bool):
         raise ConfigError(f"game.json aica_arm: {aica_arm!r} (true: the game's own sound driver runs on the kit's "
@@ -195,7 +198,7 @@ def load(game_dir):
             "image_base": _addr(raw["image_base"], "image_base"), "boot_file": boot, "disc": path("disc"),
             "fsca_table": path("fsca_table"), "must_work": path("must_work"),
             "sdk": [mods[m] for m in sdk], "sources": sources, "hardware": hardware, "wrap": wrap,
-            "console": console, "arrows": arrows, "widescreen": widescreen, "aica_arm": aica_arm, "kamui1": kamui1,
+            "console": console, "arrows": arrows, "widescreen": widescreen, "texture_pack": path("texture_pack"), "aica_arm": aica_arm, "kamui1": kamui1,
             "lockstep_sample_pcs": pcs, "lockstep_rtc_pcs": rtc, "lockstep_scene_pcs": scene,
             "translator_c": tc, "tx_first": first, "not_code": not_code}
 
@@ -217,6 +220,8 @@ def port_config_h(cfg, own_crt=(), bu_image=False):
     stick = int(cfg.get("arrows") == "stick")
     lines.append(f"#define PORT_ARROWS_STICK {stick} /* 1: the arrow keys move only the stick (game.json arrows) */")
     lines.append(f"#define PORT_WIDESCREEN {int(bool(cfg.get('widescreen')))} /* 1: Hor+ in play runs (game.json) */")
+    if cfg.get("texture_pack"):  # pvr/pvr_pack.c: the pack folder the renderer reads (game.json texture_pack)
+        lines.append(f"#define PORT_TEXTURE_PACK {c_string(str(cfg['texture_pack']).replace(chr(92), '/'))}")
     if cfg.get("aica_arm"):  # runtime/aica_arm.c: the game's sound driver runs on the AICA's ARM7 (off: no ARM)
         lines.append("#define PORT_AICA_ARM 1")
     if cfg["console"]:

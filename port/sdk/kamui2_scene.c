@@ -40,9 +40,13 @@ s32 kmSetSystemConfiguration(void *config)
     g_k2_config = c;
     g_bank = 0;
     k2_tex_init(c);
+    u32 size = k2_vertex_buffer_size(c->vertex_buffer, c->vertex_buffer_size);
     port_log("kamui2: vertex buffer %08x, %u bank(s) of %u bytes, %u pass(es), texture memory %u KB\n",
-             c->vertex_buffer, c->vertex_banks, c->vertex_buffer_size / (c->vertex_banks ? c->vertex_banks : 1u),
+             c->vertex_buffer, c->vertex_banks, size / (c->vertex_banks ? c->vertex_banks : 1u),
              c->pass_depth, c->texture_memory_size >> 10);
+    if (size != c->vertex_buffer_size)
+        port_log("kamui2: the vertex buffer's %u bytes run past main RAM's end; using %u\n",
+                 c->vertex_buffer_size, size);
     return K2_OK;
 }
 
@@ -50,7 +54,10 @@ s32 kmBeginScene(KMSYSTEMCONFIGSTRUCT *config)
 {
     K2SysConfig *c = (K2SysConfig *)config;
     if (!c) return K2_ERROR;
-    if (c != g_k2_config && kmSetSystemConfiguration(c) != K2_OK) return K2_ERROR;
+    /* Kamui's kmBeginScene never sets the system up again; only kmSetSystemConfiguration does, and that forgets
+     * every texture. A game may hand the same config through another address mirror here (its set-up through the
+     * 0x0c.. mirror, its scenes through 0x8c..), so only a game that never set it up is set up here. */
+    if (!g_k2_config && kmSetSystemConfiguration(c) != K2_OK) return K2_ERROR;
     g_bank = (g_bank + 1u) % (c->vertex_banks ? c->vertex_banks : 1u);
     g_pass_count = 0;
     c->buffer_desc->pass = &c->pass[0];
@@ -63,7 +70,8 @@ s32 kmBeginPass(KMVERTEXBUFFDESC *vertexBuffer)
     K2VertexBuffDesc *d = (K2VertexBuffDesc *)vertexBuffer;
     K2SysConfig *c = g_k2_config;
     if (!c || g_pass_count >= PVRX_MAX_PASSES) return K2_ERROR;
-    u32 banks = c->vertex_banks ? c->vertex_banks : 1u, bank_size = c->vertex_buffer_size / banks;
+    u32 banks = c->vertex_banks ? c->vertex_banks : 1u;
+    u32 bank_size = k2_vertex_buffer_size(c->vertex_buffer, c->vertex_buffer_size) / banks;
     u32 at = cached(c->vertex_buffer) + g_bank * bank_size;
     const K2PassInfo *info = d->pass;
     PvrPass *p = &g_passes[g_pass_count];

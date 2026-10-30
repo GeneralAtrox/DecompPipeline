@@ -6,6 +6,9 @@
  * parameter word, the list state words and the bank table. Kamui's list table word (game.json "kamui1" "list_word")
  * points at the write pointer table, and the vertex buffer descriptor gets the same pointers Kamui gives it.
  *
+ * With the configuration's buffer model on (flags 0x10, buffer_model 0x20 | list), Kamui sends that one list straight
+ * to the TA as it is drawn, so the game gives it no share of the buffer (e.g. the opaque list: every 3D model). The
+ * port draws at kmRender, so that list is buffered too: it gets the room of the largest other list, all scaled to fit.
  * The lists share the buffer by the configuration's percentages (kmSetSystemConfiguration), or by the byte sizes
  * kmCreateVertexBuffer asks for. The port renders at once, so one bank does: kmRender hands every list's
  * [start, write pointer) to pvr_render and rewinds the pointers; kmFlipFrameBuffer shows the frame at the vertical
@@ -34,7 +37,6 @@
 #define FRAME_HEIGHT 480u
 #define FRAME_DEPTH 16u
 #define USER_CLIP_PCW 0x20000000u /* the user tile clip parameter (parameter type 1) */
-#define TILE_SHIFT 5              /* 32-pixel tiles */
 #define CLIP_WORDS 8u
 
 static K1SysConfig *g_config;
@@ -91,6 +93,19 @@ static s32 make_lists(K1VertexBuffDesc *desc, const u32 bytes[K1_LISTS])
     return K1_OK;
 }
 
+/* The buffer model's direct list (header comment): no share of its own, so the largest other list's room. */
+static void direct_list_room(const K1SysConfig *c, u32 bytes[K1_LISTS])
+{
+    u32 list = c->buffer_model & ~K1_BUFFER_DIRECT, most = 0;
+    if (!(c->flags & K1_CONFIG_BUFFER_MODEL) || !(c->buffer_model & K1_BUFFER_DIRECT) || list >= K1_LISTS) return;
+    if (bytes[list]) return;
+    for (u32 i = 0; i < K1_LISTS; i++)
+        if (bytes[i] > most) most = bytes[i];
+    bytes[list] = most;
+    port_log("kamui1: buffer model %x: list %u goes straight to the TA on the console; buffered here (%u bytes)\n",
+             c->buffer_model, list, most);
+}
+
 /* The configuration's vertex buffer, shared by its list percentages. */
 s32 kmSetSystemConfiguration(void *config)
 {
@@ -102,6 +117,7 @@ s32 kmSetSystemConfiguration(void *config)
     g_buffer_size = c->vertex_buffer_size;
     for (u32 i = 0; i < K1_LISTS; i++)
         bytes[i] = (u32)((double)(g_buffer_size - HEAD_BYTES) * c->list_share[i] / PERCENT);
+    direct_list_room(c, bytes);
     port_log("kamui1: system configuration, %u frame buffer(s), texture memory %u KB\n", c->frame_buffer_count,
              k1_texture_bytes(c) >> 10);
     return make_lists(c->buffer_desc ? host(c->buffer_desc) : NULL, bytes);
@@ -129,7 +145,10 @@ KMSTATUS Km_SetBufferModel(u32 model, u32 flags)
     return K1_OK;
 }
 
-/* A user tile clip parameter at the list's write pointer (the rectangle in pixels, as tiles). */
+/* A user tile clip parameter at the list's write pointer. Kamui 1 takes the rectangle in tiles (32 pixels), the
+ * maxima inclusive, as the TA's words hold it: a game's view set-up passes x / 32 .. (x + w) / 32 - 1,
+ * so 0, 0, 19, 14 for the whole screen. (Dividing by 32 again made that the top-left tile alone: every 3D polygon,
+ * drawn with clipping "inside", was cut away.) */
 KMSTATUS kmSetUserClipping(KMVERTEXBUFFDESC *bufferDesc, s32 listType, s32 xMin, s32 yMin, s32 xMax, s32 yMax)
 {
     u32 *at;
@@ -138,10 +157,10 @@ KMSTATUS kmSetUserClipping(KMVERTEXBUFFDESC *bufferDesc, s32 listType, s32 xMin,
     at = host(g_head[HEAD_TABLE + (u32)listType]);
     memset(at, 0, CLIP_WORDS * 4u);
     at[0] = USER_CLIP_PCW;
-    at[4] = (u32)xMin >> TILE_SHIFT;
-    at[5] = (u32)yMin >> TILE_SHIFT;
-    at[6] = (u32)xMax >> TILE_SHIFT;
-    at[7] = (u32)yMax >> TILE_SHIFT;
+    at[4] = (u32)xMin;
+    at[5] = (u32)yMin;
+    at[6] = (u32)xMax;
+    at[7] = (u32)yMax;
     g_head[HEAD_TABLE + (u32)listType] += CLIP_WORDS * 4u;
     return K1_OK;
 }

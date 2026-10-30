@@ -15,7 +15,7 @@ import re
 import shutil
 import threading
 
-from . import check, filelock, paths, pch_warnings, readable_stack, strict_judge, target_hooks, toolcfg
+from . import check, filelock, paths, pch_warnings, readable_ca, readable_stack, strict_judge, target_hooks, toolcfg
 from .compare import FRAME_LO, STACK_HI
 
 RUNTIME_RD = paths.TARGET / "runtime_rd"
@@ -347,7 +347,7 @@ def compare(cfg, meta, harness, out_file, sets, variadic=None, reads=None):
     from . import ret_reg  # the original returns in fr0 whatever the signature says: compare fr0 too
     meta = ret_reg.judged(meta, ret_reg.listed(paths.STATE))
     vecs = check.parse_vectors(harness / "vectors.txt")
-    exp = check.parse_results(harness / "expected.txt")
+    exp = readable_ca.narrow(check.parse_results(harness / "expected.txt"), reads)
     act = check.parse_results(out_file)
     stacks = host_stacks(out_file) if out_file.exists() else {}
     image = cfg["binary_path"].read_bytes()
@@ -467,7 +467,7 @@ def check_readable(cfg, addr, src_file, build_dir, sets=("dev", "hidden"), reg=N
         data = data_functions(reg, addr, meta)  # function pointers the raw C uses as data: declared by name
         protos = {int(a, 16): reg.kinds(reg.proto(a, raw_sig=sigs.get(a)))
                   for a in sorted(set(reg.functions) | set(sigs) | set(data))}
-        aliases, variadic, decl, reads = {}, {}, dict(sigs), {}
+        aliases, variadic, decl, reads = {}, {}, dict(sigs), readable_ca.ca_reads(reg, harness)  # CA: readable_ca
         for c in meta["callees"]:  # where each argument goes (by storage), and whether the raw name still fits
             storage = callee_storage(harness, c, callee_harness)
             if storage is not None and c["addr"] != addr:  # the registers the callee itself reads (callee_reads)

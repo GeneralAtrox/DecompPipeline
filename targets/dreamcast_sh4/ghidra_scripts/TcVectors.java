@@ -176,7 +176,7 @@ public abstract class TcVectors extends TcOracle {
         Random h = new Random(seed * 0x2545f4914f6cdd1dL + id * 0x632be59bd9b4e019L + idTry * 0x85ebca6bL);
         if (facts.coverageInputs || rescue) TcGuide.guide(v, proto, consts, globals, h, facts.scrLo, rescue);
         TcFguide.guide(v, proto, listing, body, mem, seed, id, idTry, rescue);
-        applyHints(v, TcLate.ranges(v, hints, seed, id, idTry));  // TcLate takes the genretfn lines
+        applyHints(v, TcLate.ranges(v, TcLate.regs(this, v, hints, seed, id, idTry), seed, id, idTry));  // TcLate takes the register and genretfn lines
         entryFq = proto.fpuState ? fpuValues(seed, id, idTry + 1, v.fr) : null;
         box[0] = v; return runRepaired(box, h, consts, rescue, nrep);
     }
@@ -263,7 +263,7 @@ public abstract class TcVectors extends TcOracle {
             vout.append("\nQ");
             for (int x : entryFq) vout.append(' ').append(hex(x));
         }
-        vout.append(TcSr.line(sr, v)).append(TcFpscr.line(r.fs)).append(TcFpscr.Sz.line()).append("\nC");  // lines I (TcSr), N (TcFpscr), z (TcFpscr.Sz)
+        vout.append(TcLate.gbrLine(v)).append(TcSr.line(sr, v)).append(TcFpscr.line(r.fs)).append(TcFpscr.Sz.line()).append("\nC");  // lines b (TcLate), I (TcSr), N (TcFpscr), z (TcFpscr.Sz)
         for (long x : v.rets) vout.append(' ').append(hex(x));
         vout.append(TcLate.tail(entryLate, r.calls.size() - v.rets.length)).append('\n');
         for (int i = 0; i < v.patchAddr.size(); i++) {

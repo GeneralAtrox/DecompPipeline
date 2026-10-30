@@ -157,7 +157,7 @@ def lint_inputs(src):
 
 
 HINT_RE = re.compile(r"#.*|ptr (r[4-7]|0x[0-9a-f]{8})(\+0x[0-9a-f]{1,5})*"
-                     r"|range r[4-7] (0x[0-9a-f]+|-?\d+) (0x[0-9a-f]+|-?\d+)|gen[A-Za-z0-9]* [\w+ .x-]{0,120}")
+                     r"|range (r[0-9]|r1[0-4]|gbr) (0x[0-9a-f]+|-?\d+) (0x[0-9a-f]+|-?\d+)|gen[A-Za-z0-9]* [\w+ .x-]{0,120}")
 
 
 def lint_hints(text):

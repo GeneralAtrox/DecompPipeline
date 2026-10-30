@@ -190,7 +190,7 @@ public abstract class TcOracle extends TcInputs {
         if (text == null) text = TcText.of(listing, body, this::poolValue);
         if (TcText.restore(mem, text, v.patchAddr, v.patchData)) textRestored++;
         for (int i = 0; i < v.patchAddr.size(); i++) emu.writeMemory(toAddr(v.patchAddr.get(i)), v.patchData.get(i).clone()); // the emulator may adopt the array as a page
-        for (int i = 0; i < 4; i++) emu.writeRegister("r" + (4 + i), u(v.r[i]));
+        for (int i = 0; i < 4; i++) emu.writeRegister("r" + (4 + i), u(TcCalls.entry(i, v.r[i])));  // a settable run flag's base (TcCalls)
         for (int i = 0; i < 8; i++) emu.writeRegister("fr" + (4 + i), u(v.fr[i]));
         for (int i = 0; i < 16; i++) emu.writeRegister("xf" + i, u(v.xf[i]));
         for (int i = 0; entryFh != null && i < 4; i++) emu.writeRegister("fr" + (12 + i), u(entryFh[i]));
@@ -210,7 +210,7 @@ public abstract class TcOracle extends TcInputs {
             emu.writeRegister("FPSCR_SZ", BigInteger.ZERO);
             emu.writeRegister("FPSCR_FR", BigInteger.ZERO);
         }
-        TcFpscr.Sz.enter(emu); if (sr != null) sr.enter(emu, v);  // MD=1, RB=0, BL=0, the vector's IMASK (TcSr)
+        TcFpscr.Sz.enter(emu); if (sr != null) sr.enter(emu, v); TcLate.enter(emu, v);  // MD=1, RB=0, BL=0, the vector's IMASK (TcSr); GBR (TcLate)
         emu.writeRegister(emu.getPCRegister(), u(fn.getEntryPoint().getOffset()));
     }
 

@@ -7,6 +7,7 @@
 #include "gfx.h"
 #include "platform.h"
 #include "host.h"
+#include "pvr.h"
 
 GfxState g_gfx = {.wide = -1};
 
@@ -37,6 +38,7 @@ int gfx_option(const char *arg, const char *value)
         return 2;
     }
     if (host_window_option(arg, value)) return 2;
+    if (pvr_pack_option(arg, value)) return 2;
     if (!strcmp(arg, "--widescreen") && value) {
         g_gfx.wide = strcmp(value, "off") != 0;
         return 2;

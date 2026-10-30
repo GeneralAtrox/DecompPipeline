@@ -2,7 +2,8 @@
  *
  * ADXT_StartFname reads the whole file through the kit's gdFs and plays it into the kit's mix (runtime/media: the
  * ADX decoder and the talk, mixed beside the AICA's voices at each vertical blank), looping as its header says, at
- * the handle's output volume (0.1 dB steps, 0 the loudest). A game that fades music by reading the volume back
+ * the handle's output volume (0.1 dB steps, 0 the loudest); ADXT_GetStat answers the talk's state, ADXT_Pause holds
+ * it and ADXT_GetErrCode has no error to report. A game that fades music by reading the volume back
  * (ADXT_GetOutVol, then ADXT_SetOutVol a step further) sees its own steps and the fade ends. Sofdec's start-up and
  * the middleware servers do nothing. The error callback is kept and never called.
  *
@@ -97,6 +98,27 @@ void ADXT_Stop(ADXT adxt)
 {
     u32 i = slot(adxt);
     if (i < HANDLES) media_talk_stop(g_talks[i].talk);
+}
+
+/* ADXT_STAT: runtime/media's talk states are ADXT's numbers (STOP 0, PLAYING 3, PLAYEND 5, ERROR 6) */
+s32 ADXT_GetStat(ADXT adxt)
+{
+    u32 i = slot(adxt);
+    return i < HANDLES && g_talks[i].talk ? media_talk_state(g_talks[i].talk) : MEDIA_TALK_STOP;
+}
+
+/* sw 1 holds the stream where it is (a game's pause menu), 0 plays on from there */
+void ADXT_Pause(ADXT adxt, s32 sw)
+{
+    u32 i = slot(adxt);
+    if (i < HANDLES && g_talks[i].talk) media_talk_pause(g_talks[i].talk, sw != 0);
+}
+
+/* Never a read error: the whole file was read at the start */
+s32 ADXT_GetErrCode(ADXT adxt)
+{
+    (void)adxt;
+    return 0;
 }
 
 void ADXT_SetOutVol(ADXT adxt, s32 volume)
