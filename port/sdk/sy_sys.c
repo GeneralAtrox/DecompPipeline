@@ -1,6 +1,6 @@
 /* Platform layer: Shinobi's system services on the host. Hardware set-up is a no-op. The system configuration is
- * the console game.json "console" describes (country, language, broadcast; stereo until the game sets mono) with a
- * VGA cable. The RTC is the host's local time, and the timer is the host's performance counter at the SH-4 TMU2
+ * the console game.json "console" describes (country, language, broadcast; stereo until the game sets mono, and the
+ * game's choice stays saved in the port's settings as the console's flash keeps it) with a VGA cable. The RTC is the host's local time, and the timer is the host's performance counter at the SH-4 TMU2
  * rate the game expects (Pphi/64 = 781250 Hz).
  *
  * Needs from the game's headers: SYE_CBL_VGA, SYS_RTC_DATE {year, month, day, hour, minute, second, dayOfWeek,
@@ -16,7 +16,9 @@
 #define CFG_OK 0
 #define TIMER_HZ 781250u
 
-static s32 g_sound_mode; /* 0 stereo, 1 mono */
+#define SOUND_MODE_KEY "game.sound_mode" /* the console keeps this in its flash; here, the port's settings */
+
+static s32 g_sound_mode, g_sound_mode_read; /* 0 stereo, 1 mono */
 static u64 g_timer_base;
 
 /* The port is a VGA box: 640x480 progressive at 60 Hz, so the game reads no broadcast standard from the cable. */
@@ -36,15 +38,25 @@ s32 Sy_CfgInit(void *work)
 
 s32 Sy_CfgExit(void) { return CFG_OK; }
 
+static s32 sound_mode(void)
+{
+    if (!g_sound_mode_read) {
+        g_sound_mode = port_setting_get_int(SOUND_MODE_KEY, 0);
+        g_sound_mode_read = 1;
+    }
+    return g_sound_mode;
+}
+
 s32 Sy_CfgSetSoundMode(s32 mode)
 {
+    if (mode != sound_mode()) port_setting_set_int(SOUND_MODE_KEY, mode);
     g_sound_mode = mode;
     return CFG_OK;
 }
 
 s32 Sy_CfgGetSoundMode(s32 *mode)
 {
-    *mode = g_sound_mode;
+    *mode = sound_mode();
     return CFG_OK;
 }
 

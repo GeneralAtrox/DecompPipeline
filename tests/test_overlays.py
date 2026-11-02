@@ -208,7 +208,7 @@ uint32_t port_tx_enter(uint32_t frame, uint32_t args) { uint32_t sp = g_sp - arg
 void port_tx_leave(uint32_t sp, uint32_t args) { g_sp = sp + args; }
 int port_tx_fpu_whole(int whole) { (void)whole; return 0; }
 void port_tx_take_rlo(uint32_t *lo) { lo[0] = lo[1] = lo[2] = lo[3] = 0; }
-float sh4_fr(int index) { (void)index; return 0.0f; }
+float sh4_fr(int index) { (void)index; return 0.0f; } uint32_t sh4_r(int index) { (void)index; return 0u; }
 """
 HOST_FAULT_C = r"""/* The runtime's other parts for the fault driver: main's dispatch table has one function. */
 #include <stdarg.h>
@@ -222,7 +222,7 @@ static int M__f(int x) { return x - 1; }
 static const PortDispatch main_rows[] = {{0x8c020000u, (PortFn)M__f, "Mf"}};
 static const int main_n = 1;
 const PortDispatchChunk port_dispatch_chunks[] = {{main_rows, &main_n}};
-const int port_dispatch_nchunks = 1;
+const int port_dispatch_nchunks = 1; unsigned int sh4_r(int i) { (void)i; return 0u; }
 void *guest_alloc(void)
 {
     return VirtualAlloc((void *)(UINT_PTR)0x8c000000u, 0x01000000u, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
@@ -232,7 +232,7 @@ int guest_is_ram(u32 a) { return guest_fold(a) - 0x8c000000u < 0x01000000u; }
 int rom_read(EXCEPTION_POINTERS *ep) { (void)ep; return 0; }
 void port_stub_report(void) {}
 void diag_fault_chain(u32 esp) { (void)esp; }
-void port_log_flush(void) {}
+void port_log_flush(void) {} void game_log_end(const char *how, int code, int save) { (void)how; (void)code; (void)save; }
 void port_log(const char *fmt, ...)
 {
     va_list ap;
@@ -260,7 +260,7 @@ def build(out, files, exe, flags=""):
     (out / "port_config.h").write_text(game_config.port_config_h(
         {"name": "Fixture", "entry": {"name": "Fx_Main", "addr": "8c011000"}, "image_base": "8c010000",
          "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}), encoding="utf-8")
-    cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 {flags} /I"{out}" /I"{KIT / "runtime"}" /I"{rd}" '
+    cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 {flags} /I"{out}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" /I"{rd}" '
           + " ".join(f'"{p}"' for p in files) + f' /Fe"{out / exe}" /link /LARGEADDRESSAWARE /DYNAMICBASE:NO '
           '/NXCOMPAT /BASE:0x5a000000')
     vc = str(game_config.vcvars32()).replace("/", "\\")

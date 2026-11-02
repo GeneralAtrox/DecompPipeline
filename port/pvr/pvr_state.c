@@ -16,7 +16,36 @@ PvrState g_pvr = {
 static u8 g_vram[PVRX_VRAM_SIZE];
 u32 g_pvr_debug;
 
-u8 *pvr_vram(void) { return g_vram; }
+/* game.json vram_init: bytes the game reads from texture memory without uploading them (the console holds the frame
+ * buffer or leftovers there). Set on the first use, before anything reads or uploads. */
+#ifdef PORT_VRAM_INIT
+typedef struct VramInit {
+    u32 at;
+    const char *hex;
+} VramInit;
+
+static void vram_init(void)
+{
+    static const VramInit init[] = {PORT_VRAM_INIT};
+    for (const VramInit *e = init; e->hex; e++)
+        for (u32 i = 0; e->hex[2 * i]; i++) {
+            unsigned v;
+            if (e->at + i < PVRX_VRAM_SIZE && sscanf_s(e->hex + 2 * i, "%2x", &v) == 1) g_vram[e->at + i] = (u8)v;
+        }
+}
+#endif
+
+u8 *pvr_vram(void)
+{
+#ifdef PORT_VRAM_INIT
+    static int done;
+    if (!done) {
+        done = 1;
+        vram_init();
+    }
+#endif
+    return g_vram;
+}
 
 void pvr_vram_written(u32 offset, u32 size)
 {

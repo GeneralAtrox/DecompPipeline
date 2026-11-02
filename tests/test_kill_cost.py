@@ -87,6 +87,13 @@ class RunAttempt(unittest.TestCase):
         self.assertEqual(got["cost_usd"], 0.5)
         self.assertNotIn("cost_estimated", got)
 
+    def test_plan_limit_comes_back(self):
+        info = {"status": "rejected", "resetsAt": 1793520600, "rateLimitType": "five_hour"}
+        final = {"type": "result", "is_error": True, "total_cost_usd": 0,
+                 "result": "You've hit your session limit \u00b7 resets 8:10am (Europe/London)"}  # no status: the words
+        got = self.run_with([INIT, {"type": "rate_limit_event", "rate_limit_info": info}, final], None)
+        self.assertEqual((got["api_error"], got["rate_limit_info"]), ("rate_limit", info))
+
     def test_no_rates_unchanged(self):
         got = self.run_with([dict(INIT, model="claude-sonnet-5-5")] + STREAM[1:], "timeout")
         self.assertIsNone(got["cost_usd"])

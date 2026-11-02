@@ -78,8 +78,56 @@ public class TcSetup extends GhidraScript {
         return on;
     }
 
+    // The stand-in for a vector instruction word: a compare of the general registers the instruction reads (cmplw cr7
+    // for two, or one twice), crxor 6,6,6 for none. Ghidra decodes both, and the register dataflow sees the same reads.
+    static int standIn(TcVmx.Op op) {
+        if (op.gWrite.length > 0) throw new IllegalStateException("vector instruction writing a GPR: " + op);
+        if (op.gRead.length == 0) return 0x4CC63182;
+        int a = op.gRead[0], b = op.gRead.length > 1 ? op.gRead[1] : a;
+        return 0x7F800040 | (a << 16) | (b << 11);
+    }
+
+    // Replace every vector word of the code (TcBase.VMX_MAP keeps the original). Returns the number replaced.
+    int patchVector(Collection<long[]> ranges) throws Exception {
+        Memory mem = currentProgram.getMemory();
+        ghidra.program.model.util.IntPropertyMap map = currentProgram.getUsrPropertyManager().getIntPropertyMap(TcBase.VMX_MAP);
+        if (map == null) map = currentProgram.getUsrPropertyManager().createIntPropertyMap(TcBase.VMX_MAP);
+        int n = 0, mismatch = 0;
+        for (long[] r : ranges) {
+            for (long a = r[0]; a + 4 <= r[1]; a += 4) {
+                Address at = toAddr(a);
+                int w = mem.getInt(at);
+                TcVmx.Op op = TcVmx.decode(w);
+                if (op == null) {
+                    if (TcClass.isVector(w) && (w >>> 26) != 31 && n + mismatch < 20) println("TcSetup: vector word not decoded: " + at);
+                    if (TcClass.isVector(w) && (w >>> 26) != 31) mismatch++;
+                    continue;
+                }
+                if (!TcClass.isVector(w) && n + mismatch < 20) println("TcSetup: TcVmx decodes " + op + " at " + at + ", TcClass does not name it a vector word");
+                map.add(at, w);
+                mem.setInt(at, standIn(op));
+                n++;
+            }
+        }
+        if (mismatch > 0) throw new IllegalStateException(mismatch + " vector word(s) TcClass names but TcVmx does not decode");
+        return n;
+    }
+
     AddressSet range(long lo, long hi) {
         return new AddressSet(toAddr(lo), toAddr(hi - 1));
+    }
+
+    int freed = 0;
+
+    // An entry the first disassembly did not reach: disassemble from there, so createFunction finds an instruction.
+    void freeEntry(Address at, AddressSetView body) {
+        Listing listing = currentProgram.getListing();
+        if (listing.getInstructionAt(at) != null) return;
+        CodeUnit cu = listing.getCodeUnitAt(at);
+        if (cu instanceof Data) listing.clearCodeUnits(at, at.add(cu.getLength() - 1), false);
+        new DisassembleCommand(at, body, true).applyTo(currentProgram, monitor);
+        freed++;
+        if (freed <= 20) println("TcSetup: " + at + " was not reached by the disassembly; disassembled from there");
     }
 
     @Override
@@ -92,17 +140,35 @@ public class TcSetup extends GhidraScript {
             throw new IllegalStateException("no " + list + ": run targets/xbox360_ppc/tools/ghidra_setup.py first");
         }
         List<String[]> items = new ArrayList<>();
+        List<long[]> spans = new ArrayList<>();
         AddressSet code = new AddressSet();
         for (String line : Files.readAllLines(list)) {
             String[] t = line.trim().split("\\s+");
             if (t[0].isEmpty() || t[0].startsWith("#")) continue;
             items.add(t);
-            if (t[0].equals("F")) code.add(range(num(t[1]), num(t[1]) + num(t[2])));
-            else if (t[0].equals("H")) code.add(range(num(t[2]), num(t[3])));
+            if (t[0].equals("F")) {
+                code.add(range(num(t[1]), num(t[1]) + num(t[2])));
+                spans.add(new long[] {num(t[1]), num(t[1]) + num(t[2])});
+            } else if (t[0].equals("H")) {
+                code.add(range(num(t[2]), num(t[3])));
+                spans.add(new long[] {num(t[2]), num(t[3])});
+            }
             else if (t[0].equals("I")) code.add(range(num(t[1]), num(t[1]) + 16));
         }
+        int vectors = patchVector(spans);
+        println("TcSetup: " + vectors + " vector instruction word(s) replaced by stand-ins");
+        // Everything in the bodies starts clear, and the disassembly runs from every entry: a body only reached by a
+        // function pointer is not reached by following the flow from the first range (Mega Man 10 packs its
+        // functions, so their ranges merge).
+        Listing lst = currentProgram.getListing();
+        for (AddressRange rg : code) lst.clearCodeUnits(rg.getMinAddress(), rg.getMaxAddress(), false);
         DisassembleCommand dis = new DisassembleCommand(code, code, true);
         dis.applyTo(currentProgram, monitor);
+        for (String[] t : items) {
+            if (t[0].equals("F")) freeEntry(toAddr(num(t[1])), range(num(t[1]), num(t[1]) + num(t[2])));
+            else if (t[0].equals("H")) freeEntry(toAddr(num(t[2])), range(num(t[2]), num(t[3])));
+            else if (t[0].equals("I")) freeEntry(toAddr(num(t[1])), range(num(t[1]), num(t[1]) + 16));
+        }
         FunctionManager fm = currentProgram.getFunctionManager();
         SymbolTable st = currentProgram.getSymbolTable();
         int funcs = 0, labels = 0, failed = 0;
@@ -131,12 +197,17 @@ public class TcSetup extends GhidraScript {
                         throw new IllegalArgumentException("bad setup line: " + String.join(" ", t));
                 }
             } catch (IllegalArgumentException e) {
-                throw e;
+                Address at = toAddr(num(t[t[0].equals("H") ? 2 : 1]));
+                ghidra.program.model.listing.CodeUnit cu = currentProgram.getListing().getCodeUnitContaining(at);
+                throw new IllegalArgumentException(String.join(" ", t) + ": " + e.getMessage() + " (code unit there: "
+                    + (cu == null ? "none" : cu.getMinAddress() + " " + cu.getMnemonicString() + " len " + cu.getLength()
+                        + " " + cu.getClass().getSimpleName()) + ")", e);
             } catch (Exception e) {
                 failed++;
                 if (failed <= 20) println("TcSetup: " + String.join(" ", t) + ": " + e.getMessage());
             }
         }
+        if (freed > 0) println("TcSetup: " + freed + " function entr(ies) had not been reached by the first disassembly");
         println("TcSetup: " + funcs + " functions, " + labels + " helper labels, " + failed + " failed; "
             + getScriptArgs().length + " fixed register(s); analyzers left on: " + on);
         if (failed > 0) throw new IllegalStateException(failed + " setup item(s) failed (see above)");

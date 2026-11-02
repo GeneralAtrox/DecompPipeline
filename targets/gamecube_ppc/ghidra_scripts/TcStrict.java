@@ -11,7 +11,8 @@
 //    zero is a value C can produce by accident (an unset local); junk is not. The C runtime models no register here.
 //    A compared argument that still holds the last call's junk (the function never set it: Skies of Arcadia 800c7f64
 //    passes r7..r10 on to 8025cb24) may also be the 0 clobber leaves there (expected.txt "CJ call field hex"): no
-//    junk-free run tells C that passes 0 from C that leaves it.
+//    junk-free run tells C that passes 0 from C that leaves it. Not r4 after a callee that sets it on every path
+//    (TcFlow.returnsR4): that is the low word of its 64-bit result, the C has it (tc_lastr4), and 0 is wrong.
 //  - mock_writes: a callee the project lists (project.json "mock_write_facts") writes SIZE bytes through a pointer
 //    argument (record field r3..r10 = 1..8, s0..s7 = 17..24): byte k is TcJunk.at8(seed, vid, call, 0x10000 *
 //    (1 + field), k), only to a range wholly in MEM1 with no instruction byte (TcFacts.isCode), as the runtime tests.
@@ -97,6 +98,7 @@ final class TcStrict {
     final TcBank bank;
     final StringBuilder vec = new StringBuilder(), exp = new StringBuilder();
     int snaps;
+    long last = -1;  // the previous call's target
 
     private TcStrict(TcOracle o, TcBank bank) {
         this.o = o;
@@ -136,6 +138,7 @@ final class TcStrict {
         String[] rec = res.calls.get(res.calls.size() - 1).split(" ");
         long target = Long.parseLong(rec[0], 16);
         if ((s.flags & JUNK) != 0) s.leftover(emu, call, target);
+        s.last = target;
         if ((s.flags & SNAPS) != 0) s.snap(emu, call, target, rec);
         if ((s.flags & JUNK) != 0) s.junk(emu, call);
         if ((s.flags & WRITES) != 0) s.write(emu, call, target, rec);
@@ -191,6 +194,7 @@ final class TcStrict {
         for (String reg : compared.getOrDefault(target, List.of())) {
             boolean f = reg.matches("f[2-8]");
             if (!f && !reg.matches("r([4-9]|10)")) continue;  // r3 and f1 are results: never junk
+            if (reg.equals("r4") && last >= 0 && o.calleeSetsR4(last)) continue;
             int n = Integer.parseInt(reg.substring(1));
             long j = junk(call - 1, f ? 32 + n : n), now = f ? o.reg64(emu, reg) : o.reg(emu, reg);
             if (now != (f ? j : j & 0xffffffffL)) continue;

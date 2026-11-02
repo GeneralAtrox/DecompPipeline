@@ -1,0 +1,4 @@
+[
+ ["821ca528", "821caad8", "texture format block sizes and the surface-layout helpers it calls: pure arithmetic on a format and sizes, no device argument, no ring and no GPU address; the game's texture header code needs their answers, so they are translated like game code"],
+ ["821cb900", "821cbbf4", "texture layout calculator (dimension, width, height, depth, format -> pitch, size, offsets): pure arithmetic, called from the game's texture header code (822fd090) with no device"]
+]

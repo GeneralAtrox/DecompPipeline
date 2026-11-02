@@ -36,7 +36,20 @@ public abstract class TcInputs extends TcBase {
     }
 
     // ---------- random values ----------
+    // Set by TcVectors for a function that has vector words: its float and integer words then also come from the special
+    // values below. The generator draws nothing extra for any other function, so their vectors are unchanged.
+    boolean genVmx = false;
+    // A special float's bits: a listed one, or a normal float of a random sign, a wide random exponent and a mantissa
+    // that is random, all ones, or all zeros.
+    int genSpecialFloat() {
+        int k = rnd.nextInt(10);
+        if (k < 5) return SPECIAL_FLOAT[rnd.nextInt(SPECIAL_FLOAT.length)];
+        int mant = k < 7 ? rnd.nextInt(0x800000) : k < 9 ? 0x7fffff : 0;
+        return (rnd.nextInt(2) << 31) | ((100 + rnd.nextInt(56)) << 23) | mant;
+    }
+
     int niceFloat() {
+        if (genVmx && rnd.nextInt(5) == 0) return genSpecialFloat();
         switch (rnd.nextInt(10)) {
             case 0: return Float.floatToIntBits(0f);
             case 1: return Float.floatToIntBits(1f);
@@ -76,6 +89,10 @@ public abstract class TcInputs extends TcBase {
 
     // A 32-bit memory word.
     long word() {
+        if (genVmx && rnd.nextInt(6) == 0) {
+            return (rnd.nextInt(3) == 0 ? SPECIAL_WORD[rnd.nextInt(SPECIAL_WORD.length)] : genSpecialFloat())
+                & 0xffffffffL;
+        }
         int k = rnd.nextInt(100);
         if (k < 30) return scrPtr();
         if (k < 50) return rnd.nextInt(16);
@@ -182,6 +199,47 @@ public abstract class TcInputs extends TcBase {
             v.patchData.add(d);
         }
         return v;
+    }
+
+    // Inputs for a function none of whose vectors has run yet (TcVectors: after RESCUE_AFTER tries): a few integer
+    // arguments made to agree with each other, which is what an assert such as "the two 64-bit values match" or
+    // "x == y" demands. k cycles the five kinds; the arguments changed are a random pair or triple, the rest stay as
+    // makeVec made them (a pointer argument given an upper word would fault). Pointer arguments are never changed.
+    void genRescue(Vec v, Proto proto, int k) {
+        List<Integer> regs = new ArrayList<>();
+        for (int i = 0; i < proto.params.size(); i++) {
+            Param q = proto.params.get(i);
+            if (q.storage.matches("r([3-9]|10)") && !proto.paramIsPointer.get(i) && !q.kind.equals("f32")) {
+                regs.add(Integer.parseInt(q.storage.substring(1)) - 3);
+            }
+        }
+        if (regs.size() < 2) return;
+        List<Integer> pick = new ArrayList<>();
+        int want = rnd.nextInt(10) < 6 ? 2 : Math.min(3, regs.size());
+        while (pick.size() < want) {
+            int c = regs.get(rnd.nextInt(regs.size()));
+            if (!pick.contains(c)) pick.add(c);
+        }
+        long same = v.r[pick.get(0)];
+        int hi = rnd.nextInt() | 1;
+        switch (k % 5) {
+            case 0:   // equal
+                for (int i : pick) v.r[i] = same;
+                break;
+            case 1:   // the same nonzero upper word
+                for (int i : pick) v.r[i] = ((long) hi << 32) | (v.r[i] & 0xffffffffL);
+                break;
+            case 2:   // negative, sign-extended
+                for (int i : pick) v.r[i] = (long) (int) (v.r[i] | 0x80000000L);
+                break;
+            case 3: { // one small number
+                long x = rnd.nextInt(5);
+                for (int i : pick) v.r[i] = x;
+                break;
+            }
+            default:  // the first copied into the second, upper word included
+                v.r[pick.get(1)] = same;
+        }
     }
 
     // ---------- hints: oracle/hints/<addr>.txt, applied to every vector of that function ----------

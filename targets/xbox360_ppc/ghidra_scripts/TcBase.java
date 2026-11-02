@@ -131,6 +131,51 @@ public abstract class TcBase extends GhidraScript {
         return f != null && f.getName().startsWith(IMPORT_PREFIX);
     }
 
+    // ---------- vector instructions (TcVmx) ----------
+    // Ghidra decodes no VMX128 and mis-decodes some of it, so TcSetup replaced every vector instruction word of the
+    // image by a stand-in that Ghidra decodes (same address, same size; it reads the same general registers, so the
+    // register dataflow and the decompiler still see the base and index registers) and recorded the original word in
+    // this program property. The oracle never steps a stand-in: it runs the original word in TcVmx.
+    static final String VMX_MAP = "tc_vmx_word";
+
+    // The vector instruction the original image holds at a, or null. Memoised per program: the oracle asks for every
+    // instruction it executes, and the stand-ins do not change once TcSetup has written them.
+    static final Map<Program, Map<Long, Optional<TcVmx.Op>>> VMX_OPS = new WeakHashMap<>();
+
+    static synchronized TcVmx.Op vmxOpAt(Program p, Address a) {
+        Map<Long, Optional<TcVmx.Op>> m = VMX_OPS.computeIfAbsent(p, k -> new HashMap<>());
+        Optional<TcVmx.Op> o = m.get(a.getOffset());
+        if (o == null) {
+            o = Optional.ofNullable(vmxOpUncached(p, a));
+            m.put(a.getOffset(), o);
+        }
+        return o.orElse(null);
+    }
+
+    static TcVmx.Op vmxOpUncached(Program p, Address a) {
+        try {
+            ghidra.program.model.util.IntPropertyMap map = p.getUsrPropertyManager().getIntPropertyMap(VMX_MAP);
+            return map != null && map.hasProperty(a) ? TcVmx.decode(map.getInt(a)) : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    final Map<Long, TcVmx.Op> vmxCache = new HashMap<>();
+
+    TcVmx.Op vmxOp(long pc) {
+        if (vmxCache.containsKey(pc)) return vmxCache.get(pc);
+        TcVmx.Op op = vmxOpAt(currentProgram, toAddr(pc));
+        vmxCache.put(pc, op);
+        return op;
+    }
+
+    // A call instruction's reference to fn's own entry: a self-call, mocked like any other call (TcOracle), so the
+    // recursion is a logged call as in the C, whose fixed stack addresses cannot hold a second frame (82929e18).
+    boolean selfCall(Reference r) {
+        return r.getReferenceType().isCall() && r.getToAddress().equals(fn.getEntryPoint());
+    }
+
     String describeConst(long v) {
         v = fold(v);
         if (v >= KERNEL_LO && v < KERNEL_HI) return v < 0x7fff8000L ? "processor block (r13)" : "kernel variable";
@@ -154,6 +199,16 @@ public abstract class TcBase extends GhidraScript {
     }
 
     // ---------- the tested prototype ----------
+    // The listed special floats: infinities, quiet and signalling NaNs, zeros, denormals, the extremes, and values next
+    // to a rounding tie or a carry.
+    static final int[] SPECIAL_FLOAT = {
+        0x7f800000, 0xff800000, 0x7fc00000, 0xffc00000, 0x7fa00001, 0xffbfffff, 0x7fc12345, 0x80000000, 0x00000001,
+        0x807fffff, 0x00800000, 0x80800000, 0x7f7fffff, 0xff7fffff, 0x3f7fffff, 0x3fffffff, 0x3f800001, 0x3fc00000,
+        0x4b7fffff, 0x4b800001, 0x4b000001, 0x3f000001, 0xbf800001, 0x7e800000, 0x01000000};
+    // The listed special integer words: signed and unsigned limits, halfword limits, byte patterns, shift counts.
+    static final int[] SPECIAL_WORD = {
+        0x80000000, 0x7fffffff, 0xffff8000, 0x00008000, 0x00007fff, 0x7f7f7f7f, 0x80808080, 0x00ff00ff, 0xff00ff00,
+        0x0000ffff, 0xffff0000, 0x01010101, 0xfefefefe, 1, 0xffffffff, 0x1f, 0x20, 0x3f};
     static class Param {
         String name, kind, storage;
         int stackOffset = -1;  // stack: r1 + STACK_ARGS + 8N at entry, the doubleword holding the argument
@@ -189,6 +244,7 @@ public abstract class TcBase extends GhidraScript {
     TcFlow flow;
 
     static final String ARG_REG = "r([3-9]|10)|f([1-9]|1[0-3])";
+    static final String ENTRY_SCRATCH = "r(0|11|12)";  // volatile, never an argument
     static final String INT_KIND = "u32|s32|u64|s64";
 
     // A stack parameter's doubleword offset (STACK_ARGS + 8N, N < 8) from Ghidra's offset (+4 for a word read from
@@ -204,7 +260,14 @@ public abstract class TcBase extends GhidraScript {
     Proto prototypeOf(DecompInterface di, Function f) {
         if (flow == null) flow = new TcFlow(currentProgram, monitor);
         Proto p = new Proto();
-        for (String r : flow.inputs(f, 3)) if (r.matches(ARG_REG)) p.inputs.add(r);
+        for (String r : flow.inputs(f, 3)) {
+            if (r.matches(ARG_REG)) p.inputs.add(r);
+            // a volatile register no caller sets as an argument, read on entry: an exception funclet's frame base in
+            // r12 (82a513d0), or a non-standard call; no vector can stand for it
+            else if (r.matches(ENTRY_SCRATCH) && p.unsupported == null) {
+                p.unsupported = "reads " + r + " on entry (not an argument register)";
+            }
+        }
         DecompileResults res = di.decompileFunction(f, 90, monitor);
         Set<String> have = new HashSet<>();
         if (res.decompileCompleted()) {

@@ -15,7 +15,7 @@ import re
 import shutil
 import threading
 
-from . import check, filelock, paths, pch_warnings, readable_ca, readable_stack, strict_judge, target_hooks, toolcfg
+from . import check, filelock, paths, pch_warnings, readable_argnames, readable_ca, readable_stack, strict_judge, target_hooks, toolcfg
 from .compare import FRAME_LO, STACK_HI
 
 RUNTIME_RD = paths.TARGET / "runtime_rd"
@@ -341,13 +341,13 @@ def compare(cfg, meta, harness, out_file, sets, variadic=None, reads=None):
     """Compare the runner's output with the oracle's; same result layout as check.run_check. variadic: {callee addr:
     readable_varargs.variadic_info}, whose calls are judged on the stack words the original passes; reads:
     callee_reads'."""
-    from .readable_stack import pair_stores
+    from .readable_stack import settle_stores
     from .readable_varargs import judged_meta, mask_calls
     meta = judged_meta(callee_reads(meta, reads), variadic)
-    from . import ret_reg  # the original returns in fr0 whatever the signature says: compare fr0 too
+    from . import readable_optin, ret_reg  # ret_reg: the original returns in fr0 whatever the signature says
     meta = ret_reg.judged(meta, ret_reg.listed(paths.STATE))
-    vecs = check.parse_vectors(harness / "vectors.txt")
-    exp = readable_ca.narrow(check.parse_results(harness / "expected.txt"), reads)
+    meta, vecs, exp = readable_optin.judged(cfg, meta, reads, check.parse_vectors(harness / "vectors.txt"),  # opt-ins
+                                            readable_ca.narrow(check.parse_results(harness / "expected.txt"), reads))
     act = check.parse_results(out_file)
     stacks = host_stacks(out_file) if out_file.exists() else {}
     image = cfg["binary_path"].read_bytes()
@@ -361,13 +361,13 @@ def compare(cfg, meta, harness, out_file, sets, variadic=None, reads=None):
             mask_calls(variadic, image, vecs[i], exp[i], act.get(i))
             maps = ({}, {})
             d = map_stack_args(meta, exp[i], act.get(i), stacks.get(i), maps, lo)
-            pair_stores(exp[i], act.get(i), stacks.get(i), *maps, check.Memory(image, vecs[i]).initial, lo)
+            settle_stores(exp[i], act.get(i), stacks.get(i), *maps, check.Memory(image, vecs[i]).initial, lo, out_file, i)
             d += check.compare_vector(meta, image, vecs[i], exp[i], act.get(i), lo, strict, report := [])
             strict_judge.note(result, s, i, report)
             if d:
                 fails.append(i)
                 if len(result["first_diffs"]) < 3:
-                    result["first_diffs"].append({"vector": i, "set": s, "diffs": d[:8]})
+                    result["first_diffs"].append({"vector": i, "set": s, "diffs": readable_argnames.stack_arg_names(meta, harness, d[:8], callee_storage)})
         result["vectors"][s] = {"total": len(ids), "failing": len(fails), "failing_ids": fails[:50]}
         result["failing"] += len(fails)
         result["total"] += len(ids)
@@ -432,9 +432,9 @@ def data_functions(reg, addr, meta):
     if key not in _STARTS:
         cat = paths.read_json(paths.CATALOG)
         _STARTS[key] = {e["addr"] for e in (cat["functions"] if isinstance(cat, dict) else cat)}
-    known = {c["addr"] for c in meta["callees"]} | {addr}
-    found = {m.lower() for m in re.findall(r"0x([0-9a-fA-F]{8})", f.read_text(encoding="utf-8", errors="replace"))}
-    return sorted(a for a in (found & _STARTS[key]) - known
+    from . import raw_consts, retire
+    found = raw_consts.words(f.read_text(encoding="utf-8", errors="replace"), retire.mirrors(paths.ROOT))
+    return sorted(a for a in (found & _STARTS[key]) - {c["addr"] for c in meta["callees"]} - {addr}
                   if a in reg.functions or (paths.HARNESS / a / "meta.json").exists())
 
 
@@ -451,7 +451,7 @@ def check_readable(cfg, addr, src_file, build_dir, sets=("dev", "hidden"), reg=N
     if hook:
         return hook(cfg, addr, src_file, build_dir, sets=sets, reg=reg, harness_dir=harness_dir,
                     callee_harness=callee_harness, lean=lean, stub=stub)
-    from . import readable, readable_abi, readable_outptr, readable_outrun, readable_stack, readable_varargs
+    from . import readable, readable_abi, readable_optin, readable_outptr, readable_outrun, readable_stack, readable_varargs
     from .readable_lint import fused_lint, pointer_bytes_lint, raw_name_lint, readable_lint, void_result_lint
     harness = harness_dir or paths.HARNESS / addr
     meta = paths.read_json(harness / "meta.json")
@@ -511,7 +511,7 @@ def check_readable(cfg, addr, src_file, build_dir, sets=("dev", "hidden"), reg=N
 
     def named(v):
         return raw_consts.resolve(reg, global_extents.for_process(cfg, reg), v)
-    result["lint"] = (readable_lint(src, name, proto, named, retire.mirrors(paths.ROOT))
+    result["lint"] = (readable_lint(src, name, proto, named, retire.mirrors(paths.ROOT), cfg.get("readable_strict_mirror"))
                       + raw_name_lint(src, reg, set(aliases) | {addr})
                       + void_result_lint(src, reg) + ([] if stub else fused_lint(cfg, meta, src)))  # RR8, not on a stub
     raw_file = paths.MATCHED / f"{addr}.c"
@@ -536,13 +536,13 @@ def check_readable(cfg, addr, src_file, build_dir, sets=("dev", "hidden"), reg=N
     elif reg.isolated:
         (gen / "types.h").write_text("/* empty names registry: no game types */\n", encoding="utf-8")
     incs = (gen,) if reg.isolated or lean_h else (gen, readable.INCLUDE)
-    ok, msgs = build(cfg, [src_file], thunk, protos, build_dir, include_dirs=incs)
+    ok, msgs = build(readable_optin.build_cfg(cfg, addr), [src_file], thunk, protos, build_dir, include_dirs=incs)
     result["build"] = msgs
     if not ok:
         return result
-    judged = meta
+    judged, outm = meta, readable_optin.out_meta(cfg, meta)
     try:  # callee out-pointers into the caller's stack: the mocked callee's bytes reach the readable local
-        specs = readable_outptr.out_params(reg, meta, lambda c: callee_storage(harness, c, callee_harness))
+        specs = readable_outptr.out_params(reg, outm, lambda c: callee_storage(harness, c, callee_harness))
         specs, judged = readable_outptr.paired(meta, check.parse_results(harness / "expected.txt"), specs,
                                                readable_stack.frame_lo())
         vec_file, n_out = readable_outrun.vectors_file(cfg, meta, harness, specs, build_dir,
@@ -552,10 +552,10 @@ def check_readable(cfg, addr, src_file, build_dir, sets=("dev", "hidden"), reg=N
     except RuntimeError as e:  # the pointee size probe did not build: judged without the copies (stricter)
         vec_file, result["outptr_error"] = None, str(e)[:300]
     out, err = run(cfg, harness, build_dir, sets, vec_file)
-    result |= compare(cfg, judged, harness, out, sets, variadic, reads) | {"stage": "compare"}
-    if err:
-        result["run_error"] = err
-    return verdict(result, sets)
+    result |= compare(cfg, judged, harness, out, sets, variadic, reads) | {"stage": "compare"} | ({"run_error": err} if err else {})
+    from . import sq_unaligned  # the second pass, with the window pointer inside its line
+    return sq_unaligned.judge(cfg, addr, src_file, build_dir, sets, reg, callee_harness, lean, stub, meta, harness_dir,
+                              verdict(result, sets))
 
 
 def check_raw(cfg, addr, work_file, build_dir, sets=("dev", "hidden"), harness_dir=None):

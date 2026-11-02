@@ -39,6 +39,12 @@ def effort_value(value):
     return value
 
 
+def readable_model(cfg, override=None):
+    """The model of a readable session: --model, else config `readable_model`. Never `model`, which is raw C's: readable C
+    stays on the stronger model until the weaker is proven as readable on the same functions (AGENTS.md)."""
+    return override or cfg["readable_model"]
+
+
 def readable_effort(cfg, override=None, raw_bytes=None):
     """The effort of a readable attempt: --effort, else config `readable_effort_large` for a function whose raw.c is
     over `readable_large_bytes` (batch 26; raw_bytes), else config `readable_effort`, else `effort` (raw matching)."""

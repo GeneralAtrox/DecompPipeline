@@ -8,6 +8,7 @@
 #define MAX_WRITES (1u << 22)
 #define MAX_CALLS 4096 /* TcOracle.CALL_LIMIT: the oracle rejects vectors making more calls */
 #define MAX_FAULTS 4
+#define MAX_IO 4096 /* TcBank.IO_LIMIT */
 /* TcOracle.callRecord: target, r3..r10, f1..f8 (64-bit), s0..s7 */
 #define LOG_INTS 17
 
@@ -26,6 +27,15 @@ static u64 g_call_f[MAX_CALLS][8];          /* f1..f8 */
 static char g_faults[MAX_FAULTS][64];
 static u32 g_nfaults;
 static u32 g_code_read;
+static struct {
+    u32 addr, size;
+    u64 value;
+    int read;
+} g_io[MAX_IO]; /* stores into and reads of hardware registers, in order (tcrt_mmio) */
+static u32 g_nio;
+static u32 g_hw[16];
+static int g_hw_set;
+static u32 g_hw_next;
 
 static int bit_get(const u8 *bits, u32 off) { return (bits[off >> 3] >> (off & 7)) & 1; }
 static void bit_set(u8 *bits, u32 off) { bits[off >> 3] |= (u8)(1u << (off & 7)); }
@@ -59,9 +69,27 @@ static void mark(u32 addr, u32 size)
     }
 }
 
+void tcrt_set_hw(const u32 *words)
+{
+    memcpy(g_hw, words, sizeof g_hw);
+    g_hw_set = 1;
+}
+
 static u64 rd_be(u32 a, u32 size)
 {
     a = tcrt_fold(a);
+    if (g_hw_set && tcrt_mmio(a) && size <= 8) { /* a hardware register: the vector's next word (TcBank) */
+        u64 w = g_hw[g_hw_next++ & 15];
+        u64 v = size == 8 ? w << 32 | w : size == 4 ? w : w & ((1ull << (8 * size)) - 1);
+        if (g_nio < MAX_IO) {
+            g_io[g_nio].addr = a;
+            g_io[g_nio].size = size;
+            g_io[g_nio].value = v;
+            g_io[g_nio].read = 1;
+        }
+        g_nio++;
+        return v;
+    }
     if (!check(a, size, 0)) return 0;
     const u8 *p = g_ram + (a - TCRT_RAM_BASE);
     u64 v = 0;
@@ -72,6 +100,16 @@ static u64 rd_be(u32 a, u32 size)
 static void wr_be(u32 a, u64 v, u32 size)
 {
     a = tcrt_fold(a);
+    if (tcrt_mmio(a) && size <= 8) { /* a hardware register: logged in order, not memory (the oracle's TcBank) */
+        if (g_nio < MAX_IO) {
+            g_io[g_nio].addr = a;
+            g_io[g_nio].size = size;
+            g_io[g_nio].value = v & (size == 8 ? ~0ull : (1ull << (8 * size)) - 1);
+            g_io[g_nio].read = 0;
+        }
+        g_nio++;
+        return;
+    }
     if (!check(a, size, 1)) return;
     u8 *p = g_ram + (a - TCRT_RAM_BASE);
     for (u32 i = 0; i < size; i++) p[i] = (u8)(v >> (8 * (size - 1 - i)));
@@ -193,6 +231,12 @@ u32 tc_lastr(void)
     return g_ncalls >= 1 && g_ncalls <= 16 ? g_rets[g_ncalls - 1] : 0;
 }
 
+/* The last call's r4: the oracle's junk for that call (TcStrict: TcJunk slot 4), or clobber's 0 with mock_junk off. */
+u32 tc_lastr4(void)
+{
+    return (g_tcs.flags & 1u) && g_ncalls >= 1 ? (u32)tcs_at(g_tcs.seed, g_tcs.vid, g_ncalls - 1u, 4u) : 0;
+}
+
 f64 tc_lastf(void)
 {
     u64 b = g_ncalls >= 1 && g_ncalls <= 16 ? g_frets[g_ncalls - 1] : 0;
@@ -272,6 +316,9 @@ void tcrt_reset(void)
     g_woverflow = 0;
     g_ncalls = 0;
     g_nfaults = 0;
+    g_nio = 0;
+    g_hw_set = 0;
+    g_hw_next = 0;
     g_code_read = 0;
     tcrt_strict_reset();
     memset(g_rets, 0, sizeof g_rets);
@@ -317,6 +364,11 @@ void tcrt_report(FILE *out, u32 r3, u64 f1_bits, u32 r4)
         for (u32 o = start; o < end; o++) fprintf(out, "%02x", g_ram[o]);
         fputc('\n', out);
     }
+    for (u32 k = 0; k < g_nio && k < MAX_IO; k++) {
+        fprintf(out, "IO %08x %u %0*llx%s\n", g_io[k].addr, g_io[k].size, (int)(2 * g_io[k].size),
+                (unsigned long long)g_io[k].value, g_io[k].read ? " r" : "");
+    }
+    if (g_nio > MAX_IO) fprintf(out, "FAULT too-many-io\n");
     for (u32 c = 0; c < g_ncalls && c < MAX_CALLS; c++) {
         fprintf(out, "CALL");
         for (int k = 0; k < 9; k++) fprintf(out, " %08x", g_call_int[c][k]);

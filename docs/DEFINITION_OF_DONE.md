@@ -4,7 +4,7 @@ DecompPipeline (DP) exists so that every console the user chooses to support get
 optimised workflow: no duplicate work, not a second spent unless it is productive, so that very complicated projects
 can be taken on. Too Human (Xbox 360, about 94,000 functions) is the baseline project.
 
-DP is **done for a console** when all five gates below are green for it. DP is **done** when every supported console
+DP is **done for a console** when all six gates below are green for it. DP is **done** when every supported console
 is done and gate 5 is green on Too Human with the Xbox 360's own measured rates.
 
 `tools/scorecard.py` measures every gate from data DP already keeps and prints one table per console. The numbers it
@@ -116,6 +116,26 @@ A Too Human-sized project fits a stated budget, projected from the console's own
 
 Scope: disc to 100% verified raw C and readable C. The port and lockstep are not projected. A console with no rates
 of its own gets an info row at the best-measured console's rates, for scale only; it never counts.
+
+## Gate 6: runtime (added by the user, 2026-10-31)
+
+A port runs at the target with no emulated hardware in its default play path. The rule and how to meet it:
+`docs/RUNTIME_TARGET.md`. Per game; a console passes on its reference game.
+
+| Check | Target | Source |
+|---|---|---|
+| shown frames, heaviest section | 144 a second at 2560x1600 | the game log's session summary from a launcher run on the user's laptop |
+| shown frame time, 99th percentile | 6.94 ms or less | the same summary |
+| emulated layers in the default play path | 0 | the table in `docs/RUNTIME_TARGET.md` and the game's `game.json` |
+| any aspect ratio, on by default | yes, at 4:3, 16:10, 16:9, 21:9, 32:9 and one narrower than 4:3 | the proof per game in `docs/RUNTIME_TARGET.md`, "Any aspect ratio"; the scorecard reads the "Aspect-ratio proof per game" table there, and the check stays unmeasured until the reference game has a row (all six shapes, default on, gameplay identical, evidence that exists) |
+
+Each number is unmeasured until its source exists, and an unmeasured number can never make the gate green.
+
+Read by `tools/scorecard_runtime.py` (spec: `consoles.KEY.runtime`, `thresholds.runtime`). The session summary is one log line,
+`play summary: shown_fps F output WxH frames N tick_ms M/P/X draw_ms M/P/X frame_ms M/P/X` (median, 99th percentile, worst, in
+milliseconds), read from the launcher's data folder for the console's reference game. Only sessions at 2560x1600 with 600 or
+more frames count, and the worst session of the logs kept is the number. A layer in the `RUNTIME_TARGET.md` table is open unless
+its status starts "Replaced", "Switched" or "Native"; a console with no port kit reads unmeasured.
 
 ## The targets (approved by the user, 2026-10-22)
 

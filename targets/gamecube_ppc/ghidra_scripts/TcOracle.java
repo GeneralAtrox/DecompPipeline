@@ -18,12 +18,16 @@ import java.math.BigInteger;
 import java.util.*;
 
 public abstract class TcOracle extends TcInputs {
+    // A vector's scripted hardware words (TcBank.hw). Beside the Vec, not in it: Vec is each workspace's own TcInputs.java.
+    static final Map<Vec, long[]> hwOf = new WeakHashMap<>();
+
     static class Result {
         boolean ok;
         String reason = "";
         long r3, r4;
         long f1;                          // f1's 64 bits at exit
         List<String> writes = new ArrayList<>();
+        List<String> io = new ArrayList<>();  // stores into hardware registers, in order: "address size value" (TcBank)
         List<String> calls = new ArrayList<>();
         Set<Integer> cov = new TreeSet<>(), dirs = new TreeSet<>();  // blocks; branch directions (TcDirs)
         Set<Long> sites = new TreeSet<>();
@@ -32,11 +36,13 @@ public abstract class TcOracle extends TcInputs {
         List<long[]> loads = new ArrayList<>(); // the last LOAD_LOG data reads {pc, address, size, value}
         long outside = -1;
         boolean stepLimited;
+        boolean hwReads;                  // it read a hardware register: the vector needs its H line
         TcTrack.Run tr;                   // pointer-call arguments, float NaN words (TcTrack)
         TcStrict strict;                  // the stricter judge's records (TcStrict), null with its flags off
     }
 
     static final int LOAD_LOG = 64;
+    int stepLimit = STEP_LIMIT;  // lowered after repeated overruns (TcVectors)
     static final int CALL_LIMIT = 4096;  // tc_rt.c's MAX_CALLS must equal it
 
     TreeMap<Long, Integer> blockIndex = new TreeMap<>();
@@ -114,6 +120,14 @@ public abstract class TcOracle extends TcInputs {
     }
 
     // target, r3..r10, f1..f8 (64-bit), s0..s7 (the words at r1+8+4N): tc_rt.c logs the same 25 fields.
+    // The callee at target sets r4 on every path (TcFlow.returnsR4): r4 after it is a result, not junk.
+    boolean calleeSetsR4(long target) {
+        Function g = currentProgram.getFunctionManager().getFunctionAt(toAddr(target));
+        if (g == null) return false;
+        if (flow == null) flow = new TcFlow(currentProgram, monitor);
+        return flow.returnsR4(g);
+    }
+
     String callRecord(EmulatorHelper emu, long pc) {
         StringBuilder c = new StringBuilder(hex(pc));
         for (int i = 3; i <= 10; i++) c.append(' ').append(hex(reg(emu, "r" + i)));
@@ -157,7 +171,7 @@ public abstract class TcOracle extends TcInputs {
         Result res = new Result();
         res.tr = TcTrack.start();
         EmulatorHelper emu = new EmulatorHelper(currentProgram);
-        TcFixups.install(emu);
+        TcFixups.install(emu, fn.getEntryPoint().getAddressSpace());
         final String[] fault = {null};
         final long[] faultAt = {-1};
         final boolean[] faultW = {false};
@@ -188,6 +202,7 @@ public abstract class TcOracle extends TcInputs {
             AddressSpace ram = fn.getEntryPoint().getAddressSpace();
             TcBank bank = new TcBank(dms.getMemoryBank(ram), facts);
             dms.setMemoryBank(bank);
+            bank.hw = hwOf.get(v);
             setEntry(emu, v);
             bank.track = true;
             res.strict = TcStrict.of(this, bank);
@@ -212,7 +227,7 @@ public abstract class TcOracle extends TcInputs {
                         res.reason = "more than " + CALL_LIMIT + " calls (a loop the mocked callees never end)";
                         return res;
                     }
-                    res.calls.add(callRecord(emu, pc) + (prev >= 0 && noFloatArgs(prev) ? " nofp" : "") + TcTrack.call(pc));
+                    res.calls.add(callRecord(emu, pc) + (prev >= 0 && noFloatArgs(prev) ? " nofp" : "") + TcTrack.call(this, pc));
                     if (prev >= 0) res.sites.add(prev);
                     emu.writeRegister("r3", u(calls < 16 ? v.rets[calls] : 0));
                     emu.writeRegister("f1", u64(calls < 16 ? v.frets[calls] : 0));
@@ -224,7 +239,7 @@ public abstract class TcOracle extends TcInputs {
                 }
                 Map.Entry<Long, Integer> b = blockIndex.floorEntry(pc);
                 if (b != null && body.contains(pca)) res.cov.add(b.getValue());
-                if (++steps > STEP_LIMIT) {
+                if (++steps > stepLimit) {
                     res.reason = "step limit (possible infinite loop)";
                     res.stepLimited = true;
                     return res;
@@ -241,12 +256,20 @@ public abstract class TcOracle extends TcInputs {
                 prev = pc;
                 boolean stepped = emu.step(monitor);
                 if (stepped && fault[0] == null) {
-                    fix.after(emu, ram, bank.stored, bank.reads);
+                    fix.after(emu, ram, bank, bank.stored, bank.reads);
                     TcTrack.step(emu, in, bank);
                 }
                 for (long[] ld : bank.reads) {
                     res.loads.add(ld);
                     if (res.loads.size() > LOAD_LOG) res.loads.remove(0);
+                }
+                for (long[] st : bank.stores) {  // now, while the load log still holds the pointer's source (repairVec)
+                    if ((st[0] < RAM_LO || st[0] + st[1] > RAM_HI) && !facts.isMmio(st[0])) {
+                        res.reason = "write outside RAM";
+                        res.faultAddr = st[0];
+                        res.faultWrite = true;
+                        return res;
+                    }
                 }
                 if (bank.codeRead >= 0) {  // rule R8: the C runner fails any such read
                     res.reason = "fault: read machine code at " + hex(bank.codeRead) + " (R8)";
@@ -261,6 +284,14 @@ public abstract class TcOracle extends TcInputs {
                 }
             }
             bank.pc = -1;
+            if (bank.ioOverflow) {
+                res.reason = "more than " + TcBank.IO_LIMIT + " hardware-register writes";
+                return res;
+            }
+            for (long[] e : bank.io) {
+                res.io.add(hex(e[0]) + " " + e[1] + " " + String.format("%0" + 2 * e[1] + "x", e[2]) + (e[3] != 0 ? " r" : ""));
+                if (e[3] != 0) res.hwReads = true;
+            }
             collect(emu, res, bank.written);
             TcStrict.exit(res, emu);
             return res;

@@ -43,6 +43,49 @@ public class X360Stub {
                 out.append(line).append(TcFixups.trapTaken(Integer.parseInt(t[1]), h(t[2]), h(t[3])) ? " 1\n" : " 0\n");
             }
         }
+        // single results: 2,000,000 random doubles, mostly near the single denormal range, each the exact result of
+        // frsp, fmuls, fdivs or fnmadds (operands scaled by 2^30), the step's value as the SLEIGH makes it (float2float
+        // to 4 bytes and back, Ghidra's own FloatFormat; f- for fnmadds), then TcFixups' rule (the shared TcSingle:
+        // replace a result equal to Ghidra's where IEEE differs) against IEEE rounding to nearest (Java's (float)
+        // cast): how many differ before and after
+        ghidra.pcode.floatformat.FloatFormat f8 = ghidra.pcode.floatformat.FloatFormatFactory.getFloatFormat(8);
+        ghidra.pcode.floatformat.FloatFormat f4 = ghidra.pcode.floatformat.FloatFormatFactory.getFloatFormat(4);
+        String[] ops = {"frsp", "fmuls", "fdivs", "fnmadds"};
+        long up = Double.doubleToRawLongBits(Math.scalb(1.0, 30)), down = Double.doubleToRawLongBits(Math.scalb(1.0, -30));
+        Random rng = new Random(149);
+        int before = 0, after = 0;
+        for (int i = 0; i < 2000000; i++) {
+            double d = Math.scalb(1.0 + rng.nextDouble(), -165 + rng.nextInt(50)) * (rng.nextBoolean() ? 1 : -1);
+            if (i % 16 == 0) d = Double.longBitsToDouble(rng.nextLong());  // and any double at all
+            if (Double.isNaN(d)) continue;  // a NaN's payload is not this fix's business
+            String op = i % 16 == 0 ? "frsp" : ops[i % 4];
+            long x = Double.doubleToRawLongBits(d), big = Double.doubleToRawLongBits(Math.scalb(d, 30));
+            long[] src = op.equals("frsp") ? new long[] {x} : op.equals("fmuls") ? new long[] {big, down}
+                : op.equals("fdivs") ? new long[] {big, up} : new long[] {big, down, 0};
+            long g = f4.opFloat2Float(f8.opFloat2Float(TcSingle.singleSource(op, src), f4), f8);
+            if (op.startsWith("fnm")) g = f8.opNeg(g);
+            long ieee = Double.doubleToRawLongBits((op.startsWith("fnm") ? -1 : 1) * (double) (float) d);
+            if (g != ieee) before++;
+            long[] r = TcSingle.singleResult(op, TcSingle.singleSource(op, src));
+            if ((r[0] != r[1] && g == r[0] ? r[1] : g) != ieee) after++;
+        }
+        out.append("k single_before ").append(before).append('\n');
+        out.append("k single_after ").append(after).append('\n');
+        // a 20 KB patch is written as M lines of at most TcVectors.PATCH_LINE bytes (runner.c reads 64 KB lines)
+        TcVectors tv = new TcVectors() {
+            @Override
+            public void run() {
+            }
+        };
+        TcInputs.Vec v = new TcInputs.Vec();
+        byte[] big = new byte[20000];
+        for (int i = 0; i < big.length; i++) big[i] = (byte) i;
+        v.patchAddr.add(0x40002000L);
+        v.patchData.add(big);
+        tv.writeVector(0, "dev", v, new TcOracle.Result());
+        for (String ln : tv.vout.toString().split("\n")) {
+            if (ln.startsWith("M ")) out.append("p ").append(ln).append('\n');
+        }
         out.append("k STACK_ARGS ").append(TcBase.STACK_ARGS).append('\n');
         out.append("k CALL_FLOATS ").append(TcOracle.CALL_FLOATS).append('\n');
         out.append("k CALL_LIMIT ").append(TcOracle.CALL_LIMIT).append('\n');

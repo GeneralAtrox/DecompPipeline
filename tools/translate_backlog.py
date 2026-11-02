@@ -147,7 +147,11 @@ def report(a, paths, filelock, check, job, oracle_fresh, translate_stage):
             return dict(addr=addr, **before[addr], harness=harness, verdict="NOVECTORS",
                         why=f"oracle made fewer than {mv} valid vectors per set: no attempt, re-prepare first")
         probe = Probe(o)  # the attempt writes its row here; only --record's PASS reaches the ledger
-        att = translate_stage.attempt(probe, w, addr, job.judge)
+        try:
+            att = translate_stage.attempt(probe, w, addr, job.judge)
+        except Exception as e:  # one function the tester cannot handle (x360_check.gen_thunk refusing a parameter kind) must
+            #                     not end the run of the others
+            return dict(addr=addr, **before[addr], harness=harness, verdict="NOJUDGE", why=f"tester error: {e!r}"[:300])
         tx = probe.row.get("translator") or {}
         row = dict(addr=addr, **before[addr], harness=harness, translator=tx)
         if att is None:

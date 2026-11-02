@@ -79,17 +79,20 @@ public class TcPrepare extends TcVectors {
         DecompInterface di = new DecompInterface();
         di.openProgram(currentProgram);
         Proto proto = prototypeOf(di, fn);
-        TcTrack.on = TcTrack.of(listing, body, calledBy(), proto);  // pointer calls' arguments, float NaN words
         DecompileResults dres = di.decompileFunction(fn, 60, monitor);
         String cText = dres.decompileCompleted() ? dres.getDecompiledFunction().getC()
             : "/* Ghidra's decompiler failed on this function (" + esc(String.valueOf(dres.getErrorMessage()).trim())
                 + "). There is no decompiler output: translate asm.txt directly. The signature comes from the\n"
                 + "   registers the code reads before writing them. */\n";
         Files.write(packet.resolve("ghidra.c"), cText.getBytes("UTF-8"));
+        Map<Function, Proto> called = new LinkedHashMap<>();
+        for (Function c : calledBy()) called.put(c, c == fn ? proto : prototypeOf(di, c));
+        passThrough(proto, called);
+        TcTrack.on = TcTrack.of(listing, body, calledBy(), proto);  // pointer calls' arguments, float NaN words
         StringBuilder callees = new StringBuilder();
         Map<Long, List<String>> regsOf = new HashMap<>();  // TcStrict: each callee's compared registers
-        for (Function c : calledBy()) {
-            Proto cp = prototypeOf(di, c);
+        for (Function c : called.keySet()) {
+            Proto cp = called.get(c);
             StringBuilder regs = new StringBuilder();
             List<String> cr = calleeRegs(cp);
             regsOf.put(c.getEntryPoint().getOffset(), cr);
@@ -209,6 +212,27 @@ public class TcPrepare extends TcVectors {
         }
         called.sort(Comparator.comparing(Function::getEntryPoint));
         return called;
+    }
+
+    // The registers fn passes on untouched to a call that compares them (the shared rule, TcPassThrough) are inputs as
+    // well, added as param_rN like the other registers Ghidra's signature misses. fn's own entry, when it calls
+    // itself, compares the registers fn takes so far (the oracle runs that call inline; it reads them).
+    void passThrough(Proto proto, Map<Function, Proto> called) throws Exception {
+        TcPassThrough.take(fn, flow, ARG_REG, () -> {
+            Map<Address, Set<String>> at = new HashMap<>();
+            for (Function c : called.keySet()) at.put(c.getEntryPoint(), new HashSet<>(calleeRegs(called.get(c))));
+            return at;
+        }, r -> {
+            for (Param q : proto.params) if (q.storage.equals(r)) return false;
+            if (!proto.inputs.add(r)) return false;
+            Param q = new Param();
+            q.name = "param_" + r;
+            q.kind = r.startsWith("f") ? "f64" : "u32";
+            q.storage = r;
+            proto.params.add(q);
+            proto.paramIsPointer.add(false);
+            return true;
+        });
     }
 
     // The registers compared at a call to a callee with prototype cp: the argument registers it reads (TcFlow, so

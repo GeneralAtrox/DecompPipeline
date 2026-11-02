@@ -11,10 +11,10 @@ changed harness 8c04a900. Facts and scripts are now content-named and written on
    same state folder: each reads the table it wrote, the new one's oracle stamp never changes, and a table of other
    content (another checkout's) is left alone until nobody used it for UNUSED_S.
 5. shared scripts (paths.target_scripts, target.json "shared_scripts"): a target naming core/ghidra_shared/ppc gets
-   TcSingle.java beside its own scripts, in sync_scripts' folder and in the stamp; one that names none does not; a
-   name in both places, or a missing folder, is refused. An edit of TcSingle moves the stamps of a target naming it
-   (a prepare's and oracle_fresh's alike), not another's. While GameCube's TcFixups keeps its own copy of the rule
-   (6a924b7), that copy is TcSingle's, character for character.
+   TcSingle.java and TcPassThrough.java beside its own scripts, in sync_scripts' folder and in the stamp; one that names
+   none does not; a name in both places, or a missing folder, is refused. An edit of TcSingle moves the stamps of a
+   target naming it (a prepare's and oracle_fresh's alike), not another's. While GameCube's TcFixups keeps its own copy
+   of the rule (6a924b7), that copy is TcSingle's, character for character.
 Run: python -W error tests/test_checkout_state.py (also from test_tooling.py).
 """
 import json
@@ -200,10 +200,10 @@ class SharedScripts(unittest.TestCase):
         self.assertNotIn("TcSingle.java", own)
         self.share(["ppc"])
         got = paths.target_scripts()
+        shared = {p.name: p for p in (paths.SHARED_SCRIPTS / "ppc").glob("*.java")}  # TcSingle, TcPassThrough, TcNaN
         self.assertEqual(got["TcSingle.java"], paths.SHARED_SCRIPTS / "ppc" / "TcSingle.java")
-        shared = {p.name for p in (paths.SHARED_SCRIPTS / "ppc").glob("*.java")}  # TcSingle, TcNaN
-        self.assertEqual({n: got[n] for n in shared}, {n: paths.SHARED_SCRIPTS / "ppc" / n for n in shared})
-        self.assertEqual({n: p for n, p in got.items() if n not in shared}, own)
+        self.assertLessEqual({"TcPassThrough.java", "TcNaN.java"}, set(shared))
+        self.assertEqual(got, {**own, **shared})
         folder = paths.sync_scripts()
         self.assertEqual((folder / "TcSingle.java").read_bytes(), got["TcSingle.java"].read_bytes())
         (paths.TARGET_SCRIPTS / "TcSingle.java").write_text("// a second copy\n", encoding="utf-8")

@@ -17,6 +17,7 @@ import hashlib
 import json
 import os
 import pathlib
+import time
 
 from .ir import CallS, Ret, Switch
 from .translate import Clobber, FunctionTranslator, Signature, TranslateError
@@ -24,13 +25,15 @@ from .translate import Clobber, FunctionTranslator, Signature, TranslateError
 ROUNDS = 12
 
 
-def summarise(blocks):
+def summarise(blocks, port=False):
     """Per block: the events in order, ('w', 'r'|'f') for an own write or ('c', target address or None) for a call;
-    then the successor labels and whether the block returns."""
+    then the successor labels and whether the block returns. port: the entry block only copies the argument registers
+    in, which is not a write of a result (a constructor that leaves r3 alone is void; read as an 'f' function it made
+    its caller's r3 zero)."""
     out = {}
-    for b in blocks:
+    for n, b in enumerate(blocks):
         ev = []
-        sts = list(b.stmts) + (list(b.term.default) if isinstance(b.term, Switch) else [])
+        sts = [] if port and n == 0 else list(b.stmts) + (list(b.term.default) if isinstance(b.term, Switch) else [])
         for s in sts:
             if isinstance(s, CallS):
                 t = s.target
@@ -50,7 +53,7 @@ def summarise(blocks):
     return out
 
 
-def answer(summary, entry, kinds):
+def answer(summary, entry, kinds, keeps=None):
     """The function's answer given its callees' current answers."""
     state = {entry: {None}}
     work = [entry]
@@ -64,6 +67,12 @@ def answer(summary, entry, kinds):
                 cur = {x}
             elif k == "c":
                 c = kinds.get(x)
+                if keeps is not None:
+                    if c == "v" and "r3" in keeps.get(x, ()):           # the port kit (keeps.py): r3 is what it was
+                        continue
+                    if c in (None, "?"):                                # a wrapper of an import or a pointer call may pass its result on: not void, the caller reads what it reads
+                        cur = {"?"}
+                        continue
                 cur = {c if c in ("r", "f") else None}
             else:
                 rets |= cur
@@ -75,6 +84,8 @@ def answer(summary, entry, kinds):
                 state[s] = old | cur
                 work.append(s)
     rets.discard(None)
+    if "?" in rets:
+        return "?"
     if not rets:
         return "v"
     return rets.pop() if len(rets) == 1 else "?"
@@ -94,14 +105,14 @@ def code_hash():
     return _CODE[0]
 
 
-def summaries_key(ws):
-    """The executable, the function bodies, the target facts and the translator's code."""
+def summaries_key(ws, port=False):
+    """The executable, the function bodies, the target facts and the translator's code (and the port kit's reading of the entry block)."""
     return hashlib.sha256(pathlib.Path(ws.binary).read_bytes() + repr(ws.facts).encode() +
-                          json.dumps(sorted(ws.bodies.items())).encode() + code_hash().encode()).hexdigest()[:16]
+                          json.dumps(sorted(ws.bodies.items())).encode() + code_hash().encode() + (b"port" if port else b"")).hexdigest()[:16]
 
 
-def summaries_path(ws, cache_dir):
-    return pathlib.Path(cache_dir) / f"summaries_{summaries_key(ws)}.json"
+def summaries_path(ws, cache_dir, port=False):
+    return pathlib.Path(cache_dir) / f"summaries_{summaries_key(ws, port)}.json"
 
 
 def _write(path, data):
@@ -109,18 +120,28 @@ def _write(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(data), encoding="utf-8")
-    os.replace(tmp, path)
+    for attempt in range(40):  # Windows refuses the replace while another worker reads the file
+        try:
+            os.replace(tmp, path)
+            break
+        except PermissionError:
+            if attempt == 39:
+                tmp.unlink(missing_ok=True)
+                if not path.exists():
+                    raise
+                break  # a worker that wrote it first holds the same answer
+            time.sleep(0.05)
     kind = path.name.split("_", 1)[0]
     old = sorted(path.parent.glob(f"{kind}_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)[KEEP:]
     for p in old:
         p.unlink(missing_ok=True)
 
 
-def code_summaries(ws, cache_dir=None):
+def code_summaries(ws, cache_dir=None, port=False):
     """{address: (entry label, summary)} of every function's own code, each built in the generic form (no meta):
     the slow part of analyse. Cached under cache_dir by the executable, the function bodies, the target facts and
     the translator's code, so it is built once per workspace (a new harness's meta changes only analyse's rounds)."""
-    cache = summaries_path(ws, cache_dir) if cache_dir else None
+    cache = summaries_path(ws, cache_dir, port) if cache_dir else None
     if cache and cache.exists():
         rows = json.loads(cache.read_text(encoding="utf-8"))  # (events as [kind, value] lists: answer reads either)
         return {int(a, 16): (e, sm) for a, (e, sm) in sorted(rows.items())}
@@ -131,15 +152,19 @@ def code_summaries(ws, cache_dir=None):
             blocks = ft.build()
         except (TranslateError, Exception):  # noqa: BLE001  (untranslatable: no answer)
             continue
-        out[ad] = (blocks[0].label, summarise(blocks))
+        out[ad] = (blocks[0].label, summarise(blocks, port=port))
     if cache:
         _write(cache, {f"{a:08x}": v for a, v in out.items()})
     return out
 
 
-def _fixed(ws):
+def _fixed(ws, meta=True):
     """DP's meta answers: {address: kind} of every function whose harness signature is not generic. Only a function
-    with a harness can have one (workspace.harnessed), so the other functions' signatures are not built (1.5 s)."""
+    with a harness can have one (workspace.harnessed), so the other functions' signatures are not built (1.5 s).
+    None when meta is off (the port kit): a meta's void only says the judge compares no result there (822c2cc8 is void in
+    its meta and returns 1 to a caller that reads it), so the port takes each function's answer from its own body."""
+    if not meta:
+        return {}
     harnessed = getattr(ws, "harnessed", None)
     ads = sorted(set(ws.bodies) & harnessed()) if callable(harnessed) else sorted(ws.bodies)
     out = {}
@@ -150,33 +175,33 @@ def _fixed(ws):
     return out
 
 
-def kinds_path(ws, cache_dir, fixed=None):
+def kinds_path(ws, cache_dir, fixed=None, meta=True):
     """Where analyse keeps its answer: by the summaries' key and DP's meta answers (every input of the rounds)."""
-    fixed = _fixed(ws) if fixed is None else fixed
+    fixed = _fixed(ws, meta) if fixed is None else fixed
     f = hashlib.sha256(json.dumps(sorted(fixed.items())).encode()).hexdigest()[:16]
-    return pathlib.Path(cache_dir) / f"kinds_{summaries_key(ws)}_{f}.json"
+    return pathlib.Path(cache_dir) / f"kinds_{summaries_key(ws, not meta)}_{f}.json"
 
 
-def cached_kinds(ws, cache_dir):
+def cached_kinds(ws, cache_dir, meta=True):
     """analyse's answer when cache_dir holds it for these very inputs, else None (no summaries read)."""
     try:
-        rows = json.loads(kinds_path(ws, cache_dir).read_text(encoding="utf-8"))
+        rows = json.loads(kinds_path(ws, cache_dir, meta=meta).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
     return {int(a, 16): k for a, k in rows.items()}
 
 
-def analyse(ws, cache_dir=None, log=None):
+def analyse(ws, cache_dir=None, log=None, meta=True, keeps=None):
     """{address: 'r' | 'f' | 'v' | '?'} for every function in the workspace; DP's meta answers where it has one.
     Kept under cache_dir (cached_kinds): the rounds over every function ran again for each function translated."""
-    fixed = _fixed(ws)
+    fixed = _fixed(ws, meta)
     out = kinds_path(ws, cache_dir, fixed) if cache_dir else None
     if out is not None and out.exists():
-        got = cached_kinds(ws, cache_dir)
+        got = cached_kinds(ws, cache_dir, meta)
         if got is not None:
             return got
     summaries, entries = {}, {}
-    code = code_summaries(ws, cache_dir)
+    code = code_summaries(ws, cache_dir, port=not meta)
     for ad in sorted(ws.bodies):
         if ad not in fixed and ad in code:
             entries[ad], summaries[ad] = code[ad]
@@ -185,7 +210,7 @@ def analyse(ws, cache_dir=None, log=None):
     for rnd in range(ROUNDS):
         changed = []
         for ad, sm in summaries.items():
-            k = answer(sm, entries[ad], kinds)
+            k = answer(sm, entries[ad], kinds, keeps)
             if kinds.get(ad) != k:
                 kinds[ad] = k
                 changed.append(ad)

@@ -38,7 +38,7 @@ public abstract class TcBase extends GhidraScript {
     // QACR0/1, the store queues' area registers (Spawn 8c05fec2 sets them from a TA list pointer before its sends):
     // a store there is logged and compared as the OCA's are; the window still maps onto RAM (TcSq, port.h).
     static final long P4_QACR_LO = 0xff000038L, P4_QACR_HI = 0xff000040L;
-    static final int STEP_LIMIT = 500000;
+    static int STEP_LIMIT = 500000;  // core/oracle_limits can raise it for a listed function (TcOracle.limits)
 
     Memory mem;
     Listing listing;
@@ -70,6 +70,22 @@ public abstract class TcBase extends GhidraScript {
         long z = a + size - 1;
         return z < 0xe0000000L && (a & 0x1c000000L) == 0x14000000L && (z & 0x1c000000L) == 0x14000000L
             && (a ^ z) < 0x04000000L;
+    }
+
+    // PVR video memory as the P2 view shows it: 0xa5000000..0xa57fffff, the whole access inside it (TcHw "read vram";
+    // tc_rt_internal.h tcrt_vram). Its content is a fixed function of the address (vramWord, little endian bytes).
+    static boolean vram(long a, long size) {
+        return a >= 0xa5000000L && a + size <= 0xa5800000L;
+    }
+
+    static long vramWord(long a) {
+        return (((a >> 2) & 0x1fffffL) * 0x9e3779b1L + 0x7f4a7c15L) & 0xffffffffL;
+    }
+
+    static byte[] vramBytes(long a, int size) {
+        byte[] b = new byte[size];
+        for (int i = 0; i < size; i++) b[i] = (byte) (vramWord(a + i) >> (8 * ((a + i) & 3)));
+        return b;
     }
 
     static boolean inRam(long a, long size) {

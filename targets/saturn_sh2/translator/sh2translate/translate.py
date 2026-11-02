@@ -7,7 +7,7 @@ order, so fall-through stays fall-through; branches become gotos to labels named
 
 The guest model is DP's judge model (target.json "judge_memory"/"abi"):
 - memory through rd8/16/32 and wr8/16/32 (big-endian in the runtime); a load or store at a constant address in a
-  hardware range goes through tc_hw_read32/tc_hw_write32/tc_hw_write16;
+  hardware range goes through tc_hw_read8/16/32 and tc_hw_write8/16/32 by the access size;
 - the stack is guest memory: r15 starts at the ABI's entry r15 and push/pop are ordinary stores and loads;
 - PR starts at the ABI's return sentinel, so `sts.l pr,@-r15` stores what the original stores;
 - a call (bsr, bsrf, jsr, and a jump that leaves the body) is tc_call with r4..r7, the 8 stack words at r15 and
@@ -23,7 +23,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
-from .decode import Insn, decode, disasm
+from .decode import Insn, decode, disasm, mask_of
+from .bodyfix import drop_dead_tail, fill_call_args, pass_frame_args
+from .constin import SIGNED, const_in, hw_in, nonneg
 
 
 class TranslateError(Exception):
@@ -344,9 +346,10 @@ class FunctionTranslator:
                 pass
             else:
                 succ = [a + 2]
-            # running on into another function's entry leaves the body there: for DP's oracle that is a call of
-            # that function (TcOracle.entersCallee), so it becomes a tail call, as a jump to an entry does
-            out = [x for x in succ if not self.local(x) and x in self.entries]
+            # running on into another function's entry, or past the end of a body the oracle gave, leaves the body
+            # there: for DP's oracle that is a call of that address (TcOracle.entersCallee), so it becomes a tail
+            # call, as a jump to an entry does
+            out = [x for x in succ if not self.local(x) and (x in self.entries or self.body is not None)]
             if out:
                 self.fall_out[a] = out[0]
                 succ = [x for x in succ if x not in out]
@@ -413,7 +416,7 @@ class FunctionTranslator:
                     elif x[0] == "c" and y[0] == "ld" and len(y) == 6:
                         v = y + (x[1],)
                 st[n] = v or ("?",)
-            elif o in ("mov.w@r0_ld", "mov.l@r0_ld", "mov.b@r0_ld", "mov.w@_ld", "mov.l@_ld"):
+            elif o in ("mov.w@r0_ld", "mov.l@r0_ld", "mov.b@r0_ld", "mov.b@_ld", "mov.w@_ld", "mov.l@_ld"):
                 size = {"b": 1, "w": 2, "l": 4}[o[4]]
                 if o.endswith("@r0_ld"):
                     p, q = st["r0"], st[m]
@@ -423,15 +426,15 @@ class FunctionTranslator:
                 else:
                     p = st[m]
                     v = ("ld", size, 0, p[1], p[2], p[3]) if p[0] == "x" else None
-                    if v is None and p[0] == "x":
-                        v = None
                 st[n] = v or ("?",)
+            elif o == "and" and mask_of(st[n], st[m]):     # r1 = 0x7c; and r0,r1: a table index in 0..mask
+                st[n] = ("x", "and=%x,%x" % mask_of(st[n], st[m]), 1, 0)
             elif o == "and#":
                 x = st["r0"]
                 if x[0] == "c":
                     st["r0"] = ("c", x[1] & i.imm)
                 elif i.imm and i.imm & (i.imm + 1) == 0:
-                    st["r0"] = ("x", f"and@{a:08x}", 1, 0)    # a value in 0..imm: bound by the mask, not a check
+                    st["r0"] = ("x", f"and={i.imm + 1:x},1", 1, 0)    # a value in 0..imm: bound by the mask, not a check
                 else:
                     st["r0"] = ("?",)
             else:
@@ -465,7 +468,7 @@ class FunctionTranslator:
         if k < start:
             return None
         c = self.insns[k]
-        if c.op not in ("cmp/hs", "cmp/hi"):
+        if c.op not in ("cmp/hs", "cmp/hi", "cmp/ge", "cmp/gt"):
             return None
         st = self.symexec(start, k)
         # reg at blk in terms of the registers at the compare: what runs between them (the branch, its delay slot)
@@ -480,9 +483,10 @@ class FunctionTranslator:
         rn, rm = self.const_in(start, st[R(c.n)]), self.const_in(start, st[R(c.m)])
         if c.n == src and rm[0] == "c":
             N = rm[1]
-            if c.op == "cmp/hs" and not on_true:
+            op = c.op if c.op in ("cmp/hs", "cmp/hi") else SIGNED[c.op] if N < 1 << 31 and nonneg(self, start, c.n) else 0
+            if op == "cmp/hs" and not on_true:
                 return N, mul, off          # v < N
-            if c.op == "cmp/hi" and not on_true:
+            if op == "cmp/hi" and not on_true:
                 return N + 1, mul, off      # v <= N
         if c.m == src and rn[0] == "c":
             N = rn[1]
@@ -493,20 +497,8 @@ class FunctionTranslator:
         return None
 
     def const_in(self, start, v):
-        """v, or the constant every edge into the block at start leaves in the register v still holds unchanged
-        (a range check's limit is often loaded before a loop head or in a delay slot of the block before)."""
-        if v[0] != "x" or not v[1].startswith("r") or v[2] != 1 or v[3] != 0 or start == self.entry or \
-                start in self.pr_targets:
-            return v    # (the entry and a PR return target have edges succ does not list)
-        got = set()
-        for p, succ in self.succ.items():
-            if start not in succ:
-                continue
-            if self.insns[p].op in ("jsr", "bsr", "bsrf"):
-                return v    # the edge returns from a call, which may change any register
-            q = self.symexec(self.block_start(p), p + (4 if self.insns[p].delayed else 2))[v[1]]
-            got.add(q if q[0] == "c" else None)
-        return got.pop() if len(got) == 1 and None not in got else v
+        """v, or the constant every edge into the block at start leaves in the register v (see constin.py)."""
+        return const_in(self, start, v)
 
     def bra_into(self, blk):
         """The bra that is the only way into the block at blk, or None."""
@@ -530,8 +522,8 @@ class FunctionTranslator:
             return None
         size, base, reg, scale, add = v[1], v[2], v[3], v[4], v[5]
         extra = v[6] if len(v) > 6 else 0
-        if reg.startswith("and@"):     # the index is masked (and #3 before a byte table): 0..mask, every entry used
-            b = (self.img.insn(int(reg[4:], 16)).imm + 1, 1, 0)
+        if reg.startswith("and="):     # a masked index (and #3 before a byte table, r1 = 0x7c; and r0,r1): all entries
+            b = tuple(int(x, 16) for x in reg[4:].split(",")) + (0,)   # (N, step, 0): and=N,step
         else:
             b = self.bound(blk, reg)
         if b is None:
@@ -579,13 +571,14 @@ class FunctionTranslator:
         return f"L_{a:08x}"
 
     def mem_ld(self, size, addr, const):
-        if size == 4 and const is not None and self.f.is_mmio(const):
-            return f"tc_hw_read32({h(const)})"
+        if const is not None and self.f.is_mmio(const):
+            return {1: f"(u32)(s32)(s8)tc_hw_read8({h(const)})", 2: f"(u32)(s32)(s16)tc_hw_read16({h(const)})",
+                    4: f"tc_hw_read32({h(const)})"}[size]
         return {1: f"(u32)(s32)(s8)rd8({addr})", 2: f"(u32)(s32)(s16)rd16({addr})", 4: f"rd32({addr})"}[size]
 
     def mem_st(self, size, addr, val, const):
-        if const is not None and self.f.is_mmio(const) and size in (2, 4):
-            return f"tc_hw_write{16 if size == 2 else 32}({h(const)}, {'(u16)' if size == 2 else ''}{val});"
+        if const is not None and self.f.is_mmio(const):
+            return f"tc_hw_write{8 * size}({h(const)}, {({1: '(u8)', 2: '(u16)', 4: ''})[size]}{val});"
         return {1: f"wr8({addr}, (u8){val});", 2: f"wr16({addr}, (u16){val});", 4: f"wr32({addr}, {val});"}[size]
 
     ALL_ARGS = ("r4", "r5", "r6", "r7", "s0", "s1", "s2", "s3", "s4", "s5", "s6", "s7", "r0", "r1", "r2", "r3")
@@ -601,8 +594,8 @@ class FunctionTranslator:
             regs = set(self.ALL_ARGS)
         elif target_expr.startswith("0x"):
             regs = set(cal.get(int(target_expr[:-1], 16), self.ALL_ARGS))
-        else:   # a computed target: whatever any callee the original was seen calling takes
-            regs = set().union(*cal.values()) if cal else set(self.ALL_ARGS)
+        else:   # a computed target: what any seen callee takes, and r4..r7 (the judge compares the ones set: CA lines)
+            regs = set().union(*cal.values(), self.ALL_ARGS[:4]) if cal else set(self.ALL_ARGS)
         listed = cal is not None and target_expr.startswith("0x") and int(target_expr[:-1], 16) in cal
         pre, L = [], []
         for k in range(4):
@@ -655,6 +648,9 @@ class FunctionTranslator:
         a = self.cur
         args = []
         for name, kind, st in self.sig.params:
+            if st == "stack":   # the body reads it through r15, from what this call pushed: the argument goes unused
+                args.append("0u" if kind == "u32" else f"({kind})0u")
+                continue
             if st not in [f"r{k}" for k in range(8)]:
                 raise TranslateError(f"a call of the function itself with a parameter in {st} at {a:08x}")
             args.append(st if kind == "u32" else f"({kind}){st}")
@@ -1122,7 +1118,7 @@ class FunctionTranslator:
                 items.append(("label", a))
                 if self.instrument:
                     items.append(("line", self.cv("block", a)))
-                consts = {}
+                consts = hw_in(self, a)
             elif falls is None:
                 # not a leader and nothing falls here: unreachable by layout (cannot happen in a traversal)
                 raise TranslateError(f"{a:08x} reached but not laid out")
@@ -1321,7 +1317,7 @@ class FunctionTranslator:
                     body.append(ind + f"pr = {v};")
             else:
                 body.append(ind + y)
-        body = fill_call_args(body)
+        body = fill_call_args(pass_frame_args(body))
         out = ['#include "tc_rt.h"', ""]
         if any("tx_call(" in x for x in body):
             out += [
@@ -1372,7 +1368,7 @@ class FunctionTranslator:
         if "struct" in self.simplify and not self.instrument:
             from . import structure as _st
             _st.CURRENT = f"{self.entry:08x}"     # names the function in SH2_CFG_LOG / SH2_CFG_DUMP diagnostics
-            body = _st.structure(body)
+            body = drop_dead_tail(_st.structure(body))
             # a saved T, a switch target, the flag of a jump out of nested loops, a computed call target (only when the body names them)
             decl += ["ct_", "sw_", "fl_", "jt_"]
         if self.simplify:   # only the variables the simplified body still names
@@ -1416,33 +1412,6 @@ class FunctionTranslator:
             call = f"body({', '.join([h(self.f.entry_sp), h(self.f.sentinel)] + [n for n, _, _ in sig.params])})"
             out += ["", sig.text, "{", f"    {call};" if sig.ret == "void" else f"    return {call};", "}"]
         return "\n".join(out) + "\n"
-
-
-FIELD_LINE = re.compile(r"^\s*a\.(r|s|rlo)\[(\d)\] = (.*);$")
-FIELD_ORDER = [("r", k) for k in range(4)] + [("s", k) for k in range(8)] + [("rlo", k) for k in range(4)]
-
-
-def fill_call_args(body):
-    """Every call writes the same TcArgs fields: those any call of the function writes, 0 where its callee takes
-    nothing there. (DP's draft step takes a field's value from the assignments right before the call, or from the
-    block's initializer only when no statement ever writes that field.)"""
-    used = {(m.group(1), int(m.group(2))) for x in body for m in [FIELD_LINE.match(x)] if m}
-    if not used:
-        return body
-    want = [f for f in FIELD_ORDER if f in used]
-    out = []
-    for x in body:
-        if "tc_call(" not in x:
-            out.append(x)
-            continue
-        got = {}
-        while out and FIELD_LINE.match(out[-1]):
-            m = FIELD_LINE.match(out.pop())
-            got.setdefault((m.group(1), int(m.group(2))), m.group(3))
-        ind = x[:len(x) - len(x.lstrip())]
-        out += [f"{ind}a.{f}[{k}] = {got.get((f, k), '0')};" for f, k in want]
-        out.append(x)
-    return out
 
 
 def translate_function(image, entry, sig, facts=None, body=None, entries=None, comments=True, simplify=None):

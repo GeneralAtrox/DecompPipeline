@@ -29,6 +29,12 @@ typedef struct {
     u32 nrows;
     const PortDispatch *glue; /* tc_call's glue for its functions on translator C (fn: a tx_rt.h PortTcGlue), by address */
     u32 nglue;
+    /* A slot unit (slot_align != 0) is code that may be loaded at any slot_align boundary of [slot_lo, slot_hi): one
+     * file loaded at several places (a game with one set of per-character files). Its ranges, windows, rows and
+     * glue are written at canon, the base it was analysed at; loaded at base B it runs with delta = B - canon, which
+     * the translator C adds to the addresses it reads off its own position (tx_ovl_delta). A fixed unit has 0s. */
+    u32 canon;
+    u32 slot_lo, slot_hi, slot_align;
 } PortOverlay;
 
 /* Generated (gen_overlays.py overlay_table.c); a game with none links an empty table (overlay.c). */
@@ -41,6 +47,10 @@ PortFn port_guest_target(u32 addr); /* what a call to guest addr runs (overlay t
 /* tc_call's glue (fn: a tx_rt.h PortTcGlue) for the function at addr of the unit loaded there, NULL if that function
  * has none (readable C, a stub) or no loaded unit has one */
 const PortDispatch *overlay_glue(u32 addr);
+/* The delta of the unit overlay_find / overlay_glue resolved last (0 for a fixed unit): tc_call sets tx_ovl_delta to it
+ * for the length of the call */
+u32 overlay_delta(void);
+extern u32 tx_ovl_delta; /* what translator C adds to the addresses it takes off its own position (a slot unit's) */
 void overlay_report(void);          /* the unit switches and misses, into the log */
 
 #endif

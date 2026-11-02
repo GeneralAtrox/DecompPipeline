@@ -28,18 +28,20 @@ public class TcFacts {
         return f;
     }
 
+    static final java.util.regex.Pattern SPACES = java.util.regex.Pattern.compile("\\s+");  // compiled once
+
     static long num(String s) {
-        return Long.parseLong(s.replaceFirst("^0x", ""), 16);
+        return Long.parseLong(s.startsWith("0x") ? s.substring(2) : s, 16);
     }
 
     static TcFacts load(String file) throws Exception {
         TcFacts f = defaults();
         if (file == null || file.equals("-")) return f;
         for (String line : Files.readAllLines(Paths.get(file))) {
-            String[] t = line.trim().split("\\s+", 2);
+            String[] t = SPACES.split(line.trim(), 2);
             if (t[0].isEmpty() || t[0].startsWith("#")) continue;
             String v = t.length > 1 ? t[1].trim() : "";
-            String[] w = v.split("\\s+");
+            String[] w = SPACES.split(v);
             switch (t[0]) {
                 case "int_args": case "float_args": case "extra_inputs": case "callee_saved":
                     break; // the Xbox 360 convention is built into TcBase/TcFlow; core/ghidra.py writes them for every target
@@ -79,15 +81,26 @@ public class TcFacts {
         }
     }
 
+    // The code ranges file read once per file content (its path, size and mtime) in this JVM, not once per prepare:
+    // a slot server prepares function after function with the same file. The bits are only read (isCode).
+    static final Map<String, BitSet> CODE = new java.util.concurrent.ConcurrentHashMap<>();
+
     void loadCode(String file) throws Exception {
         Path p = Paths.get(file);
         if (!Files.exists(p)) return;
-        for (String line : Files.readAllLines(p)) {
-            String[] t = line.trim().split("\\s+");
-            if (t.length < 2) continue;
-            long lo = Math.max(num(t[0]), TcBase.IMAGE_LO), hi = Math.min(num(t[1]), ramHi);
-            if (hi > lo) code.set((int) (lo - TcBase.IMAGE_LO), (int) (hi - TcBase.IMAGE_LO));
+        String key = p.toAbsolutePath() + " " + Files.size(p) + " " + Files.getLastModifiedTime(p).toMillis() + " " + ramHi;
+        BitSet got = CODE.get(key);
+        if (got == null) {
+            got = new BitSet();
+            for (String line : Files.readAllLines(p)) {
+                String[] t = SPACES.split(line.trim());
+                if (t.length < 2) continue;
+                long lo = Math.max(num(t[0]), TcBase.IMAGE_LO), hi = Math.min(num(t[1]), ramHi);
+                if (hi > lo) got.set((int) (lo - TcBase.IMAGE_LO), (int) (hi - TcBase.IMAGE_LO));
+            }
+            CODE.put(key, got);
         }
+        code = got;
         haveCode = true;
     }
 

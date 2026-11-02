@@ -2,7 +2,8 @@
 // the body has no computed call or jump and no float store, and nothing changes).
 // 1. Calls through function pointers (bctrl, blrl, bctr: a target not in meta callees, whose argument registers come
 //    from the callee's prototype). The argument registers the run set since its entry or its last call (its own
-//    parameters count as set at entry; after a call r3 and f1 hold its scripted results, the mock zeroes the rest:
+//    parameters count as set at entry; after a call r3 and f1 hold its scripted results, and r4 a 64-bit callee's low
+//    word (TcFlow.returnsR4), the mock zeroes the rest:
 //    TcOracle.clobber), in order up to the first gap (r3..r10; f1..f8), are that call's arguments: expected.txt
 //    "CA reg..." after its CALL line (call). The judge compares them as a listed callee's (ppc_compare). Stack words
 //    are not compared: without a prototype the words at r1+8.. are as often the caller's locals as arguments.
@@ -110,6 +111,7 @@ final class TcTrack {
         String m = in.getMnemonicString().toLowerCase(), d = reg(in, 0);
         if (flow(r.fbits, m, d, reg(in, 1), outs) || store(in)) {
             for (long[] st : bank.stores) {
+                if (bank.facts.isMmio(st[0])) continue;  // a hardware register is not in the bank (TcBank logs it)
                 for (long w = (st[0] + 3) & ~3L; w + 4 <= st[0] + st[1]; w += 4) r.stored.put(w, word(bank, w));
             }
         }
@@ -151,8 +153,9 @@ final class TcTrack {
     }
 
     // TcOracle, at a mocked call to target: "\nCA reg..." when target is no listed callee, else "". Afterwards only
-    // r3 and f1 are set (the callee's scripted results), and no clobbered register holds float bits.
-    static String call(long target) {
+    // r3 and f1 are set (the callee's scripted results), with r4 after a callee that sets it on every path (the low
+    // word of its 64-bit result: TcFlow.returnsR4), and no clobbered register holds float bits.
+    static String call(TcOracle o, long target) {
         if (on == null) return "";
         on.cur.fbits.removeAll(CLOBBERED);
         if (!on.calls) return "";
@@ -166,6 +169,7 @@ final class TcTrack {
         d.clear();
         d.add("r3");
         d.add("f1");
+        if (o.calleeSetsR4(target)) d.add("r4");
         return s.toString();
     }
 

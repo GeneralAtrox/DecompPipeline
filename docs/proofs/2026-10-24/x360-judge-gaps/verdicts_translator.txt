@@ -1,0 +1,71 @@
+823af600       PASS 0/96 -> FAIL 92/96     same C  ['call #2 to 0x00000000: argument f1 (args.f[0]) expected 0xbff0000000000000 (-1), got 0x0000000000000000 (0)']
+823b3198       PASS 0/96 -> FAIL 90/96     same C  ['call #2 to 0x0000000f: argument f1 (args.f[0]) expected 0x4059778160000000 (101.86727142333984), got 0x0000000000000000 (0)']
+823beea0       PASS 0/96 -> FAIL 88/96     same C  ['call #2 to 0x400005d0: argument f1 (args.f[0]) expected 0x3ff0000000000000 (1), got 0x0000000000000000 (0)']
+823f4590       PASS 0/96 -> FAIL 91/96     same C  ['call #2 to 0x400006ac: argument f1 (args.f[0]) expected 0x4043d8b4d4f82cd8 (39.693018551997454), got 0x0000000000000000 (0)']
+82411b98       PASS 0/96 -> FAIL 85/96     same C  ['call #2 to 0x00000009: argument f1 (args.f[0]) expected 0x3fd84a8580000000 (0.37954843044281006), got 0x0000000000000000 (0)']
+82414460       PASS 0/96 -> FAIL 89/96     same C  ['call #2 to 0x0000000d: argument f1 (args.f[0]) expected 0x3ff0000000000000 (1), got 0x0000000000000000 (0)']
+82436a30       PASS 0/96 -> FAIL 48/96     same C  ['call at 82436ac0: both r3 and f1 are read after it; only r3 is the result', 'call at 82436c84: both r3 and f1 are read after it; only r3 is the result']
+8243a720       PASS 0/96 -> FAIL 90/96     same C  ['call #2 to 0x400004d8: argument f1 (args.f[0]) expected 0xc083952e1cd73eac (-626.64751594696054), got 0x0000000000000000 (0)']
+824485e0       PASS 0/96 -> FAIL 89/96     same C  ['call #2 to 0x93ef0b18: argument f1 (args.f[0]) expected 0x40bc38e02c0561bd (7224.8756717074984), got 0x0000000000000000 (0)']
+8244ad68       PASS 0/96 -> FAIL 86/96     same C  ['call #2 to 0x00000008: argument f1 (args.f[0]) expected 0xc0c371ac00000000 (-9955.34375), got 0x0000000000000000 (0)']
+824517f8       PASS 0/96 -> FAIL 92/96     same C  ['call #2 to 0x0000000f: argument f1 (args.f[0]) expected 0x40e18a40311834e4 (35922.005992987921), got 0x0000000000000000 (0)']
+8249bf68       PASS 0/96 -> FAIL 88/96     same C  ['call #2 to 0x00000000: argument f1 (args.f[0]) expected 0xc0e8e25999f89877 (-50962.800045297416), got 0x0000000000000000 (0)']
+824b0010       PASS 0/96 -> FAIL 13/96     same C  ['call #6 to 0x00000000: argument f1 (args.f[0]) expected 0xc03a000000000000 (-26), got 0x0000000000000000 (0)']
+824c0a50       PASS 0/93 -> FAIL 96/96     same C  ['no result for this vector (the C code crashed, hung or timed out)']
+824d3c58       PASS 0/77 -> FAIL 45/77     same C  ['call #2 to 0x00000000: argument f1 (args.f[0]) expected 0x40d9fc4a4f364fec (26609.16108472638), got 0x0000000000000000 (0)']
+824d8420       PASS 0/96 -> FAIL 34/96     same C  ['call #4 to 0x00000003: argument f1 (args.f[0]) expected 0xc018000000000000 (-6), got 0x0000000000000000 (0)', 'call #5 to 0x40000790: argument f1 (args.f[0]) 
+824ea6e0       PASS 0/96 -> FAIL 34/96     same C  ['call #4 to 0x0000000f: argument f1 (args.f[0]) expected 0xbff0000000000000 (-1), got 0x0000000000000000 (0)']
+82514780       PASS 0/96 -> FAIL 96/96     same C  ['call #3 to 0x00000000: argument f1 (args.f[0]) expected 0x40ee1ee2bce45355 (61687.08555809284), got 0x0000000000000000 (0)', 'call #4 to 0x00000005: argument 
+82543d40       PASS 0/96 -> FAIL 51/96     same C  ['call #3 to 0x0000000e: argument f1 (args.f[0]) expected 0x3fe0000000000000 (0.5), got 0x0000000000000000 (0)']
+8256de50       PASS 0/96 -> FAIL 20/96     same C  ['call #2 to 0x56306f61: argument f1 (args.f[0]) expected 0x40e64e21a6cc3800 (45681.051611050963), got 0x0000000000000000 (0)']
+825e7878       PASS 0/96 -> FAIL 92/96     same C  ['call #2 to 0xbb5284d8: argument f1 (args.f[0]) expected 0xc0c2a9fbc775c695 (-9555.9670245380057), got 0x0000000000000000 (0)']
+825ef068       PASS 0/96 -> FAIL 90/96     same C  ['call at 825ef09c: both r3 and f1 are read after it; only r3 is the result']
+826053b8       PASS 0/96 -> FAIL 63/96     same C  ['call #2 to 0x40000138: argument f1 (args.f[0]) expected 0xc085282b9a22c158 (-677.02129008438624), got 0x0000000000000000 (0)']
+8260f510       PASS 0/96 -> FAIL 22/96     same C  ['call #2 to 0x00000000: argument f1 (args.f[0]) expected 0x40782958c0000000 (386.58416748046875), got 0x0000000000000000 (0)']
+82615f38       PASS 0/96 -> FAIL 85/96     same C  ['call #2 to 0x000071ad: argument f1 (args.f[0]) expected 0xc08d2a1a40000000 (-933.2628173828125), got 0x0000000000000000 (0)']
+826209d8       PASS 0/96 -> FAIL 52/96     same C  ['call at 82620b18: both r3 and f1 are read after it; only r3 is the result']
+82635508       FAIL 6/96 -> PASS 0/96      same C  
+82651d70       PASS 0/96 -> FAIL 95/96     same C  ['call #2 to 0x00000006: argument f1 (args.f[0]) expected 0x43f8f20fe0000000 (2.8760266496341443e+19), got 0x0000000000000000 (0)']
+8265c618       PASS 0/96 -> FAIL 88/96     same C  ['call #3 to 0x40000bc8: argument f1 (args.f[0]) expected 0xc032000000000000 (-18), got 0x0000000000000000 (0)']
+8266cbe0       PASS 0/96 -> FAIL 38/96     same C  ['call #2 to 0x0000000f: argument f1 (args.f[0]) expected 0xc087d12b6b312d9e (-762.1462005464598), got 0x0000000000000000 (0)']
+8267a1d8       PASS 0/96 -> FAIL 90/96     same C  ['call #3 to 0x3f000000: argument f1 (args.f[0]) expected 0xbc11eab920000000 (-2.4281910145948855e-19), got 0x0000000000000000 (0)']
+826a3580       PASS 0/96 -> FAIL 11/96     same C  ['call #3 to 0x0000000d: argument f1 (args.f[0]) expected 0x40e718d2bd0dc318 (47302.585577851336), got 0x0000000000000000 (0)']
+826c2d88       PASS 0/96 -> FAIL 18/96     same C  ['call #3 to 0x00000000: argument f1 (args.f[0]) expected 0xc0d39d4502a2861a (-20085.078285819014), got 0x0000000000000000 (0)']
+8270a728       PASS 0/96 -> FAIL 22/96     same C  ['call #3 to 0x00000005: argument f1 (args.f[0]) expected 0xc04b800000000000 (-55), got 0x0000000000000000 (0)']
+82718358       PASS 0/96 -> FAIL 3/96      same C  ['call #6 to 0x00000000: argument f1 (args.f[0]) expected 0xc06041b480000000 (-130.05328369140625), got 0x0000000000000000 (0)']
+827dff28       PASS 0/96 -> FAIL 82/96     same C  ['call #2 to 0x00000000: argument f1 (args.f[0]) expected 0x4056000000000000 (88), got 0x0000000000000000 (0)']
+827f89d0       PASS 0/96 -> FAIL 69/96     same C  ['call #2 to 0x00000000: argument f1 (args.f[0]) expected 0x403cd58180000000 (28.834007263183594), got 0x0000000000000000 (0)']
+82801900       PASS 0/96 -> REFUSED        C differs  
+8284e360       PASS 0/96 -> FAIL 19/96     same C  ['call #2 to 0x436b3253: argument f1 (args.f[0]) expected 0xc0805395302bd99a (-522.44784578569238), got 0x0000000000000000 (0)']
+8287c390       PASS 0/96 -> FAIL 91/96     same C  ['call #2 to 0x5d94dfb2: argument f1 (args.f[0]) expected 0xc0ca567600000000 (-13484.921875), got 0x0000000000000000 (0)']
+828991b8       PASS 0/96 -> FAIL 7/96      same C  ['call #3 to 0x00000003: argument f1 (args.f[0]) expected 0xc0840bda9ceb5fbf (-641.48174461255974), got 0x0000000000000000 (0)']
+828a2ce8       PASS 0/96 -> FAIL 85/96     same C  ['call #3 to 0x00000000: argument f1 (args.f[0]) expected 0x40cb0fcc317747be (13855.595259580641), got 0x0000000000000000 (0)']
+828aa268       PASS 0/96 -> FAIL 85/96     same C  ['call #2 to 0x00000004: argument f1 (args.f[0]) expected 0x3fe2d571c0000000 (0.58855521678924561), got 0x0000000000000000 (0)']
+828b3ea0       PASS 0/96 -> FAIL 3/96      same C  ['call #2 to 0x4398f1ee: argument f1 (args.f[0]) expected 0xc0778112e59edd70 (-376.06711351448666), got 0x0000000000000000 (0)']
+828e87d8       PASS 0/96 -> FAIL 66/96     same C  ['call #2 to 0x00000001: argument f1 (args.f[0]) expected 0x40ef4cf9e27347bb (64103.808892860507), got 0x0000000000000000 (0)']
+82908170       PASS 0/96 -> FAIL 25/96     same C  ['call #2 to 0x00000009: argument f1 (args.f[0]) expected 0xbff0000000000000 (-1), got 0x0000000000000000 (0)']
+8290c260       PASS 0/96 -> FAIL 4/96      same C  ['call #2 to 0x40001500: argument f1 (args.f[0]) expected 0x40e6c74643db7e81 (46650.195783373907), got 0x0000000000000000 (0)']
+82967760       PASS 0/96 -> FAIL 96/96     same C  ['call #4 to 0x829691b0: argument r4 (args.r[1]) expected 0x00000001700fd300, got 0x00000000700fdfb0', 'call #5 to 0x82968ee0: argument r6 (args.r[3]) expected 
+82976860      NO_VECTORS -> FAIL 96/96     C differs  ['invalid guest memory access: read 00000008', 'invalid guest memory access: read 0000000c', 'invalid guest memory access: read 00000044', 'invalid guest memory
+829ece80       PASS 0/96 -> FAIL 23/96     same C  ['call #5 to 0x829f5380: argument f1 (args.f[0]) expected 0x40a3a692d702e6cd (2515.2867966562976), got 0x0000000000000000 (0)', 'call #7 to 0x829f5380: argument
+82a107d8       PASS 0/96 -> FAIL 72/96     same C  ['call #2 to 0x00000000: argument f1 (args.f[0]) expected 0x407e0d0828c139ad (480.81449199179298), got 0x0000000000000000 (0)']
+82a58d60       PASS 0/96 -> FAIL 57/96     same C  ['call #2 to 0x400003b8: argument f1 (args.f[0]) expected 0x40c11eaa8fefd3cc (8765.3325176033177), got 0x0000000000000000 (0)']
+82ac6958       PASS 0/96 -> FAIL 2/96      same C  ['call #2 to 0x0000000c: argument f1 (args.f[0]) expected 0x3ff0000000000000 (1), got 0x0000000000000000 (0)']
+82b1c380       PASS 0/96 -> FAIL 88/96     C differs  ['call #2 to 0xffffffff: argument f1 (args.f[0]) expected 0x3ff0000000000000 (1), got 0x0000000000000000 (0)']
+82b9d648       PASS 0/96 -> REFUSED        C differs  
+82be81f0       PASS 0/96 -> FAIL 30/96     same C  ['call #2 to 0x00000009: argument f1 (args.f[0]) expected 0xbfdea59680000000 (-0.47885668277740479), got 0x0000000000000000 (0)']
+82c3b140       PASS 0/96 -> FAIL 96/96     same C  ['call #2 to 0x00000000: argument f1 (args.f[0]) expected 0xc0d9765980000000 (-26073.3984375), got 0x0000000000000000 (0)', 'call #3 to 0x00000004: argument f1 
+82c48438       PASS 0/96 -> FAIL 80/96     C differs  ['call #1 to 0x8243c988: argument r8 (args.r[5]) expected 0x0000000040000004, got 0x0000000000000000']
+82da45a0       PASS 0/96 -> FAIL 19/96     same C  ['call #3 to 0x00000000: argument f1 (args.f[0]) expected 0xc0c1a00277191094 (-9024.0192595797489), got 0x0000000000000000 (0)']
+82dbcf78       PASS 0/96 -> FAIL 5/96      same C  ['conditional trap at 82dbcfd4: not modelled (a vector that fires it is invalid)', 'conditional trap at 82dbcfec: not modelled (a vector that fires it is invali
+82e33860       PASS 0/96 -> FAIL 89/96     same C  ['call #2 to 0x0000000a: argument f1 (args.f[0]) expected 0xc08ca22004b354d0 (-916.26563396551683), got 0x0000000000000000 (0)']
+82e97a88       PASS 0/45 -> REFUSED        C differs  
+--- (base, branch, same C): count
+('PASS', 'PASS', True) 466
+('PASS', 'FAIL', True) 55
+('FAIL', 'FAIL', True) 4
+('PASS', 'PASS', False) 3
+('PASS', 'REFUSED', False) 3
+('PASS', 'FAIL', False) 2
+('FAIL', 'PASS', True) 1
+('NO_VECTORS', 'FAIL', False) 1

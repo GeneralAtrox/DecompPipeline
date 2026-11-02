@@ -153,8 +153,7 @@ Without `--report` the records are merged into `state/mutation.json`, which the 
 Phase D found two ways a wrong readable function passed in Toy Commander.
 
 **The float result was not compared.** The oracle records r0 and fr0, but `compare_return` compared only the
-register the signature names. TC 8c01becc is `rts; fldi0 fr0` (it returns 0.0f), and Ghidra typed it
-`u32 fn_8c01becc(void)`.
+register the signature names. TC 8c01becc is `rts; fldi0 fr0` (it returns 0.0f); Ghidra typed it `u32 fn_8c01becc(void)`.
 - `core/ret_reg.py` follows every path of the packet listing to each `rts` (delay slot included). It notes
   whether fr0 was written after r0 and not read again. "Returns in fr0" means some exit is like that and no exit
   writes r0 last. A write to fr0 while `frchg` has swapped the banks is XF0, not the result (TC 8c0613cc and
@@ -168,6 +167,7 @@ register the signature names. TC 8c01becc is `rts; fldi0 fr0` (it returns 0.0f),
   the message asks for a raw_ret f32 override.
 - The runner leaves fr0 at 0.0 for a non-f32 thunk, so a 0.0f return like 8c01becc still passes the compare.
   The signature is the real fix: `tools/sig_override.py --candidates` lists these functions as `fr0_exit`.
+- The list also names narrowed returns, r0 too; their readers' mocks draw floats. `core/doctor` fails a stale list: `docs/proofs/ret-width.md`.
 
 **Float callee results and pool floats were not tested.** TcInputs draws small integers and pointers as mocked
 callee results (0..3 for the first calls). As f32 bits these are denormals, so an f32 callee always "returned"

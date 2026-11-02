@@ -237,7 +237,7 @@ final class TcLive {
                         call(s, callee(ins, op));
                     } else if (oc == PcodeOp.RETURN) {
                         ends = true;
-                    } else if ((oc == PcodeOp.BRANCH || oc == PcodeOp.BRANCHIND) && tail(ins, body) != null) {
+                    } else if ((oc == PcodeOp.BRANCH || oc == PcodeOp.BRANCHIND) && !op.getInput(0).isConstant() && tail(ins, body) != null) {  // a constant: inside ins (a delay slot's fmov)
                         call(s, tail(ins, body));
                         ends = true;
                     } else {

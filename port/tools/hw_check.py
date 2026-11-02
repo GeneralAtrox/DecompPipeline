@@ -324,6 +324,9 @@ def main(argv=None):
     print(f"port (textures): exit {rc}, {wall:.0f} s")
     tr = compare_textures(reqs, f"{tex_file}.bin")
     report(rr, tr, unlabelled)
+    if not rr["paired"]:  # no render compared: no verdict, not a pass
+        print("NOTHING COMPARED: no render paired with the emulator's")
+        return 2
     if not a.no_watch:
         map_path = game / "build" / a.build_dir / "port.map"
         if rr["first"]:

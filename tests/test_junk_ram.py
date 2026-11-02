@@ -101,6 +101,34 @@ class Differences(unittest.TestCase):
         self.assertEqual(zfail, [0])
 
 
+class Initial(Differences):
+    """verdicts: a byte neither run wrote starts as junk, not 0 (a write of the junk a byte already held is no write)."""
+    ADDR = 0x8c200000  # past the (empty) test image: junk there
+
+    def judge(self, orig_writes, c_writes):
+        o = self.parsed(results((1, orig_writes), (2, {})))
+        c = self.parsed(results((1, c_writes), (2, {})))
+        return junk_ram.verdicts(META, b"", self.vecs(), [0, 1], o, c, {}, 0x8cffd000, None)[0]
+
+    def junk(self, off=0):
+        return junk_ram.junk_image(b"")[self.ADDR - 0x8c010000 + off]
+
+    def test_the_original_writing_the_junk_a_byte_holds_is_no_difference(self):
+        self.assertEqual(self.judge({self.ADDR + i: self.junk(i) for i in range(4)}, {}), {})
+
+    def test_the_c_writing_zero_over_junk_is_caught(self):
+        self.assertEqual(sorted(self.judge({}, {self.ADDR: 0, self.ADDR + 1: 0, self.ADDR + 2: 0, self.ADDR + 3: 0})), [0])
+
+    def test_a_different_write_is_caught(self):
+        w = {self.ADDR + i: (self.junk(i) + 1) & 255 for i in range(4)}
+        self.assertEqual(sorted(self.judge(w, {})), [0])
+        self.assertEqual(sorted(self.judge({}, w)), [0])
+
+    def test_the_same_write_on_both_sides_passes(self):
+        w = {self.ADDR + i: (self.junk(i) + 1) & 255 for i in range(4)}
+        self.assertEqual(self.judge(w, w), {})
+
+
 class Mode(unittest.TestCase):
     def test_off_on_and_refused(self):
         dc = {"target": "dreamcast_sh4"}
@@ -200,6 +228,81 @@ class Judge(unittest.TestCase):
         self.assertIn("unset RAM filled with junk", res["first_diffs"][0]["diffs"][0])
         self.assertIn("2 vectors differ with unset RAM filled with junk", check.format_for_agent(res))
 
+    def runs_after_hang(self, *answers):
+        """The C's junk runs in turn: each is run_text's text of the vectors it reached (vectors_rest.txt's after a hang)."""
+        left, real = list(answers), self.fake_runner
+
+        def fake(cmd, timeout, out, cap, env=None):
+            self.caps.append(cap)
+            if env or "junk_ram" not in cmd[1]:
+                return real(cmd, timeout, out, cap, env)
+            self.junk_vectors.append(pathlib.Path(cmd[4]).read_text(encoding="utf-8").count("\nV ")
+                                     + pathlib.Path(cmd[4]).read_text(encoding="utf-8").startswith("V "))
+            pathlib.Path(out).write_text(left.pop(0), encoding="utf-8")
+            return 0, "", "timeout" if left else None
+        self.caps, self.junk_vectors, self.fake_runner = [], [], fake
+
+    def upto(self, lo, hi, changed=None):
+        """run_text's text of vectors lo..hi-1 alone."""
+        rows = run_text(changed or {7: 1007, 5: 1}).split("V ")[1:]
+        return "".join("V " + r for r in rows if lo <= int(r.split()[0]) < hi)
+
+    def test_a_hang_where_the_original_ran_away_leaves_the_rest_judged(self):
+        self.runs_after_hang(self.upto(0, 5), self.upto(6, N))
+        res = self.check(junk_ram=True)
+        self.assertEqual(res["verdict"], "PASS")
+        self.assertEqual(self.junk_vectors, [N, N - 6])
+        self.assertEqual(res["junk_ram"]["vectors"], N - 1)
+        self.assertEqual(res["junk_ram"]["skipped"], {"xemu": 0, "fault": 1, "after_stop": 0})
+
+    def test_wrong_c_after_such_a_hang_still_fails(self):
+        self.runs_after_hang(self.upto(0, 5), self.upto(6, N, {7: 1007, 9: 0xdead}))
+        res = self.check(junk_ram=True)
+        self.assertEqual((res["verdict"], res["junk_ram"]["failing_ids"]), ("FAIL", [9]))
+
+    def test_a_hang_on_a_fit_vector_fails_and_is_not_run_again(self):
+        self.runs_after_hang(self.upto(0, 3), self.upto(4, N))
+        res = self.check(junk_ram=True)
+        self.assertEqual((res["verdict"], res["junk_ram"]["failing_ids"]), ("FAIL", [3]))
+        self.assertEqual(self.junk_vectors, [N])
+
+    def test_reruns_are_bounded(self):
+        self.xemu["junk"] = run_text({7: 1007}, {k: ["FAULT 8c123456 read"] for k in range(N)})
+        self.runs_after_hang(*[""] * (junk_ram.RERUNS + 2))
+        self.check(junk_ram=True)
+        self.assertEqual(len(self.junk_vectors), junk_ram.RERUNS + 1)
+
+    def out_of_reruns(self, last_answer):
+        """The original runs away on every vector the reruns reach (0..RERUNS) and on none after; the C hangs on each."""
+        faults = {k: ["FAULT 8c123456 read"] for k in range(junk_ram.RERUNS + 1)}
+        self.xemu["junk"] = run_text({7: 1007, 5: 1}, faults)
+        self.runs_after_hang(*[""] * junk_ram.RERUNS, last_answer)
+
+    def test_vectors_the_reruns_never_reached_are_not_failed(self):
+        self.out_of_reruns("")
+        res = self.check(junk_ram=True)
+        self.assertEqual((res["verdict"], res["junk_ram"]["failing_ids"]), ("PASS", []))
+        self.assertEqual(res["junk_ram"]["skipped"]["after_stop"], N - junk_ram.RERUNS - 1)
+
+    def test_wrong_c_in_the_last_rerun_still_fails(self):
+        self.out_of_reruns(self.upto(junk_ram.RERUNS, N, {7: 1007, 5: 1, 9: 0xdead}))
+        res = self.check(junk_ram=True)
+        self.assertEqual((res["verdict"], res["junk_ram"]["failing_ids"]), ("FAIL", [9]))
+
+    def test_output_cap(self):
+        """Only the C's junk run has the larger cap: over it, the runner empties the file and every vector fails."""
+        self.runs_after_hang(self.upto(0, N))
+        self.check(junk_ram=True)
+        self.assertEqual(sorted(set(self.caps)), [check.OUTPUT_CAP_MIN, junk_ram.OUTPUT_CAP])
+        self.assertEqual(self.caps.count(junk_ram.OUTPUT_CAP), 1)
+        self.runs_after_hang("")
+        self.assertEqual(self.check(junk_ram=True)["verdict"], "FAIL")
+
+    def test_vectors_after_keeps_the_run_flags(self):
+        self.assertEqual(junk_ram.vectors_after("J 15\nV 0 dev\nE\nV 1 dev\nE\nV 2 hidden\nE\n", 0),
+                         "J 15\nV 1 dev\nE\nV 2 hidden\nE\n")
+        self.assertEqual(junk_ram.vectors_after("V 0 dev\nE\n", 0), "")
+
     def test_xemu_gap_and_fault_are_skipped(self):
         self.c["junk"] = run_text({7: 1007, 5: 0xdead})  # differs only where the original faults on junk
         self.assertEqual(self.check(junk_ram=True)["verdict"], "PASS")
@@ -233,12 +336,10 @@ class Judge(unittest.TestCase):
         self.assertNotIn(("c", "junk"), self.runs)
 
     def test_a_hang_stops_the_pass(self):
-        self.c["junk"] = run_text({7: 1007}, upto=5)  # the C hung on vector 5, which the original faults on
+        self.c["junk"] = run_text({7: 1007}, upto=5)  # hung on 5, which the original faults on; then nothing on 6, which is fit
         res = self.check(junk_ram=True)
-        self.assertEqual((res["verdict"], res["junk_ram"]["skipped"]["after_stop"]), ("PASS", N - 6))
-        self.c["junk"] = run_text({7: 1007}, upto=9)  # hung on vector 9, which the original finishes
-        res = self.check(junk_ram=True)
-        self.assertEqual((res["verdict"], res["junk_ram"]["failing_ids"]), ("FAIL", [9]))
+        self.assertEqual((res["verdict"], res["junk_ram"]["failing_ids"]), ("FAIL", [6]))
+        self.assertEqual(res["junk_ram"]["skipped"]["after_stop"], N - 7)
 
     def test_other_target_refused(self):
         with self.assertRaisesRegex(ValueError, "Dreamcast"):

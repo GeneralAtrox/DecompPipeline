@@ -67,7 +67,7 @@ class Wiring(unittest.TestCase):
         self.assertEqual(tj["shared_scripts"], ["ppc"])
         self.assertIn("TcSingle.java", tj["locked_scripts"])  # compiled with TcFixups in the staging bundle
         self.assertIn("fix.before(emu, in);", orc)
-        self.assertIn("if (stepped && fault[0] == null) {\n                    fix.after(emu, ram, bank.stored, bank.reads);", orc)
+        self.assertIn("if (stepped && fault[0] == null) {\n                    fix.after(emu, ram, bank, bank.stored, bank.reads);", orc)
 
 
 if __name__ == "__main__":

@@ -134,11 +134,15 @@ Run from the `xbox360-ppc` worktree (the target is not on master yet); WS is the
 config.local.json's `ghidra_home`. Check RAM first (under 80%).
 
 ```
-python tools/bounded.py 1800 -- python decomp.py --project WS setup
-python tools/bounded.py 600 -- GHIDRA_HOME/support/analyzeHeadless.bat WS/ghidra TooHuman -process image.bin -noanalysis -readOnly -scriptPath WS/state/ghidra_scripts -postScript TcDecodeAudit.java WS/state/decode_audit.tsv ADDRS_OF_THE_50
-python targets/xbox360_ppc/tools/decode_audit.py WS/state/decode_audit.tsv WS/image.bin
+python tools/bounded.py 3600 -- python targets/xbox360_ppc/tools/x360setup.py setup DISC.iso WS --name TooHuman --pick
 python tools/bounded.py 3600 -- python tools/prepare_list.py --project WS --slots 2 @WS/proof_set.txt --out WS/state/proof_prepare.tsv
 ```
+
+`x360setup.py setup` makes the workspace below (catalog inputs, the 50, the setup list, `project.json`,
+`oracle/TcInputs.java`), then runs step 1 (`decomp.py`'s setup) and step 2: `TcDecodeAudit` through the Ghidra broker
+over every function the setup made (the roots and all they reach), checked as gate G2 by `decode_audit.py`. The proof
+ran these by hand; the generated files are identical to the hand workspace's, except that `project.json` has no
+`harness_reuse` (set it by hand, for this workspace only) and its own port.
 
 ## Steps, slots and minutes
 

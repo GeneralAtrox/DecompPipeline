@@ -4,7 +4,8 @@ of the same function made on the same inputs (finding R3). The runner is never s
 1. a run made in one folder (readable_orig) is taken in another (rd_verify_orig) with no build and no run;
 2. any input the run reads gives another key: the raw C, the vectors, the sets, the harness meta (the thunk), the
    binary, the code ranges, the FSCA table, the runtime, the link options, the judge's code;
-3. a failed run is not cached; the file keeps the latest 16 runs, written whole.
+3. a failed run is not cached; the file keeps the latest 16 runs, written whole;
+4. a run that times out keeps the vectors it finished and is run again without the vector it hung in (TC 8c038c2c).
 Run: python -W error tests/test_raw_runs_cache.py.
 """
 import pathlib
@@ -24,12 +25,15 @@ META = {"name": "fn_8c0f1000", "signature": "u32 fn_8c0f1000(u32 param_1)",
         "callees": [], "globals": []}
 
 
+NL = chr(10)
+
+
 def put(p, data):
     p.parent.mkdir(parents=True, exist_ok=True)
     (p.write_bytes if isinstance(data, bytes) else lambda t: p.write_text(t, encoding="utf-8"))(data)
 
 
-class Cache(unittest.TestCase):
+class Base(unittest.TestCase):
     def setUp(self):
         d = self.d = pathlib.Path(tempfile.mkdtemp(dir=TMP))
         put(d / "matched" / f"{A}.c", "u32 fn_8c0f1000(u32 param_1) { return param_1; }\n")
@@ -64,6 +68,8 @@ class Cache(unittest.TestCase):
     def runs(self, folder="readable_orig", meta=META, sets=("dev", "hidden")):
         return readable_outrun.RawRuns(self.cfg, A, meta, self.d / "harness", self.d / "build" / folder, sets)
 
+
+class Cache(Base):
     def test_other_folder_takes_it(self):
         text = self.runs().run(self.d / "vec.txt")
         self.assertEqual(text, "V 1 r0=0\nOB 1 2\n")
@@ -109,6 +115,53 @@ class Cache(unittest.TestCase):
             self.runs().run(self.d / f"vec{i}.txt")
         self.assertEqual(len(paths.read_json(self.d / "build" / "raw_runs.json")), 16)
         self.assertEqual([p.name for p in (self.d / "build").iterdir() if p.is_file()], ["raw_runs.json"])
+
+
+class Salvage(Base):
+    """A runner that hangs in some vectors (the raw C loops on painted bytes) and flushes after each vector's E."""
+    HANG = {2, 5}
+
+    def vecs(self, ids):
+        put(self.d / "vec.txt", NL.join(["R 1 flag"] + [x for i in ids for x in (f"V {i} dev", "M 0 00", "E")]) + NL)
+        return self.d / "vec.txt"
+
+    def fake_run(self, cfg, harness, build_dir, sets, vectors):
+        self.calls.append(("run", build_dir.name))
+        out, lines, hang = build_dir / "actual.txt", [], None
+        for ln in vectors.read_text(encoding="utf-8").splitlines():
+            if ln.startswith("V "):
+                i = int(ln.split()[1])
+                if i in self.HANG:
+                    hang = i  # its V line is still in the runner's buffer when it hangs
+                    break
+                lines += [ln, f"OB 0 8c0f1000 1 {i:02x}", "RET 00"]
+            elif ln == "E":
+                lines.append("E")
+        out.write_text(NL.join(lines) + NL, encoding="utf-8")
+        return out, "runner timeout" if hang is not None else None if self.ok else "runner exited with code 3"
+
+    def test_hung_vectors_left_out(self):
+        text = self.runs().run(self.vecs(range(8)))
+        got = [ln for ln in text.splitlines() if ln.startswith("V ")]
+        self.assertEqual(got, [f"V {i} dev" for i in (0, 1, 3, 4, 6, 7)])
+        self.assertEqual(sum(ln.startswith("OB ") for ln in text.splitlines()), 6)
+        self.assertNotIn("RET", text)
+        self.assertEqual([c[0] for c in self.calls], ["build", "run", "run", "run"])  # whole, after 2, after 5
+        n = len(self.calls)
+        self.assertEqual(self.runs("rd_verify_orig").run(self.d / "vec.txt"), text)  # cached under the whole file
+        self.assertEqual(len(self.calls), n)
+
+    def test_old_judge_and_nothing_finished(self):
+        with mock.patch.object(readable_outrun, "SALVAGE", False):
+            self.assertIsNone(self.runs().run(self.vecs(range(8))))
+        self.HANG = {2}
+        self.assertIsNone(self.runs("rd_x").run(self.vecs([2])))  # no vector finished
+        self.assertFalse((self.d / "build" / "raw_runs.json").exists())
+
+    def test_other_errors_still_none(self):
+        self.HANG = set()
+        self.ok = False
+        self.assertIsNone(self.runs().run(self.vecs(range(3))))
 
 
 if __name__ == "__main__":

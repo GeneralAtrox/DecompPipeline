@@ -1,10 +1,10 @@
 """The genretfn hint (decision 7): "genretfn 0xCALLEE LO HI" in oracle/hints/<addr>.txt makes every call to CALLEE
-among a vector's first 64 return a value drawn from LO..HI. Spawn 8c5e0f40 indexes a table with 8c5f6154's result
+among a vector's first 256 return a value drawn from LO..HI. Spawn 8c5e0f40 indexes a table with 8c5f6154's result
 (a remainder by 10), called every 3-4 calls up to call 36, and the random results made too few valid vectors;
 "genret N VAL" sets only calls 0-15, to one constant. Pass and fail controls:
 1. TcLate (tests/java/TcRetFnStub): the line is taken out of the hints the game's TcInputs sees, and a hints list
-   without one is passed on as it is (nothing drawn: the harness stays byte for byte); every call number up to 63
-   gets an in-range draw, call 64 and other callees keep theirs; draws depend on the seed, vector and try only;
+   without one is passed on as it is (nothing drawn: the harness stays byte for byte); every call number up to 255
+   gets an in-range draw, call 256 and other callees keep theirs; draws depend on the seed, vector and try only;
    a TcLate.copy shares them; a malformed line, a reversed or too wide range and two lines for one callee are
    refused with a clear error;
 2. the wiring: TcOracle applies it to Vec.rets and to the later results, TcVectors strips the lines before
@@ -79,22 +79,22 @@ R two 1 2 3
         rest, draw = got["one"].split(" | ")[1:]
         self.assertTrue(got["one"].startswith("new | "))
         self.assertEqual(rest, "rest range r4 0 3;# a comment")  # applyHints gets the rest, in order
-        self.assertRegex(draw, rf"^{CALLEE}=0\.\.9/10 n 64 first( [0-9]){{4}}$")  # all ten values among 64
+        self.assertRegex(draw, rf"^{CALLEE}=0\.\.9/10 n 256 first( [0-9]){{4}}$")  # all ten values among 64
         self.assertEqual(got["none"], "same | rest range r4 0 3;genret 3 7")  # nothing drawn
         self.assertEqual(got["empty"], "same | rest ")
         two = got["two"].split(" | ")
         self.assertEqual(two[1], "rest ")
-        self.assertTrue(two[2].startswith("8c000100=10..10/1 n 64"), two[2])
-        self.assertRegex(two[3], rf"^{CALLEE}=0\.\.ffffffff/3 n 64")  # -1..1 as 32-bit words: 0, 1, ffffffff
+        self.assertTrue(two[2].startswith("8c000100=10..10/1 n 256"), two[2])
+        self.assertRegex(two[3], rf"^{CALLEE}=0\.\.ffffffff/3 n 256")  # -1..1 as 32-bit words: 0, 1, ffffffff
 
     def test_calls_past_15(self):
         cases = f"H genretfn 0x{CALLEE} 0 9\nR v 5 1 0\n" + "".join(
-            f"Q c{c} {CALLEE} {c} 12345678\n" for c in (0, 15, 16, 17, 20, 36, 63, 64)) + (
+            f"Q c{c} {CALLEE} {c} 12345678\n" for c in (0, 15, 16, 17, 20, 36, 63, 64, 255, 256)) + (
             f"Q other 8c000100 20 12345678\nC copy {CALLEE} 36\n")
         got = self.run_stub(cases)
-        for c in (0, 15, 16, 17, 20, 36, 63):
+        for c in (0, 15, 16, 17, 20, 36, 63, 64, 255):
             self.assertIn(int(got[f"c{c}"], 16), range(10), c)
-        self.assertEqual(got["c64"], "12345678")  # past the 64 results the runtimes replay: as drawn (0)
+        self.assertEqual(got["c256"], "12345678")  # past the 256 results the runtimes replay: as drawn (0)
         self.assertEqual(got["other"], "12345678")  # another callee keeps its result
         self.assertEqual(got["copy"], got["c36"])  # TcReach's vector copy keeps the draws
         none = self.run_stub("R v 5 1 0\nQ q 8c5f6154 20 12345678\n")
@@ -129,6 +129,7 @@ class Wiring(unittest.TestCase):
         self.assertIn("applyHints(v, TcLate.ranges(v, TcLate.regs(this, v, hints, seed, id, idTry), seed, id, idTry));", vectors)
         self.assertNotIn("applyHints(v, hints)", vectors)
         self.assertIn("RANGED.put(to, d);", late)
+        self.assertIn("if (nv != null) v = TcLate.kept(v, nv);", vectors)  # a repair must not lose the draws (Spawn 8c9c8780)
         for n in ("TcOracle.java", "TcVectors.java", "TcLate.java"):
             self.assertLessEqual(len(text(SCRIPTS / n).splitlines()), 400, n)
         self.assertIn("genretfn 0xCALLEE LO HI", text(SH4 / "template" / "TcInputs.java"))

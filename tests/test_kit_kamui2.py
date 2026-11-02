@@ -17,6 +17,9 @@ recording stand-ins for pvr/ and the runtime, then run. Covers what Power Stone 
    another pointer (PS2: 0x0c83cf90 at set-up, 0x8c83cf90 per scene), so the next texture lands after it, not on
    it; a real second kmSetSystemConfiguration still forgets every texture (8c2c8ba0 clears Kamui's lists too); a
    game that never set it up is set up by its first kmBeginScene.
+7. kmBeginPass (kamui2_scene.c): a 0% direct-transfer list takes the other bank and leaves the other lists their whole
+   shares of the bank (PS2's opaque list: halving those shares ran its shadow list into the translucent one); with one
+   bank there is no other, so it takes half and the others share the rest.
 Only where Visual Studio's 32-bit tools are found (tests/test_lockstep.py NO_VC says how), skipped elsewhere.
 
 usage: python -W error tests/test_kit_kamui2.py
@@ -164,7 +167,7 @@ class Kamui2Misc(unittest.TestCase):
             (d / "k2_main.c").write_text(DRIVER_C, encoding="utf-8")
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
             srcs = " ".join(f'"{p}"' for p in [KIT / "sdk" / "kamui2_misc.c", d / "k2_main.c"])
-            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
+            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" '
                   f'/I"{KIT / "pvr"}" /I"{KIT / "sdk"}" /I"{rd}" {srcs} /Fe:k2.exe')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
@@ -216,7 +219,7 @@ class Kamui2VertexBuffer(unittest.TestCase):
             (d / "game.h").write_text(GAME_H, encoding="utf-8")
             (d / "k2_size.c").write_text(SIZE_C, encoding="utf-8")
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
-            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
+            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" '
                   f'/I"{KIT / "pvr"}" /I"{KIT / "sdk"}" /I"{rd}" "{d / "k2_size.c"}" /Fe:k2s.exe')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
@@ -278,6 +281,7 @@ s32 kmBeginScene(KMSYSTEMCONFIGSTRUCT *config);
 
 static K2SysConfig g_cfg, g_mirror, g_fresh;
 static K2VertexBuffDesc g_desc;
+s32 kmBeginPass(KMVERTEXBUFFDESC *vertexBuffer);
 
 static u32 tex(void)
 {
@@ -313,6 +317,21 @@ int main(void)
     printf("first %d %d\n", ok, g_k2_config == &g_fresh);
     d = tex();
     printf("fresh %05x\n", d);
+    {
+        static K2PassInfo info;
+        info.direct_transfer_list = 0u;
+        info.buffer_percent[1] = 25.0f;
+        info.buffer_percent[2] = 50.0f;
+        info.buffer_percent[3] = 25.0f;
+        g_desc.pass = &info;
+        kmBeginPass((KMVERTEXBUFFDESC *)&g_desc); /* the first scene: bank 1 */
+        printf("banks2 %08x %08x %08x %08x\n", g_desc.current[0], g_desc.current[1], g_desc.current[2], g_desc.current[3]);
+        g_fresh.vertex_banks = 1u;
+        kmBeginScene((KMSYSTEMCONFIGSTRUCT *)&g_fresh);
+        g_desc.pass = &info;
+        kmBeginPass((KMVERTEXBUFFDESC *)&g_desc);
+        printf("banks1 %08x %08x %08x %08x\n", g_desc.current[0], g_desc.current[1], g_desc.current[2], g_desc.current[3]);
+    }
     return 0;
 }
 """
@@ -332,7 +351,7 @@ class Kamui2SceneKeepsTextures(unittest.TestCase):
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
             srcs = " ".join(f'"{p}"' for p in [KIT / "sdk" / "kamui2_scene.c", KIT / "sdk" / "kamui2_tex.c",
                                                d / "k2_scene.c"])
-            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
+            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" '
                   f'/I"{KIT / "pvr"}" /I"{KIT / "sdk"}" /I"{rd}" {srcs} /Fe:k2sc.exe')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
@@ -348,6 +367,8 @@ class Kamui2SceneKeepsTextures(unittest.TestCase):
             self.assertEqual(out["again"], "130000")        # a real set-up forgets them, as Kamui's 8c2c8ba0 does
             self.assertEqual(out["first"], "0 1")
             self.assertEqual(out["fresh"], "130000")
+            self.assertEqual(out["banks2"], "acd00000 acd80000 acda0000 acde0000")  # 0x80000 a bank: its shares whole
+            self.assertEqual(out["banks1"], "acd00000 acd80000 acda0000 acde0000")  # half of 0x100000, shares of the rest
         finally:
             shutil.rmtree(d, ignore_errors=True)
 

@@ -26,6 +26,8 @@ extern PvrState g_pvr;
 #define PVR_DBG_NOCULL 1u
 #define PVR_DBG_NOFOG 2u
 #define PVR_DBG_NODEPTH 4u
+#define PVR_DBG_SHADOWFLAG 8u /* shade every polygon with the shadow bit */
+#define PVR_DBG_SHADOWVOL 16u /* shade every pixel a volume encloses */
 extern u32 g_pvr_debug;
 
 /* One vertex as drawn: x, y in 640x480 screen pixels, z = 1/w (the PowerVR's depth), u, v; the base and offset
@@ -38,6 +40,8 @@ typedef struct PvrVtx {
 #define PVR_BF_TEXTURE 1u /* textured */
 #define PVR_BF_OFFSET 2u  /* the offset colour is added */
 #define PVR_BF_PUNCH 4u   /* punch-through: alpha test */
+#define PVR_UVO_U 1u /* PvrBatch.uv_out: a u outside 0..1 (the texture repeats or mirrors there) */
+#define PVR_UVO_V 2u
 #define PVR_BF_SHADOW 8u  /* PCW shadow bit: modifier volumes act on it (it marks stencil bit 0x80) */
 
 /* A run of triangles with one render state. */
@@ -46,6 +50,7 @@ typedef struct PvrBatch {
     u32 first, count;  /* vertices, three per triangle */
     u32 isp, tsp, tcw; /* the polygon header's ISP/TSP instruction, TSP instruction and texture control words */
     u32 flags;         /* PVR_BF_* */
+    u32 uv_out;        /* PVR_UVO_*: an axis on which a vertex's texture coordinate leaves 0..1 */
     u16 clip[4];       /* scissor in 640x480 pixels: x0, y0, x1, y1 (exclusive) */
 } PvrBatch;
 
@@ -70,6 +75,34 @@ void tb_poly(PvrScene *s, u32 list, u32 isp, u32 tsp, u32 tcw, u32 flags, const 
 void tb_vertex(PvrScene *s, const PvrVtx *v, int end_of_strip);
 void tb_quad(PvrScene *s, const PvrVtx v[4]); /* a sprite: a, b, c, d around the quad */
 void tb_tri(PvrScene *s, const PvrVtx v[3]);  /* a modifier volume triangle */
+
+/* pvr_blend.c: in-between frames from the scene before this one (--interp-scene) */
+void pvr_blend_keep(const PvrScene *s);
+int pvr_blend_have(void);
+const PvrVtx *pvr_blend_vertices(const PvrScene *cur, f32 t, u32 *blended);
+/* pvr_screen.c: a screen coordinate of the 640x480 screen in the draw target (full: the clip spans that axis) */
+LONG pvr_draw_x(u32 x, int full);
+LONG pvr_draw_y(u32 y, int full);
+
+/* pvr_blend_hold.c: what an in-between frame keeps of the scene drawn last (its textures and registers, the target
+ * outside the clip) */
+void pvr_retain(ID3D11ShaderResourceView *const *srv, u32 n);
+ID3D11ShaderResourceView **pvr_retained(u32 *n);
+const PvrState *pvr_retained_state(void);
+void pvr_hold_reset(void);
+void pvr_hold_begin(void);
+void pvr_hold_end(void);
+
+/* pvr_pack_bundled.c: packs/ beside port.exe. Paths are UTF-8. pack_read_choices: the Texture pack entry's choices (off,
+ * on if has_game, then the folders but game_folder), read once; their number. */
+#define PVR_PACK_PATH 1024
+#define PVR_PACK_NAME 64
+int pack_widen(const char *path, WCHAR *out, int cap);
+u32 *pvr_pack_read_png(const char *path, u32 *w, u32 *h);
+u32 pvr_pack_mips(u32 *px, u32 w, u32 h);
+void pack_bundled_dir(const char *name, char *out, size_t cap);
+int pack_has_index(const char *dir);
+u32 pack_read_choices(int has_game, const char *game_folder, const char *const **labels, const char *const **values);
 
 /* ta_parse.c: the scene's passes into s; per-frame statistics and first-seen classes go to the log. */
 void ta_parse(PvrScene *s, const PvrPass *passes, u32 count);
@@ -96,6 +129,15 @@ u32 pvr_palette_stamp(u32 first, u32 count);
 u32 pvr_pack_levels(u32 tcw, u32 w, u32 h, u32 stride, const u32 **texels, u32 *pw, u32 *ph);
 u64 pvr_pack_key(const u8 *vram, u32 tcw, u32 w, u32 h, u32 stride);
 u32 pvr_pack_generation(void);
+/* The colour a pack gives the untextured polygon after this texture (0x1000000 | RRGGBB), 0 for none. */
+u32 pvr_pack_rim(u32 tcw, u32 tsp);
+/* pvr_keys.c: --texture-keys DIR lists the textures a run decodes (a PNG each, and the pack key); 0 if not ours */
+int pvr_keys_option(const char *arg, const char *value);
+void pvr_keys_note(u32 tcw, u32 w, u32 h, u32 stride, const u32 *texels);
+/* base/pad_style.c: the pad style (0 dreamcast, 1 xbox, 2 playstation) a pack entry may be for */
+int pad_style_option(const char *arg, const char *value);
+int pad_style(void);
+u32 pad_style_serial(void);
 
 /* pvr_state.c: --dump-vram SCENE writes the texture memory as it is when that scene is parsed */
 void pvr_vram_dump(u32 scene);
@@ -107,7 +149,7 @@ ID3D11ShaderResourceView *pvr_tex_get(u32 tcw, u32 tsp); /* NULL: draw untexture
 /* pvr_states.c: D3D11 state objects, created once per distinct state */
 ID3D11BlendState *pvr_blend_state(u32 list, u32 tsp);
 ID3D11DepthStencilState *pvr_depth_state(u32 list, u32 isp);
-ID3D11SamplerState *pvr_sampler_state(u32 tsp);
+ID3D11SamplerState *pvr_sampler_state(u32 tsp, u32 uv_out); /* PvrBatch.uv_out: see pvr_states.c */
 ID3D11RasterizerState *pvr_raster_state(void);
 void pvr_states_release(void);
 

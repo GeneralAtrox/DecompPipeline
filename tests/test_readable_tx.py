@@ -8,6 +8,7 @@ Run: python -W error tests/test_readable_tx.py (also from tests/test_tooling.py)
 import pathlib
 import sys
 import tempfile
+import types
 import unittest
 from unittest import mock
 
@@ -15,12 +16,87 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from test_sync import TMP  # noqa: E402  (sets DECOMP_PROJECT when run alone)
 
 from core import draft_gate, draft_run, paths, readable, refine  # noqa: E402
-from core.rtx import cast, fields, flow, lift, webs  # noqa: E402
+from core.rtx import cast, fields, flow, framebuf, jumptable, lift, selfcall, webs  # noqa: E402
 from core.rtx import source  # noqa: E402
 
 OK = {"verdict": "PASS", "stage": "compare"}
 BAD = {"verdict": "FAIL", "stage": "compare", "failing": 3, "total": 96}
 LONG = '#include "game.h"\n\nvoid Long(void)\n{\n' + "".join(f"    g_a = g_a + g_b;\n" for _ in range(40)) + "}\n"
+
+
+class JumpTables(unittest.TestCase):
+    """core/rtx/jumptable: a switch over code addresses becomes one over the index the table is read by."""
+    TEXT = ("{ r1 = (u32)(s32)(s16)rd16(r2 + 0x8c000100u); sw_ = r1 + 0x8c000000u; switch (sw_) { case 0x8c000010u: r3 = 1u; "
+            "break; case 0x8c000020u: r3 = 2u; break; default: r0 = tc_call(sw_, &a); return; } }")
+
+    def run_on(self, table):
+        b = body(self.TEXT)
+        jumptable.rewrite(b, lambda addr, width: table.get(addr))
+        return " ".join(lines(b))
+
+    def test_over_the_index(self):
+        out = self.run_on({0x8c000100: 0x10, 0x8c000102: 0x20, 0x8c000104: 0x10})
+        for want in ("switch (r2)", "case 0:", "case 2u:", "case 4u:"):
+            self.assertIn(want, out)
+        for gone in ("sw_", "default", "0x8c000010", "rd16"):
+            self.assertNotIn(gone, out)
+
+    def test_a_label_the_table_misses_stays(self):
+        self.assertIn("switch (sw_)", self.run_on({0x8c000100: 0x10}))
+
+
+class SelfCalls(unittest.TestCase):
+    """core/rtx/selfcall: the helper becomes the function, each self-call an ordinary call of it."""
+    RAW = """static u32 body(u32 sp, u32 ret_addr, s32 param_1)
+{
+    u32 r0 = 0, r4 = 0, r15 = 0, pr = 0;
+    r15 = sp;
+    pr = ret_addr;
+    r4 = (u32)param_1;
+    r0 = (u32)body(r15, 0x8c00011eu, (s32)r4);
+    return r0;
+}
+u32 fn_8c000100(s32 param_1)
+{
+    return body(0x8cffe000u, 0x8cfff000u, param_1);
+}
+"""
+
+    def job(self, *storage):
+        return types.SimpleNamespace(raw_params=[(f"param_{i}", st, -1) for i, st in enumerate(storage)])
+
+    def test_the_helper_becomes_the_function(self):
+        out = selfcall.unwrap(self.RAW, self.job("r4"))
+        for want in ("u32 fn_8c000100(s32 param_1)", "a.r[0] = (s32)r4;", "r0 = tc_call(0x8c000100u, &a);", "r15 = 0x8cffe000u;",
+                     "pr = 0x8cfff000u;", "TcArgs a"):
+            self.assertIn(want, out)
+        self.assertNotIn("body(", out)
+
+    def test_a_form_it_does_not_know_stays(self):
+        odd = self.RAW.replace("body(r15, 0x8c00011eu, (s32)r4)", "body(r15 + 4u, r4, (s32)r4)")
+        self.assertEqual(selfcall.unwrap(odd, self.job("r4")), odd)
+        self.assertEqual(selfcall.unwrap(self.RAW, self.job("r4", "r5")), self.RAW)  # the storages do not fit
+
+
+class FrameBuffers(unittest.TestCase):
+    """core/rtx/framebuf: a frame address used as a value becomes an array, bounded by the saves above it."""
+
+    def test_the_array_stops_at_a_saved_register(self):
+        sp = types.SimpleNamespace(loads={"rd32": "u32"}, stores={"wr32": "u32"})
+        b = body("{ wr32(__sp - 4u, __in_r8); r7 = __sp - 16u; f(r7); r1 = rd32(__sp - 12u); r2 = rd32(__sp - 4u); }")
+        arrays = {}
+        framebuf.bind(b, types.SimpleNamespace(spec=sp), {}, arrays)
+        self.assertEqual(arrays, {"frame_buf16": ("u32", "[3]")})
+        got = " ".join(lines(b))
+        self.assertIn("r7 = (u32)frame_buf16;", got)
+        self.assertIn("rd32((u32)frame_buf16 + 4)", got)
+        self.assertIn("rd32(__sp - 4u)", got)  # the saved register stays a slot
+
+    def test_no_address_taken_no_array(self):
+        sp = types.SimpleNamespace(loads={"rd32": "u32"}, stores={"wr32": "u32"})
+        arrays = {}
+        framebuf.bind(body("{ wr32(__sp - 8u, r1); r2 = rd32(__sp - 8u); }"), types.SimpleNamespace(spec=sp), {}, arrays)
+        self.assertEqual(arrays, {})
 
 
 class Adoption(unittest.TestCase):
@@ -62,7 +138,7 @@ class Adoption(unittest.TestCase):
         got = self.hook((OK, ["31u is LIB_ANIM_MAX_JOINTS"]))
         self.assertEqual(got[0], "start")
         self.assertEqual(got[1][0], self.machine)
-        self.assertIn("machine readable file", got[1][1])
+        self.assertIn("already passes the check", got[1][1])
         self.assertIn("31u is LIB_ANIM_MAX_JOINTS", got[1][1])
         self.assertEqual(self.drafts, 0)
         self.assertFalse((self.d / "src" / "8c010000.c").exists())
@@ -157,6 +233,65 @@ class Lift(unittest.TestCase):
         b = body("{ u32 r0 = 0; (void)r0; (void)tc_call(0x8c010000u, &a); return; }")
         lift.declarations(b)
         self.assertEqual(lines(b), ["tc_call(0x8c010000u, &a);", "return;"])
+
+
+class PointerCalls(unittest.TestCase):
+    """A call through a computed pointer lifts to a function-pointer call typed by exactly the registers the original
+    set (the vectors' CA, as the judge decodes it: the integer ones first, then the float ones); where the vectors
+    do not agree on them, or the target has no such form (controls), it still refuses."""
+
+    class Job:
+        names = type("N", (), {"callees": {}})()
+        callee_types, callee_ret = {}, {}
+        kind = staticmethod(lambda t: "f" if t == "f32" else "i")
+        pointer_ca, call_total = {0: ["r4", "r6", "fr4"]}, 1
+
+    def lift_calls(self, text, spec, job=None):
+        b = body(text)
+        job = job or self.Job()
+        job.spec = spec
+        types = lift.declarations(b)
+        lift.calls(b, job, types)
+        return lines(b)
+
+    def test_the_vectors_registers_type_the_call(self):
+        sp = source.spec("dreamcast_sh4")
+        got = self.lift_calls("{ u32 t; u32 r0; r0 = tc_call(t, &a); return r0; }", sp)
+        self.assertEqual(got[0], "r0 = ((u32 (*)(u32, u32, f32))(uintptr_t)t)(0, 0, 0.0f);")  # never set: the block's 0
+        got = self.lift_calls("{ u32 t; u32 r0; u32 __a_r0; u32 __a_r2; f32 __a_fr0; r0 = tc_call(t, &a); return r0; }", sp)
+        self.assertEqual(got[0], "r0 = ((u32 (*)(u32, u32, f32))(uintptr_t)t)(__a_r0, __a_r2, __a_fr0);")
+        got = self.lift_calls("{ u32 t; f32 f; f = tc_callf(t, &a); return; }", sp)
+        self.assertIn("f = ((f32 (*)(u32, u32, f32))(uintptr_t)t)(", got[0])
+
+    def test_controls(self):
+        sp = source.spec("dreamcast_sh4")
+        text = "{ u32 t; u32 r0; r0 = tc_call(t, &a); return r0; }"
+        none = type("J", (self.Job,), {"pointer_ca": {}, "call_total": None})
+        with self.assertRaises(flow.Unsupported):  # the vectors disagree
+            self.lift_calls(text, sp, none())
+        stack = type("J", (self.Job,), {"pointer_ca": {0: ["r4", "s0"]}})
+        with self.assertRaises(flow.Unsupported):  # a stack argument the C call cannot pass
+            self.lift_calls(text, sp, stack())
+        count = type("J", (self.Job,), {"call_total": 2})
+        with self.assertRaises(flow.Unsupported):  # the text has one call, the vectors two
+            self.lift_calls(text, sp, count())
+        bare = type("Sp", (), {"call_fns": ("tc_call", "tc_callf")})()
+        with self.assertRaises(flow.Unsupported):  # a target with no such form
+            self.lift_calls(text, bare)
+
+    def test_pointer_ca_needs_every_vector_to_agree(self):
+        from core.rtx import pointer as job
+        run = lambda calls, ca: {"calls": calls, "call_args": ca}  # noqa: E731
+        same = {0: run([[1], [2]], {1: ["r4", "fr4"]}), 1: run([[3], [4]], {1: ["r4", "fr4"]})}
+        self.assertEqual(job.pointer_ca(same), ({0: [], 1: ["r4", "fr4"]}, 2))
+        prefix = {0: run([[1]], {0: ["r4"]}), 1: run([[1]], {0: ["r4", "r5"]}), 2: run([[1]], {})}
+        self.assertEqual(job.pointer_ca(prefix), ({None: ["r4", "r5", "r6", "r7"]}, 1))
+        longer = {0: run([[1]], {0: ["r4"]}), 1: run([[1], [2]], {0: ["r4", "r5"]})}
+        self.assertEqual(job.pointer_ca(longer), ({None: ["r4", "r5", "r6", "r7"]}, None))  # any call, any count
+        other = {0: run([[1]], {0: ["r4", "fr4"]}), 1: run([[1]], {0: ["r4", "r5"]})}
+        self.assertEqual(job.pointer_ca(other), ({}, 1))              # floats that differ: no type for that call
+        floats = {0: run([[1]], {0: ["r4", "fr4"]}), 1: run([[1], [2]], {0: ["r4", "fr4"]})}
+        self.assertEqual(job.pointer_ca(floats), ({}, None))          # floats and a differing call count
 
 
 class Constants(unittest.TestCase):

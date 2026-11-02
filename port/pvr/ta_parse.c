@@ -12,6 +12,7 @@
 #include <string.h>
 #include "pvr_int.h"
 #include "platform.h"
+#include "prof.h"
 
 #define PARA_END 0u
 #define PARA_CLIP 1u
@@ -26,7 +27,9 @@
 #define PCW_COL_SHIFT 4
 #define PCW_TEXTURE (1u << 3)
 #define PCW_OFFSET (1u << 2)
+#define PCW_GOURAUD (1u << 1)
 #define PCW_UV16 1u
+#define ISP_FROM_PCW 0x03c00000u /* the ISP word's texture, offset, Gouraud and 16-bit UV bits (25..22) */
 #define CLIP_INSIDE 2u
 #define CLIP_OUTSIDE 3u
 #define TILE 32u
@@ -34,6 +37,7 @@
 #define SPRITE_TYPE 15u
 #define MODVOL_TYPE 17u
 #define STATS_EVERY 600u
+#define NO_TCW 0xffffffffu
 
 typedef struct Poly {
     u32 pcw, isp, tsp, tcw, vtype, flags;
@@ -46,6 +50,8 @@ typedef struct Parse {
     u32 list;
     Poly poly;
     int have_poly;
+    u32 textured_tcw, textured_tsp; /* the last polygon, if textured; else NO_TCW */
+    u32 rim;                        /* pvr_pack_rim for this polygon */
     u16 tile_clip[4], clip[4];
     u32 headers, vertices;
     int odd; /* a stray vertex or an unknown parameter: --ta-dump odd writes the scene */
@@ -89,6 +95,16 @@ static u32 header_words(u32 pcw)
     return col == 2u && ((pcw & PCW_VOLUME) || (pcw & PCW_OFFSET)) ? 16u : 8u;
 }
 
+/* The ISP/TSP instruction word as the TA hands it on: bits 25..22 (texture, offset, Gouraud, 16-bit UV) come from the
+ * PCW, whatever the header's word 1 holds there. Kamui leaves them clear in the header it writes (kamui1_state.c masks
+ * them), so a batch that read its Gouraud bit from the header word would draw every polygon flat. */
+static u32 isp_word(u32 pcw, u32 isp)
+{
+    u32 bits = ((pcw & PCW_TEXTURE) ? 1u << 25 : 0u) | ((pcw & PCW_OFFSET) ? 1u << 24 : 0u) |
+               ((pcw & PCW_GOURAUD) ? 1u << 23 : 0u) | ((pcw & PCW_UV16) ? 1u << 22 : 0u);
+    return (isp & ~ISP_FROM_PCW) | bits;
+}
+
 static void read_face(f32 out[4], const u32 *w)
 {
     for (u32 i = 0; i < 4u; i++) out[i] = wf(w[i]);
@@ -99,7 +115,7 @@ static void poly_header(Parse *p, const u32 *w, int sprite)
     Poly *q = &p->poly;
     u32 col, clip_mode;
     q->pcw = w[0];
-    q->isp = w[1];
+    q->isp = isp_word(w[0], w[1]);
     q->tsp = w[2];
     q->tcw = w[3];
     q->flags = 0;
@@ -131,6 +147,14 @@ static void poly_header(Parse *p, const u32 *w, int sprite)
     p->headers++;
     pvr_seen("list %u: %s vertex type %u, isp %08x tsp %08x", p->list, sprite ? "sprite" : "polygon", q->vtype,
              q->isp & 0xfff00000u, q->tsp & 0xfff800c0u);
+    p->rim = 0;
+    if (q->pcw & PCW_TEXTURE) {
+        p->textured_tcw = q->tcw;
+        p->textured_tsp = q->tsp;
+    } else if (q->vtype != MODVOL_TYPE) {
+        if (p->textured_tcw != NO_TCW) p->rim = pvr_pack_rim(p->textured_tcw, p->textured_tsp);
+        p->textured_tcw = NO_TCW;
+    }
     if (q->vtype == MODVOL_TYPE) /* a volume's triangles: only the ISP word (volume instruction, culling) counts */
         tb_poly(p->s, p->list, q->isp, 0, 0, 0, p->clip);
     else
@@ -155,6 +179,17 @@ static void uv16(PvrVtx *v, u32 w)
 {
     v->u = wf(w & 0xffff0000u);
     v->v = wf(w << 16);
+}
+
+/* A pack's rim colour on a lit vertex: the vertex's strongest channel is the light. */
+static u32 rim_colour(u32 base, u32 rim)
+{
+    u32 r = (base >> 16) & 255u, g = (base >> 8) & 255u, b = base & 255u, light = r > g ? r : g;
+    if (b > light) light = b;
+    r = ((rim >> 16) & 255u) * light / 255u;
+    g = ((rim >> 8) & 255u) * light / 255u;
+    b = (rim & 255u) * light / 255u;
+    return (base & 0xff000000u) | r << 16 | g << 8 | b;
 }
 
 static void vertex(Parse *p, const u32 *w)
@@ -194,10 +229,13 @@ static void vertex(Parse *p, const u32 *w)
         v.base = intensity(q->face[0], wf(w[6]));
         v.offset = intensity(q->face[1], wf(w[7]));
         break;
+    case 9: v.base = w[4]; break; /* two volumes, untextured: the first volume's packed colour (w[5] is the second's) */
+    case 10: v.base = intensity(q->face[0], wf(w[4])); break;
     default:
         pvr_todo("ta: vertex type %u (list %u)", q->vtype, p->list);
         return;
     }
+    if (p->rim) v.base = rim_colour(v.base, p->rim);
     p->vertices++;
     tb_vertex(p->s, &v, (w[0] & PCW_END_OF_STRIP) != 0);
 }
@@ -287,6 +325,8 @@ int pvr_option(const char *arg, const char *value)
         g_pvr_debug |= strstr(value, "nocull") ? PVR_DBG_NOCULL : 0u;
         g_pvr_debug |= strstr(value, "nofog") ? PVR_DBG_NOFOG : 0u;
         g_pvr_debug |= strstr(value, "nodepth") ? PVR_DBG_NODEPTH : 0u;
+        g_pvr_debug |= strstr(value, "shadowflag") ? PVR_DBG_SHADOWFLAG : 0u;
+        g_pvr_debug |= strstr(value, "shadowvol") ? PVR_DBG_SHADOWVOL : 0u;
         return 2;
     }
     if (value && !strcmp(arg, "--dump-vram")) {
@@ -326,6 +366,7 @@ void ta_parse(PvrScene *s, const PvrPass *passes, u32 count)
 {
     static u32 scenes;
     Parse p;
+    u64 pt = prof_begin(PROF_TA);
     if (scenes == g_dump_scene) dump(scenes, passes, count);
     if (scenes == g_vram_scene) pvr_vram_dump(scenes);
     memset(&p, 0, sizeof p);
@@ -344,6 +385,8 @@ void ta_parse(PvrScene *s, const PvrPass *passes, u32 count)
         dump(scenes, passes, count);
         g_dump_odd = 0;
     }
+    prof_end(pt);
+    prof_scene(p.headers, s->nvtx / 3u);
     if (scenes++ % STATS_EVERY == 0)
         port_log("ta: scene %u (vblank %u): %u pass(es), %u headers, %u vertices, %u batches, %u triangles\n",
                  scenes - 1u, port_vblank_count(), s->passes, p.headers, p.vertices, s->nbatch, s->nvtx / 3u);

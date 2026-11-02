@@ -3,15 +3,19 @@
  "consoles": {
   "dreamcast": {"name": "Dreamcast", "target": "dreamcast_sh4", "cpu": "sh4",
                 "roots": ["DreamCast/ToyCommander", "DreamCast/Spawn In the Demon's Hand", "DreamCast/PowerStone2", "DreamCast/Vigilante8"],
-                "own_translator": null},
+                "own_translator": null,
+                "runtime": {"reference": "Power Stone 2", "logs": ["DreamCast/play/PowerStone2/data/logs/port*.log"],
+                            "layers": ["Sound CPU", "Guest memory", "SH-4", "Store-queue", "PowerVR"]}},
   "saturn": {"name": "Saturn", "target": "saturn_sh2", "cpu": "sh2", "roots": ["SegaSaturn/Dragon Force", "SegaSaturn/Dragon Force 2",
                                                                      "SegaSaturn/SaturnBomberman", "SegaSaturn/Robopit"],
-             "own_translator": null},
+             "own_translator": null,
+             "runtime": {"reference": "Robo Pit", "logs": ["DreamCast/play/Robopit/data/logs/port*.log"], "layers": ["Saturn"]}},
   "gamecube": {"name": "GameCube", "target": "gamecube_ppc", "cpu": "ppc", "roots": ["GameCube"],
-               "own_translator": null},
-  "xbox": {"name": "Xbox", "target": "xbox_x86", "cpu": "x86", "roots": ["Xbox"], "own_translator": null},
+               "own_translator": null, "runtime": {"reference": null, "logs": [], "layers": ["GameCube"]}},
+  "xbox": {"name": "Xbox", "target": "xbox_x86", "cpu": "x86", "roots": ["Xbox"], "own_translator": null,
+           "runtime": {"reference": null, "logs": [], "layers": []}},
   "xbox360": {"name": "Xbox 360", "target": "xbox360_ppc", "cpu": "xenon", "roots": ["Xbox360"],
-              "own_translator": null}
+              "own_translator": null, "runtime": {"reference": null, "logs": [], "layers": ["Xbox 360"]}}
  },
  "stages": [
   {"id": "extract", "name": "disc extraction",
@@ -48,7 +52,10 @@
   "prepare_median_s": 2.0,
   "idle_share_pct": 10.0,
   "mutation_kill_pct": 85.0,
-  "divergent_scenarios": 0
+  "divergent_scenarios": 0,
+  "runtime": {"fps": 144, "frame_p99_ms": 6.94, "width": 2560, "height": 1600, "min_frames": 600,
+              "layer_done": ["Replaced", "Switched", "Native"],
+              "aspect_shapes": ["4:3", "16:10", "16:9", "21:9", "32:9", "narrower"]}
  },
  "baseline": {
   "name": "Too Human (Xbox 360)", "console": "xbox360",

@@ -9,15 +9,19 @@ with the matched C's hash. The gate compares a run with it mutant by mutant:
 - a flip (the matched C itself no longer passes its harness: a stricter judge or new vectors found it wrong) and a
   stale function (its matched C changed since the baseline: other mutants) are listed, not failed: flips are the
   judge change's own report (each one a decision), stale ones need a new baseline entry;
+- but a run that compares too little proves nothing: more than MAX_UNCOMPARED of a workspace's functions in the run
+  being flips or stale fails the gate (a broken harness makes every function a flip, and no kill is then "lost"), and so
+  does an empty baseline;
 - gained kills are counted: the kill rate per workspace before and after.
-A baseline only moves up: `baseline` refuses a run with a lost kill. Which heads need the audit: `needed` (a change
+A baseline only moves up: `baseline` refuses a run with a lost kill, or one that compared too little (--reason WHY
+accepts the latter, for matched C that was really redone, and is printed). Which heads need the audit: `needed` (a change
 to the judge, a runtime or a target's locked oracle scripts).
 
 usage:
   python tools/mutation_audit.py sample --ws KEY=DIR ... [--n 150] [--seed 1]       (re)draw sample.json
   python tools/bounded.py 21600 python tools/mutation_audit.py run --ws KEY=DIR ... --out RUN.json [--workers 4]
   python tools/mutation_audit.py gate RUN.json [--baseline FILE]                     exit 1 on a lost kill
-  python tools/mutation_audit.py baseline RUN.json                                   RUN becomes the baseline
+  python tools/mutation_audit.py baseline RUN.json [--reason WHY]                    RUN becomes the baseline
   python tools/mutation_audit.py needed BASE HEAD [--repo DIR]                       exit 0: the head needs the audit
 KEY=DIR: a workspace (a project folder) under the sample's key; for a judge change's proof, a private copy of it with
 the new harnesses. Keys not given are left out of a run (and reported as missing by the gate).
@@ -34,9 +38,13 @@ TOOL = pathlib.Path(__file__).resolve().parents[1]
 HERE = TOOL / "tools" / "mutation_audit"
 MUTANTS = 10       # mutants per function
 TIME_CAP_S = 3600  # per function: the audit judges every mutant (a time cap would leave some untried)
+MAX_UNCOMPARED = 0.25  # share of a workspace's functions: real runs have shown 2% flips (judge-gaps) and 6% stale
 JUDGE_PATHS = ("core/compare.py", "core/check.py", "core/readable_check.py", "core/mutation.py",
                "core/mutation_ops.py", "core/ghidra.py", "targets/gamecube_ppc/ppc_compare.py",
-               "targets/gamecube_ppc/ppc_check.py")
+               "targets/gamecube_ppc/ppc_check.py", "targets/xbox360_ppc/x360_compare.py",
+               "targets/xbox360_ppc/x360_check.py", "core/strict_judge.py", "core/call_coverage.py",
+               "core/junk_ram.py", "core/ret_reg.py", "core/run_flag_set.py", "core/target_hooks.py",
+               "tools/mutation_check.py")
 RUNTIME_DIRS = ("runtime/", "runtime_rd/")
 
 
@@ -90,7 +98,7 @@ def run(wss, sample, workers, timeout_s):
 
 def compare(base, cur):
     """The gate's figures per key and its verdict: {"keys": {key: {...}}, "lost": [(key, addr, id)], "ok"}."""
-    keys, lost = {}, []
+    keys, lost, thin = {}, [], []
     for key, fs in sorted(base.items()):
         k = {"functions": len(fs), "missing": [], "stale": [], "flips": [], "mutants": 0, "killed_base": 0,
              "killed_run": 0, "gained": 0, "lost": 0}
@@ -121,8 +129,11 @@ def compare(base, cur):
         for name in ("base", "run"):
             k[f"rate_{name}"] = round(100.0 * k[f"killed_{name}"] / k["mutants"], 1) if k["mutants"] else None
         keys[key] = k
+        ran = len(fs) - len(k["missing"]) - sum(1 for b in fs.values() if b.get("error"))
+        if ran and (len(k["flips"]) + len(k["stale"])) / ran > MAX_UNCOMPARED:
+            thin.append(key)
     missing = sum(len(k["missing"]) for k in keys.values())
-    return {"keys": keys, "lost": lost, "ok": not lost and not missing}
+    return {"keys": keys, "lost": lost, "thin": thin, "ok": bool(keys) and not lost and not missing and not thin}
 
 
 def report(res):
@@ -133,7 +144,9 @@ def report(res):
                      f"{k['lost']}; flips {len(k['flips'])}, stale {len(k['stale'])}, missing {len(k['missing'])}"
                      + (f"; flips: {' '.join(k['flips'][:20])}" if k["flips"] else ""))
     lines.append("gate: " + ("PASS" if res["ok"] else "FAIL") + (f" ({len(res['lost'])} lost kills: "
-                 + ", ".join(f"{k} {a} m{i:02d}" for k, a, i in res["lost"][:20]) + ")" if res["lost"] else ""))
+                 + ", ".join(f"{k} {a} m{i:02d}" for k, a, i in res["lost"][:20]) + ")" if res["lost"] else "")
+                 + (f" (compared too little, over {MAX_UNCOMPARED:.0%} flips or stale: {', '.join(res['thin'])})"
+                    if res["thin"] else "") + ("" if res["keys"] else " (an empty baseline)"))
     return "\n".join(lines)
 
 
@@ -181,6 +194,7 @@ def main():
     g.add_argument("--baseline", default=str(HERE / "baseline.json"))
     b = sub.add_parser("baseline")
     b.add_argument("run")
+    b.add_argument("--reason", help="accept a run that compared too little, and why")
     n = sub.add_parser("needed")
     n.add_argument("base")
     n.add_argument("head")
@@ -211,6 +225,11 @@ def main():
             if res["lost"]:
                 print("refused: the baseline only moves up (a lost kill)")
                 return 1
+            if res["thin"] and not a.reason:
+                print(f"refused: {', '.join(res['thin'])} compared too little to replace the baseline (--reason WHY)")
+                return 1
+            if res["thin"]:
+                print(f"accepted though {', '.join(res['thin'])} compared too little: {a.reason}")
             cur = {k: dict(old.get(k) or {}, **v) for k, v in {**old, **cur}.items()}
         (HERE / "baseline.json").write_text(json.dumps(cur, indent=1, sort_keys=True) + "\n", encoding="utf-8")
         print(f"baseline: {sum(len(v) for v in cur.values())} functions")

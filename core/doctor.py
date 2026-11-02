@@ -26,7 +26,7 @@ import collections
 import pathlib
 import re
 
-from . import callee_drift, filelock, raw_names, retire, scope, sysassign
+from . import callee_drift, filelock, locations, raw_names, retire, scope, sysassign
 
 FILE_STATUSES = ("readable", "stale", "harness_stale", "running")  # a readable/src file exists for these
 
@@ -141,6 +141,22 @@ def check(ws):
     notes.insert(0, f"readable: {len(files)} file(s) in readable/src, {len(cur)} of current functions "
                     f"({len(files) - len(cur)} not functions); of those {readable_pass} readable{others}; "
                     f"denominator: {len(matched)} matched functions")
+    if pj.get("target", "dreamcast_sh4") in ("dreamcast_sh4", "saturn_sh2"):  # the listing reader is SuperH's
+        from . import ret_reg, ret_use
+        missed = ret_use.Project(ws).unlisted(ws / "state")
+        if missed:
+            fails.append(f"{len(missed)} function(s) whose callers read a result register the judge does not compare "
+                         f"(run tools/float_gaps.py --project {ws} --write): "
+                         + " ".join(f"{a}:{'+'.join(r)}" for a, r in missed[:20]))
+        stale = {g: cs for g, cs in ret_use.Project(ws).fret_callers(ws / "state").items()
+                 if set(cs) - set(ret_reg.fret_callers(ws / "state").get(g, ()))} if not missed else None
+        if stale:
+            fails.append(f"{len(stale)} caller(s) whose oracle would not draw float results for a callee they read in fr0 "
+                         f"(run tools/float_gaps.py --project {ws} --write, then re-prepare them): "
+                         + " ".join(sorted(stale)[:20]))
+    if not locations.file_for(ws).exists():
+        notes.append(f"no {locations.file_for(ws)}: where this game's files and emulators are (AGENTS.md; "
+                     f"tools/game_setup.py locations writes the skeleton)")
     lines = [("FAIL " if fails else "OK ") + f"consistency: {len(fails)} problem group(s)"]
     if fails and detail:  # the orphan table under its heading (the first problem)
         fails = fails[:1] + detail + fails[1:]

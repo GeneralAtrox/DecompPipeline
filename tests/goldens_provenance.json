@@ -1,0 +1,56 @@
+{
+ "targets/dreamcast_sh4/translator/regress/toycommander_sample.json": {
+  "evidence": "tools/regress.py --update: the translator's own verdicts and C hashes",
+  "source": "native-baseline"
+ },
+ "targets/dreamcast_sh4/translator/results/fresh_2026-10-23.json": {
+  "evidence": "the translator's own verdicts on a day's run",
+  "source": "native-baseline"
+ },
+ "targets/dreamcast_sh4/translator/results/verdicts_ps2.json": {
+  "evidence": "the translator's own verdicts on a day's run",
+  "source": "native-baseline"
+ },
+ "targets/dreamcast_sh4/translator/results/verdicts_spawn.json": {
+  "evidence": "the translator's own verdicts on a day's run",
+  "source": "native-baseline"
+ },
+ "targets/dreamcast_sh4/translator/results/verdicts_tc.json": {
+  "evidence": "the translator's own verdicts on a day's run",
+  "source": "native-baseline"
+ },
+ "targets/gamecube_ppc/translator/regress/skies.json": {
+  "evidence": "tools/regress.py --update: the translator's own verdicts and C hashes",
+  "source": "native-baseline"
+ },
+ "targets/gamecube_ppc/translator/regress/skies_all.json": {
+  "evidence": "tools/regress.py --update: the translator's own verdicts and C hashes",
+  "source": "native-baseline"
+ },
+ "targets/gamecube_ppc/translator/regress/skies_compile_all.json": {
+  "evidence": "tools/regress.py --update: the translator's own verdicts and C hashes",
+  "source": "native-baseline"
+ },
+ "targets/saturn_sh2/translator/regress/grandia_field.json": {
+  "evidence": "tools/regress.py --update: the translator's own verdicts and C hashes",
+  "source": "native-baseline"
+ },
+ "targets/xbox360_ppc/translator/regress/toohuman_set.json": {
+  "evidence": "tools/regress.py --update: the translator's own verdicts and C hashes",
+  "source": "native-baseline"
+ },
+ "targets/xbox360_ppc/translator/tests/golden_words.json": {
+  "evidence": "x360_check_decoder.txt: Too Human's code words: the decoder and a reference disassembler agree on 3683202, 0 illegal, 0 operand disagreements",
+  "evidence_sha256": "493140fdbbbe648d718a0b3a9543e1f0defdef7bee0446994377a5d28670fe91",
+  "sha256": "edf2d0113aff52b2bcbff7e078e2f3ec0ac72485e06f44df1f30c3ea903e9f90",
+  "source": "disc-decode"
+ },
+ "tests/test_lockstep.py#TIMER_GOLDEN": {
+  "evidence": "lockstep.c's own output at 2492861, pinned before counter mode",
+  "source": "native-baseline"
+ },
+ "tools/mutation_audit/baseline.json": {
+  "evidence": "the mutation audit's own kill counts",
+  "source": "native-baseline"
+ }
+}

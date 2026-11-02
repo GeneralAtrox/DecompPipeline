@@ -22,6 +22,8 @@ typedef struct {
     s32 cur, next;        /* the samples at pos and after it */
     u32 dpos;             /* ADPCM: the next frame to decode */
     s32 signal, quant;
+    int loop_kept;        /* ADPCM: loop_signal and loop_quant hold the decoder as it stands at loop_start */
+    s32 loop_signal, loop_quant;
     float gain_l, gain_r;
     u32 level, pan;
     u32 release;          /* key off: output frames of the release left (0: keyed on) */
@@ -125,19 +127,30 @@ static s32 adpcm_step(Voice *v)
 }
 
 /* The sample at frame i. ADPCM decodes in order: a jump restarts the decoder from frame 0, except a ring's (the
- * stream form's) wrap to its loop start, where the decoder runs on. */
+ * stream form's) wrap to its loop start, where the decoder runs on. A plain loop's wrap gives the same state every
+ * time, so the first wrap keeps it: decoding from frame 0 at each wrap was most of the mix in a scene with short loops
+ * late in long samples. */
 static s32 fetch(Voice *v, u32 i, int wrapped)
 {
     if (v->format < AICA_ADPCM) return pcm(v, i);
     if (i != v->dpos) {
         if (wrapped && v->format == AICA_ADPCM_STREAM) {
             v->dpos = i;
+        } else if (wrapped && v->loop_kept) {
+            v->dpos = i;
+            v->signal = v->loop_signal;
+            v->quant = v->loop_quant;
         } else {
             v->dpos = 0;
             v->signal = 0;
             v->quant = 0x7f;
             while (v->dpos < i) adpcm_step(v);
         }
+    }
+    if (wrapped && !v->loop_kept) {
+        v->loop_kept = 1;
+        v->loop_signal = v->signal;
+        v->loop_quant = v->quant;
     }
     return adpcm_step(v);
 }
@@ -201,6 +214,7 @@ void aica_voice_play(u32 v, u32 start, int loop, u32 loop_start, u32 end)
     p->looped = 0;
     p->env = 1.0f;
     p->dpos = 0xffffffffu; /* not decoded: the first fetch starts the decoder */
+    p->loop_kept = 0;
     if (!p->playing) return;
     if (g_key_log) g_key_log(v, g_mixed, 1, p->level, p->pan, p->step, p->end);
     p->cur = fetch(p, p->pos, 0);

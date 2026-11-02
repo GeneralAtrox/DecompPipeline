@@ -65,6 +65,8 @@ header_snapshot.acquire = lambda cfg, log=None, **k: Snap()
 refine.harness_stale = lambda cfg, a, **k: None
 refine.preflight = lambda cfg, reg, a, meta: None
 readable.Registry = lambda: None
+from core import global_infer
+global_infer.name_data = lambda cfg, targets: None  # no registry here: no data to name
 refine.tree_hashes = lambda box: {}
 refine.build_sandbox = build_sandbox
 draft_run.first = lambda *a, **k: None  # no machine draft here (batch 23): the agents are what this test runs

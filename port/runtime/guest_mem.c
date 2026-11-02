@@ -4,15 +4,21 @@
  * large-address-aware process). The views are read/write but not executable: a call to a
  * guest code address faults and dispatch.c sends it to the host function. The boot image's code pages in P1 are
  * the exception once dispatch.c has put its jump thunks there. The P4 control registers at 0xff000000 (port.h
- * GUEST_P4_CCN) are one more read/write block of their own. */
+ * GUEST_P4_CCN) are one more read/write block of their own. The console's area 3 repeats the 16 MB four times (phys
+ * 0x0c..0x0f), so a pointer a game derives with an other-copy bit (a game's 0x8e070d3e, a hook stored in the 0x0e copy)
+ * is mapped too, in P0, P1 and P2 form: best effort, a view that cannot be mapped is logged and left out. */
 #include <string.h>
 #include <windows.h>
 #include "port.h"
 
 static const u32 g_mirrors[] = {GUEST_MIRROR_BASE, GUEST_UNCACHED_BASE, GUEST_SQ_BASE,
                                  GUEST_SQ_BASE + GUEST_RAM_SIZE, GUEST_SQ_BASE + 2u * GUEST_RAM_SIZE,
-                                 GUEST_SQ_BASE + 3u * GUEST_RAM_SIZE};
+                                 GUEST_SQ_BASE + 3u * GUEST_RAM_SIZE,
+                                 /* area 3's other three copies: P1, P0, P2 (best effort, after the required six) */
+                                 0x8d000000u, 0x8e000000u, 0x8f000000u, 0x0d000000u, 0x0e000000u, 0x0f000000u,
+                                 0xad000000u, 0xae000000u, 0xaf000000u};
 #define MIRROR_COUNT (sizeof g_mirrors / sizeof g_mirrors[0])
+#define MIRROR_REQUIRED 6u
 #define OC_ADDR_ARRAY 0xf4000000u /* SH-4 operand cache address array: 512 entries 0x20 apart, plus the A bit */
 #define OC_ADDR_ARRAY_SIZE 0x10000u
 
@@ -27,11 +33,15 @@ static int map_view(HANDLE sec, u32 base)
         port_log("guest RAM: cannot map at %08x (%lu)\n", base, GetLastError());
         return 0;
     }
-    /* Just past each view: reserved, so a run off the end faults instead of touching host memory (the store-queue
-     * views are back to back, so only the last one has a guard). */
-    if (base < GUEST_SQ_BASE || base == GUEST_SQ_BASE + (GUEST_SQ_VIEWS - 1u) * GUEST_RAM_SIZE)
-        VirtualAlloc((void *)(uintptr_t)(base + GUEST_RAM_SIZE), 0x10000, MEM_RESERVE, PAGE_NOACCESS);
     return 1;
+}
+
+/* Just past each view: reserved, so a run off the end faults instead of touching host memory. Done after every view
+ * is mapped: a view that sits right after another (the area 3 copies) has no guard, the reservation would be its
+ * own address. */
+static void guard_view(u32 base)
+{
+    VirtualAlloc((void *)(uintptr_t)(base + GUEST_RAM_SIZE), 0x10000, MEM_RESERVE, PAGE_NOACCESS);
 }
 
 int guest_mem_init(void)
@@ -43,7 +53,11 @@ int guest_mem_init(void)
     }
     if (!map_view(sec, GUEST_RAM_BASE)) return 0;
     for (u32 i = 0; i < MIRROR_COUNT; i++)
-        if (!map_view(sec, g_mirrors[i])) return 0;
+        if (!map_view(sec, g_mirrors[i]) && i < MIRROR_REQUIRED) return 0;
+    guard_view(GUEST_RAM_BASE);
+    for (u32 i = 0; i < MIRROR_COUNT; i++)
+        if (g_mirrors[i] < GUEST_SQ_BASE || g_mirrors[i] == GUEST_SQ_BASE + (GUEST_SQ_VIEWS - 1u) * GUEST_RAM_SIZE)
+            guard_view(g_mirrors[i]);
     /* The operand cache's address array: a write there invalidates a cache line (a movie player clears it after each
      * decode), which means nothing on the host, so its entries are scratch memory. */
     if (!VirtualAlloc((void *)(uintptr_t)OC_ADDR_ARRAY, OC_ADDR_ARRAY_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE))
@@ -70,6 +84,7 @@ void guest_p4_report(void)
 
 u32 guest_fold(u32 addr)
 {
+    if (addr - GUEST_RAM_BASE < GUEST_RAM_SIZE) return addr; /* the RAM itself: no mirror covers it (the common case) */
     for (u32 i = 0; i < MIRROR_COUNT; i++)
         if (addr - g_mirrors[i] < GUEST_RAM_SIZE) return addr - g_mirrors[i] + GUEST_RAM_BASE;
     return addr;

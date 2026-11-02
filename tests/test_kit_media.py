@@ -295,7 +295,7 @@ def build(d):
     media = KIT / "runtime" / "media"
     srcs = " ".join(f'"{p}"' for p in [media / f for f in MEDIA] + [KIT / "sdk" / "adx_mw.c", d / "media_main.c"])
     cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /wd4996 /I"{d}" /I"{media}" '
-          f'/I"{KIT / "runtime"}" /I"{rd}" {srcs} /Fe:media.exe')
+          f'/I"{KIT / "runtime"}" /I"{KIT / "base"}" /I"{rd}" {srcs} /Fe:media.exe')
     vc = str(game_config.vcvars32()).replace("/", "\\")
     r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
                        errors="replace", timeout=300)

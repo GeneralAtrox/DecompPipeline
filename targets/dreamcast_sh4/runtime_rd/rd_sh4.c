@@ -16,7 +16,7 @@ static int g_fpu;    /* line Q given: the whole FPU is state */
 static u32 g_gs[7];  /* r8..r14: runtime state (line G), as in tc_rt.c */
 static u32 g_ro[4], g_ro_mask; /* r4..r7 as the last call left them, and line O's compared ones (TcOut, tc_rt.c) */
 static u32 g_t; static int g_t_export; /* T, and line t: T compared at exit (TcTflag, tc_rt.c) */
-int rd_area5; /* header line y: an area-5 read returns 0 (rd_veh.c maps a zero page there; tc_rt.c) */
+int rd_vram, rd_area5; /* header lines v, y: the video memory window shows tcrt_vram_word's content, area 5 reads 0 (rd_veh.c maps the pages) */
 static u32 (*g_fsca)[65536][2]; /* fsca_table.bin: {sin, cos} bits per angle, round to nearest, then toward zero */
 
 static u32 f2u(f32 f) { u32 u; memcpy(&u, &f, 4); return u; }
@@ -248,7 +248,7 @@ void tcrt_report_gbr(FILE *out)
  * each call (FC). */
 #define FPSCR_BITS 0x003fffffu
 #define MODES (MODE_FR | MODE_SZ | MODE_PR)
-#define MAX_FC 4096 /* TcOracle.CALL_LIMIT */
+#define MAX_FC 8192 /* core/oracle_limits.CALLS[1] */
 
 static u32 g_fpscr;
 static int g_fs; /* line N given */
@@ -354,7 +354,7 @@ void tcrt_report_t(FILE *out)
     if (g_t_export && !tcrt_halted) fprintf(out, "RT %u\n", g_t);
 }
 
-void tcrt_set_area5(void) { rd_area5 = 1; }
+void tcrt_set_area5(void) { rd_area5 = 1; } void tcrt_set_vram(void) { rd_vram = 1; }
 
 void tcrt_report_ro(FILE *out)
 {

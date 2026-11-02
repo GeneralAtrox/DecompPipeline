@@ -244,6 +244,10 @@ class Wiring(unittest.TestCase):
         self.assertLess(prep.index("sq = TcSq.of("), prep.index("sq.callees(getCurrentProgram(), calledBy(fn, body), facts.fpscrEntry)"))
         sq = text(SH4 / "ghidra_scripts" / "TcSq.java")
         self.assertIn("d.args(g)", sq)
+        # A branch inside an instruction (jsr with an fmov in its delay slot, Vigilante 8's 8c070dc0) is no tail call: it
+        # ended the walk at the first such call, and the bytes stored after it were sent stale (the menu's glyph u, v).
+        live = text(SH4 / "ghidra_scripts" / "TcLive.java")
+        self.assertIn("!op.getInput(0).isConstant() && tail(ins, body) != null", live)
         xe = text(SH4 / "xemu" / "xe_main.c")
         self.assertIn("sq_callee(x, target);", xe)
         self.assertIn("tcrt_sq_line[i] = line[i];", text(SH4 / "runtime" / "runner.c"))

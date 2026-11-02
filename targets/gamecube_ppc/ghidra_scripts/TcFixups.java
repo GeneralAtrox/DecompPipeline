@@ -30,11 +30,19 @@
 //    (Book I 3.3.13; sraw's SLEIGH masks with 0x3f and is right). They differ only for rB >= 64 with bit 0x20 clear
 //    (Skies 801ab6e8, 802377f8, 8023fef8). The fixup writes the 750CL's result to rA, and for slw. / srw. sets CR0's
 //    LT, GT and EQ from it (SO as the step left it), only when the result differs.
+//  - fres / frsqrte: the SLEIGH divides and takes a square root exactly; the 750CL looks the result up in a table and
+//    interpolates. The fixup writes TcEstimate's result (the hardware-measured tables) to fD, and to ps1 of fD when
+//    the step wrote it.
+//  - cache and ordering instructions with no register or memory effect a single-threaded program can see (dcbf, dcbst,
+//    dcbt, dcbtst, icbi, sync, isync, eieio) are no-ops: the SLEIGH's CALLOTHERs get empty callbacks (install). dcbz
+//    zeroes the 32-byte block holding the effective address. dcbi is refused: it discards a dirty line, and with no
+//    cache modelled there is no line to discard.
 //  - refuse: instructions whose p-code is not the hardware's and that nothing here repairs. The function is refused
-//    (TcPrepare "unsupported") rather than tested against a wrong oracle: the reciprocal estimates (fres, frsqrte:
-//    table lookups on the 750CL), the paired-single and quantized load/store families (ps_*, psq_*: ldexpf CALLOTHER,
-//    signed conversion of the unsigned GQR types, an unsigned 6-bit scale, no store saturation), FPSCR moves (the
-//    p-code float ops always round to nearest) and cache/system instructions (dcbz zeroes a cache line).
+//    (TcPrepare "unsupported") rather than tested against a wrong oracle: the paired-single and quantized load/store
+//    families (ps_*, psq_*: ldexpf CALLOTHER, signed conversion of the unsigned GQR types, an unsigned 6-bit scale, no
+//    store saturation), FPSCR moves (the p-code float ops always round to nearest, and the status bits are not kept),
+//    and the system instructions (dcbi, dcbz_l, mfmsr, mtmsr, mftb, sc, rfi, tw, twi: machine state the program does
+//    not own).
 //    Exception: psq_l / psq_st through a GQR whose type and scale fields are 0 (GQR0 in CodeWarrior's prologues and
 //    epilogues, saving ps1 of f14..f31) take the SLEIGH's float path, a plain single load or store with no
 //    CALLOTHER: the hardware's but for rounding (not truncating) the stored ps0, a stack-frame word no check compares
@@ -54,7 +62,6 @@ public class TcFixups {
     // Why the oracle cannot run this instruction faithfully, or null. fixed: the GQR values at entry (TcFacts).
     static String refuse(Instruction in, java.util.Map<String, Long> fixed) {
         String m = in.getMnemonicString().toLowerCase();
-        if (m.matches("fres\\.?|frsqrte\\.?")) return "estimate instruction " + m;
         if (m.startsWith("psq_")) {
             java.util.regex.Matcher g = java.util.regex.Pattern.compile("gqr([0-7])").matcher(in.toString().toLowerCase());
             Long v = g.find() ? fixed.get("gqr" + g.group(1)) : null;
@@ -69,7 +76,7 @@ public class TcFixups {
             if (!CALLOTHER_HANDLED.contains(name)) return "CALLOTHER " + name + " in " + m + " (no emulator callback)";
         }
         if (m.matches("mtfsf\\.?|mtfsfi\\.?|mtfsb[01]\\.?|mffs\\.?")) return "FPSCR move " + m + " (rounding mode)";
-        if (m.matches("dcbz|dcbz_l|dcbi|dcbf|dcbst|icbi|sync|isync|eieio|mtmsr|mfmsr|sc|rfi|tw|twi|mftb")) {
+        if (m.matches("dcbz_l|dcbzl|dcbi|mtmsr|mfmsr|sc|rfi|tw|twi|mftb")) {
             return "cache/system instruction " + m;
         }
         return null;
@@ -77,9 +84,38 @@ public class TcFixups {
 
     // ---------- CALLOTHER callbacks ----------
     // cntlzw / cntlzw.: the SLEIGH is A = countLeadingZeros(S:4), a CALLOTHER the emulator does not implement.
-    static final java.util.Set<String> CALLOTHER_HANDLED = java.util.Set.of("countLeadingZeros");
+    // The cache and ordering CALLOTHERs below do nothing a program can see (see the header); dataCacheBlockClearToZero
+    // zeroes the 32-byte block.
+    static final java.util.Set<String> NOP_OPS = java.util.Set.of("sync", "instructionSynchronize",
+        "enforceInOrderExecutionIO", "dataCacheBlockFlush", "dataCacheBlockStore", "dataCacheBlockTouch",
+        "dataCacheBlockTouchForStore", "instructionCacheBlockInvalidate");
+    static final java.util.Set<String> CALLOTHER_HANDLED;
 
-    static void install(EmulatorHelper emu) {
+    static {
+        java.util.Set<String> h = new java.util.HashSet<>(NOP_OPS);
+        h.add("countLeadingZeros");
+        h.add("dataCacheBlockClearToZero");
+        CALLOTHER_HANDLED = java.util.Set.copyOf(h);
+    }
+
+    static void install(EmulatorHelper emu, AddressSpace ram) {
+        for (String name : NOP_OPS) {
+            emu.registerCallOtherCallback(name, new BreakCallBack() {
+                @Override
+                public boolean pcodeCallback(PcodeOpRaw op) {
+                    return true;
+                }
+            });
+        }
+        emu.registerCallOtherCallback("dataCacheBlockClearToZero", new BreakCallBack() {
+            @Override
+            public boolean pcodeCallback(PcodeOpRaw op) {
+                MemoryState ms = emu.getEmulator().getMemState();
+                long ea = ms.getValue(op.getInput(1)) & 0xffffffe0L;
+                ms.setChunk(new byte[32], ram, ea, 32);
+                return true;
+            }
+        });
         emu.registerCallOtherCallback("countLeadingZeros", new BreakCallBack() {
             @Override
             public boolean pcodeCallback(PcodeOpRaw op) {
@@ -101,7 +137,10 @@ public class TcFixups {
         if (Double.isNaN(d)) w = 0x80000000L;
         else if (d >= 2147483648.0) w = 0x7fffffffL;
         else if (d < -2147483648.0) w = 0x80000000L;
-        else w = (towardZero ? (long) d : (long) Math.rint(d)) & 0xffffffffL;
+        else {
+            long t = towardZero ? (long) d : (long) Math.rint(d);
+            w = t >= 0x80000000L ? 0x7fffffffL : t & 0xffffffffL;  // [2^31 - 0.5, 2^31) rounds up to 2^31: saturates
+        }
         long r = 0xfff8000000000000L | w;
         if (w == 0 && (b & 0x8000000000000000L) != 0) r |= 0x100000000L;
         return r;
@@ -136,10 +175,10 @@ public class TcFixups {
         java.util.regex.Pattern.compile("(fadd|fsub|fmul|fdiv|fmadd|fmsub|fnmadd|fnmsub|fsqrt)\\.?");
 
     // ---------- per step ----------
-    String kind;       // "fctiw", "fctiwz", "stfs", "single", "double", "sign", "lfs", "shift" or null
+    String kind;       // "fctiw", "fctiwz", "stfs", "single", "double", "sign", "lfs", "shift", "estimate" or null
     String dest;       // fctiw*, single, double, sign, lfs, shift: the destination register
-    long operand;      // fctiw*, sign: fB's bits; stfs: fS's bits, before the step
-    String op;         // single, double, sign: the mnemonic without "."; shift: the mnemonic
+    long operand;      // fctiw*, sign, estimate: fB's bits; stfs: fS's bits, before the step
+    String op;         // single, double, sign, estimate: the mnemonic without "."; shift: the mnemonic
     long[] srcBits;    // single, double, shift: the source operands' bits, before the step
     String ps1;        // single, lfs: fD's ps1 register when the step writes it, else null
     int fixups;        // how many steps this oracle corrected (TcPrepare reports it)
@@ -179,6 +218,13 @@ public class TcFixups {
                 else srcBits[i - 1] = bits(emu, r);
             }
             kind = dest == null ? null : SINGLE.matcher(m).matches() ? "single" : "double";
+            op = m.replace(".", "");
+            ps1 = ps1(in, dest);
+        } else if (m.matches("fres\\.?|frsqrte\\.?")) {
+            dest = reg(in, 0);
+            String src = reg(in, 1);
+            kind = dest == null || src == null ? null : "estimate";
+            if (kind != null) operand = bits(emu, src);
             op = m.replace(".", "");
             ps1 = ps1(in, dest);
         } else if (m.matches("f(neg|abs)\\.?")) {
@@ -222,7 +268,7 @@ public class TcFixups {
 
     // stored: {address, size} of the step's last data store (TcBank), or null; reads: the step's data reads
     // {pc, address, size, value} (TcBank).
-    void after(EmulatorHelper emu, AddressSpace ram, long[] stored, java.util.List<long[]> reads) {
+    void after(EmulatorHelper emu, AddressSpace ram, TcBank bank, long[] stored, java.util.List<long[]> reads) {
         if (kind == null) return;
         if (kind.startsWith("fctiw")) {
             emu.writeRegister(dest, new BigInteger(Long.toUnsignedString(fctiw(operand, kind.equals("fctiwz")))));
@@ -231,6 +277,8 @@ public class TcFixups {
             long[] r = kind.equals("single") ? TcSingle.singleResult(op, TcSingle.singleSource(op, srcBits)) : null;
             if (r != null && r[0] != r[1] && bits(emu, dest) == r[0]) put(emu, r[1]);  // the step flushed: see above
             if (TcNaN.nan(bits(emu, dest))) put(emu, TcNaN.arith(op, srcBits));
+        } else if (kind.equals("estimate")) {
+            put(emu, op.equals("fres") ? TcEstimate.fres(operand) : TcEstimate.frsqrte(operand));
         } else if (kind.equals("sign")) {
             if (TcNaN.nan(operand)) put(emu, TcNaN.sign(op, operand));
         } else if (kind.equals("lfs")) {
@@ -250,7 +298,12 @@ public class TcFixups {
             long s = toSingle(operand);
             byte[] b = {(byte) (s >>> 24), (byte) (s >>> 16), (byte) (s >>> 8), (byte) s};
             Address at = ram.getAddress(stored[0]);
-            if (!java.util.Arrays.equals(emu.readMemory(at, 4), b)) {
+            if (bank.ioStep >= 0 && bank.io.get(bank.ioStep)[0] == stored[0]) {  // a hardware register: the log has it
+                if (bank.io.get(bank.ioStep)[2] != s) {
+                    bank.io.get(bank.ioStep)[2] = s;
+                    fixups++;
+                }
+            } else if (!java.util.Arrays.equals(emu.readMemory(at, 4), b)) {
                 emu.writeMemory(at, b);
                 fixups++;
             }

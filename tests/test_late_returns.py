@@ -45,9 +45,10 @@ class Wiring(unittest.TestCase):
         self.assertIn("TcLate.java", locked)
         for p in SCRIPTS.glob("*.java"):
             self.assertLessEqual(len(text(p).splitlines()), 400, p.name)
-        rets = re.search(r"static final int RETS = (\d+);", text(SCRIPTS / "TcOracle.java"))
+        rets = re.search(r"static int RETS = (\d+);", text(SCRIPTS / "TcOracle.java"))
         tcrt = re.search(r"#define TCRT_RETS (\d+)", text(SH4 / "runtime" / "tc_rt_internal.h"))
-        self.assertEqual(rets.group(1), tcrt.group(1))
+        self.assertEqual(rets.group(1), "256")  # a listed function can have more, up to the runners' array
+        self.assertEqual(tcrt.group(1), "1024")  # core/oracle_limits.RETS
         oracle = text(SCRIPTS / "TcOracle.java")
         self.assertIn("entryLate != null && k < entryLate.length ? (entryLate[k] = TcLate.ranged(v, pc, calls, TcFret.at(",
                       oracle)  # genretfn wraps it (tests/test_genretfn.py)

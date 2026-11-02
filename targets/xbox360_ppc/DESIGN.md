@@ -54,7 +54,9 @@ Reading the disc to the finished catalog takes about 7.5 s with no third-party c
 2. `bl` targets that no `.pdata` function covers.
 3. Data words that point at uncovered code (vtables, callbacks).
 
-An added entry ends at the next known bound, with trailing zero padding dropped.
+An added entry ends at the next known bound or at its first zero word, whichever comes first: a zero word is an
+illegal instruction, so it and what follows (alignment padding, data, or a routine no entry names) are not the
+entry's code. Ghidra decoded such data as code when bodies ran on to the next entry (gate G2, three callees).
 
 **Frame helpers.** `__savegprlr_N`, `__restgprlr_N`, `__savefpr_N`, `__restfpr_N` and the VMX save/restore pairs are
 found **by their encodings**, not by name (an `std r14,-0x98(r1)` run, an `lfd f14,-0x90(r12)` run, and so on). They
@@ -66,7 +68,7 @@ system. Ghidra cannot be trusted to decode VMX128 at all (§5).
 
 | Class | Instructions | Phase 1 |
 |---|---|---|
-| vmx | opcode 4/5/6, the opcode-31 vector loads and stores, VRSAVE | refused |
+| vmx | opcode 4/5/6, the opcode-31 vector loads and stores, VRSAVE | translated and judged (§5 phase 2); refused only for an estimate op, a Direct3D pack/unpack, an exposed vector argument or result, or embedded data |
 | fp_mode | mffs, mtfsf, mtfsfi, mtfsb0/1 | refused |
 | estimate | fres, frsqrte | refused (Ghidra computes them exactly; hardware does not) |
 | atomic | lwarx, stwcx., ldarx, stdcx. | refused |
@@ -83,8 +85,8 @@ system. Ghidra cannot be trusted to decode VMX128 at all (§5).
 | Functions | 88,193 (72,768 `.pdata`, 2,520 from `bl`, 12,905 from pointers) |
 | Frame-helper entry points | 236 |
 | Mid-function entries | 34 |
-| Phase 1 | **86,559 functions, 3.33 M instructions**; 1,073 of them use a multiply-add |
-| Refused | VMX 1,403 · atomic 110 · system 84 · cache 27 · FPSCR 4 · frame helpers 6 |
+| Phase 1 | **86,565 functions, 3.31 M instructions**; 1,072 of them use a multiply-add |
+| Refused | VMX 1,397 · atomic 110 · system 84 · cache 27 · FPSCR 4 · frame helpers 6 |
 
 Bounds check: every `.pdata` function ends in `blr`, `b` or `bctr`. So do 2,492 of 2,520 `bl` entries and 12,902 of
 12,905 pointer entries.
@@ -127,7 +129,22 @@ signature, not the body.
 **Calls are mocked.** Every call is recorded with its target, r3..r10 (64-bit), f1..f13 and the eight stack
 doublewords (s0..s7), and it returns the vector's mocked r3 and f1. This covers direct calls, calls through pointers
 and calls to imports through their thunks. The agent writes `tc_call` / `tc_callf`; the call order and the targets
-must match the original's.
+must match the original's. `tc_lastr()` / `tc_lastf()` give the last call's other result (no new call).
+
+- **What a call leaves.** The mock zeroes the volatile registers the callee may write (`TcFlow.clobbers`: what its
+  body and its callees write, all of them when that is unknown: imports, calls or branches through a register,
+  refused or undecoded code, cycles). The others keep their values: under LTCG a caller keeps a volatile register
+  live across a callee that never writes it (Too Human 82976860 keeps r9 and f1..f4 across 82817340, 824c0a50 its
+  loop counter r4 across 824c0070). Meta callees list them as `"keeps"`, and context.md says so. A call through a
+  register zeroes them all.
+- **Calls through pointers.** A call to a target meta does not list is compared on the argument registers the
+  original set since its entry or its last call, in order up to the first gap (r3..r10, f1..f13): expected.txt `CA`
+  after its CALL line (`TcTrack`). Stack doublewords of such calls are not compared.
+- **NaN words in memory.** Two different NaN words compare equal only where a float store of the original wrote
+  them (stfs/stfd and their u/x forms, or float bits moved through the integer registers: lwz/lwa/ld, mr, stw/std):
+  expected.txt `FN` (`TcTrack`). Every other word compares bit for bit.
+- **The C side's stack.** The runner fills 64 KB of host stack with 0xa5 before each vector, so a `TcArgs` slot the C
+  never sets reads the same bits on every run.
 
 ## 4. Memory map (judge side)
 
@@ -163,21 +180,54 @@ off except the constant-reference analyzers, which give the lis/addi data refere
 - The VMX128 forms that share opcode 4 with AltiVec can **mis-decode** as AltiVec instructions with the wrong
   registers. They do not fail cleanly.
 
-So phase 1 trusts DP's own scanner: any function containing a VMX word (opcode 4/5/6, the vector loads and stores,
-VRSAVE) is refused before Ghidra sees it. That is 1,403 of Too Human's functions (1.6%). The proof plan adds a
-decode audit: Ghidra's mnemonics for the 50 picks against the scanner's classes.
+So the catalog trusts DP's own scanner for which words are vector instructions (opcode 4/5/6, the vector loads and
+stores, VRSAVE), never Ghidra's mnemonic. Phase 1 refused every function that contained one (1,397 of Too Human's,
+1.6%); phase 2 below judges them.
 
-**Phase 2 (designed, not built):**
+**Phase 2 (built).** It runs on the Too Human slice `vs143` (50 vector functions) and on Mega Man 10 (§10).
 
-- **Sleigh.** A Sleigh include `vmx128.sinc` for opcodes 4 (VMX128 forms), 5 and 6, built into a language variant
-  of `ppc_64_be`. It adds the 128-entry vector file (vr0..vr127, the split VD128/VA128/VB128 register fields) and the
-  operations as `CALLOTHER` p-code ops. This is decode only: no semantics are written in Sleigh.
-- **Oracle callbacks.** Java callbacks in the oracle's emulator implement each op from the Xenon manuals.
-  They follow non-Java mode (denormals flush to zero) and the VMX128 specials: `vpermwi128`, `vrlimi128`,
-  `vpkd3d128`, `vupkd3d128`, `vmsum3fp128`, `vmsum4fp128`, the dot products and the estimates. The estimates need
-  the hardware's tables, so they stay refused until those are known.
-- **Runtime.** Runtime `ppc_v*` helpers mirror the callbacks bit for bit, with a test of each against the other.
-- **Fallback.** Any op without a proven callback keeps its function refused, under the blocker
+- **Stand-ins, not Sleigh.** A Sleigh include would only decode. `TcSetup` instead overwrites each vector word in the
+  program's memory with a stand-in of the same size that Ghidra does decode: a `cmplw cr7,rA,rB` over the general
+  registers the vector instruction reads (one register twice; `crxor 6,6,6` for none). Flow, register dataflow and the
+  decode audit (gate G2) therefore see the same reads. The original word stays in the program property
+  `tc_vmx_word`, and `TcBase.vmxOpAt` (memoised) reads it back. The oracle never steps a stand-in.
+- **The oracle runs the original word in `TcVmx`**, a pure-Java executor of AltiVec and VMX128
+  (`ghidra_scripts/TcVmx.java`, called from `TcOracle.stepVector`). It is written from the architecture manuals and
+  the VMX128 additions as documented by Xenia, not from the translator's C. Its decode tables are generated from the
+  translator's `decode.py`, which was checked against a reference disassembler on every code word of the game.
+  Non-Java mode (denormals flush to zero of the same sign); a NaN operand gives that NaN quieted, in instruction
+  order (a multiply-add: vA, addend, multiplier); an invalid operation gives 0x7fc00000; the multiply-adds round
+  once; `vmsum3fp128` / `vmsum4fp128` sum exact products and round once (exact limb arithmetic on both sides).
+- **The translator side** is `translator/xenontranslate/vmx.py`: one static C helper `xv_*` per operation, in a
+  128-bit struct of four big-endian words, written from the same manual text. The two sides are written apart, so a
+  disagreement is a fault in one of them. The first judged slice found faults in the helpers this way (the
+  multiply-add's NaN priority on 82e0ff40, among others).
+- **Refused, not guessed.** The estimates (`vrefp`, `vrsqrtefp`, `vexptefp`, `vlogefp` and the 128 forms) need the
+  hardware's tables, and the Direct3D pack/unpack formats have no ground truth here: `TcFixups.refuseVector` stops a
+  function with one (catalog `unsupported: vector estimate`; `vpkd3d128` / `vupkd3d128` are reported in the
+  prepare log). A vector argument or result that crosses the function boundary (v2..v13 in, v2 out, or a vector
+  register read before it is written: exposure classes A to E of `tools/vector_abi.py`) is refused as
+  `unsupported: vector ABI`, because the judge's register file is scalar: vectors that start and end inside a
+  function are judged through memory.
+- **Special values.** A function with a vector instruction makes the generator draw special lane values: one float
+  in five and one memory word in six is a quiet or signalling NaN with a payload, an infinity, a denormal, a zero,
+  all-ones or a large or tiny exponent (the first five draws of each are listed values). Without them random
+  inputs never reach NaN priority, flush-to-zero or saturation, and the mutation check below found the gaps.
+- **Mutation check.** `tools/mutate_vmx.py` injects one fault at a time into `vmx.py` (an operator, a constant or a
+  lane index: 179 mutants over 39 helpers), re-translates and re-judges the passing vector functions that use the
+  helper, and counts the mutants the judge kills. Result on the 44 passing vector functions of the Too Human sample: 179 mutants, 138 killed, 41 survived.
+  The 41 are accounted for: 6 are equivalent (the three-operand branch of `xv_nan3` is dead, no caller passes
+  `n > 2`; a `xv_pow2` loop that runs once more and undoes itself; a `xv_rnd1` sign test whose operand is never
+  zero; an array bound that is never indexed), 3 only write one lane past a vector (undefined behaviour the build
+  lays out harmlessly), 2 sit in the round-to-nearest tie case of fused multiply-add (`xv_rnd1`, `xv_fma1`), which
+  random and special-value inputs never construct, and 30 sit in helpers that only one function of the slice
+  uses and that function never observes every lane (halfword access, `stvlx`/`stvrx`, `vcfsx`, `vmaxfp`,
+  `vminfp`, `vnmsubfp`, `vperm`). Of the 117 mutants in helpers used by two or more functions, 110 were killed and
+  the other 7 are the 5 equivalent and the 2 tie-case ones. The 62 in single-function helpers were killed 28
+  times, so a vector function whose helper nobody else uses is only as well checked as that one function; the
+  whole-game run (section 10) is the wider test for those. Open: a directed generator for the fused
+  multiply-add tie case.
+- **Fallback.** Any op without a proven executor keeps its function refused under the blocker
   `oracle_emulation_error`. Nothing is guessed.
 
 **p-code audit** of the instructions phase 1 allows. Ghidra's p-code against the IBM architecture books:
@@ -188,6 +238,8 @@ decode audit: Ghidra's mnemonics for the 50 picks against the scanner's classes.
 | fmadds family | product, sum, then `float2float` | fused, rounded once to single | same switch |
 | fctiwz / fctiw | truncate to 4 bytes, sign-extend | saturates; NaN gives 0x80000000; upper word undefined | `TcFixups` replaces with the saturating form; runtime `ppc_fctiw*` saturate (open question 2) |
 | stfs of a double | `float2float` (rounds) | out of single range: bits are **selected**, not rounded | `TcFixups`; runtime `wrf32d` / `ppc_single_bits` |
+| single results (fadds … fsqrts, frsp) | `float2float` gives ±0 for 2^-150 < \|x\| < 2^-149 | rounds to nearest: ±2^-149 | `TcFixups` with the PowerPC targets' shared `TcSingle` (`core/ghidra_shared/ppc`); the runtime's `(f32)` casts already round so |
+| NaN results (lfs, the arithmetic ops, frsp, fneg, fabs) | every NaN made the canonical one | the operand's payload, quieted; lfs keeps a signalling NaN's | `TcFixups` with the shared `TcNaN` (Too Human 82635508) |
 | fres / frsqrte | exact division / square root | table estimates | refused |
 | divw / divwu | `sext` / `zext` of the 32-bit quotient | upper word undefined | judged as Ghidra models it; flagged in open question 2 |
 | mulhw / mulhwu | `zext` of the high word | upper word undefined | same |
@@ -266,7 +318,7 @@ byte.** What one vector compares:
 Nothing is loosened from the GameCube judge. Stack writes were never compared there either. The 64-bit r3 compare
 is **stricter** than the GameCube's.
 
-**fma.** `target.json` `"fma"` selects `two_roundings` (default) or `fused`.
+**fma.** `target.json` `"fma"` selects `fused` (the setting, decided 2026-10-24) or `two_roundings`.
 
 - The build passes `/DTC_FMA_FUSED`. In fused mode the doubles use C `fma()`. The singles use a round-to-odd fused
   multiply-add, then one rounding to single, so the single result is rounded once, as the architecture says.
@@ -277,9 +329,12 @@ is **stricter** than the GameCube's.
 
 ## 8. Open questions (each needs a decision or a measurement)
 
-1. **fma rounding.** The IBM books define fmadd and the rest with a single rounding (a fused multiply-add). Ghidra models two roundings. DP defaults to `two_roundings` because the brief marks the question
-   unproven. **Recommendation:** decide `fused`, as was done for the SH-4 fmac on 2026-10-21. The runtime already
-   supports it. In the tests, 84 of 2,480 fma cases give different bits under the two models, so the choice matters.
+1. **fma rounding. Decided 2026-10-24: `fused`.** The IBM books define fmadd and the rest with a single rounding (a
+   fused multiply-add); Ghidra models two roundings. The user chose `fused`, as for the SH-4 fmac on 2026-10-21:
+   `target.json` `"fma"`, `TcFixups.FMA_FUSED` and the runtime's `TC_FMA_FUSED` (the build's `/DTC_FMA_FUSED`, from
+   `target.json`) say so together, and a test checks the first two agree. In the tests, 84 of 2,480 fma cases give
+   different bits under the two models; on Too Human, 1 of the 11 prepared functions with multiply-adds does
+   (`fma_sensitive`).
 2. **Hardware-undefined upper words.** After mulhw/mulhwu, divw/divwu and fctiw[z] (in a register), the
    architecture leaves the upper word undefined. Ghidra picks one value. If the original code later uses that upper
    word, the oracle's value is not the hardware's. **Proposal:** treat a function whose r3 comes straight from one
@@ -309,6 +364,10 @@ is **stricter** than the GameCube's.
    description.
 10. **Language choice.** `64-32addr` is chosen. `A2ALT-32addr` would only matter if Ghidra later adds VMX128 there.
     The phase-2 Sleigh include is planned against `ppc_64_be`.
+11. **NaN words in memory (judge decision).** Closed on branch `x360-judge-gaps` (section 3, expected.txt `FN`), as
+    `judge-gaps` closes it on GameCube. Lands with the user's yes.
+12. **Indirect-call arguments (judge decision).** Closed on branch `x360-judge-gaps` (section 3, expected.txt `CA`).
+    Stack arguments of such calls stay uncompared.
 
 ## 9. Files
 
@@ -323,3 +382,8 @@ is **stricter** than the GameCube's.
 | `tools/` | `xiso.py`, `xex.py`, `pe.py`, `aes.py`, `ppcscan.py`, `catalog_inputs.py`, `proof_pick.py`, `ghidra_setup.py`, `decode_audit.py` |
 | `proof_set.json` | the 50 functions of the first Ghidra proof (PROOF_PLAN.md) |
 | `ghidra_scripts/`, `template/` | the Ghidra scripts and the project's starting `TcInputs.java` (ghidra_scripts/README.md) |
+
+## 10. Mega Man 10: the first whole-game run
+
+Moved to `DESIGN_MM10.md` (the 400-line cap): the counts, the verdicts, the two translator fixes the run found, the
+vector coverage, and the time projection.

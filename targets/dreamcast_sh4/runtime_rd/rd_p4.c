@@ -126,3 +126,25 @@ void rd_p4_reset(void)
     g_size = 0;
     tcrt_p4_reset();
 }
+
+/* A call to an unknown target: does its caller take an f32 from the x87 stack after the call? (MSVC: fstp/fld right
+ * after, possibly behind the caller's stack cleanup; `return handler(x);` leaves it to the caller's caller, TC 8c01c0e8,
+ * so a ret goes on one frame up.) sp: at the call's return address. A wrong guess can only make results differ. */
+char rd_guess_ret(const u32 *sp, u32 ebp, uintptr_t lo, uintptr_t hi)
+{
+    const u8 *p = (const u8 *)(uintptr_t)*sp++;
+    for (int frame = 0; frame < 2; frame++) {
+        for (int k = 0; k < 8; k++) {
+            if (p[0] == 0x83 && p[1] == 0xc4) { sp += (u8)p[2] / 4; p += 3; }
+            else if (p[0] == 0x81 && p[1] == 0xc4) { sp += *(const u32 *)(p + 2) / 4; p += 6; }
+            else if (frame == 0 && p[0] == 0x8b && p[1] == 0xe5) { sp = (const u32 *)(uintptr_t)ebp; p += 2; }
+            else if (p[0] == 0x59 || p[0] == 0x5b || p[0] == 0x5d || p[0] == 0x5e || p[0] == 0x5f) { sp++; p++; }
+            else if (p[0] == 0x8b && (p[1] & 0xc7) == 0x44 && p[2] == 0x24) p += 4; /* mov r32,[esp+d8]: fstp's address */
+            else break;
+        }
+        if (p[0] == 0xd9 || p[0] == 0xdd) return 'f';
+        if (p[0] != 0xc3 || *sp < lo || *sp >= hi) break;
+        p = (const u8 *)(uintptr_t)*sp++;
+    }
+    return 'i';
+}

@@ -88,6 +88,7 @@ def dp_link(ws, given=None):
 
 def norm(path):
     p = path.replace("\\", "/").lower()
+    p = p[:-4] if p.endswith(".szs") else p  # a Yaz0 file on the disc: gcdisc links its decompressed module
     return p[len("files/"):] if p.startswith("files/") else p
 
 

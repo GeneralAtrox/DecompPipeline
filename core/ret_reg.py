@@ -13,9 +13,11 @@ not followed there.
 fr0_result() is true when some exit is 'fr0' and none is 'r0': the original returns in fr0 whatever its signature
 says. A callee whose result register is known (ret_of) counts as a write of that register.
 The listing alone is not enough: TC 8c04ea84 returns r0 (set first) and loads fr0 for a loop its early exit skips,
-so that exit has fr0 "written last". The judge compares fr0 only for the functions in the workspace's
-state/fr0_results.txt, where tools/float_gaps.py --write puts those whose callers agree (core/ret_use.fr0_confirmed:
-a call site reads fr0, none reads r0).
+so that exit has fr0 "written last". The judge compares a register the signature does not name only for the functions
+in the workspace's state/fr0_results.txt, where tools/float_gaps.py --write puts those whose callers agree
+(core/ret_use.fr0_confirmed: a call site reads fr0, none reads r0) and those whose callers really read a register the
+signature leaves out (core/ret_use.narrowed: r0 too). A stale list passes what it does not name: TC 8c093e94 was
+prepared after the list was written, so core/doctor fails a workspace whose list misses one.
 """
 import pathlib
 
@@ -73,34 +75,96 @@ def exits(insns, ret_of=None):
     return out
 
 
+def may_leave(insns, reg, callee_leaves=None):
+    """Can a call to this listing change reg (r0 or fr0)? False only when no path from the entry to an exit writes it
+    and no path calls something that may: a caller reading reg afterwards then reads its own value, which a hand-written
+    routine keeps on purpose (TC 8c061520 loads fr1..fr15 and leaves fr0 alone), not a result. A call or tail call
+    counts unless callee_leaves(target, reg) says otherwise; a path the listing cannot follow counts."""
+    if not insns:
+        return True
+    flow, todo, seen = sh4_asm.Flow(insns), [(0, 0)], set()
+    while todo:
+        if len(seen) > MAX_STEPS:
+            return True
+        i, bank = todo.pop()
+        if (i, bank) in seen:
+            continue
+        seen.add((i, bank))
+        x = insns[i]
+        if x.mn == "frchg":
+            bank ^= 1
+        elif (reg != "fr0" or not bank) and sh4_asm.uses(x, reg)[1]:
+            return True
+        nxt = flow.succ(i)
+        if nxt is None:
+            return True
+        for k, kind in nxt:
+            if kind == "call" or (kind == "end" and insns[i - 1].mn not in ("rts", "rte")):
+                t = insns[i - 1].call_target() if i > 0 else None
+                if not callee_leaves or not t or callee_leaves(t, reg):
+                    return True
+            if kind != "end":
+                todo.append((k, bank))
+    return False
+
+
 def fr0_result(insns, ret_of=None):
     """True when the listing returns in fr0 (module docstring)."""
     e = exits(insns, ret_of)
     return "fr0" in e and "r0" not in e
 
 
-LIST = "fr0_results.txt"  # in the workspace's state/: written by tools/float_gaps.py --write
+LIST = "fr0_results.txt"  # in the workspace's state/: written by tools/float_gaps.py --write; `addr [r0] [fr0]`
 _listed = {}
 
 
 def listed(state_dir):
-    """The addresses in state_dir/fr0_results.txt (a function the listing and its callers both show returning in
-    fr0; one per line, `#` comments), read once per file version."""
+    """{addr: registers} from state_dir/fr0_results.txt (a function whose result registers go beyond its signature;
+    one per line, `#` comments, an address alone means fr0), read once per file version."""
     f = pathlib.Path(state_dir) / LIST
     try:
         key = (str(f), f.stat().st_mtime_ns)
     except OSError:
-        return set()
+        return {}
     if key not in _listed:
-        text = f.read_text(encoding="utf-8")
-        _listed[key] = {w for ln in text.splitlines() for w in ln.split("#")[0].split()[:1]}
+        rows = (ln.split("#")[0].split() for ln in f.read_text(encoding="utf-8").splitlines())
+        _listed[key] = {w[0]: set(w[1:]) or {"fr0"} for w in rows if w}
     return _listed[key]
 
 
+FRET = "fret_callers.txt"  # in state/: `caller callee...`, written by tools/float_gaps.py --write
+_fret = {}
+
+
+def fret_callers(state_dir):
+    """{caller: [callee]}: the callees whose mocked result must be a float for this caller's vectors, though Ghidra's
+    prototype does not say f32 (core/ret_use.Project.fret_callers), read once per file version."""
+    f = pathlib.Path(state_dir) / FRET
+    try:
+        key = (str(f), f.stat().st_mtime_ns)
+    except OSError:
+        return {}
+    if key not in _fret:
+        rows = (ln.split() for ln in f.read_text(encoding="utf-8").splitlines())
+        _fret[key] = {w[0]: w[1:] for w in rows if w}
+    return _fret[key]
+
+
+def fret_arg(state_dir, addr):
+    """TcPrepare's script arg 14 and the stamp's line for addr: its float callees joined by `_`, or "-"."""
+    return "_".join(fret_callers(state_dir).get(addr) or ()) or "-"
+
+
 def judged(meta, addrs, addr=None):
-    """meta for the judge: fr0_result set when the function is in addrs (listed()) but its signature names another
-    register than fr0 (core/compare.compare_return then compares fr0 too)."""
-    a = addr or meta.get("addr")
-    if meta.get("ret") == "f32" or meta.get("ret_reg") or a not in addrs:
+    """meta for the judge: fr0_result, r0_result, r3_result and f1_result set for the registers addrs (listed()) names that
+    the function's signature does not (core/compare.compare_return, ppc_compare.compare_return then compare them too)."""
+    regs = addrs.get(addr or meta.get("addr")) or ()
+    if meta.get("ret_reg"):
         return meta
-    return dict(meta, fr0_result=True)
+    out = dict(meta)
+    if "fr0" in regs and meta.get("ret") != "f32":
+        out["fr0_result"] = True
+    if "r0" in regs and meta.get("ret") not in ("u32", "s32", "u64"):
+        out["r0_result"] = True
+    out.update({f"{r}_result": True for r in regs if r in ("r3", "f1")})  # PowerPC; the compare skips what the signature names
+    return out

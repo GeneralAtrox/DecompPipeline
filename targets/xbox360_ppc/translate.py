@@ -25,7 +25,7 @@ import time
 
 NO_TRANSLATION = 3
 WAIT_S = 300  # how long a worker waits for another's summary build before building its own
-MAX_C = 60000  # core/lint's work.c cap: larger C would only fail the lint
+MAX_C = 2_000_000  # x360_check.MAX_C: the x360 judge's work.c cap (core/lint's 60 KB is waived there)
 
 
 def summaries_ready(ws, cache, returns):

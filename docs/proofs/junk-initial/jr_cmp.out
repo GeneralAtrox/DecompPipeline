@@ -1,0 +1,14 @@
+jr4: 4 functions, 0 mutants compared; killed 0 -> 0 (None% -> None%), gained 0, lost 0; flips 0, stale 0, missing 0
+jrs0: 12 functions, 180 mutants compared; killed 147 -> 147 (81.7% -> 81.7%), gained 0, lost 0; flips 0, stale 0, missing 0
+jrs1: 12 functions, 166 mutants compared; killed 141 -> 141 (84.9% -> 84.9%), gained 0, lost 0; flips 0, stale 0, missing 0
+jrs2: 12 functions, 129 mutants compared; killed 125 -> 125 (96.9% -> 96.9%), gained 0, lost 0; flips 0, stale 0, missing 0
+jrs3: 12 functions, 153 mutants compared; killed 128 -> 128 (83.7% -> 83.7%), gained 0, lost 0; flips 0, stale 0, missing 0
+jrsq: 46 functions, 658 mutants compared; killed 550 -> 550 (83.6% -> 83.6%), gained 0, lost 0; flips 0, stale 0, missing 0
+pl_ps2: 10 functions, 25 mutants compared; killed 22 -> 22 (88.0% -> 88.0%), gained 0, lost 0; flips 0, stale 0, missing 0
+pl_spawn-main: 10 functions, 19 mutants compared; killed 15 -> 15 (78.9% -> 78.9%), gained 0, lost 0; flips 0, stale 0, missing 0
+pl_tc: 10 functions, 23 mutants compared; killed 19 -> 19 (82.6% -> 82.6%), gained 0, lost 0; flips 0, stale 0, missing 0
+gate: PASS
+old baseline fails: [('jr4', '8c054adc'), ('jr4', '8c054830'), ('jr4', '8c071130'), ('jr4', '8c0721d8'), ('pl_spawn-main', '8c031786')]
+new baseline fails: [('pl_spawn-main', '8c031786', 'baseline FAIL at compare: the matched C does not pass its harness here (96/96 fa')]
+lost kills: []
+total mutants compared 1353 killed old 1147 killed new 1147

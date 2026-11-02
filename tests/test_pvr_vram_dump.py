@@ -75,7 +75,7 @@ class DumpVram(unittest.TestCase):
         rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
         srcs = " ".join(f'"{p}"' for p in [KIT / "pvr" / "ta_parse.c", KIT / "pvr" / "pvr_state.c", d / "vram_main.c"])
         cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O2 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "pvr"}" '
-              f'/I"{KIT / "host"}" /I"{rd}" {srcs} /Fe:vram_driver.exe')
+              f'/I"{KIT / "base"}" /I"{rd}" {srcs} /Fe:vram_driver.exe')
         vc = str(game_config.vcvars32()).replace("/", "\\")
         r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
                            errors="replace", timeout=300)

@@ -8,7 +8,7 @@ import re
 import shutil
 
 from core import check as core_check
-from core import paths, strict_judge
+from core import paths, ret_reg, strict_judge
 from core.lint import lint as core_lint
 
 import ppc_compare as cmp
@@ -91,7 +91,7 @@ def build(cfg, meta, work_file, build_dir):
 
 def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harness_dir=None):
     harness = pathlib.Path(harness_dir or paths.HARNESS / addr)
-    meta = paths.read_json(harness / "meta.json")
+    meta = ret_reg.judged(paths.read_json(harness / "meta.json"), ret_reg.listed(paths.STATE), addr)
     summary = paths.read_json(harness / "oracle_summary.json") or {}
     result = {"addr": addr, "sets": list(sets), "verdict": "FAIL", "stage": "lint", "lint": [], "build": [],
               "vectors": {}, "first_diffs": [], "failing": 0, "total": 0}

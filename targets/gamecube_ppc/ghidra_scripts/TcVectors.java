@@ -3,7 +3,8 @@
 // this file. Extended by TcPrepare.
 //
 // vectors.txt, per vector: V id set, R r3..r10, F f1..f8 (64-bit register bits), C the 16 scripted r3 results,
-// D the 16 scripted f1 results (64-bit), M addr bytes (patches, big endian), E.
+// D the 16 scripted f1 results (64-bit), H the 16 scripted hardware words (only when the run read a hardware register),
+// M addr bytes (patches, big endian), E.
 // expected.txt: V, RET r3 f1 (64-bit) r4, W writes (below the stack window), CALL records (TcOracle.callRecord),
 // COV blocks, E.
 // Deadline (TcFacts.oracleDeadlineS): generation stops before Ghidra's timeout; TcPrepare then refuses the function.
@@ -27,6 +28,35 @@ public abstract class TcVectors extends TcOracle {
     List<TcBoundPass.Base> bases = new ArrayList<>();  // the valid vectors, for targeted_vectors (TcBoundPass)
     long outside = -1;
     boolean outOfTime = false;
+    static final int OVERRUNS = 8;  // runs at the step limit before the limit drops to STEP_LIMIT / OVERRUN_CUT
+    static final int OVERRUN_CUT = 16;
+    int overruns;
+
+    // A vector's hardware words, from their own generator so that no other input changes: a device's flags, set and clear.
+    static long[] hwWords(long seed, int id) {
+        Random h = new Random(seed * 31 + id * 0x9e3779b1L + 0x6877);
+        long[] w = new long[16];
+        for (int i = 0; i < 16; i++) {
+            int k = h.nextInt(3);
+            w[i] = k == 0 ? 0 : k == 1 ? 0xffffffffL : h.nextInt() & 0xffffffffL;
+        }
+        return w;
+    }
+
+    // The game's repairVec, then the run's scripted call results (latest first) as the pointers it used: repairVec only
+    // sees loads and parameters, and each workspace's TcInputs is its own.
+    // This call's and every later one's at once: a loop over calls uses each result alike, and MAX_REPAIRS is below 16.
+    Vec repair(Vec v, Result r, List<long[]> loads) {
+        Vec nv = repairVec(v, r.faultAddr, r.faultWrite, loads);
+        if (nv != null) return nv;
+        for (int i = Math.min(r.calls.size(), v.rets.length) - 1; i >= 0; i--) {
+            long d = r.faultAddr - v.rets[i];
+            if (d < -0x100 || d >= GEN_MAX_OFFSET || genOwned(v.rets[i])) continue;
+            for (int j = i; j < v.rets.length; j++) if (!genOwned(v.rets[j])) v.rets[j] = genChunk(v, d);
+            return v;
+        }
+        return null;
+    }
 
     // Each set has its own generator (rnd), so the hidden set does not depend on ndev.
     void makeVectors(Proto proto, List<Long> globals, List<String> hints, long seed, int ndev, int nhidden) {
@@ -46,18 +76,20 @@ public abstract class TcVectors extends TcOracle {
                 }
                 tried[s]++;
                 Vec v = makeVec(id % 4, proto, new ArrayList<>(globals));
+                hwOf.put(v, hwWords(seed, tried[0] + tried[1]));
                 applyHints(v, hints);
                 int repairs = 0;
                 Result r = runOracle(v);
                 while (!r.ok && r.faultAddr >= 0 && repairs < MAX_REPAIRS) {
                     List<long[]> loads = new ArrayList<>();
                     for (long[] ld : r.loads) loads.add(ld.clone());
-                    Vec nv = repairVec(v, r.faultAddr, r.faultWrite, loads);
+                    Vec nv = repair(v, r, loads);
                     if (nv == null) break;
                     v = nv;
                     repairs++;
                     r = runOracle(v);
                 }
+                if (r.stepLimited && ++overruns == OVERRUNS) stepLimit = STEP_LIMIT / OVERRUN_CUT;
                 if (r.ok && !patchesInRam(v)) {
                     r.ok = false;
                     r.reason = "input patches memory outside RAM";
@@ -96,6 +128,11 @@ public abstract class TcVectors extends TcOracle {
         vout.append("\nD");
         for (long x : v.frets) vout.append(' ').append(hex64(x));
         vout.append('\n');
+        if (r.hwReads) {
+            vout.append('H');
+            for (long x : hwOf.get(v)) vout.append(' ').append(hex(x));
+            vout.append('\n');
+        }
         for (int i = 0; i < v.patchAddr.size(); i++) {
             vout.append("M ").append(hex(v.patchAddr.get(i))).append(' ').append(bytesHex(v.patchData.get(i))).append('\n');
         }
@@ -103,6 +140,7 @@ public abstract class TcVectors extends TcOracle {
         eout.append("V ").append(id).append(' ').append(set).append('\n');
         eout.append("RET ").append(hex(r.r3)).append(' ').append(hex64(r.f1)).append(' ').append(hex(r.r4)).append('\n');
         for (String w : r.writes) eout.append("W ").append(w).append('\n');
+        for (String w : r.io) eout.append("IO ").append(w).append('\n');
         for (String c : r.calls) eout.append("CALL ").append(c).append('\n');
         eout.append(TcTrack.exit(r.tr));
         eout.append(TcStrict.exp(r)).append("COV");  // lines CS, XR (TcStrict)

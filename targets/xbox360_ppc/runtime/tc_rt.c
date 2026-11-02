@@ -191,6 +191,20 @@ f64 tc_callf(u32 target, const TcArgs *args)
     return d;
 }
 
+/* The last call's other result: its r3 after a tc_callf, its f1 after a tc_call (the mocked callee sets both). */
+u64 tc_lastr(void)
+{
+    return g_ncalls >= 1 && g_ncalls <= 16 ? g_rets[g_ncalls - 1] : 0;
+}
+
+f64 tc_lastf(void)
+{
+    u64 b = g_ncalls >= 1 && g_ncalls <= 16 ? g_frets[g_ncalls - 1] : 0;
+    f64 d;
+    memcpy(&d, &b, 8);
+    return d;
+}
+
 static FILE *open_file(const char *path, const char *mode)
 {
     FILE *f = NULL;

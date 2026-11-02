@@ -363,9 +363,11 @@ class TooHuman(unittest.TestCase):
             desc = json.loads((d / "image.json").read_text(encoding="utf-8"))
         finally:
             shutil.rmtree(d, ignore_errors=True)
+        f = {x["addr"]: x for x in cat["functions"]}
         figures = {"image_sha1": desc["image_sha1"], "load": [desc["load_address"], desc["entry_point"]],
                    "pdata": len(desc["pdata"]), "helpers": len(cat["helpers"]), "by_source": cat["stats"]["by_source"],
-                   "vmx": cat["stats"]["refused"]["unsupported: VMX"]}
+                   "vmx": cat["stats"]["refused"]["unsupported: VMX"],
+                   "sizes": [f[a]["size"] for a in ("82d45bb0", "82a51370", "82db47f8")]}
         memo.write_text(json.dumps({"key": key, "figures": figures}), encoding="utf-8")
         return figures
 
@@ -376,7 +378,9 @@ class TooHuman(unittest.TestCase):
         self.assertEqual(f["pdata"], 72768)
         self.assertEqual(f["helpers"], 236)
         self.assertEqual(f["by_source"], {"pdata": 72768, "bl": 2520, "pointer": 12905})
-        self.assertEqual(f["vmx"], 1403)
+        self.assertEqual(f["vmx"], 1397)
+        # an added entry ends at its first zero word: blr / b, then a zero, then a routine no entry names or data
+        self.assertEqual(f["sizes"], [12, 12, 484])
 
 
 if __name__ == "__main__":

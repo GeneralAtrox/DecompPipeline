@@ -14,6 +14,7 @@ import os
 import pathlib
 import random
 import shutil
+import struct
 import subprocess
 import sys
 import unittest
@@ -34,6 +35,7 @@ import xex  # noqa: E402
 
 TARGET = json.loads((X360 / "target.json").read_text(encoding="utf-8"))
 SCRIPTS = X360 / "ghidra_scripts"
+SHARED = TOOL / "core" / "ghidra_shared" / "ppc"  # target.json "shared_scripts": ["ppc"]
 
 
 def words():
@@ -56,7 +58,7 @@ class Scripts(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.out = tmpdir("x360java_")
-        files = [str(p) for p in sorted(SCRIPTS.glob("*.java"))]
+        files = [str(p) for p in sorted([*SCRIPTS.glob("*.java"), *SHARED.glob("*.java")])]
         files += [str(X360 / "template" / "TcInputs.java"), str(TOOL / "tests" / "java" / "X360Stub.java")]
         r = subprocess.run([jdk("javac"), "-nowarn", "-proc:none", "-J-Xmx512m", "-d", str(cls.out), "-cp", CP, *files],
                            capture_output=True, text=True, timeout=600)
@@ -118,6 +120,21 @@ class Scripts(unittest.TestCase):
                     self.assertEqual(int(got, 16), want, f"{a:016x} {c:016x} {b:016x} mode {k}")
                     checked += 1
         self.assertGreater(checked, 2000)
+        for row in self.rows("m"):  # the nm forms flip the sign bit, a NaN's too (as tc_ppc.c's ppc_fneg)
+            r = [int(v, 16) for v in row[3:]]
+            self.assertEqual([r[k] ^ (1 << 63) for k in range(1, 8, 2)], [r[k] for k in range(0, 8, 2)], row[:3])
+
+    def test_single_denormal(self):
+        # Ghidra's float2float gives +-0 for a single result between 0.5 and 1 denormal unit; TcSingle restores IEEE
+        self.assertGreater(int(self.k["single_before"]), 10000)
+        self.assertEqual(int(self.k["single_after"]), 0)
+
+    def test_patch_lines(self):
+        lines = self.rows("p")
+        data = b"".join(bytes.fromhex(t[2]) for t in lines)
+        self.assertEqual(data, bytes(i & 0xFF for i in range(20000)))
+        self.assertEqual([int(t[1], 16) for t in lines], [0x40002000 + 0x2000 * i for i in range(len(lines))])
+        self.assertTrue(all(len(t[2]) <= 2 * 0x2000 for t in lines) and len(lines) == 3)
 
     def test_traps(self):
         for to, a, b, got in self.rows("t"):
@@ -149,12 +166,23 @@ class Target(unittest.TestCase):
         self.assertEqual(javalint.lint_inputs((X360 / "template" / "TcInputs.java").read_text(encoding="utf-8")), [])
 
     def test_locked(self):
-        names = {p.name for p in SCRIPTS.glob("*.java")}
+        names = {p.name for p in [*SCRIPTS.glob("*.java"), *SHARED.glob("*.java")]}
         locked = set(TARGET["locked_scripts"])
+        self.assertEqual(TARGET["shared_scripts"], ["ppc"])
         self.assertFalse(locked - names)
         # every script TcPrepare builds on is locked; the others are whole-program tools (setup, catalog, export, audit)
+        # TcEstimate is the GameCube's fres/frsqrte tables: no script here builds on it, and locking it would move every stamp
         self.assertEqual(names - locked, {"TcSetup.java", "TcCatalog.java", "TcExport.java",
-                                          "TcDecodeAudit.java"})
+                                          "TcDecodeAudit.java", "TcEstimate.java"})
+        self.assertFalse([p.name for p in SCRIPTS.glob("*.java") if "TcEstimate" in p.read_text(encoding="utf-8")])
+
+    def test_stamp_scopes(self):
+        # each scoped change's "after" hashes are today's files: else the scope is off and every stamp moves
+        import hashlib
+        for sc in TARGET.get("stamp_scopes") or []:
+            for n, (_, after) in sc["scripts"].items():
+                f = SCRIPTS / n if (SCRIPTS / n).exists() else SHARED / n
+                self.assertEqual(hashlib.sha256(f.read_bytes()).hexdigest(), after, n)
 
     def test_memory_map(self):
         base = (SCRIPTS / "TcBase.java").read_text(encoding="utf-8")
@@ -202,6 +230,17 @@ class Target(unittest.TestCase):
         self.assertEqual([b.split(": ")[1] for b in bad], ["a vector instruction (scanner ['vmx'])",
                                                            "Ghidra decoded no instruction", "not the image's word",
                                                            "Ghidra [], scanner ['fpu']"])
+        # TcSetup's stand-in rows: TcVmx's reading of a vector word agrees with the scanner; of a scalar word it does not
+        bad = decode_audit.audit([(0x82000014, 0x10000000, "tcvmx:vaddubm"), (0x82000000, 0x38600001, "tcvmx:vaddubm")],
+                                 image, 0x82000000)
+        self.assertEqual([b.split(": ")[1] for b in bad], ["TcVmx decoded a word the scanner calls []"])
+        vrsave = struct.pack(">II", 0x7D8043A6, 0x7D8042A6)  # mtspr VRSAVE,r12; mfspr r12,VRSAVE
+        self.assertEqual(decode_audit.audit([(0x82000000, 0x7D8043A6, "mtvrsave"), (0x82000004, 0x7D8042A6, "mfvrsave")],
+                                            vrsave, 0x82000000), [])
+        # Ghidra names ldx (XO 21) "ldarx": a plain load, so no atomic class; the real ldarx (XO 84) is atomic
+        ld = bytes.fromhex("7d6bd82a" "7c6018a8")
+        self.assertEqual(decode_audit.audit([(0x82000000, 0x7D6BD82A, "ldarx"), (0x82000004, 0x7C6018A8, "ldarx")],
+                                            ld, 0x82000000), [])
 
 
 if __name__ == "__main__":

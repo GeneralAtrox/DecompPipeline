@@ -78,6 +78,8 @@ void arm7_reset(Arm7 *a)
     a->next = 0;
     a->cycles = 0;
     a->executed = 0;
+    a->fiqs = a->bus = a->scanned = a->native_blocks = a->native_instr = 0;
+    arm7_scan_reset(a);
     a->undefined = 0;
 }
 
@@ -88,6 +90,7 @@ u32 arm7_read(Arm7 *a, u32 addr, u32 size)
         return size == 4 ? (u32)p[0] | (u32)p[1] << 8 | (u32)p[2] << 16 | (u32)p[3] << 24
              : size == 2 ? (u32)p[0] | (u32)p[1] << 8 : p[0];
     }
+    a->bus++;
     return a->rd(a, addr, size);
 }
 
@@ -103,6 +106,7 @@ void arm7_write(Arm7 *a, u32 addr, u32 value, u32 size)
         }
         return;
     }
+    a->bus++;
     a->wr(a, addr, value, size);
 }
 
@@ -345,6 +349,7 @@ static void execute(Arm7 *a, u32 op, u32 pc)
         if (BIT(op, 24)) a->r[14] = pc + 4u;
         a->next = pc + 8u + (u32)off;
         a->cycles -= 2;
+        if (off < 0 && a->fast) arm7_scan_probe(a, a->next);
         break;
     }
     case 6: undefined(a, op, pc); break; /* coprocessor transfers: the AICA's ARM has none */
@@ -355,11 +360,28 @@ static void execute(Arm7 *a, u32 op, u32 pc)
     }
 }
 
+void arm7_step_op(Arm7 *a, u32 op, u32 pc)
+{
+    a->next = pc + 4u;
+    a->r[15] = pc + 8u;
+    a->cycles--;
+    a->executed++;
+    if (condition(a, op >> 28)) execute(a, op, pc);
+}
+
 void arm7_run(Arm7 *a, s64 cycles)
 {
     a->cycles += cycles;
     while (a->cycles > 0) {
-        if (a->fiq && !(a->psr & ARM_PSR_F)) arm7_exception(a, ARM_MODE_FIQ, 0x1cu, a->next + 4u);
+        if (a->fiq && !(a->psr & ARM_PSR_F)) {
+            a->fiqs++;
+            arm7_exception(a, ARM_MODE_FIQ, 0x1cu, a->next + 4u);
+        }
+        if (a->scan_map[(a->next >> 2) & 255u] && a->fast) {
+            arm7_scan_run(a);
+            if (a->cycles <= 0) break;
+        }
+        if (a->native && arm7_native_run(a)) continue;
         u32 pc = a->next, op;
         if (pc < a->ram_size) {
             const u8 *p = a->ram + (pc & a->ram_mask);
@@ -367,10 +389,7 @@ void arm7_run(Arm7 *a, s64 cycles)
         } else {
             op = a->rd(a, pc, 4);
         }
-        a->next = pc + 4u;
-        a->r[15] = pc + 8u;
-        a->cycles--;
-        a->executed++;
-        if (condition(a, op >> 28)) execute(a, op, pc);
+        if (a->pcs && pc < a->ram_size) a->pcs[pc >> 2] = 1;
+        arm7_step_op(a, op, pc);
     }
 }

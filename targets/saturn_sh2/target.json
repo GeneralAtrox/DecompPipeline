@@ -15,6 +15,108 @@
   },
   "oracle_work_per_s": 65000,
   "fpu_state": false,
+  "hw_reads": {
+    "20100063": [
+      "00",
+      "SMPC SF, no command in progress: 0 after reset (Yabause smpc.c SmpcReset memset; Beetle ss/smpc.c SMPC_Reset SF = 0), set by a write and cleared when the command ends",
+      1
+    ],
+    "20100061": [
+      "00",
+      "SMPC SR after reset: 0 (Yabause smpc.c SmpcReset memset; Beetle ss/smpc.c SR = 0x00). INTBACK changes it",
+      1
+    ],
+    "20100021": [
+      "00",
+      "SMPC OREG0 after reset: 0 (Yabause smpc.c SmpcReset memset; Beetle ss/smpc.c memset OREG). INTBACK fills it",
+      1
+    ],
+    "25890018": [
+      "0043",
+      "CD block CR1 after reset, first half of the CDBLOCK signature (Yabause cs2.c Cs2Reset; Beetle ss/cdb.c the same words): the report overwrites it later",
+      2
+    ],
+    "2589001c": [
+      "4442",
+      "CD block CR2 after reset: the signature (Yabause cs2.c Cs2Reset)",
+      2
+    ],
+    "25890020": [
+      "4c4f",
+      "CD block CR3 after reset: the signature (Yabause cs2.c Cs2Reset)",
+      2
+    ],
+    "25890024": [
+      "434b",
+      "CD block CR4 after reset: the signature (Yabause cs2.c Cs2Reset)",
+      2
+    ],
+    "ffffff8c": [
+      "00000003",
+      "SH-2 DMAC CHCR0 after a completed transfer: DE stays 1, TE set (Yabause sh2core.c DMATransfer sets CHCR bit 1, never clears DE); the state the code that starts a transfer waits for",
+      4
+    ],
+    "ffffff9c": [
+      "00000003",
+      "SH-2 DMAC CHCR1 after a completed transfer, as CHCR0 (Yabause sh2core.c DMATransfer)",
+      4
+    ],
+    "ffffffb0": [
+      "00000000",
+      "SH-2 DMAC DMAOR after reset: 0 (Yabause sh2core.c OnchipReset)",
+      4
+    ],
+    "25fe007c": [
+      "00000000",
+      "SCU DSTA idle, no DMA or DSP transfer active: 0 (Yabause scu.c ScuReset, flags set only while a transfer runs)",
+      4
+    ],
+    "25fe0080": [
+      "00000000",
+      "SCU DSP program control after reset: 0, EX clear, program stopped (Yabause scu.c ScuReset ProgControlPort.all = 0)",
+      4
+    ],
+    "25fe00a4": [
+      "00000000",
+      "SCU IST after reset: 0, no interrupt pending (Yabause scu.c ScuReset)",
+      4
+    ],
+    "25f80000": [
+      "0000",
+      "VDP2 TVMD after reset: 0, display off (Yabause vdp2.c Vdp2Reset)",
+      2
+    ],
+    "25f80004": [
+      "0008",
+      "VDP2 TVSTAT with the display off as TVMD above: VBLANK forced on when DISP is clear (Yabause vdp2.c Vdp2ReadWord case 0x004)",
+      2
+    ],
+    "25f80008": [
+      "0000",
+      "VDP2 HCNT, no external latch: 0 (Yabause vdp2.c: written only by Vdp2SendExternalLatch)",
+      2
+    ],
+    "25d00010": [
+      "0000",
+      "VDP1 EDSR after reset: 0 (Beetle ss/vdp1.c VDP1_Reset); it changes with draw and swap history",
+      2
+    ],
+    "fffffe11": [
+      "80",
+      "SH-2 FRT FTCSR with ICF set: the input capture the other CPU's MINIT/SINIT raises and the polling loops wait for (Yabause sh2core.c MSH2InputCaptureWriteWord)",
+      1
+    ],
+    "fffffe16": [
+      "00",
+      "SH-2 FRT TCR after reset: 0 (Yabause sh2core.c OnchipReset)",
+      1
+    ],
+    "fffffe92": [
+      "00",
+      "SH-2 CCR after reset: 0, cache off (Yabause sh2core.c OnchipReset)",
+      1
+    ]
+  },
   "hw_read_sizes": [
     1,
     2,

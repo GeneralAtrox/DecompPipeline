@@ -16,6 +16,8 @@
 //   cache   ocbi / ocbp / ocbwb @Rn: no-ops in the test run (callbacks) and in C (sh4_ocbi, sh4_ocbp, sh4_ocbwb).
 //           Memory is modelled coherent: what the cache would write back is already in RAM. ocbi on hardware drops a
 //           dirty line instead; the evidence must say the line holds nothing the code wrote through the cache.
+//   vram    a load from the video memory window 0xa5000000..0xa57fffff returns a fixed function of the address
+//           (TcBase.vramWord), served here instead of a read fault; the C reads it as any load (runners: header line v)
 //   area5   a load from area 5 (TcBase.area5: external devices, nothing answers on a retail Dreamcast) returns 0
 //           (Flycast sh4_mem.cpp ReadMem_extdev_T), served here instead of a read fault; the C reads it as any
 //           load (the runners: header line y). Power Stone 2 8c0454a0 reads there through its own r15.
@@ -31,7 +33,8 @@ final class TcHw {
     static TcHw on;  // the function being prepared, or null
     final TreeMap<Long, Long> reads = new TreeMap<>();  // listed register -> the target's value
     final TreeSet<Long> writes = new TreeSet<>();  // listed registers stored to
-    boolean gbr, bl, cache, area5;
+    boolean atExit;  // TcExit is logging the writes
+    boolean gbr, bl, cache, area5, vram;
 
     // Script arg 11: "-", or "hw" then "_"-separated items: "r" + register + "." + value (8 hex digits each),
     // "w" + register, "gbr", "bl", "cache" (core/hw_ops.arg; no ",;= ": analyzeHeadless.bat splits arguments at them).
@@ -43,6 +46,7 @@ final class TcHw {
             else if (it.equals("bl")) h.bl = true;
             else if (it.equals("cache")) h.cache = true;
             else if (it.equals("z5")) h.area5 = true;
+            else if (it.equals("zv")) h.vram = true;
             else if (it.startsWith("r") && it.contains(".")) {
                 String[] p = it.substring(1).split("\\.");
                 h.reads.put(Long.parseLong(p[0], 16), Long.parseLong(p[1], 16));
@@ -82,6 +86,7 @@ final class TcHw {
             long v = pv >= 0x0c000000L && pv < 0x0d000000L ? pv | 0x80000000L : pv;
             String[] ops = text.split(",");
             String dst = ops[ops.length - 1].trim();
+            if (vram && v >= 0xa5000000L && v < 0xa5800000L) continue;  // the window's base: "read vram" lists it
             if (TcCatalog.isHw(v) && !TcCatalog.isSq(v) && dst.startsWith("r") && !reads.containsKey(v)
                 && !writes.contains(v) && TcCatalog.usedAsAddress(o.listing, in, dst, body)) {
                 return "hardware register " + TcBase.hex(v) + " at " + TcBase.hex(in.getAddress().getOffset())
@@ -93,7 +98,9 @@ final class TcHw {
 
     // TcFold: the bytes of a load inside one listed register (little endian), else null.
     byte[] read(long off, int size) {
+        if (atExit && written(off, off + size)) return null;  // TcExit logs what was stored, not the read value
         if (area5 && TcBase.area5(off, size)) return new byte[size];  // area 5: 0 ("read area5")
+        if (vram && TcBase.vram(off, size)) return TcBase.vramBytes(off, size);  // video memory ("read vram")
         Map.Entry<Long, Long> e = reads.floorEntry(off);
         if (e == null || off + size > e.getKey() + 4) return null;
         byte[] b = new byte[size];
@@ -130,7 +137,7 @@ final class TcHw {
         }
         for (long r : writes) w.append(w.length() > 0 ? ", " : "").append('"').append(TcBase.hex(r)).append('"');
         return "{\"reads\": {" + s + "}" + (writes.isEmpty() ? "" : ", \"writes\": [" + w + "]") + ", \"gbr\": " + gbr
-            + ", \"bl\": " + bl + (cache ? ", \"cache\": true" : "") + (area5 ? ", \"area5\": true" : "") + "}";
+            + ", \"bl\": " + bl + (cache ? ", \"cache\": true" : "") + (area5 ? ", \"area5\": true" : "") + (vram ? ", \"vram\": true" : "") + "}";
     }
 
     // vectors.txt header lines (before the first vector): Y per listed register, Z for GBR state.
@@ -140,7 +147,7 @@ final class TcHw {
         for (Map.Entry<Long, Long> e : on.reads.entrySet()) {
             s.append("Y ").append(TcBase.hex(e.getKey())).append(' ').append(TcBase.hex(e.getValue())).append('\n');
         }
-        return s.append(on.gbr ? "Z\n" : "").append(on.area5 ? "y\n" : "").toString();
+        return s.append(on.gbr ? "Z\n" : "").append(on.area5 ? "y\n" : "").append(on.vram ? "v\n" : "").toString();
     }
 
     // expected.txt lines IM (TcSr.exit), GB (Result.gbr, -1 without the listing), FS, FC (TcFpscr.exit) and FN

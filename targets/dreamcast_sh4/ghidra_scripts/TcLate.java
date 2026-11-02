@@ -179,6 +179,12 @@ final class TcLate {
         return s.startsWith("0x") ? Long.parseLong(s.substring(2), 16) : Long.parseLong(s);
     }
 
+    // A repaired copy of a vector: without its draws a call past Vec.rets' would go back to the drawn result (Spawn 8c9c8780).
+    static TcInputs.Vec kept(TcInputs.Vec from, TcInputs.Vec to) {
+        copy(from, to);
+        return to;
+    }
+
     // The result of call c (0-based, all calls) to callee pc: its genretfn draw when a line names pc, else x.
     static long ranged(TcInputs.Vec v, long pc, int c, long x) {
         Map<Long, long[]> m = RANGED.get(v);

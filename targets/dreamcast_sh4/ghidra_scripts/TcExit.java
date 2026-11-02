@@ -51,7 +51,9 @@ public class TcExit {
             long lo = rg.getMinAddress().getOffset(), hi = rg.getMaxAddress().getOffset() + 1;
             if (rg.getMinAddress().getAddressSpace() != space) continue;
             if (p4(lo, hi)) { // cache address array and QACR stores: logged (tc_p4.c)
+                if (TcHw.on != null) TcHw.on.atExit = true;
                 res.writes.add(TcBase.hex(lo) + " " + TcBase.bytesHex(emu.readMemory(o.toAddr(lo), (int) (hi - lo))));
+                if (TcHw.on != null) TcHw.on.atExit = false;
                 continue;
             }
             if (lo < TcBase.RAM_LO || hi > TcBase.RAM_HI) {

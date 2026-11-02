@@ -82,15 +82,55 @@ argument registers `TcFlow` finds read before written) and runs the vectors (`Tc
 - a fresh `EmulatorHelper` per vector; RAM through `TcBank` (folding, the write set, R8 code reads);
 - a call (a `bl` / `bctrl` / tail `b` to another function) is mocked: the call record is target, r3..r10, f1..f8 (64-bit
   bits), s0..s7, and the callee "returns" r3 = `C[k]`, f1 = `D[k]` and leaves 0 in every other volatile register
-  (r0, r4..r12, f0, f2..f13, ctr), as `TcFlow` assumes a call clobbers them. Without that, a caller that passes its
+  (r0, r5..r12, f0, f2..f13, ctr), as `TcFlow` assumes a call clobbers them. r4 is the low word of a 64-bit result (r3:r4): with
+  `mock_junk` it holds the junk for that call, the C reads the same word with `tc_lastr4()`, and the judge allows 0 for a passed-on
+  r4 only where the callee does not set r4 (`TcFlow.returnsR4`). r4 counts as set after a callee that sets it on every path, so a
+  pointer call compares it there (`TcTrack.call`) and the C passes it on. Without that, a caller that passes its
   own entry f2..f8 on to a later callee (80213fe8 into 80155994) had expected values no C signature can carry;
 - CodeWarrior's register save/restore helpers (`_savegpr_NN` and family, `TcFlow.isSaveHelper`) run inline: they are
   part of the frame, not calls.
+- a store into a hardware register (`memory.mmio`: 0xcc000000..0xcc00ffff, the GX FIFO at 0xcc008000 and the video,
+  DMA and audio registers; 0xe0000000..0xe0003fff, the locked cache) is not memory. `TcBank` logs it in order (address,
+  size, value; a store of the same step to the same address and size, the `stfs` rewrite, replaces the entry) and does
+  not pass it on; expected.txt carries `IO addr size value` lines, the runtime (`tcrt_mmio`, `wr_be`) logs and reports
+  the same, and `ppc_compare.compare_io` compares the two sequences (count, address, size, value, order: the FIFO takes
+  its words in order). Before, any such store made the vector invalid ("write outside RAM"), so a function that sends a
+  vertex to the FIFO had no usable vector at all. A read of a hardware register takes the vector's next scripted word (`vectors.txt` H, a device's answer is an input,
+  from its own generator so that no other input changes; beside the Vec in `TcOracle.hwOf`, as Vec is each workspace's own)
+  and is logged in the same order with its kind (`IO addr size value r`); with no words scripted it faults on both sides.
+  A store past a window is still a write outside RAM, and the run stops there, while the load log still holds the pointer's
+  source. At most 4096
+  stores per run (`TcBank.IO_LIMIT`, `MAX_IO`).
+- a function's inputs include everything its callees read before writing, whole: the registers compared at a call are
+  the callee's own record (`TcPrepare.calleeRegs`), so the caller's signature carries the same set (`TcFlow.calleeReads`
+  walks the callee's full record; before, it stopped one level short and a float argument passed through two calls, f1..f8
+  of Melee 8001e6d8 into 803644cc, was missing from the signature). Calls followed one inside another are capped at
+  `MAXNEST` and a result computed with a cut is not memoised.
 
 Variadic callees: a variadic function's register save area (`stwu r1`, a cr1 branch around `stfd f1..f8`, the
 `stw r3..r10`) is not a read for `TcFlow`. Without that, a stub like OSReport made every caller, and every function
 reaching one through pass-through, "read" r3..r10 and f1..f8. The cost: the variable arguments of a direct call to a
 variadic function are compared only where the callee reads them as registers.
+
+## Known limits: what both sides share, so the judge cannot see it
+
+Nothing here has been compared with a real console. These are modelled once and used by both the oracle and the C runtime, so a
+wrong model gives the same wrong answer twice and passes:
+
+- `fres` and `frsqrte`: the estimate tables have one source, used on both sides;
+- `ConvertToSingle` (a double going to a single-precision result or store);
+- the double-rounded `fmadd` family in single precision.
+
+Not modelled, refused by the oracle with their reason: non-zero GQR quantized `psq_l`/`psq_st`, the `ps_*` arithmetic, `mfmsr`,
+`mtmsr`, `mftb`, FPSCR moves (`mffs`, `mtfsf`), `dcbi`, `sc`.
+
+A `blr` is a return: a `mtlr` of something other than the saved LR followed by `blr` (5 sites in Skies of Arcadia) is a computed
+jump the C would not make. That fails the judge rather than passing it, when a vector reaches it.
+
+r4 after a callee that sets it on only some paths stays uncompared at a pointer call, and a direct callee's r4 is compared only if
+that callee reads it: a wrong r4 there passes.
+
+Functions that walk long chains of game objects have few or no valid random vectors (`MAX_REPAIRS`): they end as FAIL with 0 vectors.
 
 ## Runtime and check (runtime/, hooks.py)
 
@@ -98,6 +138,8 @@ variadic function are compared only where the callee reads them as registers.
 through `core/target_hooks`. The runner (`runtime/runner.c`, `tc_rt.c`, `tc_ppc.c`) loads the DOL's sections into
 a big-endian guest MEM1 and reports in the oracle's `expected.txt` format. The check is core's (lint R2-R6 with the
 float rule worded for `f64`, a /W4 /WX /fp:strict build, every dev and hidden vector bit for bit; `core/check._finish`).
+
+`translator/tools/dp_judge.py` labels a PASS `thin` when its vectors reached under 70% of the original's blocks, in the results file and the run's summary line. The verdict stays PASS: the label says the proof is weak there (`docs/proofs/2026-11-02/gc-tx-review/RESULT.md`).
 
 ## Readable stage (runtime_rd/, ppc_readable*.py, readable_task.md)
 
@@ -152,15 +194,18 @@ handlers use. Each entry: what the p-code does, and what the target does about i
 | divw / divwu | plain `s/` and `/` | undefined result for /0 and 0x80000000 / -1 | a vector dividing by 0 stops the emulator (invalid vector); the helpers guard both cases |
 | psq_l / psq_st (and u/x forms) | `load_ps` / `store_ps` macros: type from the GQR at run time, an `ldexpf` CALLOTHER when the scale is not 0, the unsigned integer types converted as signed, no store saturation | quantized load/store | **wrong** for quantized types: refused. Allowed when the GQR named has type and scale 0 (float, no scale; GQR0 = 0 in every handler): then the p-code is a plain single load/store, the hardware's but for rounding ps0 on the store, a frame word no check compares and the epilogue's lfd overwrites |
 | ps_* arithmetic | per-slot ops | - | refused (none in the handlers) |
-| fres / frsqrte | exact division / sqrt | table estimates | refused |
+| fres / frsqrte | exact division / sqrt | table lookup with linear interpolation (relative error under 1/256 for fres, 1/32 for frsqrte) | **wrong**: `TcFixups` ("estimate") writes `TcEstimate`'s result to fD (and ps1) after the step; C uses `ppc_fres` / `ppc_frsqrte` (same tables and algorithm; the tables are the hardware-measured ones Dolphin publishes, not checked against a console here). `tests/test_gc_estimate.py` proves Java, C and a Python version agree and the error bounds hold |
 | mtfsf / mtfsfi / mtfsb0/1 / mffs | FPSCR moves | the rounding mode changes | refused: the p-code float ops always round to nearest |
-| dcbz, dcbi, dcbf, dcbst, icbi, sync, isync, eieio, mtmsr, mfmsr, sc, rfi, tw, twi, mftb | cache/system | - | refused |
+| dcbf, dcbst, dcbt, dcbtst, icbi, sync, isync, eieio | CALLOTHERs with no callback | no register or memory effect a single-threaded program sees | **modelled**: `TcFixups.install` registers empty callbacks; the C drops them |
+| dcbz | `dataCacheBlockClearToZero(ea)` CALLOTHER | zeroes the 32-byte block holding ea | **modelled**: the callback zeroes that block in RAM; the C already zeroed it |
+| dcbi, dcbz_l, mtmsr, mfmsr, sc, rfi, tw, twi, mftb | cache/system | dcbi discards a dirty line (no cache is modelled), dcbz_l writes the locked cache, mfmsr/mtmsr touch machine state, mftb reads a clock | refused: none can be modelled faithfully |
 | lmw / stmw | load/store multiple (lmwInstructions.sinc / stmwInstructions.sinc) | the same | correct |
 | crxor 6,6,6 / creqv 6,6,6 | CR bit operation | tells a variadic callee whether floats are passed | correct; skipped in C |
 
-What the audit does not cover: instructions the 32 audited handlers do not use (string loads and stores, `lswi`/`stswi`,
-`eciwx`/`ecowx`, the remaining paired-single forms), and FPSCR exception bits (the commented-out flag CALLOTHERs in
-the SLEIGH): no check observes FPSCR.
+What the audit does not cover: it was read for the instructions of the first 32 handlers, and the target now runs whole games,
+so any instruction not in the table has not been read against the SLEIGH (string loads and stores, `lswi`/`stswi`,
+`eciwx`/`ecowx`, the remaining paired-single forms, among others). FPSCR exception bits (the commented-out flag CALLOTHERs in
+the SLEIGH) are not modelled: no check observes FPSCR. See also Known limits.
 
 ## Test truth (tools/gc_truth.py)
 

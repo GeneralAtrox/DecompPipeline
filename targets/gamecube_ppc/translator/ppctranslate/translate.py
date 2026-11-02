@@ -442,7 +442,8 @@ class FunctionTranslator:
                         args.append(("s", k, load("rd32", X.add(R(1), u(8 + 4 * k)))))
         out = [CallS(target, args, addr, auto=auto)]
         out.append(Clobber("r0", ZERO))
-        for k in range(4, 13):
+        out.append(Clobber("r4", Call("tc_lastr4", [], "u32")))  # r3:r4, a 64-bit result's low word
+        for k in range(5, 13):
             out.append(Clobber(f"r{k}", ZERO))
         out.append(Clobber("f0", FZERO))
         for k in range(2, 14):
@@ -461,6 +462,7 @@ class FunctionTranslator:
         """bl to its own entry. The oracle runs it (it never leaves the body), so the C calls px_rec with the
         parameter registers and the current r1; the callee's clobbers are the same as a mocked call's."""
         out = self.call(u(self.entry), addr)
+        out = [Clobber("r4", ZERO) if isinstance(x, Clobber) and x.dst == "r4" else x for x in out]
         kind = "f" if self.sig.ret in ("f32", "f64") else "r"
         c = CallS(u(self.entry), [("p", n, R(int(stg[1:])) if stg[0] == "r" else F(int(stg[1:])))
                                   for n, _, stg, _ in self.sig.params] + [("p", "sp_", R(1))], addr, kind=kind)
@@ -1150,13 +1152,9 @@ class FunctionTranslator:
             e = Call("ppc_" + o, [a, c, b], "f64")
             sgl = None              # already single: ps1 takes it too
         elif o == "fres":
-            self.notes.append(f"fres at {i.addr:08x}: exact reciprocal (the 750CL's estimate table is not modelled)")
-            e, sgl = Call("px_fdiv", [Const(1.0, "f64"), b], "f64"), True
-            self.helpers.add("fdiv")
+            e, sgl = Call("ppc_fres", [b], "f64"), True
         elif o == "frsqrte":
-            self.notes.append(f"frsqrte at {i.addr:08x}: 1/sqrt to double precision (the estimate is not modelled)")
-            e = Call("px_rsqrt", [b], "f64")
-            self.helpers.add("rsqrt")
+            e = Call("ppc_frsqrte", [b], "f64")
         elif o == "fsel":
             e = Call("ppc_fsel", [a, c, b], "f64")
         elif o == "frsp":
@@ -1419,12 +1417,12 @@ def all_stmts(blocks):
 
 
 def fill_auto_args(ft, blocks):
-    """A call whose callee DP's meta does not list (indirect, or no meta) passes every argument register the
-    function may have set: written by its own code (not a callee's clobber) or a parameter."""
+    """A call DP's meta does not list passes every argument register the function set (own writes, parameters)."""
     defined = {stg for _, _, stg, _ in ft.sig.params}
     for s in all_stmts(blocks[1:]):
         if not isinstance(s, (Clobber, CallS)):
             defined |= s.writes()
+    defined |= {"r3", "r4", "f1"} if any(isinstance(s, CallS) for s in all_stmts(blocks)) else set()  # call results, r3:r4 too
     regs = [r for r in ARG_REGS if r in defined]
     for s in all_stmts(blocks):
         if isinstance(s, CallS) and s.auto:

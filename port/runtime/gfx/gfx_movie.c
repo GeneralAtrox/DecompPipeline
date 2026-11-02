@@ -1,7 +1,7 @@
 /* A movie over the game's picture, as a middleware player draws its decoded frames: runtime/media hands over each
  * frame's Y, Cb and Cr planes (gfx_movie_show), which go to three 8-bit textures; at each frame, after the renderer
- * and before the frame is dumped or shown, the frame is drawn over the 640x480 screen (the middle of a widescreen
- * frame) by a pixel shader that turns YCbCr into RGB (gfx_movie.hlsl). gfx_movie_hide stops drawing it. */
+ * and before the frame is dumped or shown, the frame is drawn over the 640x480 screen (the middle of a wider or
+ * taller frame) by a pixel shader that turns YCbCr into RGB (gfx_movie.hlsl). gfx_movie_hide stops drawing it. */
 #include <string.h>
 #include "gfx.h"
 #include "pvr_int.h" /* pvr_full_vs */
@@ -95,6 +95,8 @@ void gfx_movie_show(const u8 *y, const u8 *cb, const u8 *cr, u32 y_stride, u32 c
 
 void gfx_movie_hide(void) { g_on = 0; }
 
+int gfx_movie_on(void) { return g_on; }
+
 void gfx_movie_draw(void)
 {
     ID3D11DeviceContext *cx = g_gfx.ctx;
@@ -102,15 +104,17 @@ void gfx_movie_draw(void)
     ID3D11ShaderResourceView *none[3] = {NULL, NULL, NULL};
     D3D11_VIEWPORT vp;
     float rect[4];
+    u32 scr[4];
     media_movie_frame(); /* the picture of the sound heard now (gfx_movie_show) */
-    if (!g_on || !g_gfx.frame_rtv || !(vs = pvr_full_vs())) return;
-    /* the 640x480 screen: the frame's height, 4:3, in its middle */
-    rect[3] = (float)g_gfx.frame_h;
-    rect[2] = rect[3] * 4.0f / 3.0f;
-    rect[0] = ((float)g_gfx.frame_w - rect[2]) * 0.5f;
-    rect[1] = 0.0f;
+    if (!g_on || !g_gfx.frame_rtv) return;
+    vs = pvr_full_vs();
+    if (!vs) return;
+    /* the 640x480 screen: 4:3, in the middle of the frame */
+    gfx_screen_rect(g_gfx.frame_w, g_gfx.frame_h, g_gfx.wide_k, g_gfx.tall_k, scr);
+    for (int i = 0; i < 4; i++) rect[i] = (float)scr[i];
     memset(&vp, 0, sizeof vp);
     vp.TopLeftX = rect[0];
+    vp.TopLeftY = rect[1];
     vp.Width = rect[2];
     vp.Height = rect[3];
     vp.MaxDepth = 1.0f;

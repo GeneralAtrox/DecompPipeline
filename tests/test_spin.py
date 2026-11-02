@@ -64,7 +64,7 @@ class Wiring(unittest.TestCase):
         self.assertIn('spinWait = a.length > 10 && a[10].startsWith("spin");', prep)
         self.assertIn('if (spinWait && a[10].startsWith("spin:")) for (String w : a[10].substring(5).split("_")) '
                       'spinWords.add(Long.parseLong(w, 16));', prep)
-        self.assertIn('facts, compare.spin_arg(cfg, addr)]', text(ROOT / "core" / "ghidra.py"))
+        self.assertIn('write_facts(run_cfg), compare.spin_arg(cfg, addr)]', text(ROOT / "core" / "ghidra.py"))
         self.assertIn('eout.append(r.spun ? "HALT SPIN\\n" : "HALT\\n");', text(SCRIPTS / "TcVectors.java"))
 
     def test_calls(self):  # a loop with calls: proved once at its head after a pass with a call, its exits on named words

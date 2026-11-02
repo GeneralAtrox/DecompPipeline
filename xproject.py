@@ -235,6 +235,14 @@ def main():
                 for addr, e in reg.get(kind, {}).items():
                     if addr in amap:
                         new_addr = canonical(amap[addr], mirror)
+                        if (kind == "functions" and not old.in_scope(addr) and new.in_scope(new_addr)
+                                and not (new_ws / "readable" / "src" / f"{new_addr}.c").exists()):
+                            # a library function's name never goes onto a function in the game's own range: the
+                            # port kit swaps a library name for the SDK module's code, so a byte-twin thunk (PS2
+                            # 8c06c038, the idle step, named Mw_ExecServer after Spawn's 8c0d6114) lost the game's code;
+                            # a function already written as readable C keeps its name
+                            print(f"skipped {new_addr} {entry_name(kind, e)}: library function {addr} of the old project, game range here")
+                            continue
                         m = matches.get(new_addr) or matches.get(amap[addr]) or {}
                         how = "exact" if m.get("kind") == "exact" and m.get("from") == addr else "pair"
                         names[kind][new_addr] = dict(e, imported_from=addr, imported_ws=str(old_ws),

@@ -3,8 +3,9 @@
  * saturation, the stfs store conversion). Every double operation here is one IEEE double operation (the runtime
  * builds with /fp:strict: no contraction).
  *
- * Multiply-add rounding (DESIGN.md, open question 1) is chosen at build time: TC_FMA_FUSED=0 (the default) rounds
- * the product, then the sum, as Ghidra's p-code does; TC_FMA_FUSED=1 rounds once, as the PowerPC manuals describe.
+ * Multiply-add rounding (DESIGN.md, open question 1) is chosen at build time: TC_FMA_FUSED=1 (the default, the
+ * user's decision of 2026-10-24) rounds once, as the PowerPC manuals describe; TC_FMA_FUSED=0 rounds the product,
+ * then the sum, as Ghidra's p-code does.
  * The judge passes the target.json "fma" setting; decompiled C calls the ppc_fmadd family and never needs to change
  * when the setting does. */
 #include <fenv.h>
@@ -13,7 +14,7 @@
 #include "tc_rt.h"
 
 #ifndef TC_FMA_FUSED
-#define TC_FMA_FUSED 0
+#define TC_FMA_FUSED 1
 #endif
 
 static u64 dbits(f64 x)

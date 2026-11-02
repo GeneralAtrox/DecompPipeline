@@ -13,7 +13,7 @@ import threading
 import time
 
 from . import agent, busylog, callee_drift, check, filelock, global_extents, header_snapshot, infra, paths, readable
-from . import lean_proof, readable_lean, verdict_memo
+from . import lean_proof, readable_lean, usage, verdict_memo
 from . import readable_check as rcheck
 from .readable_context import context_md, global_hint, pool_constants  # noqa: F401 (refine.py coverage uses them)
 from .readable_lean import own_pool  # noqa: F401
@@ -273,13 +273,14 @@ def refine(cfg, addr, model=None, max_attempts=3, log=print, stop_flag=None, eff
                     f"{old.get('note', '')}\n")
     if kept and old.get("readable_by") == "machine":
         previous += MACHINE_NOTE
-    rec = update(addr, status="running", started=now(), model=model or cfg["model"],
+    rec = update(addr, status="running", started=now(), model=agent.readable_model(cfg, model),
                  **({"redo_of": kept} if kept else {}))
     attempts = rec.get("attempts", [])
     first_new = len(attempts) + 1
     raw_path = paths.MATCHED / f"{addr}.c"  # batch 26: a large function's effort (missing: the attempt reports it)
     raw_bytes = raw_path.stat().st_size if raw_path.is_file() else None
-    acfg = dict(cfg, model=model or cfg["model"], effort=agent.readable_effort(cfg, effort, raw_bytes),
+    acfg = dict(cfg, model=agent.readable_model(cfg, model), effort=agent.readable_effort(cfg, effort, raw_bytes),
+                attempt_budget_usd=cfg.get("readable_budget_usd", cfg.get("attempt_budget_usd")),
                 output_cap=cfg.get("readable_output_cap"), cache_ttl=cfg.get("readable_cache_ttl"))
     for _ in range(max_attempts):
         n = len(attempts) + 1
@@ -297,6 +298,8 @@ def refine(cfg, addr, model=None, max_attempts=3, log=print, stop_flag=None, eff
                **info}
         if tree_hashes(box) != before:
             att.update(verdict="FAIL", tamper="a read-only sandbox file changed")
+        elif info.get("api_error"):  # as core/job: work.c is still what the session started from (a machine draft
+            att.update(verdict="NOT_JUDGED")  # that passes would be recorded as the agent's: 131 rows of V8's)
         else:
             with busylog.busy(busylog.slot(), "j"):
                 res = rcheck.check_readable(cfg, addr, str(work), paths.BUILD / addr / "readable", reg=reg)
@@ -312,6 +315,8 @@ def refine(cfg, addr, model=None, max_attempts=3, log=print, stop_flag=None, eff
             update(addr, readable_by="agent")
             return record_pass(addr, header_snapshot.active_hash())
         if info.get("api_error"):
+            if (info.get("rate_limit_info") or {}).get("status") == "rejected":  # core/fn_claim.run_all stops on it
+                usage.Usage().update(info["rate_limit_info"], f"refine {addr} attempt {n}")
             if kept:
                 return redo_not_passed(addr, kept, "api_error", f"API error: {info['api_error']}",
                                        range(first_new, n + 1))

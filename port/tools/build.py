@@ -16,11 +16,16 @@ Two builds in one folder at once break Ninja's log ("Permission denied").
 --jobs: compile jobs (default: the machine's logical processors).
 --tx DIR, --tx-mode: translator C for this build (gen_port.py --tx; default: game.json "translator_c"); --tx-ovl
 ROOT: the overlays' (gen_overlays.py --tx; default: overlays.json "translator_c"), --tx-mode for them too.
+--no-build-gc: keep old builds. Else, when this exits (not with --progress), build/NAME folders of this kit with their
+NAME_gen, NAME_run, NAME_regress, NAME_lockstep and NAME.log are removed once nothing in them was written for 5 days
+and no process uses them (build_gc.py; also DP_BUILD_GC=0); x86, x86chk, gen, run, regress, reference, this build and
+folders it cannot confirm as builds stay.
 --progress: the launcher's view (a game's Start Game.bat): one line counting the compiles as they finish, rewritten
 in place, warnings and errors in full as they come, "Game is up to date." when nothing changed; the generator's and
 the compiler's full output go to the build log only.
 """
 import argparse
+import atexit
 import json
 import os
 import pathlib
@@ -34,6 +39,7 @@ import time
 TOOLS = pathlib.Path(__file__).resolve().parent
 KIT = TOOLS.parent
 sys.path.insert(0, str(TOOLS))
+import build_gc  # noqa: E402
 import game_config  # noqa: E402
 
 # The 32-bit MSVC environment: $VCVARS32, else vcvars32.bat beside config.local.json's "vcvars" (game_config).
@@ -197,6 +203,10 @@ def main():
     ap.add_argument("--regress", action="store_true", help="then run the game's tests/*.script (tools/regress.py)")
     ap.add_argument("--build-dir", default=None, help="a build of its own in build/NAME (agents: not build/x86)")
     ap.add_argument("--progress", action="store_true", help="the launcher's view: a live count")
+    ap.add_argument("--game-o2", action="store_true", help="the game's readable and translator C at /O2, not the judge's /O1 "
+                    "(set when the build folder is first configured; for the proof runs of docs/RUNTIME_TARGET.md)")
+    ap.add_argument("--sq-fast", action="store_true", help="the store-queue helpers a block at a time (game.json sq_fast, tx_sqfast.py)")
+    ap.add_argument("--no-build-gc", action="store_true", help="keep old --build-dir builds (else removed after 5 days)")
     ap.add_argument("--tx", default=None, help="translator C: tools/dp_judge.py --sp-input's --out folder")
     ap.add_argument("--tx-mode", default=None, choices=("mix", "only"))
     ap.add_argument("--tx-ovl", default=None, help="the overlays' translator C: a folder of judged folders by "
@@ -214,10 +224,10 @@ def main():
     gen_out, view = "", Progress() if a.progress else None
     if not a.no_gen:
         if view:
-            view.status("Checking the game's files...")
+            view.status("Making the game's files again from the new source (about a minute; only after an update)...")
         rc, gen_out = run([sys.executable, str(TOOLS / "gen_port.py"), "--game", str(game), "--out", str(gen)]
                           + (["--engine"] if a.engine else []) + (["--tx", a.tx] if a.tx else [])
-                          + (["--tx-mode", a.tx_mode] if a.tx_mode else []), 600)
+                          + (["--tx-mode", a.tx_mode] if a.tx_mode else []) + (["--sq-fast"] if a.sq_fast else []), 600)
         if view:
             view.clear()
         if not view or rc:
@@ -236,6 +246,8 @@ def main():
             (gen / "overlays" / "overlays.cmake").unlink(missing_ok=True)
     env = msvc_env(build / "msvc_env_x86.json")
     bdir = build / (own or ("x86chk" if a.checked else "x86"))
+    if not a.progress and not a.no_build_gc:  # old agent builds go when this exits; the launcher's start never waits
+        atexit.register(build_gc.maybe_sweep, build, {bdir.name})
     vcpkg = game_config.vcpkg_root()
     if not vcpkg:
         raise SystemExit("no vcpkg for the kit's host libraries (vcpkg.json): set VCPKG_ROOT, or \"vcpkg\" in "
@@ -249,12 +261,14 @@ def main():
                        "-DVCPKG_TARGET_TRIPLET=x86-windows", f"-DVCPKG_MANIFEST_DIR={KIT.as_posix()}", f"-DCMAKE_MAKE_PROGRAM={NINJA}", "-DCMAKE_BUILD_TYPE=Release",
                        "-DCMAKE_C_FLAGS_RELEASE=/DNDEBUG",
                        f"-DPORT_CHECKED={'ON' if a.checked else 'OFF'}", f"-DPORT_GEN={gen.as_posix()}",
+                       f"-DPORT_GAME_O2={'ON' if a.game_o2 else 'OFF'}",
                        "-S", str(KIT), "-B", str(bdir)],
                       2400, env=env)
         if not a.progress or rc:
             print(out[-3000:], end="")
         if rc:
             raise SystemExit(f"cmake configure failed ({rc})")
+    build_gc.touch_used(bdir)
     cmd = ["cmake", "--build", str(bdir), "--", "-k", "0", f"-j{a.jobs}"]
     if view:
         view.t0 = time.monotonic()

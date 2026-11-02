@@ -12,7 +12,7 @@ usage:
       Each version: the DOL's SHA-1, its REL modules, functions in main.dol and in RELs, and the share of
       functions in C units, C++ units and unsplit code (main.dol and RELs apart).
   python tools/gc_truth.py check-disc --decomp DIR FILE
-      FILE is a disc image (.iso/.gcm, uncompressed) or a main.dol: its DOL's SHA-1 against every version's hash.
+      FILE is a disc image (.iso/.gcm/.ciso/.rvz/.wia) or a main.dol: its DOL's SHA-1 against every version's hash.
   python tools/gc_truth.py score --decomp DIR --version V --project WS --out DIR [--verdicts FILE] [--link FILE]
       Scores the workspace against the decomp's functions, main.dol's and (with a link record) the REL modules':
       - catalog: each truth function is exact (same entry, same end), split (2+ DP entries inside it), merged

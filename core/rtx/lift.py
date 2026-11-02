@@ -22,7 +22,7 @@ from __future__ import annotations
 
 import re
 
-from . import cast, flow
+from . import cast, flow, framebuf, pointer, selfcall, vectors
 from .cast import (Assign, Bin, Block, Call, Case, Cast, Cond, Decl, DoWhile, ExprS, For, If, Index, Member, Num, Raw,
                    Return, Switch, Unary, Var, While)
 from .flow import Unsupported
@@ -401,15 +401,15 @@ def _sp_subst(s, r, off, sp_at):
 
 def calls(body, job, types):
     """Step 4: tc_call(T, &a) -> Name(arguments by storage)."""
-    sp = job.spec
+    sp, seen = job.spec, [0]  # seen: the calls in program order, the vectors' call index
 
     def conv(e):
         if not (isinstance(e, Call) and e.fn in sp.call_fns):
             return e
-        target = e.args[0]
-        if not flow.is_int(target):
-            raise Unsupported("a computed call target")
-        a = f"{target.v:08x}"
+        k, seen[0] = seen[0], seen[0] + 1
+        if not flow.is_int(e.args[0]):
+            return pointer.call(e, job, types, k, body.body)
+        a = f"{e.args[0].v:08x}"
         c = job.names.callees.get(a)
         if c is None:
             raise Unsupported(f"callee {a} has no prototype placement")
@@ -435,9 +435,9 @@ def calls(body, job, types):
             elif pt != types[v]:
                 val = Cast(pt, val)
             args.append(val)
-        call = Call(name, args)
-        return Call("__result", [call, Num(0 if rkind == "v" else 1 if rkind == "f" else 2), Raw(e.fn)])
+        return Call("__result", [Call(name, args), Num(0 if rkind == "v" else 1 if rkind == "f" else 2), Raw(e.fn)])
     map_exprs(body.body, lambda e: rewrite(e, conv))
+    pointer.check_count(job, seen[0])
 
     # the result: r0 = Name(...) (an integer), fr0's bits for a float, nothing for void
     def res(e):
@@ -447,7 +447,7 @@ def calls(body, job, types):
                 return Call("__void", [call])
             if kind.v == 1:
                 return Call(sp.f2u, [call]) if fn.text == sp.call_fns[0] else call
-            rt = job.callee_ret.get(call.fn, "u32")
+            rt = job.callee_ret.get(call.fn, "u32") if isinstance(call.fn, str) else "u32"
             return call if rt == "u32" else Cast("u32", call)
         return e
     map_exprs(body.body, lambda e: rewrite(e, res))
@@ -466,10 +466,11 @@ def calls(body, job, types):
         raise Unsupported("a void call's result in an expression")
 
 
-def frame(body, job, types):
+def frame(body, job, types, arrays):
     """Step 6: the frame's words as locals, the caller's words as the stack parameters."""
     sp = job.spec
     _frame_locals(body, job, types)
+    framebuf.bind(body, job, types, arrays)
     slots = {}          # offset -> set of access types
 
     def scan(e):
@@ -498,7 +499,6 @@ def frame(body, job, types):
         v = f"__slot{-signed}"
         types[v] = "f32" if kinds == {"f32"} else kinds.pop() if len(kinds) == 1 else "u32"
         names[off] = ("slot", v, kinds)
-    # overlapping slots (a word at -8 and a byte at -6) are not handled
     spans = sorted((off - (1 << 32) if off & 0x80000000 else off, _size(types.get(n[1], "u32")))
                    for off, n in names.items() if n[0] == "slot")
     for (a, sa), (b, _) in zip(spans, spans[1:]):
@@ -566,9 +566,9 @@ def _frame_locals(body, job, types):
             if isinstance(x, Cast) and x.type.rstrip().endswith("*"):
                 t = re.sub(r"\s+", " ", re.sub(r"\b(?:const|volatile)\b", "", x.type.rstrip()[:-1]).strip())
                 s = at_sp(x.e)
-                if s is not None:
+                if s is not None and t != "void":  # void *: a buffer of no known layout (core/rtx/framebuf)
                     found.setdefault(s, set()).add(t)
-                elif isinstance(x.e, Call) and sp.loads.get(x.e.fn) == "u32" and at_sp(x.e.args[0]) is not None:
+                elif t != "void" and isinstance(x.e, Call) and sp.loads.get(x.e.fn) == "u32" and at_sp(x.e.args[0]) is not None:
                     # a stack argument: the call reads its word back as a T *
                     slot_type.setdefault(at_sp(x.e.args[0]), set()).add(t)
             if isinstance(x, Call) and sp.stores.get(x.fn) == "u32" and at_sp(x.args[0]) is not None:
@@ -677,8 +677,7 @@ def memory(body, job):
     def lit_addr(a):
         if not flow.is_int(a):
             return None
-        m = unmirror(a.v)
-        return m[0] if m else a.v
+        return (unmirror(a.v) or (a.v,))[0]
 
     def load(e):
         if isinstance(e, Call) and isinstance(e.fn, str) and e.fn in sp.loads:
@@ -721,12 +720,13 @@ def memory(body, job):
         """An address inside a struct global: (u32)&g + off, which the field pass names as a member; inside an
         array global: (u32)g + off."""
         hit = names.global_at(v)
-        if not hit or hit[0] == v:
+        if not hit:
             return None
         base, (name, ctype, dims) = hit
         if not dims and job.types.struct(ctype) is None:
             return None
-        return Bin("+", Cast("u32", Var(name) if dims else Unary("&", Var(name))), Num(v - base, f"0x{v - base:x}"))
+        addr = Cast("u32", Var(name) if dims else Unary("&", Var(name)))
+        return Bin("+", addr, Num(v - base, f"0x{v - base:x}")) if v != base else addr
 
     for stmts, k, s in list(all_stmts(body.body)):
         if isinstance(s, ExprS) and isinstance(s.e, Call) and s.e.fn in sp.stores:
@@ -736,17 +736,17 @@ def memory(body, job):
             val = topdown(val, load)
             if hasattr(sp, "store_value"):
                 val = sp.store_value(s.e.fn, val)
-            if t not in ("u32", "f32"):
-                val = Cast(t, val)
+            val = Cast(t, val) if t not in ("u32", "f32") else val
             if v is not None:
                 nm = names.access(sp.width[s.e.fn], v, pointer_ok=True)
                 if not nm:
-                    raise Unsupported(f"a write at 0x{v:08x}: no global there")
+                    inside = interior(v)
+                    if inside is None:
+                        raise Unsupported(f"a write at 0x{v:08x}: no global there")
+                    stmts[k] = Assign(Unary("*", Cast(t + " *", inside)), "=", val)
+                    continue
                 hit = names.global_at(v)[1]
-                if hit[1] != t and "*" not in hit[1]:
-                    val = Cast(hit[1], val)
-                elif "*" in hit[1]:
-                    val = Cast(hit[1], val)
+                val = Cast(hit[1], val) if hit[1] != t else val
                 stmts[k] = Assign(cast.parse_expr(nm, job.typedefs), "=", val)
             else:
                 stmts[k] = Assign(Unary("*", Cast(t + " *", topdown(addr, load))), "=", val)
@@ -1083,7 +1083,7 @@ def _split(body, types):
 def lift(text, job):
     from ..raw_names import mask
     from ..sync_text import exported
-    found = exported(mask(text)[0])
+    found = exported(mask(text := selfcall.unwrap(text, job))[0])
     if not found:
         raise Unsupported("no exported function")
     start, close, brace, end = found
@@ -1094,7 +1094,7 @@ def lift(text, job):
     sp.check(body)
     if hasattr(sp, "prepare"):  # the target's raw C in the form the passes take (e.g. a constant stack pointer)
         sp.prepare(body)
-    types = declarations(body)
+    arrays, types = vectors.bind(body, sp), declarations(body)
     job.raw_types = {raw: _raw_type(text[start:brace], raw) for raw, _, _ in job.raw_params}
     if names_used(body.body) & {"goto"}:
         raise Unsupported("goto")
@@ -1111,7 +1111,7 @@ def lift(text, job):
     _trace(job, "flow.simplify", body)
     _split(body, types)
     flow.simplify(body, sp, keep)
-    frame(body, job, types)
+    frame(body, job, types, arrays)
     _trace(job, "frame", body)
     peephole(body, sp)
     flow.simplify(body, sp, keep)
@@ -1148,7 +1148,7 @@ def lift(text, job):
     local_types = name_locals(body, {n: t for n, t in types.items() if n not in params}, params,
                               getattr(job, "avoid", ()))
     init = assigned_before_use(body)
-    decl = []
+    decl = vectors.decls(arrays, names_used(body.body))
     for t in sorted({t for t in local_types.values()}, key=lambda t: ("*" in t, t != "u32", t)):
         vs = [v for v, tt in local_types.items() if tt == t]
         if "*" in t:

@@ -377,9 +377,9 @@ class Setup(unittest.TestCase):
     def test_tcsetup_compiles(self):
         d = tmpdir("gcrel_java_")
         try:
-            r = subprocess.run([jdk("javac"), "-nowarn", "-proc:none", "-d", str(d), "-cp", CP, "-sourcepath",
-                                str(PPC / "ghidra_scripts"), str(PPC / "ghidra_scripts" / "TcSetup.java")],
-                               capture_output=True, text=True, timeout=300)
+            src = (";" if sys.platform == "win32" else ":").join(str(p) for p in (PPC / "ghidra_scripts", TOOL / "core" / "ghidra_shared" / "ppc"))
+            r = subprocess.run([jdk("javac"), "-nowarn", "-proc:none", "-d", str(d), "-cp", CP, "-sourcepath", src,
+                                str(PPC / "ghidra_scripts" / "TcSetup.java")], capture_output=True, text=True, timeout=300)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         finally:
             shutil.rmtree(d, ignore_errors=True)

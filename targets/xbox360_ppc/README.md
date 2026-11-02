@@ -12,18 +12,29 @@ DecompPipeline's Xbox 360 target. The baseline title is Too Human. It is built l
 | Part | State |
 |---|---|
 | Disc → `default.xex` → loaded image (`tools/xiso.py`, `xex.py`, `aes.py`) | done, offline, tested on the real disc |
-| Catalog inputs (`tools/ppcscan.py`, `catalog_inputs.py`) | done: 88,193 functions, 86,559 in phase 1 |
+| Catalog inputs (`tools/ppcscan.py`, `catalog_inputs.py`) | done: 88,193 functions, 86,565 in phase 1 |
 | C runtime and runner (`runtime/`) | done, tested bit for bit in both fma modes |
 | Judge glue (`x360_check.py`, `x360_compare.py`, `x360_agent.py`, `hooks.py`) | done, tested |
 | Ghidra scripts (`ghidra_scripts/`, `template/`, `tools/ghidra_setup.py`, `decode_audit.py`) | written; they compile and their pure parts are tested; **never run in Ghidra yet** (PROOF_PLAN.md) |
-| VMX128 (vector) functions | **refused in phase 1** (1,403 of Too Human's); phase 2 designed in DESIGN.md §5 |
+| VMX128 (vector) functions | judged since phase 2 (DESIGN.md §5): stand-ins in Ghidra, `TcVmx` oracle executor, `vmx.py` helpers; estimates, Direct3D pack/unpack and vector-ABI functions stay refused |
 
 ## Commands
 
 Retail titles are encrypted with the console's key. It is never committed: put it in DecompPipeline's git-ignored
 `config.local.json` as `"xex_retail_key": "<32 hex digits>"`, or set `DP_XEX_RETAIL_KEY`.
 
-Make the catalog inputs from the disc or from `default.xex` (about 8 s):
+Make a workspace in one command, from the disc or from `default.xex`: the catalog inputs, the roots (`--roots FILE`,
+or `--pick` for proof_pick's 50; none sets up the whole catalog), Ghidra's setup list, `project.json` and
+`oracle/TcInputs.java`, then Ghidra's setup and the decode audit (gate G2) through the broker. The audit covers every
+function the setup made: the roots, everything they reach, which the oracle runs through, and TcSetup's thunks and
+helpers (`ghidra WS --audit roots` checks the roots only). `--no-ghidra` stops before Ghidra; `x360setup.py ghidra WS`
+runs that step later:
+
+```
+python tools/bounded.py 3600 -- python targets/xbox360_ppc/tools/x360setup.py setup DISC.iso WS --name NAME --roots ROOTS.txt
+```
+
+The steps one by one follow. Make the catalog inputs from the disc or from `default.xex` (about 8 s):
 
 ```
 python targets/xbox360_ppc/tools/catalog_inputs.py DISC.iso OUT_DIR

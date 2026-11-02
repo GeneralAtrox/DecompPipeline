@@ -1,5 +1,8 @@
 # Haiku attempts: what they get, what they may do, what they cost
 
+Since 2026-11-01 readable attempts run on config `readable_model` (Opus) unless Haiku is proven good at readable C (AGENTS.md,
+"Which model does what"). Raw attempts stay on Haiku. Readable costs below were measured on Haiku, so expect more on Opus.
+
 This is how the pipeline spends small-model (Haiku) sessions, for any game. Nothing here names a game: a new
 project gets the same sandboxes, the same lockdown and the same knobs. The numbers in "What it costs" were
 measured on the reference project; re-measure a new project with the usage report (last section).
@@ -187,6 +190,8 @@ types.h is bimodal: 0.2-3 KB for most functions, 17-33 KB for functions on the p
 | knob | where | default | effect |
 |---|---|---|---|
 | effort (raw) | config `effort` | `medium` | `--effort` of raw attempts; null = the CLI's adaptive default. medium: attempt-1 pass unchanged against high (120/120 in both; r15 A/B on 60 + 60 Toy Commander functions), -28% $ and -25% agent time per verified function |
+| model (readable) | config `readable_model`, `refine.py run --model` | `opus` | readable sessions and tools/name_pass.py; raw attempts use `model` (`haiku`). No fallback to `model` |
+| spend ceiling per session | config `attempt_budget_usd`, `readable_budget_usd` | 1.0, 5.0 | `--max-budget-usd` of raw / readable sessions (5.0: the figure an escalated raw function gets, as $1 buys Opus a fortieth of what it buys Haiku) |
 | effort (readable) | config `readable_effort`, `refine.py run --effort` | null: falls back to `effort` | readable only; `--effort` wins for that run (A/B) |
 | effort (large readable) | config `readable_large_bytes`, `readable_effort_large` | 4096, `medium` | a raw.c over that size (0/null: off) uses this effort, and TASK.md gets "A long function" (work top-down, write as you go, check early); `--effort` still wins |
 | prompt cache lifetime | config `cache_ttl`, `readable_cache_ttl` | `5m`, null | CLAUDE_CODE_PROMPT_CACHE_TTL of raw attempts / readable sessions; null = the CLI's choice (1 h on a subscription). 5m: -20% per verified raw function ($0.0139 -> $0.0112) at the same attempt-1 pass rate (60/60; r15 A/B) |

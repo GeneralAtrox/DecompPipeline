@@ -28,6 +28,32 @@ typedef int64_t s64;
 typedef float f32;
 typedef double f64;
 
+#ifdef TC_PORT
+/* The port kit (targets/xbox360_ppc/port): guest memory is one host reserve at tc_base and a guest address is an offset
+ * into it, so an access is one host load or store and one byte swap, in place. The judge build leaves TC_PORT unset and
+ * links the declarations below. */
+#include <intrin.h>
+extern u8 *tc_base;
+u32 ppc_single_bits(f64 x);
+u64 tc_timebase(void);               /* mftb: the host clock at the console's 49.875 MHz */
+static __forceinline u8 rd8(u32 a) { return tc_base[a]; }
+static __forceinline u16 rd16(u32 a) { return _byteswap_ushort(*(const u16 *)(tc_base + a)); }
+static __forceinline u32 rd32(u32 a) { return _byteswap_ulong(*(const u32 *)(tc_base + a)); }
+static __forceinline u64 rd64(u32 a) { return _byteswap_uint64(*(const u64 *)(tc_base + a)); }
+static __forceinline f32 rdf32(u32 a) { union { u32 i; f32 f; } v; v.i = rd32(a); return v.f; }
+static __forceinline f64 rdf64(u32 a) { union { u64 i; f64 f; } v; v.i = rd64(a); return v.f; }
+static __forceinline void wr8(u32 a, u8 v) { tc_base[a] = v; }
+static __forceinline void wr16(u32 a, u16 v) { *(u16 *)(tc_base + a) = _byteswap_ushort(v); }
+static __forceinline void wr32(u32 a, u32 v) { *(u32 *)(tc_base + a) = _byteswap_ulong(v); }
+static __forceinline void wr64(u32 a, u64 v) { *(u64 *)(tc_base + a) = _byteswap_uint64(v); }
+static __forceinline void wrf32(u32 a, f32 v) { union { u32 i; f32 f; } x; x.f = v; wr32(a, x.i); }
+static __forceinline void wrf32d(u32 a, f64 v) { wr32(a, ppc_single_bits(v)); }
+static __forceinline void wrf64(u32 a, f64 v) { union { u64 i; f64 f; } x; x.f = v; wr64(a, x.i); }
+static __forceinline u16 rd16r(u32 a) { return *(const u16 *)(tc_base + a); }
+static __forceinline u32 rd32r(u32 a) { return *(const u32 *)(tc_base + a); }
+static __forceinline void wr16r(u32 a, u16 v) { *(u16 *)(tc_base + a) = v; }
+static __forceinline void wr32r(u32 a, u32 v) { *(u32 *)(tc_base + a) = v; }
+#else
 /* Guest memory, big endian. */
 u8 rd8(u32 addr);
 u16 rd16(u32 addr);
@@ -47,20 +73,34 @@ u32 rd32r(u32 addr);                 /* lwbrx */
 void wr16r(u32 addr, u16 value);     /* sthbrx */
 void wr32r(u32 addr, u32 value);     /* stwbrx */
 
+#endif
+
 /* Calls to other original functions (including calls through function pointers, bctrl, and calls to kernel/XAM
  * imports through their thunks). Fill r[0..7] = r3..r10 (all 64 bits) and f[0..12] = f1..f13 exactly as the
  * original sets them before the bl, and s[0..7] = the doublewords at r1+0x50, r1+0x58, ... at the call (stack
- * arguments). Every call the original makes must be made, in the same order, with the same target. A tail call
- * (b to another function) is `return tc_call(...)`. tc_call returns the callee's r3, tc_callf its f1 (the test
- * harness's mocked callee sets both). */
+ * arguments). A call through a function pointer (a target context.md does not list) is compared on the argument
+ * registers the original set since its entry or its last call (after a call: its results r3 and f1), in order up to
+ * the first it did not set (r3..r10; f1..f13): fill those as it leaves them, its own parameters included. Every call
+ * the original makes must be made, in the same order, with the same target. A tail call (b to another function) is
+ * `return tc_call(...)`. tc_call returns the callee's r3, tc_callf its f1 (the test harness's mocked callee sets
+ * both). Where the original reads both after one call, take the other from tc_lastr() (r3) or tc_lastf() (f1): the
+ * last call's result, no new call. After the call the other volatile registers (r0, r4..r12, f0, f2..f13, ctr)
+ * are 0, except those context.md says the callee keeps, which hold what they held before it. */
 typedef struct {
     u64 r[8];
     f64 f[13];
     u64 s[8];
+    u64 nv[18];  /* the caller's r14..r31, filled only for a call to a funclet (port form)
+     */
+    u32 r12[1];  /* the caller's r12 (port form): a funclet receives its parent frame in it
+    */
+    u32 sp[1];   /* the caller's r1: the port kit's translation form (Facts.port) starts a callee on it; the judge leaves it 0 */
 } TcArgs;
 
 u64 tc_call(u32 target, const TcArgs *args);
 f64 tc_callf(u32 target, const TcArgs *args);
+u64 tc_lastr(void);  /* the last call's r3 (0 before any call) */
+f64 tc_lastf(void);  /* the last call's f1 (0 before any call) */
 
 /* PowerPC instruction helpers, bit-exact with the reference model (the oracle). Integer helpers take and return
  * whole 64-bit registers. */

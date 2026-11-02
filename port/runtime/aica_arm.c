@@ -1,10 +1,18 @@
 /* The AICA's ARM7 and its bus (aica_arm.h): the register file's reads and writes from both sides, the timers, the
  * interrupt controller and the ARM's time, run in the vertical blank's mix (aica.c's slice hook) and while the SH-4
  * polls the driver. */
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include "aica_arm.h"
 #include "arm7.h"
+#include "aica_arm_probe.h"
+#include "prof.h"
+
+#ifdef PORT_AICA_ARM_NATIVE
+extern const Arm7Native arm7_driver_native; /* game.json aica_arm_native: tools/arm7_translate.py's blocks of the driver */
+#endif
 
 #define ARM_RAM_WINDOW 0x00800000u /* below: the sound RAM, mirrored */
 #define ARM_CYCLES_PER_SAMPLE 512  /* 22,579,200 Hz / 44,100 Hz */
@@ -69,6 +77,7 @@ static void int_raise(u32 bits)
 static void sample_step(void)
 {
     arm7_run(&g_arm, ARM_CYCLES_PER_SAMPLE);
+    arm7_probe_sample(&g_arm);
     for (u32 t = 0; t < 3; t++) {
         u32 reg = REG_TIMER_A + 4u * t, v = aica_reg16(reg);
         if (++g_timer_div[t] < 1u << (v >> 8 & 7u)) continue;
@@ -82,20 +91,53 @@ static void sample_step(void)
     g_samples++;
 }
 
-static u64 now_ns(void)
+/* The ARM's scan fast paths (arm7_scan.c): game.json aica_arm_fast turns them on; env DP_ARM_FAST=0 or 1 overrides it. */
+static int fast_wanted(void)
 {
-    struct timespec t;
-    timespec_get(&t, TIME_UTC);
-    return (u64)t.tv_sec * 1000000000u + (u64)t.tv_nsec;
+    char v[8];
+    size_t n = 0;
+#ifdef PORT_AICA_ARM_FAST
+    int on = 1;
+#else
+    int on = 0;
+#endif
+    if (getenv_s(&n, v, sizeof v, "DP_ARM_FAST") == 0 && n > 1) on = v[0] == '1';
+    return on;
 }
 
+static int fault_wanted(void) /* DP_ARM_FAULT=1 to 4: plants a fault in the fast paths (1, 2) or the native blocks (3, 4), to show the proof log catches it */
+{
+    char v[8];
+    size_t n = 0;
+    return getenv_s(&n, v, sizeof v, "DP_ARM_FAULT") == 0 && n > 1 ? v[0] - '0' : 0;
+}
+
+/* The translated driver (game.json aica_arm_native) runs unless env DP_ARM_NATIVE=0 or the recorder is on. */
+static const Arm7Native *native_wanted(void)
+{
+#ifdef PORT_AICA_ARM_NATIVE
+    char v[8];
+    size_t n = 0;
+    int on = 1;
+    if (getenv_s(&n, v, sizeof v, "DP_ARM_NATIVE") == 0 && n > 1) on = v[0] == '1';
+    return on && !arm7_probe_recording() ? &arm7_driver_native : NULL;
+#else
+    return NULL;
+#endif
+}
 /* Runs n samples, timed when asked: 10 s of samples log the host time they took (a measure, off by default). */
 static void run_samples(u32 n)
 {
-    u64 t0 = g_timed ? now_ns() : 0;
+    u64 i0 = g_arm.executed, pt, pb, t0;
+    arm7_probe_blank(g_samples);
+    t0 = g_timed ? arm7_probe_now_ns() : 0;
+    pb = arm7_probe_run_begin();
+    pt = prof_begin(PROF_ARM);
     for (u32 i = 0; i < n; i++) sample_step();
+    prof_end(pt);
+    arm7_probe_run_end(pb, i0, n, &g_arm);
     if (!g_timed) return;
-    g_time_ns += now_ns() - t0;
+    g_time_ns += arm7_probe_now_ns() - t0;
     if (g_samples - g_time_from >= (u64)AICA_RATE * 10u) {
         double vblanks = (double)(g_samples - g_time_from) * 60000.0 / (AICA_RATE * 1001.0);
         port_log("aica: the ARM's host time: %.1f ms for %.0f blanks' samples, %.1f us a blank\n", g_time_ns / 1e6,
@@ -121,7 +163,9 @@ static void slice(u32 frames)
 void aica_arm_poll(void)
 {
     if (!g_running) return;
+    arm7_probe_poll();
     if (g_ahead + SLICE_FRAMES > AHEAD_MAX) {
+        arm7_probe_wait();
         port_wait_vblank();
         return;
     }
@@ -151,6 +195,10 @@ static void start_arm(void)
     g_arm.ram_size = g_arm.ram ? ARM_RAM_WINDOW : 0u;
     g_running = g_arm.ram != NULL;
     g_ahead = 0;
+    g_arm.fast = fast_wanted();
+    g_arm.fault = fault_wanted();
+    arm7_probe_start(&g_arm);
+    g_arm.native = native_wanted();
     audio_start(); /* the sound device, the dump and the key log */
     g_timed = aica_key_logging();
     aica_slice_hook(slice, SLICE_FRAMES);
@@ -224,6 +272,7 @@ static u32 arm_read(Arm7 *a, u32 addr, u32 size)
 static void arm_write(Arm7 *a, u32 addr, u32 value, u32 size)
 {
     (void)a;
+    arm7_probe_write(g_samples, addr, value, size);
     reg_write(addr & (AICA_REG_SIZE - 1u), value, size, 1);
 }
 

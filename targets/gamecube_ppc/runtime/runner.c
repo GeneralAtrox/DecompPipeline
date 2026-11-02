@@ -80,7 +80,7 @@ int main(int argc, char **argv)
     const char *want = argv[4];
     static char line[1 << 16];
     static u8 buf[1 << 15];
-    static u32 r[8], rets[16];
+    static u32 r[8], rets[16], hw[16];
     static u64 fbits[8], frets[16];
     static f64 f[8];
     int id = -1, active = 0;
@@ -111,6 +111,9 @@ int main(int argc, char **argv)
             words(line + 1, rets, 16);
         } else if (line[0] == 'D') {
             dwords(line + 1, frets, 16);
+        } else if (line[0] == 'H') {
+            words(line + 1, hw, 16);
+            tcrt_set_hw(hw);
         } else if (line[0] == 'M') {
             char *p = line + 2;
             u32 addr = (u32)strtoul(p, &p, 16);

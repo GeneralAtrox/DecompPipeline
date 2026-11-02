@@ -84,6 +84,32 @@ class Gate(unittest.TestCase):
         self.assertFalse(res["ok"])
         self.assertEqual(res["keys"]["sat"]["missing"], ["s"])
 
+    def test_comparing_too_little_fails(self):
+        whole = {"tc": {a: f(str(i), "KKK") for i, a in enumerate("abcdefgh")}}
+        broken = {"tc": {a: {"error": "harness"} for a in "abcdefgh"}}  # a broken judge: no kill is "lost"
+        res = ma.compare(whole, broken)
+        self.assertEqual((res["ok"], res["lost"], res["thin"]), (False, [], ["tc"]))
+        redone = {"tc": {a: f("other", "SSS") for a in "abcdefgh"}}     # all stale, with every kill gone
+        self.assertFalse(ma.compare(whole, redone)["ok"])
+        some = {"tc": dict(whole["tc"], a=f("other", "SSS"), b={"error": "x"})}  # 2 of 8: under the bar
+        self.assertTrue(ma.compare(whole, some)["ok"])
+        self.assertFalse(ma.compare({}, whole)["ok"])                   # no baseline proves nothing
+        self.assertIn("compared too little", ma.report(res))
+
+    def test_baseline_refuses_a_run_that_compared_too_little(self):
+        with tempfile.TemporaryDirectory() as d:
+            here = pathlib.Path(d)
+            old = {"tc": {a: f(str(i), "KKK") for i, a in enumerate("abcd")}}
+            (here / "baseline.json").write_text(json.dumps(old))
+            broken = here / "broken.json"
+            broken.write_text(json.dumps({"tc": {a: {"error": "harness"} for a in "abcd"}}))
+            with mock.patch.object(ma, "HERE", here), contextlib.redirect_stdout(io.StringIO()):
+                with mock.patch.object(sys, "argv", ["x", "baseline", str(broken)]):
+                    self.assertEqual(ma.main(), 1)
+                self.assertEqual(json.loads((here / "baseline.json").read_text()), old)
+                with mock.patch.object(sys, "argv", ["x", "baseline", str(broken), "--reason", "redone"]):
+                    self.assertEqual(ma.main(), 0)
+
     def test_baseline_up_only(self):
         with tempfile.TemporaryDirectory() as d:
             here = pathlib.Path(d)
@@ -111,6 +137,13 @@ class Needed(unittest.TestCase):
                  "targets/saturn_sh2/target.json", "targets/gamecube_ppc/ppc_compare.py", "docs/PROOF_GATES.md",
                  "targets/dreamcast_sh4/ghidra_scripts/TcSeed.java", "core/watcher.py", "tests/test_x.py"]
         self.assertEqual(ma.at_stake(files, locked), files[:7])
+        judges = ["targets/xbox360_ppc/x360_compare.py", "targets/xbox360_ppc/x360_check.py", "core/strict_judge.py",
+                  "tools/mutation_check.py"]
+        self.assertEqual(ma.at_stake(judges, set()), judges)
+
+    def test_judge_paths_exist(self):  # a renamed judge file must not silently drop out of the audit
+        for p in ma.JUDGE_PATHS:
+            self.assertTrue((ROOT / p).is_file(), p)
 
     def test_locked_lists(self):  # every target's locked oracle scripts exist (the audit's list of them)
         for t in (ROOT / "targets").glob("*/target.json"):

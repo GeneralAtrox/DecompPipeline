@@ -13,6 +13,8 @@ accepted. The test proves:
 3. the runtime (compiled from its source): tc_hw_read8 / 16 / 32 return those same bytes and fault elsewhere, an old Y
    line (no width) is a 4-byte register, and the listed stores (tc_hw_write8 / 16 / 32) log their bytes big endian, as
    the oracle's TcExit logs memory (the Saturn copy of tc_p4.c logged them little endian, the Dreamcast's order);
+   TcExit reads back the bytes stored in a register listed for both a read and a write (SMPC SF, VDP2 TVMD), never the
+   listed read value;
 4. the agent's text names the read for the register's width, also with no special instruction in the function.
 Run: python -W error tests/test_saturn_hw.py.
 """
@@ -85,6 +87,7 @@ class Oracle(unittest.TestCase):
                                text=True, timeout=120)
             self.assertEqual(r.returncode, 0, r.stderr)
         out = r.stdout.splitlines()
+        self.assertIn("logged true", out)  # a W line holds what was stored, not the listed read value
         reads = {(int(o, 16), int(s)): b for _, o, s, b in (ln.split() for ln in out if ln.startswith("read "))}
         meta = next(ln[5:] for ln in out if ln.startswith("meta "))
         header = next(ln[7:] for ln in out if ln.startswith("header "))

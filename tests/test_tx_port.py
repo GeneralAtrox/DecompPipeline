@@ -8,6 +8,7 @@ Synthetic files and machine code. Run: python -W error tests/test_tx_port.py.
 """
 import hashlib
 import json
+import os
 import pathlib
 import re
 import struct
@@ -59,6 +60,18 @@ class Judged(unittest.TestCase):
             ok, why = tx_port.judged(d)
             self.assertEqual((list(ok), why), (["8c010000"], {}))
 
+    def test_equal_times(self):
+        """A tar gives the results files equal times: _all, the later judge run, still comes after a part file."""
+        with tempfile.TemporaryDirectory() as d:
+            d = pathlib.Path(d)
+            (d / "translated_sp" / "fx").mkdir(parents=True)
+            (d / "translated_sp" / "fx" / "8c010000.c").write_text("new", encoding="utf-8")
+            for name, text in (("all", b"new"), ("part1of2", b"old")):
+                f = d / f"results_translated_sp_fx_{name}.json"
+                f.write_text(json.dumps([{"addr": "8c010000", "verdict": "PASS", "sha256": hashlib.sha256(text).hexdigest()}]), encoding="utf-8")
+                os.utime(f, (1000, 1000))
+            self.assertEqual(list(tx_port.judged(d)[0]), ["8c010000"])
+
 
 class Pick(unittest.TestCase):
     def test_modes(self):
@@ -67,6 +80,35 @@ class Pick(unittest.TestCase):
         self.assertEqual(tx_port.pick("mix", readable, passing, tx, platform), (["a", "c"], ["b", "d"]))
         # only: translator C wherever it passes; readable only where it does not
         self.assertEqual(tx_port.pick("only", readable, passing, tx, platform), (["c"], ["a", "b", "d"]))
+
+
+class LedgerMissing(unittest.TestCase):
+    """A workspace with readable C but no state/readable.json (the launcher's live push once left it out) passes none of it,
+    so a mix build takes translator C everywhere (TC: the movie drew only its top strip at 15 fps). gen_port says so."""
+
+    def test_missing_ledger_is_counted(self):
+        from core import lookalike
+        with tempfile.TemporaryDirectory() as d:
+            ws = pathlib.Path(d)
+            (ws / "readable" / "src").mkdir(parents=True)
+            (ws / "state").mkdir()
+            self.assertEqual(lookalike.ledger_missing(ws), 0)  # nothing readable: nothing lost
+            (ws / "readable" / "src" / "8c010000.c").write_text("", encoding="utf-8")
+            (ws / "readable" / "src" / "8c010100.c").write_text("", encoding="utf-8")
+            self.assertEqual(lookalike.ledger_missing(ws), 2)
+            self.assertEqual(lookalike.readable_sources(ws), set())
+            (ws / "state" / "readable.json").write_text(json.dumps({"8c010000": {"status": "readable"}}), encoding="utf-8")
+            self.assertEqual(lookalike.ledger_missing(ws), 0)
+            self.assertEqual(lookalike.readable_sources(ws), {"8c010000"})
+
+    def test_warning_names_the_ledger(self):
+        from core import lookalike
+        with tempfile.TemporaryDirectory() as d:
+            ws = pathlib.Path(d)
+            (ws / "readable" / "src").mkdir(parents=True)
+            self.assertEqual(lookalike.ledger_warning(ws), "")
+            (ws / "readable" / "src" / "8c010000.c").write_text("", encoding="utf-8")
+            self.assertIn("state/readable.json", lookalike.ledger_warning(ws))
 
 
 class FrameBound(unittest.TestCase):
@@ -189,8 +231,21 @@ class PortForm(unittest.TestCase):
             glue = tx_port.inbound_c(reg, abi, "8c010000", "u32 Fx_Get(u32 a0)", meta, f, c)
             no = tx_port.inbound_c(reg, abi, "8c010000", "u32 Fx_Get(u32 a0)", {"params": meta["params"]}, f, c)
         self.assertIn("sh4_r(7)", glue)
-        self.assertNotIn("sh4_r(5)", glue)
-        self.assertNotIn("sh4_r(7)", no)
+        self.assertIn("sh4_r(7)", no)   # the glue takes every r4..r7 as tc_call loaded it (test_in_reg_passed_on)
+
+    def test_in_reg_passed_on(self):
+        """An r4..r7 outside the signature that the body only passes on enters the glue as the runtime holds it,
+        which tc_call loads with the caller's argument: Spawn 8c934980 (param_1 in r5) hands effmain 8c935e80 the
+        object in r4; the glue passed 0, so effmain wrote through null (+0x1c8) at the 5th stage load."""
+        text = ("static u32 body(u32 sp, u32 ret_addr, s32 param_1, u32 in_r0, u32 in_r4, u32 in_r6, u32 in_r8)\n{\n"
+                "    return in_r4 + (u32)param_1;\n}\n\nvoid fn_8c934980(s32 param_1)\n{\n"
+                "    body(0x8cffe000u, 0x8cfff000u, param_1, 0u, 0u, 0u, 0u);\n}\n")
+        reg = type("Reg", (), {"kind": staticmethod(lambda t: "v" if t == "void" else "i")})
+        abi = type("Abi", (), {"own_storages": staticmethod(lambda *a: ["r5"])})
+        glue = tx_port.inbound_c(reg, abi, "8c934980", "void Fx_Msg(u32 m)",
+                                 {"params": [{"name": "param_1", "kind": "s32", "storage": "r5"}]},
+                                 pathlib.Path("8c934980.c"), text)
+        self.assertIn("body(sp, 0x8cfff000u, (s32)a0, lo[0], sh4_r(4), sh4_r(6), 0);", glue)  # r8: not an argument
 
     def test_register_named_past_meta(self):
         """A body judged where the meta listed its argument registers (param_r4, param_r5) glues when this meta lists
@@ -284,6 +339,8 @@ const int port_dispatch_nchunks = 0;
 
 const PortDispatch *overlay_find(u32 addr) { (void)addr; return NULL; }
 const PortDispatch *overlay_glue(u32 addr) { (void)addr; return NULL; }
+u32 overlay_delta(void) { return 0; }
+u32 tx_ovl_delta;
 const PortDispatch *port_dispatch_find(u32 addr) { (void)addr; return NULL; }
 u32 guest_fold(u32 a) { return (a >> 24) == 0x0cu ? a | 0x80000000u : a; }
 int guest_is_ram(u32 a) { return guest_fold(a) - 0x8c000000u < 0x01000000u; }
@@ -323,7 +380,7 @@ class StackWords(unittest.TestCase):
                 {"name": "Fixture", "entry": {"name": "Fx_Main", "addr": "8c011000"}, "image_base": "8c010000",
                  "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}), encoding="utf-8")
             rt = ROOT / "port" / "runtime"
-            inc = [d, rt, rt / "tx", ROOT / "targets" / "dreamcast_sh4" / "runtime_rd"]
+            inc = [d, rt, rt / "tx", ROOT / "port" / "base", ROOT / "targets" / "dreamcast_sh4" / "runtime_rd"]
             cl = ("cl /nologo /TC /std:c11 /W4 /WX /O1 " + " ".join(f'/I"{p}"' for p in inc)
                   + f' driver.c "{rt / "tx" / "tx_rt.c"}" /Fe:drv.exe /link /LARGEADDRESSAWARE /DYNAMICBASE:NO '
                   "/BASE:0x5a000000")

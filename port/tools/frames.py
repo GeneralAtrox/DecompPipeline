@@ -7,9 +7,12 @@ compare() gives:
 - identical: the pixels are the same;
 - mean: the mean absolute difference per channel (0..255);
 - changed: the percentage of pixels with a channel more than CHANGED_LEVEL apart;
-- ssim: the structural similarity of the grey images over 8x8 blocks (1.0 is the same).
-A frame passes when it is identical, or when changed <= MAX_CHANGED and ssim >= MIN_SSIM (another GPU or driver
-may round a few pixels differently; a moved or missing object fails).
+- ssim: the structural similarity of the grey images over 8x8 blocks (1.0 is the same);
+- cluster: the most changed pixels in any 8x8 window.
+A frame passes when it is identical, or when changed <= MAX_CHANGED, ssim >= MIN_SSIM, mean <= MAX_MEAN and
+cluster <= MAX_CLUSTER: another GPU or driver may round a few pixels differently, scattered or along an edge. A tint or
+a brightness change (mean) and a moved, missing or changed object, however small (cluster), fail. Planted wrong frames
+against every golden of a game: docs/proofs/check-audit.md.
 """
 import argparse
 import sys
@@ -20,11 +23,32 @@ from PIL import Image
 CHANGED_LEVEL = 8
 MAX_CHANGED = 0.1   # percent of pixels
 MIN_SSIM = 0.99
+MAX_MEAN = 1.0      # levels: rounding is under this, a whole-picture change of 3% is over it
+MAX_CLUSTER = 12    # pixels in an 8x8 window: one edge crossing it is about 11, an object or a digit is more
 BLOCK = 8
 
 
 def load(path):
     return np.asarray(Image.open(path).convert("RGB"), dtype=np.int16)
+
+
+EDGE_BAND = 0.05   # of the height or width
+EDGE_LUMA = 8      # a band with a mean grey below this is empty
+EDGE_FLAT = 2      # a frame with a grey spread below this is one flat colour
+
+
+def filled(frame):
+    """Names of the frame's edge bands (top, bottom, left, right, each EDGE_BAND of the size) that are empty (mean grey
+    under EDGE_LUMA): a full-screen picture that drew only part of itself (a clip or a quad of the wrong size) has them.
+    A frame of one flat colour has no picture at all (a movie's quad gone white), so all four count as empty."""
+    a = load(frame)
+    g = a[..., 0] * 0.299 + a[..., 1] * 0.587 + a[..., 2] * 0.114
+    h, w = g.shape
+    bh, bw = max(1, int(h * EDGE_BAND)), max(1, int(w * EDGE_BAND))
+    bands = {"top": g[:bh], "bottom": g[-bh:], "left": g[:, :bw], "right": g[:, -bw:]}
+    if g.std() < EDGE_FLAT:
+        return list(bands)
+    return [n for n, b in bands.items() if b.mean() < EDGE_LUMA]
 
 
 def ssim(a, b):
@@ -42,6 +66,12 @@ def ssim(a, b):
     return float(s.mean())
 
 
+def cluster(mask):
+    """The most True pixels in any BLOCK x BLOCK window of `mask`."""
+    s = np.pad(mask.astype(np.int32), ((1, 0), (1, 0))).cumsum(axis=0).cumsum(axis=1)
+    return int((s[BLOCK:, BLOCK:] - s[:-BLOCK, BLOCK:] - s[BLOCK:, :-BLOCK] + s[:-BLOCK, :-BLOCK]).max())
+
+
 def compare(golden, frame):
     """The scores for two images of the same size (a size mismatch fails with ssim 0)."""
     a, b = load(golden), load(frame)
@@ -50,9 +80,11 @@ def compare(golden, frame):
                 "note": f"size {a.shape[1]}x{a.shape[0]} vs {b.shape[1]}x{b.shape[0]}"}
     d = np.abs(a - b)
     same = not d.any()
-    r = {"identical": same, "mean": float(d.mean()),
-         "changed": float((d.max(axis=2) > CHANGED_LEVEL).mean() * 100.0), "ssim": 1.0 if same else ssim(a, b)}
-    r["pass"] = same or (r["changed"] <= MAX_CHANGED and r["ssim"] >= MIN_SSIM)
+    hit = d.max(axis=2) > CHANGED_LEVEL
+    r = {"identical": same, "mean": float(d.mean()), "changed": float(hit.mean() * 100.0),
+         "ssim": 1.0 if same else ssim(a, b), "cluster": cluster(hit)}
+    r["pass"] = same or (r["changed"] <= MAX_CHANGED and r["ssim"] >= MIN_SSIM and r["mean"] <= MAX_MEAN
+                         and r["cluster"] <= MAX_CLUSTER)
     return r
 
 
@@ -72,6 +104,7 @@ def describe(r):
     if r["identical"]:
         return "identical"
     return (f"mean {r['mean']:.2f}, {r['changed']:.3f}% changed, ssim {r['ssim']:.4f}"
+            + (f", {r['cluster']} together" if "cluster" in r else "")
             + (f" ({r['note']})" if "note" in r else ""))
 
 

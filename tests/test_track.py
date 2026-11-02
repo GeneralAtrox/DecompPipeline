@@ -1,31 +1,29 @@
 """Judge holes 4 and 5 (TcTrack, on the Dreamcast, Saturn and GameCube targets).
-4. NaN-looking integer words: the judges took any two memory words whose bit patterns are NaNs as equal, so -1 and -5
-   in a stored word passed. Now only the words a float store of the original left a NaN in (expected.txt FN) are
-   NaN-tolerant (a float store: from a float register, or of float bits moved through the integer registers); every
-   other word compares bit for bit. Float registers keep the rule (their payload is the FPU's).
-5. Calls through function pointers: a call to a target meta's callees do not list had no argument compared. Now the
-   oracle lists the argument registers the original set since its entry or its last call, in order up to the first
-   gap (expected.txt CA after the CALL line), and the judges compare them as a listed callee's; the readable runtime
-   logs them through a prototype built from CA (readable_check.pointer_protos).
+4. NaN-looking integer words: the judges took any two memory words whose bit patterns are NaNs as equal, so -1 and -5 in a
+   stored word passed. Now only the words a float store of the original left a NaN in (expected.txt FN) are NaN-tolerant (a
+   float store: from a float register, or of float bits moved through the integer registers); every other word compares bit
+   for bit. Float registers keep the rule (their payload is the FPU's).
+5. Calls through function pointers: a call to a target meta's callees do not list had no argument compared. Now the oracle
+   lists the argument registers the original set since its entry or its last call, in order up to the first gap (expected.txt
+   CA after the CALL line), and the judges compare them as a listed callee's; the readable runtime logs them through a
+   prototype built from CA (readable_check.pointer_protos).
 Pass and fail controls:
-1. TcTrack (tests/java/TcTrackStub, TcTrackSh2Stub, compiled against each target's scripts): a listed callee gets no
-   CA; an unlisted one gets the registers set, in order up to the first gap (SH-4 floats by pairs), its own
-   parameters set at entry, nothing carried past a call (GameCube: r3 and f1, the callee's results); NaN patterns;
-   the SH-4 register split (drN, fvN); float bits through the integer registers (TcTrackBitsStub, TcTrackPpcBitsStub:
-   sts FPUL, mov and mov.l, and/or/xor into float bits; mr and stw), none left in a register a call clobbers; the fmov store encodings; an SH-4
-   step's set registers from the p-code path its FPSCR SZ/PR bits take (TcTrackPathStub: fmov.s @r0,fr6 with SZ 0
-   sets fr6, not dr6's fr7; a bt/s or bf/s delay slot's form too, past the branch on T), every output where a
-   condition inside the instruction reads anything else; the GameCube step's own word
-   reads past the bank's load log (TcTrackPpcBankStub);
-2. the judges (core/compare.py, ppc_compare.py): CA and FN parsed; an integer NaN pattern compared exactly, a listed
-   float NaN tolerant; CA registers compared, none without CA (as before);
+1. TcTrack (tests/java/TcTrackStub, TcTrackSh2Stub, compiled against each target's scripts): a listed callee gets no CA; an
+   unlisted one gets the registers set, in order up to the first gap (SH-4 floats by pairs), its own parameters set at entry,
+   nothing carried past a call (GameCube: r3 and f1, the callee's results); NaN patterns; the SH-4 register split (drN, fvN);
+   float bits through the integer registers (TcTrackBitsStub, TcTrackPpcBitsStub: sts FPUL, mov and mov.l, and/or/xor into
+   float bits; mr and stw), none left in a register a call clobbers; the fmov store encodings; an SH-4 step's set registers
+   from the p-code path its FPSCR SZ/PR bits take (TcTrackPathStub: fmov.s @r0,fr6 with SZ 0 sets fr6, not dr6's fr7; a bt/s
+   or bf/s delay slot's form too, past the branch on T), every output where a condition inside the instruction reads anything
+   else; the GameCube step's own word reads past the bank's load log (TcTrackPpcBankStub);
+2. the judges (core/compare.py, ppc_compare.py): CA and FN parsed; an integer NaN pattern compared exactly, a listed float NaN
+   tolerant; CA registers compared, none without CA (as before);
 3. readable_check.pointer_protos and the call trap's '?' result;
 4. the wiring: TcTrack locked on each target, its hooks in the oracles, the agent-facing notes.
 The oracles need Ghidra: the re-prepares in docs/proofs/judge-gaps.md judge them.
 Synthetic data. Run: python -W error tests/test_track.py.
 """
-import importlib.util
-import json
+import importlib.util, json
 import os
 import pathlib
 import subprocess
@@ -38,6 +36,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / "tests")]
 from test_sync import TMP  # noqa: E402,F401  (sets DECOMP_PROJECT when run alone)
 from core import compare, readable_check  # noqa: E402
 from test_tail import CP, jdk  # noqa: E402
+from test_gc_r4_hw import gc_track_stubs  # noqa: E402
 
 T = ROOT / "targets"
 DC, SAT, GC = T / "dreamcast_sh4", T / "saturn_sh2", T / "gamecube_ppc"
@@ -68,11 +67,12 @@ class Track(unittest.TestCase):
         cls.out = {}
         dc = ["TcTrackStub.java", "TcTrackBitsStub.java", "TcTrackPathStub.java", str(base / "TcSplitStub.java")]
         for name, tgt, stubs in (("dc", DC, dc),
-                                 ("gc", GC, ["TcTrackStub.java", "TcTrackPpcBitsStub.java", "TcTrackPpcBankStub.java"]),
+                                 ("gc", GC, gc_track_stubs(base) + ["TcTrackPpcBankStub.java"]),
                                  ("sat", SAT, ["TcTrackSh2Stub.java"])):
             out = base / name
             out.mkdir()
-            src = os.pathsep.join(str(tgt / d) for d in ("ghidra_scripts", "template"))
+            shared = json.loads((tgt / "target.json").read_text(encoding="utf-8")).get("shared_scripts") or []
+            src = os.pathsep.join([*(str(tgt / d) for d in ("ghidra_scripts", "template")), *(str(ROOT / "core" / "ghidra_shared" / s) for s in shared)])
             files = [s if os.path.isabs(s) else str(ROOT / "tests" / "java" / s) for s in stubs]
             r = subprocess.run([jdk("javac"), "-nowarn", "-proc:none", "-d", str(out), "-cp", CP, "-sourcepath", src,
                                 *files], capture_output=True, text=True, timeout=300)
@@ -276,7 +276,7 @@ class Judge(unittest.TestCase):
         self.assertEqual(readable_check.pointer_protos(exp),
                          {0x8c002000: ("iiff", "?", "45ab"), 0x8c004000: ("ii", "?", "45")})
         veh = text(DC / "runtime_rd" / "rd_veh.c")
-        self.assertIn("char ret = p && p->ret != '?' ? p->ret : guess_ret(", veh)
+        self.assertIn("char ret = p && p->ret != '?' ? p->ret : rd_guess_ret(", veh)
         src = text(ROOT / "core" / "readable_check.py")
         self.assertIn('for a, v in pointer_protos(check.parse_results(harness / "expected.txt")).items():\n'
                       "            protos.setdefault(a, v)", src)
@@ -345,8 +345,8 @@ class Wiring(unittest.TestCase):
         self.assertLess(p.index("TcTrack.on = null;"),
                         p.index("TcTrack.on = TcTrack.of(listing, body, calledBy(fn, body), proto);"))
         o = text(GC / "ghidra_scripts" / "TcOracle.java")
-        self.assertIn('(prev >= 0 && noFloatArgs(prev) ? " nofp" : "") + TcTrack.call(pc));', o)
-        self.assertIn("fix.after(emu, ram, bank.stored, bank.reads);\n                    TcTrack.step(emu, in, bank);", o)
+        self.assertIn('(prev >= 0 && noFloatArgs(prev) ? " nofp" : "") + TcTrack.call(this, pc));', o)
+        self.assertIn("fix.after(emu, ram, bank, bank.stored, bank.reads);\n                    TcTrack.step(emu, in, bank);", o)
         self.assertIn("TcTrack.exit(emu);", o)
         self.assertIn("eout.append(TcTrack.exit(r.tr));", text(GC / "ghidra_scripts" / "TcVectors.java"))
         self.assertIn("TcTrack.on = TcTrack.of(listing, body, calledBy(), proto);",

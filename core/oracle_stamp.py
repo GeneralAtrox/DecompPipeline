@@ -10,13 +10,19 @@ whose stamp matches and re-prepares the rest. The inputs:
 - the function, its dev and hidden vector counts (the seed is the address), its hints file, and whether
   project.json "spin_waits" lists it, and the words its evidence names (TcSpin; an unlisted function's stamp
   has no such line), and the hardware ops and register values project.json "hw_ops" lists for it (TcHw; likewise),
-  and the run flag project.json "run_flags" lists for it (TcCalls; likewise);
+  and the run flag project.json "run_flags" lists for it (TcCalls; likewise), its "oracle_limits" (likewise) and its
+  float callees (TcFret; likewise);
 - the fsca table (its content, core/fsca.FILE_SHA256: every prepare makes the table it reads that one), the
   catalog (the Ghidra project's function bodies), the binary's sha256 and the Ghidra install: what decides its
   output (ghidra_identity), not the folder it is in, so the same install on another machine, or moved, gives the
   same stamp.
 A wall-clock deadline is an input too (the facts file holds it), but how far a loaded machine gets before it is not:
 the stamp says which inputs made a harness, not that a run under load would make the same one.
+A scoped oracle change (config "stamp_scopes", from target.json) leaves the stamps of the functions it cannot reach
+as they were: each scope lists script files with their hashes before and after the change, and a function the
+target's stamp_scope hook (core/target_hooks) puts outside the scope is stamped with the "before" hashes (a file the
+change added has none, null: such a function's stamp has no line for it). Only while every file's hash is still its
+"after" hash: any later edit of one stamps every function anew.
 The callee records are an input too: each records the callee's signature the harness was built with, and a harness
 is current only while they equal the callees' own harness signatures (current(); core/callee_drift.py).
 """
@@ -25,7 +31,7 @@ import pathlib
 import re
 import threading
 
-from . import callee_drift, compare, fsca, hw_ops, paths, sz_entry
+from . import callee_drift, compare, fsca, hw_ops, oracle_limits, paths, ret_reg, sz_entry, target_hooks
 
 _FILE_CACHE = {}
 _LOCK = threading.Lock()
@@ -136,13 +142,31 @@ def facts_hashed(body):
     return re.sub(r"^code_ranges (.*)$", lambda m: "code_ranges " + file_hash(m.group(1).strip()), body, flags=re.M)
 
 
-def common(scripts, facts):
+def scoped_hashes(cfg, addr, scripts):
+    """{file name: hash} of the scripts whose "before" hash stands for this function (config "stamp_scopes"); None
+    for a file the change added."""
+    out = {}
+    hook = target_hooks.get("stamp_scope")
+    for sc in cfg.get("stamp_scopes") or []:
+        files = sc.get("scripts") or {}
+        if not hook or any(n not in scripts or file_hash(scripts[n]) != h[1] for n, h in files.items()):
+            continue
+        if not hook(cfg, addr, sc["scope"]):
+            out.update({n: h[0] for n, h in files.items()})
+    return out
+
+
+def common(scripts, facts, before=None):
     """The inputs every function's stamp shares, hashed once: (sha256 fed the scripts and facts lines, the catalog's
     hash). stamp_of(shared=...) with it gives the same stamp as without, minus the 54 file stats and path resolves
-    per function (PS2: 18 ms per function, 2 minutes per scan of its 6,541 matched harnesses)."""
+    per function (PS2: 18 ms per function, 2 minutes per scan of its 6,541 matched harnesses). before: scoped_hashes
+    of a function a scoped change does not reach (its scripts lines differ, so it cannot share them)."""
+    before = before or {}
     h = hashlib.sha256()
     for name in sorted(scripts):
-        h.update(f"script {name} {file_hash(scripts[name])}\n".encode())
+        if name in before and before[name] is None:
+            continue  # a file a scoped change added, outside its scope: stamped as before the file was there
+        h.update(f"script {name} {before.get(name) or file_hash(scripts[name])}\n".encode())
     h.update(f"facts {facts}\n".encode())
     return h, file_hash(paths.CATALOG)
 
@@ -150,7 +174,8 @@ def common(scripts, facts):
 def stamp_of(cfg, addr, scripts, facts, hints, ndev, nhidden, shared=None):
     """stamp() from its inputs: scripts {file name: path} (the *.java of the scripts folder), facts (facts_text).
     shared: common(scripts, facts) taken earlier (oracle_fresh.Stamper: one per scan), else taken now."""
-    head, catalog = shared or common(scripts, facts)
+    before = scoped_hashes(cfg, addr, scripts)
+    head, catalog = common(scripts, facts, before) if before or not shared else shared
     h = head.copy()
     h.update(f"function {addr} dev {int(ndev)} hidden {int(nhidden)}\n".encode())
     if compare.spin_wait(cfg, addr):
@@ -163,6 +188,10 @@ def stamp_of(cfg, addr, scripts, facts, hints, ndev, nhidden, shared=None):
         h.update(f"run flag {compare.run_flag_arg(cfg, addr)}\n".encode())
     if sz_entry.arg(cfg, paths, addr) != "-":
         h.update(f"fpscr sz {sz_entry.arg(cfg, paths, addr)}\n".encode())
+    if oracle_limits.arg(cfg, addr) != "-":
+        h.update(f"limits {oracle_limits.arg(cfg, addr)}\n".encode())
+    if ret_reg.fret_arg(paths.STATE, addr) != "-":
+        h.update(f"float callees {ret_reg.fret_arg(paths.STATE, addr)}\n".encode())
     h.update(f"hints {file_hash(hints) if hints else '-'}\n".encode())
     table = fsca.FILE_SHA256 if cfg.get("fsca_table") else "-"  # every prepare makes it the table TcPrepare reads
     h.update(f"fsca {table} catalog {catalog}\n".encode())

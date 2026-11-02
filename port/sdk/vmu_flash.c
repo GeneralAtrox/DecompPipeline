@@ -178,6 +178,52 @@ int vmfs_save(u8 *img, const char *name, const u8 *data, u32 blocks, const u8 *t
     return VMFS_OK;
 }
 
+int vmfs_save_game(u8 *img, const char *name, const u8 *data, u32 blocks, const u8 *time, u8 copyflag)
+{
+    int i = vmfs_find(img, name);
+    u8 *e = i >= 0 ? vmfs_entry(img, (u32)i) : NULL;
+    u32 own = e ? vmfs_rd16(e + 0x18) : 0;
+    if (e && e[0] != VMFS_TYPE_GAME) return VMFS_FULL;
+    for (u32 k = 0; k < VMFS_ENTRIES; k++)
+        if (vmfs_entry(img, k)[0] == VMFS_TYPE_GAME && (int)k != i) return VMFS_GAME;
+    for (u32 k = own; k < blocks; k++) /* a game runs from block 0, in order */
+        if (k >= VMFS_USER_BLOCKS || fat(img, k) != FAT_FREE) return VMFS_FULL;
+    for (u32 k = 0; !e && k < VMFS_ENTRIES; k++)
+        if (!vmfs_entry(img, k)[0]) e = vmfs_entry(img, k);
+    if (!e) return VMFS_FULL;
+    if (i >= 0) free_chain(img, vmfs_rd16(e + 2));
+    fill(e, 0, DIR_ENTRY);
+    for (u32 k = 0; k < blocks; k++) {
+        vmfs_copy(img + k * VMFS_BLOCK, data + k * VMFS_BLOCK, VMFS_BLOCK);
+        fat_set(img, k, k + 1 < blocks ? k + 1 : FAT_END);
+    }
+    e[0] = VMFS_TYPE_GAME;
+    e[1] = copyflag;
+    for (u32 k = 0; k < VMFS_NAME_LEN && name[k]; k++) e[4 + k] = (u8)name[k];
+    bcd_time(e + 0x10, time);
+    vmfs_wr16(e + 0x18, blocks);
+    vmfs_wr16(e + 0x1a, 1); /* the header is in a game's second block */
+    return VMFS_OK;
+}
+
+u32 vmfs_rewrite(u8 *img, u32 entry, const u8 *data, u32 start, u32 blocks)
+{
+    u32 b = vmfs_rd16(vmfs_entry(img, entry) + 2), moved = 0;
+    for (u32 k = 0; k < start && b < VMFS_BLOCKS; k++) b = fat(img, b);
+    for (; moved < blocks && b < VMFS_BLOCKS; moved++, b = fat(img, b))
+        vmfs_copy(img + b * VMFS_BLOCK, data + moved * VMFS_BLOCK, VMFS_BLOCK);
+    return moved;
+}
+
+u32 vmfs_load_from(const u8 *img, u32 entry, u8 *buf, u32 start, u32 blocks)
+{
+    u32 b = vmfs_rd16(vmfs_entry((u8 *)img, entry) + 2), moved = 0;
+    for (u32 k = 0; k < start && b < VMFS_BLOCKS; k++) b = fat((u8 *)img, b);
+    for (; moved < blocks && b < VMFS_BLOCKS; moved++, b = fat((u8 *)img, b))
+        vmfs_copy(buf + moved * VMFS_BLOCK, img + b * VMFS_BLOCK, VMFS_BLOCK);
+    return moved;
+}
+
 u32 vmfs_load(u8 *img, u32 entry, u8 *buf, u32 blocks)
 {
     const u8 *e = vmfs_entry(img, entry);

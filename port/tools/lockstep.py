@@ -52,7 +52,7 @@ BUTTONS = {"C": 0x1, "B": 0x2, "A": 0x4, "START": 0x8, "UP": 0x10, "DOWN": 0x20,
            "Y": 0x200, "X": 0x400}
 TRIGGERS = {"R": 255}
 FLOAT_REL, FLOAT_ABS = 1e-4, 1e-6        # float words this close are rounding, not divergence
-PRESS = 10                               # vertical blanks a press without +N lasts (the port's gfx_input.c)
+PRESS = 10                               # vertical blanks a press without +N lasts (the port's base/input.c)
 LOAD_VBLANKS = 4                         # an emulator frame longer than this is a load: sampled mid-work
 SET_APART_MAX = 0.05                     # more compared frames set apart than this: the check is blind (fails)
 # The console Flycast plays: a VGA box, as the port is (sdk/sy_sys.c syCblCheck). Flycast's default is a TV cable,
@@ -320,10 +320,13 @@ def report(res, emu, lists_differ=False):
           f"(largest relative gap {res['float_max']:.2g}); {res['loads']} load or split frames, {res['load_diffs']} "
           f"of them differ (sampled mid-frame); {res['drawn']} sampled within the frame's draw (the frame before)"
           + (f"; {res['known']} as the baseline's" if res["known"] else ""))
-    blind = res["frames"] >= 100 and res["loads"] > SET_APART_MAX * res["frames"]
+    # excused frames count: a port a frame ahead reads as "the frame before" every frame; nothing compared shows nothing
+    apart, excused = res["loads"] + res["drawn"], res["load_diffs"] + res["drawn"]
+    blind = not res["frames"] or (apart > SET_APART_MAX * res["frames"]
+                                  and (res["frames"] >= 100 or excused == res["frames"]))
     if blind:
-        print(f"CHECK BLIND: {res['loads']} of {res['frames']} compared frames set apart, over "
-              f"{SET_APART_MAX:.0%} (the emulator's sample point and the frames word disagree?)")
+        print(f"CHECK BLIND: {apart} of {res['frames']} compared frames set apart, over "
+              f"{SET_APART_MAX:.0%} (emulator's sample point and frames word disagree, or a port a frame off?)")
     if res["first_time"]:
         n, label, ei, vb = res["first_time"]
         print(f"first clock-only difference: port frame {n} (label {label:08x}), emulator frame {ei} (vblank {vb})")

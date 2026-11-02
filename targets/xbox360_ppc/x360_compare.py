@@ -4,7 +4,8 @@ vector (the counterpart of targets/gamecube_ppc/ppc_compare.py with 64-bit regis
 vectors.txt (the oracle's TcVectors): V id set, R r3..r10 (64-bit hex), F f1..f13 (double bits), C r3 per mocked
 call (64-bit, up to 16), D f1 per mocked call (double bits), M addr bytes, E.
 expected.txt / runner output: V, RET r3 f1 (64-bit hex each), W addr bytes (outside the stack region), CALL target
-r3..r10 f1..f13 s0..s7 (30 fields; sN = the doubleword at r1+0x50+8N at the call), COV, FAULT, CODEREAD, CRASH, E.
+r3..r10 f1..f13 s0..s7 (30 fields; sN = the doubleword at r1+0x50+8N at the call; expected.txt: a CA line after one
+through a function pointer), FN (expected.txt: the words a float store left a NaN in), COV, FAULT, CODEREAD, CRASH, E.
 """
 import os
 import struct
@@ -76,6 +77,10 @@ def parse_results(path):
             if "nofp" in t[CALL_FIELDS + 1:]:  # crxor 6,6,6 before a variadic call: no float arguments
                 cur.setdefault("nofp", set()).add(len(cur["calls"]))
             cur["calls"].append(call + [0] * (CALL_FIELDS - len(call)))
+        elif k == "CA":  # the call before is through a function pointer: the argument registers the original set
+            cur.setdefault("call_args", {})[len(cur["calls"]) - 1] = t[1:]  # since its entry or last call (TcTrack)
+        elif k == "FN":  # the memory words a float store left a NaN in (TcTrack): the only NaN-tolerant words
+            cur["float_nan"] = {int(x, 16) for x in t[1:]}
         elif k == "COV":
             cur["cov"] = {int(x) for x in t[1:]}
         elif k == "FAULT":
@@ -163,8 +168,8 @@ def compare_memory(image, vec, exp, act):
         av = bytes(act["writes"].get(w + i, mem.initial(w + i)) for i in range(4))
         if ev == av:
             continue
-        if nan32(struct.unpack(">I", ev)[0]) and nan32(struct.unpack(">I", av)[0]):
-            continue
+        if nan32(struct.unpack(">I", ev)[0]) and nan32(struct.unpack(">I", av)[0]) and w in exp.get("float_nan", ()):
+            continue  # a float NaN the original stored: its payload is the FPU's (an integer word compares exactly)
         bad.append(f"memory 0x{w:08x}: expected {ev.hex()}, got {av.hex()}"
                    + ("" if any(w + i in act["writes"] for i in range(4)) else " (your code did not write here)")
                    + ("" if any(w + i in exp["writes"] for i in range(4)) else " (the original does not write here)"))
@@ -187,7 +192,7 @@ def compare_calls(meta, exp, act):
         if ec[k][0] != ac[k][0]:
             diffs.append(f"call #{k + 1}: expected target 0x{ec[k][0]:08x}, got 0x{ac[k][0]:08x}")
             break
-        for reg in callee_regs.get(ec[k][0], []):
+        for reg in callee_regs.get(ec[k][0], exp.get("call_args", {}).get(k, [])):  # unlisted: the original's (CA)
             if reg[0] == "f" and k in exp.get("nofp", ()):
                 continue
             i = REG_INDEX[reg]

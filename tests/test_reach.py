@@ -45,6 +45,10 @@ OLD = {"call_sites": {"8c000010": 5, "8c000020": 0, "8c000030": 0}}  # before th
 NEW = {"call_sites": {"8c000110": 3, "8c000120": 1, "8c000130": 0},
        "reach": {"runs": 40, "added": [1, 1], "found": ["8c000120"],
                  "unreached": {"8c000130": "no path from the entry reaches it in the control flow"}}}
+# the reach pass found 8c000320 with a run that makes an address error: the harness leaves it out, the count stays 0
+ADDR_ERR = {"call_sites": {"8c000310": 2, "8c000320": 0, "8c000330": 0},
+            "reach": {"runs": 14, "added": [1, 1], "found": ["8c000320"], "unreached": {}},
+            "address_errors": {"left_out": [1, 1], "replaced": [1, 1]}}
 FULL = {"call_sites": {"8c000210": 9}, "reach": {"runs": 0, "added": [0, 0], "found": [], "unreached": {}}}
 
 
@@ -65,6 +69,22 @@ class Figure(unittest.TestCase):
         self.assertEqual(rows["8c000100"]["reasons"], {"8c000130": "no path from the entry reaches it in the control flow"})
         self.assertEqual(rows["8c000100"]["found"], ["8c000120"])
         self.assertEqual(call_coverage.untried(rows), ["8c000000"])  # explained and fully reached ones are not
+
+    def test_address_error_sites(self):
+        # pass: a zero-count site with no reason, found by the pass or not, is explained; the pass's own reason stays
+        self.assertEqual(call_coverage.reasons(ADDR_ERR), {"8c000320": call_coverage.ADDRESS_ERROR,
+                                                          "8c000330": call_coverage.ADDRESS_ERROR})
+        own = dict(ADDR_ERR, reach=dict(ADDR_ERR["reach"], unreached={"8c000330": "no path"}))
+        self.assertEqual(call_coverage.reasons(own), {"8c000330": "no path", "8c000320": call_coverage.ADDRESS_ERROR})
+        # fail controls: no reason is invented without a reach pass, without runs left out, or for a reached site
+        self.assertEqual(call_coverage.reasons(dict(ADDR_ERR, reach=None)), {})
+        self.assertEqual(call_coverage.reasons(dict(ADDR_ERR, address_errors=None)), {})
+        self.assertEqual(call_coverage.reasons(dict(ADDR_ERR, address_errors={"left_out": [0, 0]})), {})
+        self.assertEqual(call_coverage.reasons(dict(ADDR_ERR, call_sites={"8c000320": 1})), {})
+        h = harness(self.tmp.name, {"8c000300": ADDR_ERR, "8c000500": dict(ADDR_ERR, reach=None)})
+        rows = call_coverage.site_rows(["8c000300", "8c000500"], h)
+        self.assertEqual(sorted(rows["8c000300"]["reasons"]), ["8c000320", "8c000330"])
+        self.assertEqual(call_coverage.untried(rows), ["8c000500"])  # the harness without the pass stays untried
 
     def test_figure(self):
         rows = call_coverage.site_rows(["8c000000", "8c000100", "8c000200"], self.h)

@@ -1,0 +1,10622 @@
+{
+"xam": {
+"1": [
+"NetDll_WSAStartup",
+"kFunction"
+],
+"10": [
+"NetDll_getpeername",
+"kFunction"
+],
+"1000": [
+"RtlFindFirstFile",
+"kFunction"
+],
+"1001": [
+"RtlFindNextFile",
+"kFunction"
+],
+"1002": [
+"RtlGetModuleFileName",
+"kFunction"
+],
+"1003": [
+"RtlOutputDebugString",
+"kFunction"
+],
+"1004": [
+"RtlRemoveDirectory",
+"kFunction"
+],
+"1005": [
+"RtlSleep",
+"kFunction"
+],
+"1006": [
+"RtlGetLastError",
+"kFunction"
+],
+"1007": [
+"RtlSetLastError",
+"kFunction"
+],
+"1008": [
+"RtlSetLastNTError",
+"kFunction"
+],
+"1009": [
+"RtlDebugPrint",
+"kFunction"
+],
+"101": [
+"NetDll_XnpLoadConfigParams",
+"kFunction"
+],
+"1010": [
+"RtlDebugError",
+"kFunction"
+],
+"1011": [
+"XDebugWarning",
+"kFunction"
+],
+"1012": [
+"RtlDebugTrace",
+"kFunction"
+],
+"1013": [
+"RtlDebugEntry",
+"kFunction"
+],
+"1014": [
+"RtlDebugExit",
+"kFunction"
+],
+"1015": [
+"RtlGetAttributesOnHeapAlloc",
+"kFunction"
+],
+"1016": [
+"RtlSetAttributesOnHeapAlloc",
+"kFunction"
+],
+"1017": [
+"XuiFigureSetShape",
+"kFunction"
+],
+"1018": [
+"RtlCreateHeap",
+"kFunction"
+],
+"1019": [
+"RtlDestroyHeap",
+"kFunction"
+],
+"102": [
+"NetDll_XnpSaveConfigParams",
+"kFunction"
+],
+"1020": [
+"RtlAllocateHeap",
+"kFunction"
+],
+"1021": [
+"RtlAllocateHeapSlowly",
+"kFunction"
+],
+"1022": [
+"RtlReAllocateHeap",
+"kFunction"
+],
+"1023": [
+"RtlFreeHeap",
+"kFunction"
+],
+"1024": [
+"RtlFreeHeapSlowly",
+"kFunction"
+],
+"1025": [
+"RtlSizeHeap",
+"kFunction"
+],
+"1026": [
+"RtlZeroHeap",
+"kFunction"
+],
+"1027": [
+"RtlDebugWalkHeap",
+"kFunction"
+],
+"1028": [
+"RtlWalkHeap",
+"kFunction"
+],
+"1029": [
+"RtlLockHeap",
+"kFunction"
+],
+"103": [
+"NetDll_XnpConfigUPnP",
+"kFunction"
+],
+"1030": [
+"RtlUnlockHeap",
+"kFunction"
+],
+"1031": [
+"RtlValidateHeap",
+"kFunction"
+],
+"1032": [
+"RtlDebugCompactHeap",
+"kFunction"
+],
+"1033": [
+"RtlCompactHeap",
+"kFunction"
+],
+"1034": [
+"XamAppSetTestOption",
+"kFunction"
+],
+"1035": [
+"XamAppReportError",
+"kFunction"
+],
+"1036": [
+"XamIsNuiUIActive",
+"kFunction"
+],
+"1037": [
+"XamVerifyPasscode",
+"kFunction"
+],
+"1038": [
+"OutputDebugStringA",
+"kFunction"
+],
+"1039": [
+"DebugBreak",
+"kFunction"
+],
+"104": [
+"NetDll_XnpConfig",
+"kFunction"
+],
+"1040": [
+"GetCurrentThreadId",
+"kFunction"
+],
+"1041": [
+"XDebugError",
+"kFunction"
+],
+"1042": [
+"XDebugWarning_",
+"kFunction"
+],
+"1043": [
+"RtlDebugSetLevel",
+"kFunction"
+],
+"1044": [
+"CloseHandle",
+"kFunction"
+],
+"1045": [
+"GetTickCount",
+"kFunction"
+],
+"1046": [
+"GetLastError",
+"kFunction"
+],
+"1047": [
+"SetFilePointer",
+"kFunction"
+],
+"1048": [
+"SetFilePointerEx",
+"kFunction"
+],
+"1049": [
+"SetLastError",
+"kFunction"
+],
+"105": [
+"NetDll_XnpGetConfigStatus",
+"kFunction"
+],
+"1050": [
+"MultiByteToWideChar",
+"kFunction"
+],
+"1051": [
+"WideCharToMultiByte",
+"kFunction"
+],
+"1052": [
+"ReadFile",
+"kFunction"
+],
+"1053": [
+"FlushFileBuffers",
+"kFunction"
+],
+"1054": [
+"WriteFile",
+"kFunction"
+],
+"1055": [
+"OutputDebugStringW",
+"kFunction"
+],
+"1056": [
+"SetEvent",
+"kFunction"
+],
+"1057": [
+"XapiFormatTimeOut",
+"kFunction"
+],
+"1058": [
+"CreateMutexA",
+"kFunction"
+],
+"1059": [
+"OpenMutexA",
+"kFunction"
+],
+"106": [
+"NetDll_XnpLoadMachineAccount",
+"kFunction"
+],
+"1060": [
+"ReleaseMutex",
+"kFunction"
+],
+"1061": [
+"WaitForSingleObject",
+"kFunction"
+],
+"1062": [
+"WaitForSingleObjectEx",
+"kFunction"
+],
+"1063": [
+"GetFileSize",
+"kFunction"
+],
+"1064": [
+"GetFileSizeEx",
+"kFunction"
+],
+"1065": [
+"XapiDirectoryInformationToFindData",
+"kFunction"
+],
+"1066": [
+"XapiFormatObjectAttributes",
+"kFunction"
+],
+"1067": [
+"ResetEvent",
+"kFunction"
+],
+"1068": [
+"wsprintfA",
+"kFunction"
+],
+"1069": [
+"wsprintfW",
+"kFunction"
+],
+"107": [
+"NetDll_XnpSaveMachineAccount",
+"kFunction"
+],
+"1070": [
+"GetOverlappedResult",
+"kFunction"
+],
+"1071": [
+"QueryPerformanceCounter",
+"kFunction"
+],
+"1072": [
+"QueryPerformanceFrequency",
+"kFunction"
+],
+"1073": [
+"LocalAlloc",
+"kFunction"
+],
+"1074": [
+"LocalFree",
+"kFunction"
+],
+"1075": [
+"RaiseException",
+"kFunction"
+],
+"1076": [
+"RtlUniform",
+"kFunction"
+],
+"1077": [
+"RtlRandom",
+"kFunction"
+],
+"1078": [
+"Sleep",
+"kFunction"
+],
+"1079": [
+"SleepEx",
+"kFunction"
+],
+"108": [
+"NetDll_XnpCapture",
+"kFunction"
+],
+"1080": [
+"XMemSet",
+"kFunction"
+],
+"1081": [
+"XRegisterThreadNotifyRoutine",
+"kFunction"
+],
+"1082": [
+"XGetOverlappedExtendedError",
+"kFunction"
+],
+"1083": [
+"XGetOverlappedResult",
+"kFunction"
+],
+"1084": [
+"CreateThread",
+"kFunction"
+],
+"1085": [
+"ResumeThread",
+"kFunction"
+],
+"1086": [
+"ExitThread",
+"kFunction"
+],
+"1087": [
+"GetTimeZoneInformation",
+"kFunction"
+],
+"1088": [
+"GetSystemTimeAsFileTime",
+"kFunction"
+],
+"1089": [
+"SystemTimeToFileTime",
+"kFunction"
+],
+"109": [
+"NetDll_XnpEthernetInterceptSetCallbacks",
+"kFunction"
+],
+"1090": [
+"FileTimeToSystemTime",
+"kFunction"
+],
+"1091": [
+"GetSystemTime",
+"kFunction"
+],
+"1092": [
+"GetLocalTime",
+"kFunction"
+],
+"1093": [
+"CreateDirectoryA",
+"kFunction"
+],
+"1094": [
+"CreateEventA",
+"kFunction"
+],
+"1095": [
+"CreateFileA",
+"kFunction"
+],
+"1096": [
+"DeleteFileA",
+"kFunction"
+],
+"1097": [
+"FindFirstFileA",
+"kFunction"
+],
+"1098": [
+"FindNextFileA",
+"kFunction"
+],
+"1099": [
+"GetFileAttributesA",
+"kFunction"
+],
+"11": [
+"NetDll_bind",
+"kFunction"
+],
+"110": [
+"NetDll_XnpEthernetInterceptXmit",
+"kFunction"
+],
+"1100": [
+"XamLoaderGetCurrentTitleD3DVersion",
+"kFunction"
+],
+"1101": [
+"GetFileAttributesExA",
+"kFunction"
+],
+"1102": [
+"GetModuleHandleA",
+"kFunction"
+],
+"1103": [
+"GetDiskFreeSpaceExA",
+"kFunction"
+],
+"1104": [
+"CopyFileA",
+"kFunction"
+],
+"1105": [
+"SetEndOfFile",
+"kFunction"
+],
+"1106": [
+"XamFamilyAddParentalExemptionToList",
+"kFunction"
+],
+"1107": [
+"XamFamilyIsParentalValidationRequired",
+"kFunction"
+],
+"1108": [
+"PIXBeginCapture",
+"kFunction"
+],
+"1109": [
+"PIXEndCapture",
+"kFunction"
+],
+"111": [
+"NetDll_XnpEthernetInterceptRecv",
+"kFunction"
+],
+"1110": [
+"PIXAddCounter",
+"kFunction"
+],
+"1111": [
+"PIXGetGPUSlot",
+"kFunction"
+],
+"1112": [
+"SetWaitableTimer",
+"kFunction"
+],
+"1113": [
+"CancelWaitableTimer",
+"kFunction"
+],
+"1114": [
+"CreateWaitableTimerA",
+"kFunction"
+],
+"1115": [
+"DuplicateHandle",
+"kFunction"
+],
+"1116": [
+"XapipCreateThread",
+"kFunction"
+],
+"1117": [
+"lstrcpyA",
+"kFunction"
+],
+"1118": [
+"lstrcpyW",
+"kFunction"
+],
+"1119": [
+"lstrcpynA",
+"kFunction"
+],
+"112": [
+"NetDll_XnpLogonGetStatus",
+"kFunction"
+],
+"1120": [
+"lstrcpynW",
+"kFunction"
+],
+"1121": [
+"lstrcatA",
+"kFunction"
+],
+"1122": [
+"lstrcatW",
+"kFunction"
+],
+"1123": [
+"lstrlenA",
+"kFunction"
+],
+"1124": [
+"lstrlenW",
+"kFunction"
+],
+"1125": [
+"IsBadReadPtr",
+"kFunction"
+],
+"1126": [
+"IsBadWritePtr",
+"kFunction"
+],
+"1127": [
+"FileTimeToLocalFileTime",
+"kFunction"
+],
+"1128": [
+"XMemCpy",
+"kFunction"
+],
+"1129": [
+"XMemCpyStreaming",
+"kFunction"
+],
+"113": [
+"NetDll_XnpLogonGetQFlags",
+"kFunction"
+],
+"1130": [
+"XamHudSetUserIndex",
+"kFunction"
+],
+"1131": [
+"XamShowNuiTroubleshooterUI",
+"kFunction"
+],
+"1132": [
+"XamTestShowNuiTroubleshooterUI",
+"kFunction"
+],
+"1133": [
+"XamShowPasscodeVerifyUIEx",
+"kFunction"
+],
+"1134": [
+"XamShowNuiAchievementsUI",
+"kFunction"
+],
+"1135": [
+"XamShowNuiCommunitySessionsUI",
+"kFunction"
+],
+"1136": [
+"XamShowNuiDeviceSelectorUI",
+"kFunction"
+],
+"1137": [
+"XamShowNuiDirtyDiscErrorUI",
+"kFunction"
+],
+"1138": [
+"XamShowNuiFriendsUI",
+"kFunction"
+],
+"1139": [
+"XamShowNuiGameInviteUI",
+"kFunction"
+],
+"114": [
+"NetDll_XnpLogonSetQFlags",
+"kFunction"
+],
+"1140": [
+"XamShowNuiGamerCardUIForXUID",
+"kFunction"
+],
+"1141": [
+"XamShowNuiMarketplaceDownloadItemsUI",
+"kFunction"
+],
+"1142": [
+"XamShowNuiMarketplaceUI",
+"kFunction"
+],
+"1143": [
+"XamShowNuiMessageBoxUI",
+"kFunction"
+],
+"1144": [
+"XamShowNuiPartyUI",
+"kFunction"
+],
+"1145": [
+"XamShowNuiFriendRequestUI",
+"kFunction"
+],
+"1146": [
+"XamShowNuiSigninUI",
+"kFunction"
+],
+"1147": [
+"XamShowNuiControllerRequiredUI",
+"kFunction"
+],
+"1148": [
+"XamShowNuiGamesUI",
+"kFunction"
+],
+"1149": [
+"XamShowNuiHardwareRequiredUI",
+"kFunction"
+],
+"115": [
+"NetDll_XnpLogonSetQEvent",
+"kFunction"
+],
+"1150": [
+"XamCacheStoreFileByString",
+"kFunction"
+],
+"1151": [
+"XamCacheFetchFileByString",
+"kFunction"
+],
+"1152": [
+"XamCacheDeleteFileByString",
+"kFunction"
+],
+"1153": [
+"XamGetCachedTitleNameEx",
+"kFunction"
+],
+"1154": [
+"XamXlfsInitializeUploadQueue",
+"kFunction"
+],
+"1155": [
+"XamXlfsUninitializeUploadQueue",
+"kFunction"
+],
+"1156": [
+"XamXlfsMountUploadQueueInstance",
+"kFunction"
+],
+"1157": [
+"XamXlfsUnmountUploadQueueInstance",
+"kFunction"
+],
+"1158": [
+"XamVoiceRecordUserPrivileges",
+"kFunction"
+],
+"1159": [
+"XamXlfsInitializeUploadQueueWithTestHooks",
+"kFunction"
+],
+"116": [
+"NetDll_XnpLogonClearQEvent",
+"kFunction"
+],
+"1160": [
+"XamXlfsNotifyContentDeletion",
+"kFunction"
+],
+"1161": [
+"XMemAlloc",
+"kFunction"
+],
+"1162": [
+"XMemFree",
+"kFunction"
+],
+"1163": [
+"XMemSize",
+"kFunction"
+],
+"1164": [
+"XamVoiceSetMicArrayIdleUsers",
+"kFunction"
+],
+"1165": [
+"XamVoiceMuteMicArray",
+"kFunction"
+],
+"1166": [
+"XamVoiceGetMicArrayUnderrunStatus",
+"kFunction"
+],
+"1167": [
+"XuiSceneEnableTransitionDependency",
+"kFunction"
+],
+"1168": [
+"XamVoiceGetMicArrayAudioEx",
+"kFunction"
+],
+"1169": [
+"XamVoiceDisableMicArray",
+"kFunction"
+],
+"117": [
+"NetDll_XnpLogonGetQVals",
+"kFunction"
+],
+"1170": [
+"XamUserGetDeviceId",
+"kFunction"
+],
+"1171": [
+"XamUpdateEtxLogUpdateTaskStart",
+"kFunction"
+],
+"1172": [
+"XamUpdateEtxLogUpdateTaskSuccess",
+"kFunction"
+],
+"1173": [
+"XamUpdateEtxLogUpdateTaskFailure",
+"kFunction"
+],
+"1174": [
+"XamEtxFlushLogs",
+"kFunction"
+],
+"1175": [
+"XamVoiceIsActiveProcess",
+"kFunction"
+],
+"1176": [
+"XamInactivityGetInactivityInterruptTime",
+"kFunction"
+],
+"1177": [
+"XamInactivitySetInactivityInterruptTime",
+"kFunction"
+],
+"1178": [
+"XamInactivityGetLastActivityTime",
+"kFunction"
+],
+"1179": [
+"XamInactivitySetDetectionTaskPeriod",
+"kFunction"
+],
+"118": [
+"NetDll_XnpLogonSetQVals",
+"kFunction"
+],
+"1180": [
+"XamInactivityEnablePowerDown",
+"kFunction"
+],
+"1181": [
+"XamUpdateGetChainMarker",
+"kFunction"
+],
+"1182": [
+"XGetVideoCapabilities",
+"kFunction"
+],
+"1183": [
+"XMsgProcessRequest",
+"kFunction"
+],
+"1184": [
+"XGetDisplaySize",
+"kFunction"
+],
+"1185": [
+"XamInputNonControllerGetRaw",
+"kFunction"
+],
+"1186": [
+"XamInputNonControllerSetRaw",
+"kFunction"
+],
+"1187": [
+"XamVoiceSetMicArrayBeamAngle",
+"kFunction"
+],
+"1188": [
+"XamUserGetAge",
+"kFunction"
+],
+"1189": [
+"XamUserGetAgeGroup",
+"kFunction"
+],
+"119": [
+"NetDll_XnpLogonSetPState",
+"kFunction"
+],
+"1190": [
+"XamVoiceGetMicArrayFilenameDesc",
+"kFunction"
+],
+"1191": [
+"XamLoaderGetState",
+"kFunction"
+],
+"1192": [
+"XamTaskQueryProperty",
+"kFunction"
+],
+"1193": [
+"XamGetLocale",
+"kFunction"
+],
+"1194": [
+"XamQueryTimeZoneInformation",
+"kFunction"
+],
+"1195": [
+"XamSetTimeZoneInformation",
+"kFunction"
+],
+"1196": [
+"XamLaunchURI",
+"kFunction"
+],
+"1199": [
+"XamShowNuiMessagesUI",
+"kFunction"
+],
+"12": [
+"NetDll_connect",
+"kFunction"
+],
+"120": [
+"NetDll_XnpGetVlanXboxName",
+"kFunction"
+],
+"1200": [
+"XMPRegisterCodec",
+"kFunction"
+],
+"1201": [
+"XamNavigateBack",
+"kFunction"
+],
+"1202": [
+"XamPushBackURI",
+"kFunction"
+],
+"1203": [
+"XamUserOverrideDeviceBindings",
+"kFunction"
+],
+"1204": [
+"XamUserOverrideBindingCallbacks",
+"kFunction"
+],
+"1205": [
+"XamUserOverrideUserInfo",
+"kFunction"
+],
+"1206": [
+"XamUserContentRestrictionGetFlags",
+"kFunction"
+],
+"1207": [
+"XamUserContentRestrictionGetRating",
+"kFunction"
+],
+"1208": [
+"XamUserContentRestrictionCheckAccess",
+"kFunction"
+],
+"1209": [
+"XamShowFitnessBodyProfileUI",
+"kFunction"
+],
+"121": [
+"NetDll_XnpSetVlanXboxName",
+"kFunction"
+],
+"1210": [
+"XamFitnessAddBodyProfileRecord",
+"kFunction"
+],
+"1211": [
+"XamFamilyGetMembers",
+"kFunction"
+],
+"1212": [
+"XampXAuthStartup",
+"kFunction"
+],
+"1213": [
+"XampXAuthShutdown",
+"kFunction"
+],
+"1214": [
+"XamGetToken",
+"kFunction"
+],
+"1215": [
+"XamFreeToken",
+"kFunction"
+],
+"1216": [
+"XamGetAppliesTo",
+"kFunction"
+],
+"1217": [
+"XamFitnessClearBodyProfileRecords",
+"kFunction"
+],
+"1218": [
+"XamFitnessGetCurrentBodyProfileRecord",
+"kFunction"
+],
+"1219": [
+"XamFitnessGetAllBodyProfileRecords",
+"kFunction"
+],
+"122": [
+"NetDll_XnpGetActiveSocketList",
+"kFunction"
+],
+"1220": [
+"XamFitnessGetAllTitleSummaries",
+"kFunction"
+],
+"1221": [
+"XamFitnessGetOverallSummary",
+"kFunction"
+],
+"1222": [
+"XamFitnessAddFitnessEvent",
+"kFunction"
+],
+"1223": [
+"XamLrcGetInput",
+"kFunction"
+],
+"1224": [
+"XamLrcGetInputWithSeek",
+"kFunction"
+],
+"1225": [
+"XamLrcSetMediaState",
+"kFunction"
+],
+"1226": [
+"XamPixSetDirtyCounters",
+"kFunction"
+],
+"1227": [
+"XamFitnessCreateFitnessEventEnumerator",
+"kFunction"
+],
+"1228": [
+"XamFitnessInitialize",
+"kFunction"
+],
+"1229": [
+"XamRequestToken",
+"kFunction"
+],
+"123": [
+"NetDll_XnpNoteSystemTime",
+"kFunction"
+],
+"1230": [
+"XamResolveURI",
+"kFunction"
+],
+"1231": [
+"XamContentGetOnlineCreator",
+"kFunction"
+],
+"1232": [
+"XamShowBrandedKeyboardUI",
+"kFunction"
+],
+"1233": [
+"XamBackgroundDownloadNetworkStorageEnable",
+"kFunction"
+],
+"1234": [
+"XamBackgroundDownloadNetworkStorageIsEnabled",
+"kFunction"
+],
+"1235": [
+"XamShowNuiJoinSessionInProgressUI",
+"kFunction"
+],
+"1236": [
+"XamBase64Decode",
+"kFunction"
+],
+"1237": [
+"XamCertDecode",
+"kFunction"
+],
+"1238": [
+"XamCertDecodeRsaPublicKey",
+"kFunction"
+],
+"1239": [
+"XamCertValidateStruct",
+"kFunction"
+],
+"124": [
+"NetDll_XnpRegisterKeyForCallerType",
+"kFunction"
+],
+"1240": [
+"XamFitnessConvertByteMetToFloatMet",
+"kFunction"
+],
+"1241": [
+"XamXgiBlobTrackerSetMockInfo",
+"kFunction"
+],
+"1242": [
+"XamFitnessMsgTimeToSystemTime",
+"kFunction"
+],
+"1243": [
+"XamFitnessSystemTimeToMsgTime",
+"kFunction"
+],
+"1244": [
+"XamShowFitnessWarnAboutPrivacyUI",
+"kFunction"
+],
+"1245": [
+"XamShowFitnessWarnAboutTimeUI",
+"kFunction"
+],
+"1246": [
+"XamFitnessUnInitialize",
+"kFunction"
+],
+"1247": [
+"XamBackgroundDownloadNetworkStorageOnContentChange",
+"kFunction"
+],
+"1248": [
+"XamLiveBaseConfigureInMemoryMockResponse",
+"kFunction"
+],
+"1249": [
+"InjectConnectionServerNotification",
+"kFunction"
+],
+"125": [
+"NetDll_XnpUnregisterKeyForCallerType",
+"kFunction"
+],
+"1250": [
+"XamFitnessConvertFloatMetToByteMet",
+"kFunction"
+],
+"1251": [
+"XamGetGamerTileKeyFromGamertag",
+"kFunction"
+],
+"1252": [
+"XamBackgroundDownloadNetworkStorageRegisterChangeCallback",
+"kFunction"
+],
+"1253": [
+"XamFindOrCreateInternalPassportAccount",
+"kFunction"
+],
+"1254": [
+"XOnlinepFriendsRequest",
+"kFunction"
+],
+"1255": [
+"XOnlinepFriendsAcceptRequest",
+"kFunction"
+],
+"1256": [
+"XOnlinepFriendsRejectRequest",
+"kFunction"
+],
+"1257": [
+"XOnlinepFriendsRemove",
+"kFunction"
+],
+"1258": [
+"XFriendsCreateEnumerator",
+"kFunction"
+],
+"1259": [
+"XamBackgroundDownloadNetworkStorageIsRunning",
+"kFunction"
+],
+"126": [
+"NetDll_XnpLogonGetChallenge",
+"kFunction"
+],
+"1260": [
+"XamCertGetSerialNumber",
+"kFunction"
+],
+"1261": [
+"XamShowOptionsUI",
+"kFunction"
+],
+"1262": [
+"XampXAuthGetTitleBuffer",
+"kFunction"
+],
+"1263": [
+"XamGetSTSTokenCache",
+"kFunction"
+],
+"1264": [
+"XamUserGetOnlineXUIDFromOfflineXUID",
+"kFunction"
+],
+"1265": [
+"XamIsUserUsingMetricSystem",
+"kFunction"
+],
+"1266": [
+"XamShowNuiVideoRichPresenceUI",
+"kFunction"
+],
+"1267": [
+"XamAppAllocateInterappWorkspaceEx",
+"kFunction"
+],
+"1268": [
+"XampKioskSetTestMock",
+"kFunction"
+],
+"1269": [
+"XamNetworkStatusGetInformation",
+"kFunction"
+],
+"127": [
+"NetDll_XnpLogonClearChallenge",
+"kFunction"
+],
+"1270": [
+"XamNetworkStatusAddAddress",
+"kFunction"
+],
+"1271": [
+"XamUserReadUserPreference",
+"kFunction"
+],
+"1272": [
+"XamUserWriteUserPreference",
+"kFunction"
+],
+"1273": [
+"XamShowFitnessClearUI",
+"kFunction"
+],
+"1274": [
+"XamFitnessClearAll",
+"kFunction"
+],
+"1275": [
+"XamFitnessGetPrivacySettings",
+"kFunction"
+],
+"1276": [
+"XamWaitForNSAL",
+"kFunction"
+],
+"1277": [
+"XamMarkInternalAccountTrustedOnConsole",
+"kFunction"
+],
+"1278": [
+"XamBackgroundDownloadNetworkStorageGetProgress",
+"kFunction"
+],
+"1279": [
+"XamCopyFile",
+"kFunction"
+],
+"128": [
+"NetDll_XnpLogonSetChallengeResponse",
+"kFunction"
+],
+"1280": [
+"XamMoveFile",
+"kFunction"
+],
+"1281": [
+"XamDeleteFile",
+"kFunction"
+],
+"1282": [
+"XamUserOverrideGlobalState",
+"kFunction"
+],
+"1283": [
+"XamGetAdaptersCollection",
+"kFunction"
+],
+"1284": [
+"XampKioskIsSimulationMode",
+"kFunction"
+],
+"1285": [
+"XamIsUIThread",
+"kFunction"
+],
+"1286": [
+"XamInputSendXenonButtonPress",
+"kFunction"
+],
+"1287": [
+"XamDebugGetURISchemeCount",
+"kFunction"
+],
+"1288": [
+"XamDebugGetURISchemeInfo",
+"kFunction"
+],
+"1289": [
+"XamGetOnlineCountryFromLocale",
+"kFunction"
+],
+"129": [
+"NetDll_XnpGetSecAssocList",
+"kFunction"
+],
+"1290": [
+"XTestOnlineIsConnectedToLive",
+"kFunction"
+],
+"1291": [
+"XamGetConsoleFriendlyName",
+"kFunction"
+],
+"1292": [
+"XamSetConsoleFriendlyName",
+"kFunction"
+],
+"1293": [
+"XamGetCountry",
+"kFunction"
+],
+"1294": [
+"XamPackageManagerGetFilePathW",
+"kFunction"
+],
+"1295": [
+"XamGetCurrentDemand",
+"kFunction"
+],
+"1296": [
+"XamCompleteDemand",
+"kFunction"
+],
+"1297": [
+"XamDemand",
+"kFunction"
+],
+"1298": [
+"XamFormatSystemDateString",
+"kFunction"
+],
+"1299": [
+"XamDebugGetBackURI",
+"kFunction"
+],
+"13": [
+"NetDll_listen",
+"kFunction"
+],
+"130": [
+"NetDll_XnpGetKeyList",
+"kFunction"
+],
+"1300": [
+"XamIsCurrentTitleIptv",
+"kFunction"
+],
+"1301": [
+"XamIsIptvEnabled",
+"kFunction"
+],
+"1302": [
+"XamIsDvrRecording",
+"kFunction"
+],
+"1303": [
+"XamIptvUninstall",
+"kFunction"
+],
+"1304": [
+"XamGetDvrStorage",
+"kFunction"
+],
+"1305": [
+"XamSetDvrStorage",
+"kFunction"
+],
+"1306": [
+"XamIptvGetServiceName",
+"kFunction"
+],
+"1307": [
+"XamNuiHudGetEngagedEnrollmentIndex",
+"kFunction"
+],
+"1308": [
+"XamProfileSetCachedWindowsLiveEmail",
+"kFunction"
+],
+"1309": [
+"XamProfileGetCachedWindowsLiveEmail",
+"kFunction"
+],
+"131": [
+"NetDll_XnpGetQosLookupList",
+"kFunction"
+],
+"1310": [
+"XamUserResetSubscriptionType",
+"kFunction"
+],
+"1311": [
+"XamLrcSetTitlePort",
+"kFunction"
+],
+"1312": [
+"XamLrcVerifyClientId",
+"kFunction"
+],
+"1313": [
+"XamLrcEncryptDecryptTitleMessage",
+"kFunction"
+],
+"1314": [
+"XamFitnessGetSyncStatus",
+"kFunction"
+],
+"1315": [
+"XamFitnessInitializeForOneUser",
+"kFunction"
+],
+"1316": [
+"XamFitnessGetSuggestedPrivacySettings",
+"kFunction"
+],
+"1317": [
+"XampFitnessLetFireAndForgetsCatchUpInternal",
+"kFunction"
+],
+"1318": [
+"XamInputGetFailedConnectionOrBind",
+"kFunction"
+],
+"1319": [
+"XuiSceneIsInTransition",
+"kFunction"
+],
+"132": [
+"NetDll_XnpPersistTitleState",
+"kFunction"
+],
+"1320": [
+"XamIsOnPrivateNetwork",
+"kFunction"
+],
+"1321": [
+"XamInputSetMinMaxAuthDelay",
+"kFunction"
+],
+"1322": [
+"XamInputNonControllerGetRawEx",
+"kFunction"
+],
+"1323": [
+"XamInputNonControllerSetRawEx",
+"kFunction"
+],
+"1324": [
+"XamMarketplaceAcquireFreeContent",
+"kFunction"
+],
+"1325": [
+"XamGetClosedCaptioningState",
+"kFunction"
+],
+"1326": [
+"XamGetClosedCaptioningSettings",
+"kFunction"
+],
+"1327": [
+"XamSetClosedCaptioningState",
+"kFunction"
+],
+"1328": [
+"XamLoaderGetLogonTitle",
+"kFunction"
+],
+"1329": [
+"XamBeginDemand",
+"kFunction"
+],
+"133": [
+"NetDll_XnpReplaceKeyForCallerType",
+"kFunction"
+],
+"1330": [
+"XamGetErrorStringFromWebService",
+"kFunction"
+],
+"1331": [
+"XamGetModernPresenceWorkspaceSize",
+"kFunction"
+],
+"1332": [
+"XamGetModernPresence",
+"kFunction"
+],
+"1333": [
+"XamGetSingleModernPresence",
+"kFunction"
+],
+"1334": [
+"XamGetModernPresenceImageUrl",
+"kFunction"
+],
+"1335": [
+"XGetSSLCertBypassEnabled",
+"kFunction"
+],
+"1336": [
+"XamIsNetworkCaptivePortal",
+"kFunction"
+],
+"1337": [
+"XamShowAndWaitForMessageBoxEx",
+"kFunction"
+],
+"1339": [
+"XamGetCurrencyFormat",
+"kFunction"
+],
+"134": [
+"NetDll_XnpEthernetInterceptSetExtendedReceiveCallback",
+"kFunction"
+],
+"1340": [
+"XamFormatCurrency",
+"kFunction"
+],
+"1341": [
+"XamReportTLSConnect",
+"kFunction"
+],
+"1342": [
+"XamGetXSTSTokenExpiryPeriodMS",
+"kFunction"
+],
+"1343": [
+"XamGetUserBalance",
+"kFunction"
+],
+"1344": [
+"XamIsGuideDisabled",
+"kFunction"
+],
+"1345": [
+"XampCallXAccountTransitionStoredValuePointsToCurrency",
+"kFunction"
+],
+"1346": [
+"XampSetMockCallXAccountTransitionStoredValuePointsToCurrency",
+"kFunction"
+],
+"1347": [
+"XamShowCsvTransitionUI",
+"kFunction"
+],
+"1348": [
+"XamAskUserForCSVDrainagePermission",
+"kFunction"
+],
+"1349": [
+"XamIsCSVDrainageSupported",
+"kFunction"
+],
+"135": [
+"NetDll_XnpQosHistoryLoad",
+"kFunction"
+],
+"136": [
+"NetDll_XnpQosHistorySaveMeasurements",
+"kFunction"
+],
+"137": [
+"NetDll_XnpQosHistoryGetEntries",
+"kFunction"
+],
+"138": [
+"NetDll_XnpQosHistoryGetAggregateMeasurement",
+"kFunction"
+],
+"1388": [
+"XamGetTLSConfig",
+"kFunction"
+],
+"139": [
+"NetDll_XnpToolSetCallbacks",
+"kFunction"
+],
+"1399": [
+"XamGetServiceEndpoint",
+"kFunction"
+],
+"14": [
+"NetDll_accept",
+"kFunction"
+],
+"140": [
+"NetDll_XnpToolIpProxyInject",
+"kFunction"
+],
+"1400": [
+"XamReminderGetItems",
+"kFunction"
+],
+"1401": [
+"XamReminderClearItems",
+"kFunction"
+],
+"1402": [
+"XamReminderItemAdd",
+"kFunction"
+],
+"1403": [
+"XamReminderItemRemove",
+"kFunction"
+],
+"1404": [
+"XamReminderGetNextItem",
+"kFunction"
+],
+"1405": [
+"XamReminderGetModifiedTime",
+"kFunction"
+],
+"1406": [
+"XamReminderClearCache",
+"kFunction"
+],
+"1407": [
+"XamLrcKeyboardGetInput",
+"kFunction"
+],
+"1408": [
+"XamLrcKeyboardGetRequiredBufferSize",
+"kFunction"
+],
+"1409": [
+"XamLrcKeyboardRegister",
+"kFunction"
+],
+"141": [
+"NetDll_XnpUpdateConfigParams",
+"kFunction"
+],
+"1410": [
+"XamLrcKeyboardUnregister",
+"kFunction"
+],
+"1411": [
+"XamLrcKeyboardUpdateText",
+"kFunction"
+],
+"1412": [
+"XamValidateCountry",
+"kFunction"
+],
+"1413": [
+"XamGetOnlineCountryString",
+"kFunction"
+],
+"1414": [
+"XamGetCountryString",
+"kFunction"
+],
+"1415": [
+"XamGetLanguageString",
+"kFunction"
+],
+"1416": [
+"XamGetLanguageLocaleString",
+"kFunction"
+],
+"1417": [
+"XamGetOnlineLanguageAndCountryString",
+"kFunction"
+],
+"1418": [
+"XamGetLanguageLocaleFallbackString",
+"kFunction"
+],
+"1419": [
+"XamGetOnlineLanguageAndCountry",
+"kFunction"
+],
+"142": [
+"NetDll_XnpEthernetInterceptXmitAsIp",
+"kFunction"
+],
+"1420": [
+"XamGetLanguageTypeface",
+"kFunction"
+],
+"1421": [
+"XamGetLanguageTypefacePatch",
+"kFunction"
+],
+"1422": [
+"XamGetLocaleString",
+"kFunction"
+],
+"1423": [
+"XamGetLocaleFromOnlineCountry",
+"kFunction"
+],
+"1424": [
+"XamOfflineTimerSetData",
+"kFunction"
+],
+"1425": [
+"XamOfflineTimerResume",
+"kFunction"
+],
+"1426": [
+"XamOfflineTimerSuspend",
+"kFunction"
+],
+"1427": [
+"XamOfflineTimerIsRunning",
+"kFunction"
+],
+"1428": [
+"XamOfflineTimerIsEnabled",
+"kFunction"
+],
+"1429": [
+"XamOfflineTimerGetTimeRemaining",
+"kFunction"
+],
+"143": [
+"NetDll_XnpConfigUPnPPortAndExternalAddr",
+"kFunction"
+],
+"1430": [
+"XamOfflineTimerGetContractData",
+"kFunction"
+],
+"1431": [
+"XamOfflineTimerInitialize",
+"kFunction"
+],
+"1432": [
+"XamOfflineTimerGetData",
+"kFunction"
+],
+"1433": [
+"XamPlayToRegister",
+"kFunction"
+],
+"1434": [
+"XamPlayToReportPlaybackState",
+"kFunction"
+],
+"1435": [
+"XamPlayToUnregister",
+"kFunction"
+],
+"1436": [
+"XamShowTFAUI",
+"kFunction"
+],
+"1437": [
+"OnReconnect",
+"kFunction"
+],
+"1438": [
+"XamGetOnlineCountryFeatures",
+"kFunction"
+],
+"1439": [
+"XamLogLocalizationEtx",
+"kFunction"
+],
+"1440": [
+"XampXAuthIsLocalSocketAllowed",
+"kFunction"
+],
+"1441": [
+"XamPlayToGetRequest",
+"kFunction"
+],
+"1442": [
+"XamPlayToCancelGetRequest",
+"kFunction"
+],
+"1443": [
+"XamPlayToCompleteRequest",
+"kFunction"
+],
+"1444": [
+"XamFitnessGetTitleSummaries",
+"kFunction"
+],
+"1445": [
+"XamFitnessGetTitleSummary",
+"kFunction"
+],
+"1446": [
+"XamOfflineTimerShutdown",
+"kFunction"
+],
+"1447": [
+"XamFitnessContainsFitnessData",
+"kFunction"
+],
+"1448": [
+"XamGetLanguageFromOnlineLanguage",
+"kFunction"
+],
+"1449": [
+"XamGetOnlineLanguageString",
+"kFunction"
+],
+"1450": [
+"XamGetCountryFromOnlineCountry",
+"kFunction"
+],
+"1495": [
+"XamGetLocaleEx",
+"kFunction"
+],
+"1496": [
+"XamOfflineTimerForceQuery",
+"kFunction"
+],
+"1497": [
+"XamShowCreateProfileUIEx",
+"kFunction"
+],
+"1498": [
+"XTLGetLanguageV2",
+"kFunction"
+],
+"1499": [
+"XTLGetLocaleV1",
+"kFunction"
+],
+"15": [
+"NetDll_select",
+"kFunction"
+],
+"1500": [
+"XamAvatarInitialize",
+"kFunction"
+],
+"1501": [
+"XamAvatarShutdown",
+"kFunction"
+],
+"1502": [
+"XamAvatarGetManifestLocalUser",
+"kFunction"
+],
+"1503": [
+"XamAvatarGetManifestsByXuid",
+"kFunction"
+],
+"1504": [
+"XamAvatarGetAssetsResultSize",
+"kFunction"
+],
+"1505": [
+"XamAvatarGetAssets",
+"kFunction"
+],
+"1506": [
+"XamAvatarGenerateMipMaps",
+"kFunction"
+],
+"1507": [
+"XamAvatarSetCustomAsset",
+"kFunction"
+],
+"1508": [
+"XamAvatarSetManifest",
+"kFunction"
+],
+"1509": [
+"EnumerateMediaObjects",
+"kFunction"
+],
+"151": [
+"NetDll_XmlDownloadStart",
+"kFunction"
+],
+"1510": [
+"EnumerateMediaObjects_",
+"kFunction"
+],
+"1511": [
+"XamAvatarLoadAnimation",
+"kFunction"
+],
+"1512": [
+"XamAvatarBeginEnumAssets",
+"kFunction"
+],
+"1513": [
+"XamAvatarEndEnumAssets",
+"kFunction"
+],
+"1514": [
+"XamAvatarEnumAssets",
+"kFunction"
+],
+"1515": [
+"XamAvatarGetMetadataRandom",
+"kFunction"
+],
+"1516": [
+"EnumerateMediaObjects_0",
+"kFunction"
+],
+"1517": [
+"EnumerateMediaObjects_1",
+"kFunction"
+],
+"1518": [
+"XamAvatarGetMetadataSignedOutProfileCount",
+"kFunction"
+],
+"1519": [
+"XamAvatarGetMetadataSignedOutProfile",
+"kFunction"
+],
+"152": [
+"NetDll_XmlDownloadContinue",
+"kFunction"
+],
+"1520": [
+"EnumerateMediaObjects_2",
+"kFunction"
+],
+"1521": [
+"XamAvatarManifestGetBodyType",
+"kFunction"
+],
+"1522": [
+"XamAvatarGetInstrumentation",
+"kFunction"
+],
+"1523": [
+"XamAvatarGetAssetIcon",
+"kFunction"
+],
+"1524": [
+"XamAvatarWearNow",
+"kFunction"
+],
+"1525": [
+"XamAvatarGetAssetBinary",
+"kFunction"
+],
+"1526": [
+"XamAvatarReinstallAwardedAsset",
+"kFunction"
+],
+"1527": [
+"XamAvatarGetInstalledAssetPackageDescription",
+"kFunction"
+],
+"1528": [
+"XamAvatarSetMocks",
+"kFunction"
+],
+"1529": [
+"XamLrcKeyboardValidateTextChange",
+"kFunction"
+],
+"153": [
+"NetDll_XmlDownloadStop",
+"kFunction"
+],
+"1530": [
+"XamLrcKeyboardApplyTextChange",
+"kFunction"
+],
+"1531": [
+"XamLrcLogSessionSummary",
+"kFunction"
+],
+"1532": [
+"XamLrcLogError",
+"kFunction"
+],
+"154": [
+"NetDll_XmlDownloadGetParseTime",
+"kFunction"
+],
+"155": [
+"NetDll_XmlDownloadGetReceivedDataSize",
+"kFunction"
+],
+"1550": [
+"XamContentMountInstalledGame",
+"kFunction"
+],
+"1551": [
+"XamContentIsGameInstalledToHDD",
+"kFunction"
+],
+"1552": [
+"XamContentQueryLicenseInternal",
+"kFunction"
+],
+"1553": [
+"XamContentGetDeviceVolumePath",
+"kFunction"
+],
+"1554": [
+"XamContentDeviceCheckUpdates",
+"kFunction"
+],
+"1555": [
+"XamContentGetHeaderInternal",
+"kFunction"
+],
+"1556": [
+"XamNetworkStorageGetNetworkDevice",
+"kFunction"
+],
+"1557": [
+"XamNetworkStorageDeviceHasCacheFile",
+"kFunction"
+],
+"1558": [
+"XamNetworkStorageCreateCacheOnDevice",
+"kFunction"
+],
+"1559": [
+"XamNetworkStorageDeleteCacheOnDevice",
+"kFunction"
+],
+"1560": [
+"XamNetworkStorageGetStatus",
+"kFunction"
+],
+"1561": [
+"XamNetworkStorageIsSupportedContentType",
+"kFunction"
+],
+"1562": [
+"XamNetworkStorageSetTestMock",
+"kFunction"
+],
+"1563": [
+"XamNetworkStorageGetLastSyncTime",
+"kFunction"
+],
+"1564": [
+"XamShowNetworkStorageSyncUI",
+"kFunction"
+],
+"1565": [
+"XamUserIsLogonPreviewModeEnabled",
+"kFunction"
+],
+"1566": [
+"XamUserLockLogonPreviewMode",
+"kFunction"
+],
+"1567": [
+"XamUserUnlockLogonPreviewMode",
+"kFunction"
+],
+"1568": [
+"XamNetworkStorageIsUserInSync",
+"kFunction"
+],
+"1569": [
+"XamNetworkStorageSetUserInSync",
+"kFunction"
+],
+"1570": [
+"XamNetworkStorageOnSigninChanged",
+"kFunction"
+],
+"1571": [
+"XamNetworkStorageSignInTestMock",
+"kFunction"
+],
+"1572": [
+"XamShowFofUI",
+"kFunction"
+],
+"1573": [
+"CompareFileTime",
+"kFunction"
+],
+"1574": [
+"SetFileTime",
+"kFunction"
+],
+"1575": [
+"XamNetworkStorageGetTitleProperties",
+"kFunction"
+],
+"1576": [
+"XamNetworkStorageLockFile",
+"kFunction"
+],
+"1577": [
+"XamNetworkStorageUserHasPrivilege",
+"kFunction"
+],
+"1578": [
+"XamNetworkStorageIsTitleExempt",
+"kFunction"
+],
+"1579": [
+"XamContentExistsOnDeviceInternal",
+"kFunction"
+],
+"1580": [
+"XamNetworkStorageGetBackingDevice",
+"kFunction"
+],
+"1581": [
+"XamNetworkStorageIsEnabledInLiveHive",
+"kFunction"
+],
+"1582": [
+"XamNetworkStorageIsCheckingSyncStates",
+"kFunction"
+],
+"1583": [
+"XamNetworkStorageUserNeedsToSync",
+"kFunction"
+],
+"1584": [
+"XamNetworkStorageGetUserNetworkSyncTime",
+"kFunction"
+],
+"1585": [
+"XamNetworkStorageGetUserProperties",
+"kFunction"
+],
+"1586": [
+"XamNetworkStorageAppLauncherLaunchIfRunning",
+"kFunction"
+],
+"1587": [
+"XamNetworkStorageSetTitleProperties",
+"kFunction"
+],
+"1588": [
+"XamNetworkStorageGetUserLastError",
+"kFunction"
+],
+"1589": [
+"XamNetworkStorageCheckOutTitle",
+"kFunction"
+],
+"1590": [
+"XamNetworkStorageShouldHideFromTitle",
+"kFunction"
+],
+"1591": [
+"XamNetworkStorageOnUserSyncChange",
+"kFunction"
+],
+"1592": [
+"XamNetworkStorageHasUserEnabledStorage",
+"kFunction"
+],
+"1593": [
+"XamContentGetLocalizedDeviceData",
+"kFunction"
+],
+"16": [
+"NetDll_WSAGetOverlappedResult",
+"kFunction"
+],
+"1600": [
+"XamPackageManagerFindPackageContainingIndexedXEX",
+"kFunction"
+],
+"1601": [
+"XamPackageManagerReinitialize",
+"kFunction"
+],
+"1602": [
+"XamPackageManagerGetAuthoritativeManifestVersion",
+"kFunction"
+],
+"1603": [
+"XamGetCurrentSystemOnlineManifestRevision",
+"kFunction"
+],
+"1604": [
+"XamPackageManagerDeleteExtendedPartition",
+"kFunction"
+],
+"1605": [
+"XamPackageManagerHasExtendedPartition",
+"kFunction"
+],
+"1606": [
+"XamPackageManagerGetExperienceMode",
+"kFunction"
+],
+"1607": [
+"XamPackageManagerGetFeatureRequiresUpdateStrings",
+"kFunction"
+],
+"1608": [
+"XamPackageManagerGetFileSize",
+"kFunction"
+],
+"1609": [
+"XampDemandUpdateGetAttributes",
+"kFunction"
+],
+"1610": [
+"XampDemandUpdateGetExtendedAttributes",
+"kFunction"
+],
+"1611": [
+"XampDemandUpdateGetInstance",
+"kFunction"
+],
+"1612": [
+"XampDemandUpdateSetRefreshTestFlags",
+"kFunction"
+],
+"1613": [
+"XampDemandUpdateIsRefreshTestFlagSet",
+"kFunction"
+],
+"1614": [
+"XampDemandUpdateGetManifestLocalPath",
+"kFunction"
+],
+"1615": [
+"XampDemandUpdateRefreshManifest",
+"kFunction"
+],
+"1616": [
+"XdfInitialize",
+"kFunction"
+],
+"1617": [
+"XdfShutdown",
+"kFunction"
+],
+"1618": [
+"XdfGetExpectedDownloadSize",
+"kFunction"
+],
+"1619": [
+"XdfGetItem",
+"kFunction"
+],
+"1620": [
+"XdfCacheItem",
+"kFunction"
+],
+"1621": [
+"XdfLoadXexFromCache",
+"kFunction"
+],
+"1622": [
+"XdfLoadXex",
+"kFunction"
+],
+"1623": [
+"XdfCancelRequest",
+"kFunction"
+],
+"1624": [
+"XdfResumeDelayedItem",
+"kFunction"
+],
+"1625": [
+"XdfLaunchNewImageFromCache",
+"kFunction"
+],
+"1626": [
+"XampDemandUpdateRefreshManifestDuringLogon",
+"kFunction"
+],
+"1627": [
+"XampDemandUpdateCheckOnlineManifestChanged",
+"kFunction"
+],
+"1628": [
+"XampDemandUpdateRunCacheCleaner",
+"kFunction"
+],
+"1669": [
+"XamUpdateGetTitleUpdateSizeThreshold",
+"kFunction"
+],
+"1670": [
+"XamXStudioRequest",
+"kFunction"
+],
+"1671": [
+"XamNotifyDelayUIInternal",
+"kFunction"
+],
+"17": [
+"NetDll_WSACancelOverlappedIO",
+"kFunction"
+],
+"1700": [
+"XamShowAvatarMiniCreatorUI",
+"kFunction"
+],
+"1701": [
+"XamShowGoldUpgradeUI",
+"kFunction"
+],
+"1702": [
+"XamResumeUpdaterUI",
+"kFunction"
+],
+"1703": [
+"XamShowDirectAcquireUI",
+"kFunction"
+],
+"1704": [
+"XamShowPaymentOptionsUI",
+"kFunction"
+],
+"1705": [
+"XamShowMultiplayerUpgradeUI",
+"kFunction"
+],
+"18": [
+"NetDll_recv",
+"kFunction"
+],
+"1800": [
+"XamGetLiveHiveValueA",
+"kFunction"
+],
+"1801": [
+"XamGetLiveHiveValueW",
+"kFunction"
+],
+"1802": [
+"XamGetLiveHiveValueDuringLogonAttemptA",
+"kFunction"
+],
+"1803": [
+"XamSetUserPresetWindowsLiveCreds",
+"kFunction"
+],
+"1804": [
+"XamQueryLiveHiveA",
+"kFunction"
+],
+"1805": [
+"XamQueryLiveHiveW",
+"kFunction"
+],
+"1806": [
+"XamGetLiveHiveValueDuringLogonAttemptExA",
+"kFunction"
+],
+"1807": [
+"XamGetUserPresetWindowsLiveCreds",
+"kFunction"
+],
+"1808": [
+"XamGetUserNeedTFA",
+"kFunction"
+],
+"1809": [
+"XamSetUserNeedTFA",
+"kFunction"
+],
+"1810": [
+"XamGetUserInMemoryWindowsLiveCreds",
+"kFunction"
+],
+"19": [
+"NetDll_WSARecv",
+"kFunction"
+],
+"1900": [
+"XamDownloadMarketplaceStoresList",
+"kFunction"
+],
+"1901": [
+"XamGetStoreFront",
+"kFunction"
+],
+"1902": [
+"XamSetStagingMode",
+"kFunction"
+],
+"1903": [
+"XamGetStagingMode",
+"kFunction"
+],
+"1904": [
+"XamAppGetSessionId",
+"kFunction"
+],
+"1905": [
+"XamAccountRecoveryRecoverAllProfileData",
+"kFunction"
+],
+"1906": [
+"XamAccountRecoveryGetProgress",
+"kFunction"
+],
+"198": [
+"XnpGetXwppMemoryLogSnapshot",
+"kFunction"
+],
+"199": [
+"XnpGetXwppRuntimeFilter",
+"kFunction"
+],
+"2": [
+"NetDll_WSACleanup",
+"kFunction"
+],
+"20": [
+"NetDll_recvfrom",
+"kFunction"
+],
+"2000": [
+"XamDoesOmniNeedConfiguration",
+"kFunction"
+],
+"2001": [
+"XamFirstRunExperienceShouldRun",
+"kFunction"
+],
+"2002": [
+"GetProcessHeap",
+"kFunction"
+],
+"2003": [
+"UnhandledExceptionFilter",
+"kFunction"
+],
+"2004": [
+"SetUnhandledExceptionFilter",
+"kFunction"
+],
+"2005": [
+"XamIsOptionalMediaUpdateInstalled",
+"kFunction"
+],
+"2006": [
+"XamShowOptionalMediaUpdateRequiredUI",
+"kFunction"
+],
+"2007": [
+"XamShowOptionalMediaUpdateRequiredUIEx",
+"kFunction"
+],
+"2008": [
+"XamShowFirstRunWelcomeUI",
+"kFunction"
+],
+"2009": [
+"XamTaskCreateQueueEx",
+"kFunction"
+],
+"201": [
+"NetDll_XHttpStartup",
+"kFunction"
+],
+"2010": [
+"XamSetDashBackstackData",
+"kFunction"
+],
+"2011": [
+"XamLaunchAvatarEditor",
+"kFunction"
+],
+"2012": [
+"XamGetDashBackstackData",
+"kFunction"
+],
+"2013": [
+"XamGetDashBackstackNodesCount",
+"kFunction"
+],
+"2014": [
+"XamSetLastActiveUserData",
+"kFunction"
+],
+"2015": [
+"XamGetLastActiveUserData",
+"kFunction"
+],
+"2016": [
+"XamSetActiveDashAppInfo",
+"kFunction"
+],
+"2017": [
+"XamGetActiveDashAppInfo",
+"kFunction"
+],
+"2018": [
+"XamLoaderRegisterLaunchRequestCallback",
+"kFunction"
+],
+"2019": [
+"XamLoadExtraAVCodecs2",
+"kFunction"
+],
+"202": [
+"NetDll_XHttpShutdown",
+"kFunction"
+],
+"2020": [
+"XamUnloadExtraAVCodecs2",
+"kFunction"
+],
+"203": [
+"NetDll_XHttpOpen",
+"kFunction"
+],
+"204": [
+"NetDll_XHttpCloseHandle",
+"kFunction"
+],
+"205": [
+"NetDll_XHttpConnect",
+"kFunction"
+],
+"2050": [
+"XamUserCreateAvatarAssetEnumerator",
+"kFunction"
+],
+"2051": [
+"XamInitializeGameTileCache",
+"kFunction"
+],
+"2052": [
+"XamDestroyGameTileCache",
+"kFunction"
+],
+"2053": [
+"XamReadGameTileImage",
+"kFunction"
+],
+"2054": [
+"XamShouldThrottleAccountInfoCall",
+"kFunction"
+],
+"2055": [
+"XuiClassDerivesFrom",
+"kFunction"
+],
+"2056": [
+"XuiFreeVisuals",
+"kFunction"
+],
+"2057": [
+"XuiGetBaseClass",
+"kFunction"
+],
+"2058": [
+"XuiLoadVisualFromBinary",
+"kFunction"
+],
+"2059": [
+"XuiResourceGetBuffer",
+"kFunction"
+],
+"206": [
+"NetDll_XHttpSetStatusCallback",
+"kFunction"
+],
+"2060": [
+"XuiResourceGetTotalSize",
+"kFunction"
+],
+"2061": [
+"XuiElementGetUserData",
+"kFunction"
+],
+"2062": [
+"XuiElementSetUserData",
+"kFunction"
+],
+"2063": [
+"XuiTabSceneGetCount",
+"kFunction"
+],
+"2064": [
+"XuiSliderGetStep",
+"kFunction"
+],
+"2065": [
+"XuiSliderSetStep",
+"kFunction"
+],
+"2066": [
+"XuiProgressBarGetRange",
+"kFunction"
+],
+"2067": [
+"XuiElementSetHittable",
+"kFunction"
+],
+"2068": [
+"XuiElementPlayNamedFrames",
+"kFunction"
+],
+"2069": [
+"XuiElementGetPivot",
+"kFunction"
+],
+"207": [
+"NetDll_XHttpOpenRequest",
+"kFunction"
+],
+"2070": [
+"XuiElementGetPrev",
+"kFunction"
+],
+"2071": [
+"XuiElementGetScale",
+"kFunction"
+],
+"2072": [
+"XuiElementSetPivot",
+"kFunction"
+],
+"2073": [
+"XuiElementSetRotation",
+"kFunction"
+],
+"2074": [
+"XuiElementSetScale",
+"kFunction"
+],
+"2075": [
+"XuiControlWantsUnfocusedInput",
+"kFunction"
+],
+"2076": [
+"XuiResourceOpenNoLoc",
+"kFunction"
+],
+"2077": [
+"XuiResourceReleasePackage",
+"kFunction"
+],
+"2078": [
+"XuiResourceGetPackageEntryInfo",
+"kFunction"
+],
+"2079": [
+"XuiResourceGetPackageEntryCount",
+"kFunction"
+],
+"208": [
+"NetDll_XHttpOpenRequestUsingMemory",
+"kFunction"
+],
+"2080": [
+"XuiResourceOpenPackage",
+"kFunction"
+],
+"2081": [
+"XamCodeCoverageFileOpen",
+"kFunction"
+],
+"2082": [
+"XamCodeCoverageFileClose",
+"kFunction"
+],
+"2083": [
+"XamCodeCoverageFileLseek",
+"kFunction"
+],
+"2084": [
+"XamCodeCoverageFileRead",
+"kFunction"
+],
+"2085": [
+"XamCodeCoverageFileWrite",
+"kFunction"
+],
+"2086": [
+"Refresh_1",
+"kFunction"
+],
+"2087": [
+"XampHeapGetInfo",
+"kFunction"
+],
+"2088": [
+"XampHeapGetCount",
+"kFunction"
+],
+"2089": [
+"XamShowPamUI",
+"kFunction"
+],
+"209": [
+"NetDll_XHttpSendRequest",
+"kFunction"
+],
+"2090": [
+"XuiElementLayoutTree",
+"kFunction"
+],
+"2091": [
+"XamRegisterScreenSaverCallback",
+"kFunction"
+],
+"2092": [
+"XUIElementPropVal_SetInt",
+"kFunction"
+],
+"2093": [
+"XUIElementPropVal_SetFloat",
+"kFunction"
+],
+"2094": [
+"XuiObjectGetPropertyDef",
+"kFunction"
+],
+"2095": [
+"XuiRenderGetDevice",
+"kFunction"
+],
+"2096": [
+"XuiRenderRestoreState",
+"kFunction"
+],
+"2097": [
+"XuiElementGetFullXForm",
+"kFunction"
+],
+"2098": [
+"XuiRenderGetViewTransform",
+"kFunction"
+],
+"2099": [
+"XuiRenderGetColorSpace",
+"kFunction"
+],
+"21": [
+"NetDll_WSARecvFrom",
+"kFunction"
+],
+"210": [
+"NetDll_XHttpReceiveResponse",
+"kFunction"
+],
+"2100": [
+"XamPngEncode",
+"kFunction"
+],
+"2101": [
+"XamPngDecode",
+"kFunction"
+],
+"2102": [
+"XamPngEncodeEx",
+"kFunction"
+],
+"2103": [
+"XuiTextElementMeasureText",
+"kFunction"
+],
+"2104": [
+"XamLoaderShouldConfirmReboot",
+"kFunction"
+],
+"2105": [
+"XamLoaderRebootToDash",
+"kFunction"
+],
+"2106": [
+"XamNuiHudGetEngagedTrackingID",
+"kFunction"
+],
+"2107": [
+"XamLoaderLaunchTitleForReason",
+"kFunction"
+],
+"2108": [
+"XamNuiHudSetEngagedTrackingID",
+"kFunction"
+],
+"2109": [
+"XuiBrushGetTexture",
+"kFunction"
+],
+"211": [
+"NetDll_XHttpQueryHeaders",
+"kFunction"
+],
+"2110": [
+"XamSetupTexture",
+"kFunction"
+],
+"2111": [
+"XuiElementGetDescendantById",
+"kFunction"
+],
+"2112": [
+"XamLoaderIsKinectUIPreferredForLogonTitle",
+"kFunction"
+],
+"2113": [
+"XamSetupCameraPreviewStuff",
+"kFunction"
+],
+"2114": [
+"XamReleaseCameraPreviewStuff",
+"kFunction"
+],
+"2115": [
+"XamRenderCameraPreviewStuff",
+"kFunction"
+],
+"212": [
+"NetDll_XHttpReadData",
+"kFunction"
+],
+"2120": [
+"XamAccountRecoveryGetSetTitleSyncTime",
+"kFunction"
+],
+"2121": [
+"XamReadBiometricData",
+"kFunction"
+],
+"2122": [
+"XamWriteBiometricData",
+"kFunction"
+],
+"2123": [
+"XamD3DResourceDescriptorCreate",
+"kFunction"
+],
+"2124": [
+"XamD3DResourceDescriptorAddRef",
+"kFunction"
+],
+"2125": [
+"XamD3DResourceDescriptorRelease",
+"kFunction"
+],
+"2126": [
+"XamD3DResourceAddRef",
+"kFunction"
+],
+"2127": [
+"XamD3DResourceSet",
+"kFunction"
+],
+"2128": [
+"XamD3DResourceIsBusy",
+"kFunction"
+],
+"2129": [
+"XamD3DResourceRelease",
+"kFunction"
+],
+"213": [
+"NetDll_XHttpWriteData",
+"kFunction"
+],
+"2130": [
+"ControlPackGetCursorPosition",
+"kFunction"
+],
+"2131": [
+"ControlPackShouldShowCursor",
+"kFunction"
+],
+"2136": [
+"XamFlushAgraTemperatureReport",
+"kFunction"
+],
+"2137": [
+"XamNatalDeviceAudioCalibrate",
+"kFunction"
+],
+"2138": [
+"XamNuiIdentityGetEnrollmentInfo",
+"kFunction"
+],
+"2139": [
+"XamNuiIdentityUnenroll",
+"kFunction"
+],
+"214": [
+"NetDll_XHttpQueryOption",
+"kFunction"
+],
+"2140": [
+"XamNuiIdentityGetColorTexture",
+"kFunction"
+],
+"2141": [
+"XamReportKinectSettingsChangedEvent",
+"kFunction"
+],
+"2142": [
+"XamNuiEnableChatMic",
+"kFunction"
+],
+"2143": [
+"XamNuiIsChatMicEnabled",
+"kFunction"
+],
+"2144": [
+"XamNuiGetDepthCalibration",
+"kFunction"
+],
+"2145": [
+"XamNuiStoreDepthCalibration",
+"kFunction"
+],
+"2146": [
+"XamUserNuiIsBiometricEnabled",
+"kFunction"
+],
+"2147": [
+"XamUserNuiEnableBiometric",
+"kFunction"
+],
+"2148": [
+"XamNuiCameraSetFlags",
+"kFunction"
+],
+"2149": [
+"XamNuiCameraRememberFloor",
+"kFunction"
+],
+"215": [
+"NetDll_XHttpSetOption",
+"kFunction"
+],
+"2150": [
+"XamUserNuiGetUserIndexForBind",
+"kFunction"
+],
+"2151": [
+"XamUserNuiGetUserIndexForSignin",
+"kFunction"
+],
+"2152": [
+"XamUserNuiBind",
+"kFunction"
+],
+"2153": [
+"XamUserNuiGetUserIndex",
+"kFunction"
+],
+"2154": [
+"XamUserNuiGetEnrollmentIndex",
+"kFunction"
+],
+"2155": [
+"XamUserNuiUnbind",
+"kFunction"
+],
+"2156": [
+"XamNuiIdentityGetQualityFlagsMessage",
+"kFunction"
+],
+"2157": [
+"XamNuiCameraTiltSetCallback",
+"kFunction"
+],
+"2158": [
+"XamNuiHudIsEnabled",
+"kFunction"
+],
+"2159": [
+"XamNuiCameraGetTiltControllerType",
+"kFunction"
+],
+"216": [
+"NetDll_XHttpDoWork",
+"kFunction"
+],
+"2160": [
+"XamNuiCameraTiltGetStatus",
+"kFunction"
+],
+"2161": [
+"XamNuiIdentityGetQualityFlags",
+"kFunction"
+],
+"2162": [
+"XamNuiIdentityEnrollForSignIn",
+"kFunction"
+],
+"2163": [
+"XamNuiIdentityGetSessionId",
+"kFunction"
+],
+"2164": [
+"XamNuiIdentityIdentifyWithBiometric",
+"kFunction"
+],
+"2165": [
+"ControlPackGetHandleManager",
+"kFunction"
+],
+"2166": [
+"XamEnableNuiAutomation",
+"kFunction"
+],
+"2167": [
+"XamNuiGetSystemGestureControl",
+"kFunction"
+],
+"2168": [
+"XamGetPasscodeKeyFromVirtualKey",
+"kFunction"
+],
+"2169": [
+"XamEnableNatalPlayback",
+"kFunction"
+],
+"217": [
+"NetDll_XHttpSetCredentials",
+"kFunction"
+],
+"2170": [
+"XamIsNuiAutomationEnabled",
+"kFunction"
+],
+"2171": [
+"XamIsNatalPlaybackEnabled",
+"kFunction"
+],
+"2172": [
+"XamNuiHudInterpretFrame",
+"kFunction"
+],
+"2173": [
+"XamNuiHudEnableInputFilter",
+"kFunction"
+],
+"2174": [
+"ControlpackNuiCursorSetTrackingId",
+"kFunction"
+],
+"2175": [
+"XamNuiHudGetInitializeFlags",
+"kFunction"
+],
+"2176": [
+"XamNuiCameraElevationSetAngle",
+"kFunction"
+],
+"2177": [
+"XamNuiCameraElevationGetAngle",
+"kFunction"
+],
+"2178": [
+"XamNuiCameraElevationAutoTilt",
+"kFunction"
+],
+"2179": [
+"XamNuiCameraElevationStopMovement",
+"kFunction"
+],
+"218": [
+"NetDll_XHttpQueryAuthSchemes",
+"kFunction"
+],
+"2180": [
+"XamNuiCameraElevationSetCallback",
+"kFunction"
+],
+"2181": [
+"XamNuiGetDeviceStatus",
+"kFunction"
+],
+"2182": [
+"XamNuiNatalCameraUpdateStarting",
+"kFunction"
+],
+"2183": [
+"XamNuiNatalCameraUpdateComplete",
+"kFunction"
+],
+"2184": [
+"XamNuiHudGetVersions",
+"kFunction"
+],
+"2185": [
+"XamGetHUDElementByPath",
+"kFunction"
+],
+"2186": [
+"XamGetHUDElementByAutoId",
+"kFunction"
+],
+"2187": [
+"XuiElementGetScreenPositionCenter",
+"kFunction"
+],
+"2188": [
+"XamNuiCameraElevationReverseAutoTilt",
+"kFunction"
+],
+"2189": [
+"ControlPackSimpleCursorGetRayFromScreenPosition",
+"kFunction"
+],
+"219": [
+"NetDll_XHttpCrackUrlW",
+"kFunction"
+],
+"2190": [
+"ControlPackSideNavControlGetNuiHandle",
+"kFunction"
+],
+"2191": [
+"XamFindHUDElementByXuiId",
+"kFunction"
+],
+"2192": [
+"XamNuiIsDeviceReady",
+"kFunction"
+],
+"2193": [
+"XamNuiSetForceDeviceOff",
+"kFunction"
+],
+"2194": [
+"XamNuiPlayerEngagementUpdate",
+"kFunction"
+],
+"2195": [
+"XamNuiSkeletonGetBestSkeletonIndex",
+"kFunction"
+],
+"2196": [
+"XamNuiSkeletonScoreUpdate",
+"kFunction"
+],
+"2197": [
+"XamNuiCameraTiltReportStatus",
+"kFunction"
+],
+"2198": [
+"XamNuiCameraAdjustTilt",
+"kFunction"
+],
+"2199": [
+"XamNuiIdentityAbort",
+"kFunction"
+],
+"22": [
+"NetDll_send",
+"kFunction"
+],
+"220": [
+"NetDll_XHttpCrackUrl",
+"kFunction"
+],
+"2200": [
+"D3DDevice_CreateVertexShader",
+"kFunction"
+],
+"2201": [
+"D3DDevice_CreatePixelShader",
+"kFunction"
+],
+"2202": [
+"D3DDevice_CreateTexture",
+"kFunction"
+],
+"2203": [
+"D3DDevice_CreateVertexBuffer",
+"kFunction"
+],
+"2204": [
+"D3DDevice_CreateIndexBuffer",
+"kFunction"
+],
+"2205": [
+"D3DDevice_CreateVertexDeclaration",
+"kFunction"
+],
+"2206": [
+"D3DVertexBuffer_Unlock",
+"kFunction"
+],
+"2207": [
+"D3DVertexBuffer_Lock",
+"kFunction"
+],
+"2208": [
+"D3DIndexBuffer_Unlock",
+"kFunction"
+],
+"2209": [
+"D3DIndexBuffer_Lock",
+"kFunction"
+],
+"221": [
+"NetDll_XHttpCreateUrl",
+"kFunction"
+],
+"2210": [
+"D3DTexture_UnlockRect",
+"kFunction"
+],
+"2211": [
+"D3DTexture_LockRect",
+"kFunction"
+],
+"2212": [
+"D3DDevice_Clear",
+"kFunction"
+],
+"2213": [
+"D3DDevice_SetViewport",
+"kFunction"
+],
+"2214": [
+"D3DDevice_GetViewport",
+"kFunction"
+],
+"2215": [
+"D3DVertexShader_Release",
+"kFunction"
+],
+"2216": [
+"D3DPixelShader_Release",
+"kFunction"
+],
+"2217": [
+"D3DVertexDeclaration_Release",
+"kFunction"
+],
+"2218": [
+"D3DResource_Release",
+"kFunction"
+],
+"2219": [
+"D3DDevice_Release",
+"kFunction"
+],
+"222": [
+"NetDll_XHttpCreateUrlW",
+"kFunction"
+],
+"2220": [
+"D3DDevice_SetVertexShader",
+"kFunction"
+],
+"2221": [
+"D3DDevice_SetPixelShader",
+"kFunction"
+],
+"2222": [
+"D3DDevice_SetTexture",
+"kFunction"
+],
+"2223": [
+"D3DDevice_SetVertexDeclaration",
+"kFunction"
+],
+"2224": [
+"D3DDevice_SetIndices",
+"kFunction"
+],
+"2225": [
+"D3DDevice_SetStreamSource",
+"kFunction"
+],
+"2226": [
+"D3DDevice_DrawVertices",
+"kFunction"
+],
+"2227": [
+"D3DDevice_DrawVerticesUP",
+"kFunction"
+],
+"2228": [
+"D3DDevice_DrawIndexedVertices",
+"kFunction"
+],
+"2229": [
+"D3DDevice_DrawIndexedVerticesUP",
+"kFunction"
+],
+"223": [
+"NetDll_XHttpResetPerfCounters",
+"kFunction"
+],
+"2230": [
+"D3DDevice_SetVertexShaderConstantF_ParameterCheck",
+"kFunction"
+],
+"2231": [
+"D3DDevice_SetPixelShaderConstantF_ParameterCheck",
+"kFunction"
+],
+"2232": [
+"D3DDevice_SetSamplerState_ParameterCheck",
+"kFunction"
+],
+"2233": [
+"D3DDevice_SetRenderState_ParameterCheck",
+"kFunction"
+],
+"2234": [
+"D3DDevice_GetRenderState_ParameterCheck",
+"kFunction"
+],
+"2235": [
+"D3DDevice_SetVertexShaderConstantFN",
+"kFunction"
+],
+"2236": [
+"D3DDevice_SetPixelShaderConstantFN",
+"kFunction"
+],
+"2237": [
+"D3DDevice_GetRenderState_ZEnable",
+"kFunction"
+],
+"2238": [
+"D3DDevice_GetRenderState_CullMode",
+"kFunction"
+],
+"2239": [
+"D3DDevice_GetRenderState_AlphaBlendEnable",
+"kFunction"
+],
+"224": [
+"NetDll_XHttpGetPerfCounters",
+"kFunction"
+],
+"2240": [
+"D3DDevice_GetRenderState_SrcBlendAlpha",
+"kFunction"
+],
+"2241": [
+"D3DDevice_GetRenderState_DestBlendAlpha",
+"kFunction"
+],
+"2242": [
+"D3DDevice_GetRenderState_BlendOp",
+"kFunction"
+],
+"2243": [
+"D3DDevice_GetRenderState_ViewportEnable",
+"kFunction"
+],
+"2244": [
+"D3DDevice_SetRenderState_ZEnable",
+"kFunction"
+],
+"2245": [
+"D3DDevice_SetRenderState_CullMode",
+"kFunction"
+],
+"2246": [
+"D3DDevice_SetRenderState_AlphaBlendEnable",
+"kFunction"
+],
+"2247": [
+"D3DDevice_SetRenderState_SrcBlendAlpha",
+"kFunction"
+],
+"2248": [
+"D3DDevice_SetRenderState_DestBlendAlpha",
+"kFunction"
+],
+"2249": [
+"D3DDevice_SetRenderState_BlendOp",
+"kFunction"
+],
+"2250": [
+"D3DDevice_SetRenderState_ViewportEnable",
+"kFunction"
+],
+"2251": [
+"D3DDevice_SetSamplerState_MagFilter",
+"kFunction"
+],
+"2252": [
+"D3DDevice_SetSamplerState_MinFilter",
+"kFunction"
+],
+"2253": [
+"D3DDevice_SetSamplerState_AddressU",
+"kFunction"
+],
+"2254": [
+"D3DDevice_SetSamplerState_AddressV",
+"kFunction"
+],
+"2255": [
+"XGSetTextureHeader",
+"kFunction"
+],
+"2256": [
+"XGGetTextureDesc",
+"kFunction"
+],
+"2257": [
+"XGOffsetResourceAddress",
+"kFunction"
+],
+"2258": [
+"D3DResource_AddRef",
+"kFunction"
+],
+"2259": [
+"D3DVertexShader_AddRef",
+"kFunction"
+],
+"2260": [
+"D3DPixelShader_AddRef",
+"kFunction"
+],
+"2261": [
+"D3DVertexDeclaration_AddRef",
+"kFunction"
+],
+"2262": [
+"XGSetTextureHeaderEx",
+"kFunction"
+],
+"2263": [
+"D3DDevice_GetRenderTarget",
+"kFunction"
+],
+"2264": [
+"D3DDevice_SetRenderTarget",
+"kFunction"
+],
+"2265": [
+"D3DDevice_GetDepthStencilSurface",
+"kFunction"
+],
+"2266": [
+"D3DDevice_SetDepthStencilSurface",
+"kFunction"
+],
+"2267": [
+"D3DDevice_Resolve",
+"kFunction"
+],
+"2268": [
+"D3DDevice_SetPixelShaderConstantB",
+"kFunction"
+],
+"2269": [
+"XamNuiGetDeviceSerialNumber",
+"kFunction"
+],
+"2270": [
+"XamNuiGetLoadedDepthCalibration",
+"kFunction"
+],
+"2271": [
+"XamNuiGetTrueColorInfo",
+"kFunction"
+],
+"2272": [
+"XamNuiGetCameraIntrinsics",
+"kFunction"
+],
+"2273": [
+"XamNuiGetFanRate",
+"kFunction"
+],
+"2274": [
+"XamNuiGetSupportString",
+"kFunction"
+],
+"2275": [
+"XamKinectGetHardwareType",
+"kFunction"
+],
+"23": [
+"NetDll_WSASend",
+"kFunction"
+],
+"2300": [
+"XamXtwManagerGetVariableCount",
+"kFunction"
+],
+"2301": [
+"XamXtwManagerGetId",
+"kFunction"
+],
+"2302": [
+"XamXtwManagerGetValue",
+"kFunction"
+],
+"2303": [
+"XamXtwManagerSetValue",
+"kFunction"
+],
+"2304": [
+"XamXtwManagerIncrement",
+"kFunction"
+],
+"2305": [
+"XamXtwManagerDecrement",
+"kFunction"
+],
+"2306": [
+"XamXtwManagerResetValue",
+"kFunction"
+],
+"2307": [
+"XamXtwManagerResetAll",
+"kFunction"
+],
+"2308": [
+"XamXtwManagerGetDataFilePath",
+"kFunction"
+],
+"2309": [
+"XamXtwManagerDeleteDataFile",
+"kFunction"
+],
+"2310": [
+"XamXtwManagerSave",
+"kFunction"
+],
+"2311": [
+"XamXtwManagerLoad",
+"kFunction"
+],
+"2312": [
+"XamGetXTweakManager",
+"kFunction"
+],
+"24": [
+"NetDll_sendto",
+"kFunction"
+],
+"2491": [
+"XamMediaVerificationCreate",
+"kFunction"
+],
+"2492": [
+"XamMediaVerificationClose",
+"kFunction"
+],
+"2493": [
+"XamMediaVerificationVerify",
+"kFunction"
+],
+"2494": [
+"XamMediaVerificationFailedBlocks",
+"kFunction"
+],
+"2495": [
+"XamMediaVerificationInject",
+"kFunction"
+],
+"2496": [
+"XamShowBadDiscErrorUI",
+"kFunction"
+],
+"25": [
+"NetDll_WSASendTo",
+"kFunction"
+],
+"2500": [
+"XamBackgroundDownloadSetMode",
+"kFunction"
+],
+"2501": [
+"XamBackgroundDownloadIsEnabled",
+"kFunction"
+],
+"2502": [
+"XamBackgroundDownloadGetActiveItem",
+"kFunction"
+],
+"2503": [
+"XamBackgroundDownloadGetItems",
+"kFunction"
+],
+"2504": [
+"XamBackgroundDownloadClearItems",
+"kFunction"
+],
+"2505": [
+"XamBackgroundDownloadItemAdd",
+"kFunction"
+],
+"2506": [
+"XamBackgroundDownloadItemRemove",
+"kFunction"
+],
+"2507": [
+"XamBackgroundDownloadItemMakeFirst",
+"kFunction"
+],
+"2508": [
+"XamBackgroundDownloadSetForegroundPriority",
+"kFunction"
+],
+"2509": [
+"XamBackgroundDownloadGetForegroundPriority",
+"kFunction"
+],
+"251": [
+"NetDll_UpnpStartup",
+"kFunction"
+],
+"2510": [
+"XamBackgroundDownloadItemToContentData",
+"kFunction"
+],
+"2511": [
+"XamBackgroundDownloadItemGetStatus",
+"kFunction"
+],
+"2512": [
+"XamBackgroundDownloadHistoryGetItem",
+"kFunction"
+],
+"2513": [
+"XamBackgroundDownloadItemGetHistoryStatus",
+"kFunction"
+],
+"2514": [
+"XamBackgroundDownloadItemSetHistoryStatus",
+"kFunction"
+],
+"2515": [
+"XamBackgroundDownloadItemGetStatusAsync",
+"kFunction"
+],
+"2516": [
+"XamBackgroundDownloadItemGetStatusEx",
+"kFunction"
+],
+"2517": [
+"XamBackgroundDownloadItemGetHistoryStatusEx",
+"kFunction"
+],
+"2518": [
+"XamBackgroundDownloadBindItems",
+"kFunction"
+],
+"2519": [
+"XamBackgroundDownloadSetPollingActive",
+"kFunction"
+],
+"252": [
+"NetDll_UpnpCleanup",
+"kFunction"
+],
+"2520": [
+"XamBackgroundDownloadGetPollingActive",
+"kFunction"
+],
+"2521": [
+"XamBackgroundDownloadGetMode",
+"kFunction"
+],
+"2522": [
+"XamBackgroundDownloadGetUnexpectedChangeCount",
+"kFunction"
+],
+"2523": [
+"XamBackgroundDownloadIsItemForThisConsole",
+"kFunction"
+],
+"2524": [
+"XamBackgroundDownloadSelectDevice",
+"kFunction"
+],
+"2525": [
+"XamBackgroundDownloadItemModify",
+"kFunction"
+],
+"2526": [
+"XamBackgroundDownloadCacheLegacyMappingInfo",
+"kFunction"
+],
+"2527": [
+"XamBackgroundDownloadGetLegacyMappingInfo",
+"kFunction"
+],
+"2528": [
+"XamBackgroundDownloadGetLegacyId",
+"kFunction"
+],
+"2529": [
+"XamBackgroundDownloadDoFail",
+"kFunction"
+],
+"253": [
+"NetDll_UpnpSearchCreate",
+"kFunction"
+],
+"2530": [
+"XamDownloadSingleItem",
+"kFunction"
+],
+"2531": [
+"XamDownloadInSingleItemMode",
+"kFunction"
+],
+"254": [
+"NetDll_UpnpSearchGetDevices",
+"kFunction"
+],
+"255": [
+"NetDll_UpnpDescribeCreate",
+"kFunction"
+],
+"256": [
+"NetDll_UpnpDescribeGetResults",
+"kFunction"
+],
+"257": [
+"NetDll_UpnpActionCalculateWorkBufferSize",
+"kFunction"
+],
+"258": [
+"NetDll_UpnpActionCreate",
+"kFunction"
+],
+"259": [
+"NetDll_UpnpActionGetResults",
+"kFunction"
+],
+"26": [
+"NetDll_inet_addr",
+"kFunction"
+],
+"260": [
+"NetDll_UpnpEventCreate",
+"kFunction"
+],
+"2600": [
+"XamSwapDisc",
+"kFunction"
+],
+"2601": [
+"XamSwapDiscPatchAddress",
+"kVariable"
+],
+"2602": [
+"XamSwapCancel",
+"kFunction"
+],
+"2603": [
+"XamContentSetAttributes",
+"kFunction"
+],
+"261": [
+"NetDll_UpnpEventGetCurrentState",
+"kFunction"
+],
+"2610": [
+"XamRamDriveCreate",
+"kFunction"
+],
+"2611": [
+"XamRamDriveDestroy",
+"kFunction"
+],
+"262": [
+"NetDll_UpnpEventUnsubscribe",
+"kFunction"
+],
+"263": [
+"NetDll_UpnpDoWork",
+"kFunction"
+],
+"264": [
+"NetDll_UpnpCloseHandle",
+"kFunction"
+],
+"2650": [
+"XamPlayTimerGetData",
+"kFunction"
+],
+"2651": [
+"XamPlayTimerSetData",
+"kFunction"
+],
+"2652": [
+"XamPlayTimerResume",
+"kFunction"
+],
+"2653": [
+"XamPlayTimerSuspend",
+"kFunction"
+],
+"2654": [
+"XamPlayTimerIsRunning",
+"kFunction"
+],
+"2655": [
+"XamPlayTimerIsEnabled",
+"kFunction"
+],
+"2656": [
+"XamPlayTimerGetNextResetDate",
+"kFunction"
+],
+"2657": [
+"XamPlayTimerFormatDurationString",
+"kFunction"
+],
+"2658": [
+"XamPlayTimerGetTimeRemaining",
+"kFunction"
+],
+"2659": [
+"XamPlayTimerUpdateTimeRemaining",
+"kFunction"
+],
+"2660": [
+"XamPlayTimerForceNotification",
+"kFunction"
+],
+"2661": [
+"XamPlayTimerRefreshResetDate",
+"kFunction"
+],
+"2662": [
+"XuiResourceOpenAndVerifyNoLoc",
+"kFunction"
+],
+"2670": [
+"UpnpAVServerSearchInitialize",
+"kFunction"
+],
+"2671": [
+"UpnpAVServerSearchDestroy",
+"kFunction"
+],
+"2672": [
+"UpnpAVServerSearchStart",
+"kFunction"
+],
+"2673": [
+"Destroy",
+"kFunction"
+],
+"2674": [
+"UpnpAVServerSearchDoWork",
+"kFunction"
+],
+"2675": [
+"UpnpAVServerSearchGetNextServer",
+"kFunction"
+],
+"27": [
+"NetDll_WSAGetLastError",
+"kFunction"
+],
+"2700": [
+"XCustomBroadcastGamercardEvent",
+"kFunction"
+],
+"2701": [
+"XamCustomGetCurrentActions",
+"kFunction"
+],
+"2720": [
+"XamInstrumentationLogEvent",
+"kFunction"
+],
+"2721": [
+"XamRegisterSMCNotification",
+"kFunction"
+],
+"2728": [
+"XamIsScreenSaverActive",
+"kFunction"
+],
+"2730": [
+"XamInstrumentationLogEventEx",
+"kFunction"
+],
+"2731": [
+"XamInstrumentationGetSourceConfig",
+"kFunction"
+],
+"2732": [
+"XamInstrumentationDebugConfig",
+"kFunction"
+],
+"2780": [
+"CurlCreateCacheEntry",
+"kFunction"
+],
+"2781": [
+"CurlOpenCacheEntry",
+"kFunction"
+],
+"2782": [
+"CurlSetCacheEntryExpireTime",
+"kFunction"
+],
+"2783": [
+"CurlReadCacheEntryHeaders",
+"kFunction"
+],
+"2784": [
+"CurlReadCacheEntryContent",
+"kFunction"
+],
+"2785": [
+"CurlWriteCacheEntryContent",
+"kFunction"
+],
+"2786": [
+"CurlCloseCacheEntry",
+"kFunction"
+],
+"2787": [
+"CurlEnumerateCacheEntry",
+"kFunction"
+],
+"2789": [
+"CurlWipeBackingFiles",
+"kFunction"
+],
+"2791": [
+"CurlOpenTitleBackingFile",
+"kFunction"
+],
+"2794": [
+"XamUserIsPartialProfile",
+"kFunction"
+],
+"2795": [
+"XamLocateTitle",
+"kFunction"
+],
+"2796": [
+"XamProfileGetLocalTitleCount",
+"kFunction"
+],
+"2797": [
+"XamContentRemoveCacheDevice",
+"kFunction"
+],
+"2798": [
+"XamContentAddCacheDevice",
+"kFunction"
+],
+"28": [
+"NetDll_WSASetLastError",
+"kFunction"
+],
+"2800": [
+"XamSetSecurityViolationDetected",
+"kFunction"
+],
+"2801": [
+"XamIsSecurityViolationDetected",
+"kFunction"
+],
+"2802": [
+"XamIsAnySecurityViolationDetected",
+"kFunction"
+],
+"2803": [
+"XamGetSecurityViolationsDetected",
+"kFunction"
+],
+"2804": [
+"XamActivateCounterMeasure",
+"kFunction"
+],
+"2805": [
+"XamDeactivateCounterMeasure",
+"kFunction"
+],
+"2806": [
+"XamIsCounterMeasureActivated",
+"kFunction"
+],
+"2807": [
+"XamGetActiveCounterMeasures",
+"kFunction"
+],
+"2808": [
+"XamPmdIdentify",
+"kFunction"
+],
+"2809": [
+"XamPmdSendCommand",
+"kFunction"
+],
+"2810": [
+"XamPmdReadReport",
+"kFunction"
+],
+"2812": [
+"XamPartyCreate",
+"kFunction"
+],
+"2813": [
+"XamPartyLeave",
+"kFunction"
+],
+"2814": [
+"XamPartySendInviteDeprecated",
+"kFunction"
+],
+"2815": [
+"XamPartyGetUserList",
+"kFunction"
+],
+"2816": [
+"XamPartySendGameInvites",
+"kFunction"
+],
+"2817": [
+"XamPartyJoin",
+"kFunction"
+],
+"2818": [
+"XamPartyKickUser",
+"kFunction"
+],
+"2819": [
+"XamPartyAddLocalUsers",
+"kFunction"
+],
+"2820": [
+"XamConvertEmoticons",
+"kFunction"
+],
+"2821": [
+"XamGetLocaleTimeFormat",
+"kFunction"
+],
+"2822": [
+"XamPartyRemoveLocalUsers",
+"kFunction"
+],
+"2823": [
+"XamPartyGetUserListInternal",
+"kFunction"
+],
+"2824": [
+"XamPartySetJoinable",
+"kFunction"
+],
+"2825": [
+"XamPartyGetJoinable",
+"kFunction"
+],
+"2826": [
+"XamPartyGetInfo",
+"kFunction"
+],
+"2827": [
+"XamPartySetCustomData",
+"kFunction"
+],
+"2828": [
+"XamPartySetConnectivityGraph",
+"kFunction"
+],
+"2829": [
+"XamPartyGetRoutingTable",
+"kFunction"
+],
+"2830": [
+"XamPartyAutomationInprocCall",
+"kFunction"
+],
+"2831": [
+"XamPartyGetState",
+"kFunction"
+],
+"2832": [
+"XamPartyGetBandwidth",
+"kFunction"
+],
+"2833": [
+"XamPartyGetNetworkCounters",
+"kFunction"
+],
+"2834": [
+"XamShowQuickLaunchUI",
+"kFunction"
+],
+"2835": [
+"XamPartyIsCoordinator",
+"kFunction"
+],
+"2836": [
+"XamPartyGetFormation",
+"kFunction"
+],
+"2837": [
+"XamPartySendInvite",
+"kFunction"
+],
+"2838": [
+"XamPartySetTestDelay",
+"kFunction"
+],
+"2839": [
+"XamPartyOverrideNatType",
+"kFunction"
+],
+"2840": [
+"XamPartyGetAccessLevel",
+"kFunction"
+],
+"2841": [
+"XamPartySetTestFlags",
+"kFunction"
+],
+"2842": [
+"XamIsSystemExperienceTitleId",
+"kFunction"
+],
+"2843": [
+"XamPartyJoinEx",
+"kFunction"
+],
+"2844": [
+"XamPartyGetInfoEx",
+"kFunction"
+],
+"2848": [
+"XamIsCurrentTitleDatacenterClient",
+"kFunction"
+],
+"2850": [
+"XamTaskSetCancelSubTasks",
+"kFunction"
+],
+"2851": [
+"XamTaskGetCompletionStatus",
+"kFunction"
+],
+"2852": [
+"XamTaskCancelWaitAndCloseWaitTask",
+"kFunction"
+],
+"2855": [
+"XamDataCenterLog",
+"kFunction"
+],
+"2856": [
+"XamDataCenterGetDhcpOptionResponseHostnameAndPort",
+"kFunction"
+],
+"2857": [
+"XamDataCenterLogEvent",
+"kFunction"
+],
+"2858": [
+"XamDataCenterShowForceSignInMessage",
+"kFunction"
+],
+"2860": [
+"XamWebInstrumentationCreateReport",
+"kFunction"
+],
+"2861": [
+"XamWebInstrumentationSetUserVar",
+"kFunction"
+],
+"2862": [
+"XamWebInstrumentationSetUserVarNoEscape",
+"kFunction"
+],
+"2863": [
+"XamWebInstrumentationGetURL",
+"kFunction"
+],
+"2864": [
+"XamWebInstrumentationSendReport",
+"kFunction"
+],
+"2865": [
+"XamWebInstrumentationDestroyReport",
+"kFunction"
+],
+"2866": [
+"XamWebInstrumentationCreateSampledReport",
+"kFunction"
+],
+"2867": [
+"XampSetSamplingRandomValue",
+"kFunction"
+],
+"2868": [
+"XampWebInstrumentationSetProfileCounts",
+"kFunction"
+],
+"2869": [
+"XamWebInstrumentationGetURLEx",
+"kFunction"
+],
+"2870": [
+"XampSetOmnitureCallbackFunction",
+"kFunction"
+],
+"2871": [
+"XamShowQuickChatUIp",
+"kFunction"
+],
+"2872": [
+"XamShowSocialPostUI",
+"kFunction"
+],
+"2873": [
+"XamShowBeaconsUI",
+"kFunction"
+],
+"2874": [
+"XamShowMarketplacePurchaseOrderUI",
+"kFunction"
+],
+"2875": [
+"XamShowMarketplaceGetOrderReceipts",
+"kFunction"
+],
+"2876": [
+"XamShowGenericOnlineAppUI",
+"kFunction"
+],
+"2877": [
+"XamUserAllowedToPostToSocialNetwork",
+"kFunction"
+],
+"2878": [
+"XamShowMarketplacePurchaseOrderUIEx",
+"kFunction"
+],
+"2879": [
+"DebugXamShowMessageBoxUI_Wait",
+"kFunction"
+],
+"2883": [
+"XamSetCountry",
+"kFunction"
+],
+"2884": [
+"XamIsCurrentTitleDatacenterDash",
+"kFunction"
+],
+"2885": [
+"XamLoaderRebootToServerDash",
+"kFunction"
+],
+"2886": [
+"XamIsDataCenterMode",
+"kFunction"
+],
+"2888": [
+"XamUserGetXUIDForTFA",
+"kFunction"
+],
+"2890": [
+"XamVerifyXSignerSignature",
+"kFunction"
+],
+"29": [
+"NetDll_WSACreateEvent",
+"kFunction"
+],
+"3": [
+"NetDll_socket",
+"kFunction"
+],
+"30": [
+"NetDll_WSACloseEvent",
+"kFunction"
+],
+"301": [
+"XNetLogonGetLoggedOnUsers",
+"kFunction"
+],
+"302": [
+"XNetLogonGetNatType",
+"kFunction"
+],
+"303": [
+"XNetLogonTaskStart",
+"kFunction"
+],
+"304": [
+"XNetLogonTaskClose",
+"kFunction"
+],
+"305": [
+"XNetLogonTaskContinue",
+"kFunction"
+],
+"306": [
+"XNetLogonGetServiceInfo",
+"kFunction"
+],
+"307": [
+"XNetLogonGetUserPrivileges",
+"kFunction"
+],
+"308": [
+"XNetLogonSetConsoleCertificate",
+"kFunction"
+],
+"309": [
+"XNetLogonGetMachineID",
+"kFunction"
+],
+"31": [
+"NetDll_WSASetEvent",
+"kFunction"
+],
+"310": [
+"XNetLogonGetTitleID",
+"kFunction"
+],
+"311": [
+"XNetLogonGetTitleVersion",
+"kFunction"
+],
+"312": [
+"XNetLogonGetServiceNetworkID",
+"kFunction"
+],
+"313": [
+"XNetLogonGetDnsString",
+"kFunction"
+],
+"314": [
+"XNetLogonSetTitleID",
+"kFunction"
+],
+"315": [
+"XNetLogonGetExtendedStatus",
+"kFunction"
+],
+"316": [
+"XNetLogonClearTicketCaches",
+"kFunction"
+],
+"317": [
+"XNetLogonInitOverrideInfo",
+"kFunction"
+],
+"318": [
+"XNetLogonGetLastUPnPStatus",
+"kFunction"
+],
+"319": [
+"XNetLogonGetFlowToken",
+"kFunction"
+],
+"32": [
+"NetDll_WSAResetEvent",
+"kFunction"
+],
+"320": [
+"XNetLogonGetTicketOpt",
+"kFunction"
+],
+"321": [
+"XNetLogonSetTicketOpt",
+"kFunction"
+],
+"322": [
+"XNetLogonGetState",
+"kFunction"
+],
+"33": [
+"NetDll_WSAWaitForMultipleEvents",
+"kFunction"
+],
+"34": [
+"NetDll___WSAFDIsSet",
+"kFunction"
+],
+"35": [
+"NetDll_WSAEventSelect",
+"kFunction"
+],
+"36": [
+"NetDll_WSAStartupEx",
+"kFunction"
+],
+"4": [
+"NetDll_closesocket",
+"kFunction"
+],
+"400": [
+"XamInputGetCapabilities",
+"kFunction"
+],
+"401": [
+"XamInputGetState",
+"kFunction"
+],
+"402": [
+"XamInputSetState",
+"kFunction"
+],
+"403": [
+"XamInputGetKeystroke",
+"kFunction"
+],
+"404": [
+"XamInputEnableAutobind",
+"kFunction"
+],
+"405": [
+"XamInputRawState",
+"kFunction"
+],
+"406": [
+"XamEnableSystemAppInput",
+"kFunction"
+],
+"407": [
+"XamInputGetDeviceStats",
+"kFunction"
+],
+"408": [
+"XamInputGetKeystrokeEx",
+"kFunction"
+],
+"409": [
+"XamInputGetKeystrokeHud",
+"kFunction"
+],
+"410": [
+"XamInputSetLayoutKeyboard",
+"kFunction"
+],
+"411": [
+"XamInputToggleKeyLocks",
+"kFunction"
+],
+"412": [
+"XamInputResetLayoutKeyboard",
+"kFunction"
+],
+"413": [
+"XamInputGetKeystrokeHudEx",
+"kFunction"
+],
+"414": [
+"XamInputSetKeyboardTranslationHud",
+"kFunction"
+],
+"415": [
+"XamSetInactivityTime",
+"kFunction"
+],
+"416": [
+"XamEnableInactivityProcessing",
+"kFunction"
+],
+"417": [
+"XamResetInactivity",
+"kFunction"
+],
+"418": [
+"XamSetInactivityTimeFromConfig",
+"kFunction"
+],
+"419": [
+"XamLoaderGetMediaInfo",
+"kFunction"
+],
+"420": [
+"XamLoaderLaunchTitle",
+"kFunction"
+],
+"421": [
+"XamLoaderLaunchTitleEx",
+"kFunction"
+],
+"422": [
+"XamLoaderSetLaunchData",
+"kFunction"
+],
+"423": [
+"XamLoaderGetLaunchDataSize",
+"kFunction"
+],
+"424": [
+"XamLoaderGetLaunchData",
+"kFunction"
+],
+"425": [
+"XamLoaderTerminateTitle",
+"kFunction"
+],
+"426": [
+"XamLoaderGetDvdTrayState",
+"kFunction"
+],
+"427": [
+"XamLoaderGetGameInfo",
+"kFunction"
+],
+"428": [
+"XamLoaderLaunchTitleOnDvd",
+"kFunction"
+],
+"429": [
+"XamLoaderSetSpindleSpeed",
+"kFunction"
+],
+"430": [
+"XamTaskCreateQueue",
+"kFunction"
+],
+"431": [
+"XamTaskSchedule",
+"kFunction"
+],
+"432": [
+"XamTaskReschedule",
+"kFunction"
+],
+"433": [
+"XamTaskCloseHandle",
+"kFunction"
+],
+"434": [
+"XamTaskCancel",
+"kFunction"
+],
+"435": [
+"XamTaskShouldExit",
+"kFunction"
+],
+"436": [
+"XamTaskWaitOnCompletion",
+"kFunction"
+],
+"437": [
+"XamTaskModify",
+"kFunction"
+],
+"438": [
+"XamTaskGetCurrentTask",
+"kFunction"
+],
+"439": [
+"XamTaskGetAttributes",
+"kFunction"
+],
+"440": [
+"XamExecutingOnBehalfOfTitle",
+"kFunction"
+],
+"441": [
+"XamInputSendStayAliveRequest",
+"kFunction"
+],
+"442": [
+"XamInputGetUserVibrationLevel",
+"kFunction"
+],
+"443": [
+"XamIsSystemTitleId",
+"kFunction"
+],
+"444": [
+"XamLoaderIsTitleTerminatePending",
+"kFunction"
+],
+"445": [
+"XamInputSetTextMessengerIndicator",
+"kFunction"
+],
+"446": [
+"XamLoaderGetPriorTitleId",
+"kFunction"
+],
+"447": [
+"XamIsXbox1TitleId",
+"kFunction"
+],
+"448": [
+"XamInputSetKeyLocks",
+"kFunction"
+],
+"449": [
+"XamInputGetKeyLocks",
+"kFunction"
+],
+"450": [
+"XamTaskGetStatus",
+"kFunction"
+],
+"451": [
+"XamGetRootObj",
+"kFunction"
+],
+"452": [
+"XamDevAuthSetFault",
+"kFunction"
+],
+"453": [
+"XamGetDefaultSystemImage",
+"kFunction"
+],
+"454": [
+"XamGetWCNConfigFile",
+"kFunction"
+],
+"455": [
+"XamSetPowerMode",
+"kFunction"
+],
+"456": [
+"XamExecuteChallenge",
+"kFunction"
+],
+"457": [
+"XamGetDefaultImage",
+"kFunction"
+],
+"458": [
+"XamMuteSound",
+"kFunction"
+],
+"459": [
+"XamGetOnlineSchema",
+"kFunction"
+],
+"460": [
+"XamSetDashContext",
+"kFunction"
+],
+"461": [
+"XamGetDashContext",
+"kFunction"
+],
+"462": [
+"XamIsCurrentTitleDash",
+"kFunction"
+],
+"463": [
+"XamGetCurrentTitleId",
+"kFunction"
+],
+"464": [
+"XamSetCurrentTitleDash",
+"kFunction"
+],
+"465": [
+"XamAllocHeapFreeSpace",
+"kFunction"
+],
+"466": [
+"XamSetDashContextEx",
+"kFunction"
+],
+"467": [
+"XamGetDashContextEx",
+"kFunction"
+],
+"468": [
+"XamSetHudContext",
+"kFunction"
+],
+"469": [
+"XamGetHudContext",
+"kFunction"
+],
+"470": [
+"XCustomGetBannerImage",
+"kFunction"
+],
+"471": [
+"Refresh",
+"kFunction"
+],
+"472": [
+"XCustomSetAction",
+"kFunction"
+],
+"473": [
+"XCustomGetLastActionPress",
+"kFunction"
+],
+"474": [
+"XCustomSetDynamicActions",
+"kFunction"
+],
+"475": [
+"XCustomBroadcastActionEvent",
+"kFunction"
+],
+"476": [
+"XCustomGetLastActionPressEx",
+"kFunction"
+],
+"477": [
+"XCustomRegisterDynamicActions",
+"kFunction"
+],
+"478": [
+"XCustomUnregisterDynamicActions",
+"kFunction"
+],
+"479": [
+"XCustomGetCurrentGamercard",
+"kFunction"
+],
+"480": [
+"XamDbgPrint",
+"kFunction"
+],
+"481": [
+"XamDbgSetOutputLevel",
+"kFunction"
+],
+"482": [
+"XamDbgSetBreakLevel",
+"kFunction"
+],
+"483": [
+"XamLoaderGetMediaInfoEx",
+"kFunction"
+],
+"484": [
+"XamLoaderSetGameInfo",
+"kFunction"
+],
+"485": [
+"XamFormatMessage",
+"kFunction"
+],
+"486": [
+"XamUniSortCmpString",
+"kFunction"
+],
+"487": [
+"XamFormatTimeString",
+"kFunction"
+],
+"488": [
+"XamFormatDateString",
+"kFunction"
+],
+"489": [
+"XamGetLocaleDateFormat",
+"kFunction"
+],
+"490": [
+"XamAlloc",
+"kFunction"
+],
+"491": [
+"XamAllocEx",
+"kFunction"
+],
+"492": [
+"XamFree",
+"kFunction"
+],
+"493": [
+"XamAllocSize",
+"kFunction"
+],
+"494": [
+"XamAllocMountIPTVHeap",
+"kFunction"
+],
+"495": [
+"XamAllocUnmountIPTVHeap",
+"kFunction"
+],
+"496": [
+"XamAllocFreeIPTVHeap",
+"kFunction"
+],
+"497": [
+"XamDeviceRemap",
+"kFunction"
+],
+"498": [
+"XamLoaderGetClearCache",
+"kFunction"
+],
+"499": [
+"XamLoaderSetClearCache",
+"kFunction"
+],
+"5": [
+"NetDll_shutdown",
+"kFunction"
+],
+"500": [
+"XMsgInProcessCall",
+"kFunction"
+],
+"501": [
+"XMsgCompleteIORequest",
+"kFunction"
+],
+"502": [
+"XMsgSystemProcessCall",
+"kFunction"
+],
+"503": [
+"XMsgStartIORequest",
+"kFunction"
+],
+"504": [
+"XMsgCancelIORequest",
+"kFunction"
+],
+"505": [
+"XMsgAcquireAsyncMessageFromOverlapped",
+"kFunction"
+],
+"506": [
+"XMsgReleaseAsyncMessageToOverlapped",
+"kFunction"
+],
+"507": [
+"XamGetOverlappedResult",
+"kFunction"
+],
+"508": [
+"XMsgStartIORequestEx",
+"kFunction"
+],
+"509": [
+"XamAppAllocateInterappWorkspace",
+"kFunction"
+],
+"51": [
+"NetDll_XNetStartup",
+"kFunction"
+],
+"510": [
+"XamAppGetInterappWorkspace",
+"kFunction"
+],
+"511": [
+"XamAppFreeInterappWorkspace",
+"kFunction"
+],
+"512": [
+"XamFeatureEnabled",
+"kFunction"
+],
+"513": [
+"XamFeatureEnforceImageBudget",
+"kFunction"
+],
+"514": [
+"XamFeatureSetMask",
+"kFunction"
+],
+"515": [
+"XamFeatureEnableDisable",
+"kFunction"
+],
+"516": [
+"XuiControlSetItemAssociation",
+"kFunction"
+],
+"517": [
+"XamGetTitleGlobalStorageValue",
+"kFunction"
+],
+"518": [
+"XamSetTitleGlobalStorageValue",
+"kFunction"
+],
+"519": [
+"XamUserValidateAvatarManifest",
+"kFunction"
+],
+"52": [
+"NetDll_XNetCleanup",
+"kFunction"
+],
+"520": [
+"XamUserGetDeviceContext",
+"kFunction"
+],
+"521": [
+"XamUserLookupDevice",
+"kFunction"
+],
+"522": [
+"XamUserGetXUID",
+"kFunction"
+],
+"523": [
+"XamUserLogon",
+"kFunction"
+],
+"524": [
+"XamUserGetGamerTag",
+"kFunction"
+],
+"525": [
+"XamUserGetUserIndexMask",
+"kFunction"
+],
+"526": [
+"XamUserGetName",
+"kFunction"
+],
+"527": [
+"XamLookupCommonStringByIndex",
+"kFunction"
+],
+"528": [
+"XamUserGetSigninState",
+"kFunction"
+],
+"529": [
+"XamUserGetIndexFromXUID",
+"kFunction"
+],
+"53": [
+"NetDll_XNetRandom",
+"kFunction"
+],
+"530": [
+"XamUserCheckPrivilege",
+"kFunction"
+],
+"531": [
+"XamUserAreUsersFriends",
+"kFunction"
+],
+"532": [
+"XamSetUserPresetPresenceState",
+"kFunction"
+],
+"533": [
+"XamGetUserPresetPresenceState",
+"kFunction"
+],
+"534": [
+"XamUserGetUserFlagsFromXUID",
+"kFunction"
+],
+"535": [
+"XamUserGetMembershipTierFromXUID",
+"kFunction"
+],
+"536": [
+"XamUserGetOnlineCountryFromXUID",
+"kFunction"
+],
+"537": [
+"XamUserReadProfileSettings",
+"kFunction"
+],
+"538": [
+"XamUserWriteProfileSettings",
+"kFunction"
+],
+"539": [
+"XamUserGetMembershipTier",
+"kFunction"
+],
+"54": [
+"NetDll_XNetCreateKey",
+"kFunction"
+],
+"540": [
+"XamUserGetUserFlags",
+"kFunction"
+],
+"541": [
+"XamUserGetRequestedUserIndexMask",
+"kFunction"
+],
+"542": [
+"XamUserIsGuest",
+"kFunction"
+],
+"543": [
+"XamUserProfileSync",
+"kFunction"
+],
+"544": [
+"XamUserFlushLogonQueue",
+"kFunction"
+],
+"545": [
+"XamUserIsOnlineEnabled",
+"kFunction"
+],
+"546": [
+"XamUserGetCachedUserFlags",
+"kFunction"
+],
+"547": [
+"XamAreMixedAccountsSignedIn",
+"kFunction"
+],
+"548": [
+"XamUserLogonEx",
+"kFunction"
+],
+"549": [
+"XamSetUserShowMessengerFriends",
+"kFunction"
+],
+"55": [
+"NetDll_XNetRegisterKey",
+"kFunction"
+],
+"550": [
+"XamGetUserShowMessengerFriends",
+"kFunction"
+],
+"551": [
+"XamUserGetSigninInfo",
+"kFunction"
+],
+"552": [
+"XamUserIsPartial",
+"kFunction"
+],
+"553": [
+"XamUserGetOnlineLanguageFromXUID",
+"kFunction"
+],
+"554": [
+"XamUserReadProfileSettingsEx",
+"kFunction"
+],
+"555": [
+"XamSystemUpdaterLogon",
+"kFunction"
+],
+"556": [
+"XamUserGetUsersMissingAvatars",
+"kFunction"
+],
+"557": [
+"XamIsChildAccountSignedIn",
+"kFunction"
+],
+"558": [
+"XamUserPrefetchProfileSettings",
+"kFunction"
+],
+"559": [
+"XamUserInvalidateProfileSetting",
+"kFunction"
+],
+"56": [
+"NetDll_XNetUnregisterKey",
+"kFunction"
+],
+"560": [
+"XamProfileCreate",
+"kFunction"
+],
+"561": [
+"XamProfileCreateEnumerator",
+"kFunction"
+],
+"562": [
+"XamProfileEnumerate",
+"kFunction"
+],
+"563": [
+"XamProfileDelete",
+"kFunction"
+],
+"564": [
+"XamProfileGetCreationStatus",
+"kFunction"
+],
+"565": [
+"XamProfileFindAccount",
+"kFunction"
+],
+"566": [
+"XamProfileRenameAccount",
+"kFunction"
+],
+"567": [
+"XamProfileOpen",
+"kFunction"
+],
+"568": [
+"XamProfileClose",
+"kFunction"
+],
+"569": [
+"XamProfileSaveAccountInfo",
+"kFunction"
+],
+"57": [
+"NetDll_XNetXnAddrToInAddr",
+"kFunction"
+],
+"570": [
+"XamProfileLoadAccountInfo",
+"kFunction"
+],
+"571": [
+"XamProfileRecoverTitle",
+"kFunction"
+],
+"572": [
+"XamProfileSaveWindowsLiveCredentials",
+"kFunction"
+],
+"573": [
+"XamProfileLoadWindowsLiveCredentials",
+"kFunction"
+],
+"574": [
+"XamProfileIsSaveWindowsLiveCredsEnabled",
+"kFunction"
+],
+"575": [
+"XamProfileSetSaveWindowsLiveCredsEnabled",
+"kFunction"
+],
+"576": [
+"XamSetProfileReadTestHook",
+"kFunction"
+],
+"577": [
+"XamProfileGetLastSync",
+"kFunction"
+],
+"578": [
+"XamAccountRecoveryRecoverTitle",
+"kFunction"
+],
+"579": [
+"XamProfileControlPec",
+"kFunction"
+],
+"58": [
+"NetDll_XNetServerToInAddr",
+"kFunction"
+],
+"580": [
+"XamAppLoad",
+"kFunction"
+],
+"581": [
+"XamAppUnloadSelf",
+"kFunction"
+],
+"582": [
+"XamAppUnloadStack",
+"kFunction"
+],
+"583": [
+"XamSendMessageToLoadedApps",
+"kFunction"
+],
+"584": [
+"XamAppRequestLoad",
+"kFunction"
+],
+"585": [
+"XamAppUnrequestLoad",
+"kFunction"
+],
+"586": [
+"XamNavigate",
+"kFunction"
+],
+"587": [
+"XamRegisterSysApp",
+"kFunction"
+],
+"588": [
+"XamUnregisterSysApp",
+"kFunction"
+],
+"589": [
+"XamAppReinitialize",
+"kFunction"
+],
+"59": [
+"NetDll_XNetTsAddrToInAddr",
+"kFunction"
+],
+"590": [
+"XamCreateEnumeratorHandle",
+"kFunction"
+],
+"591": [
+"XamGetPrivateEnumStructureFromHandle",
+"kFunction"
+],
+"592": [
+"XamEnumerate",
+"kFunction"
+],
+"593": [
+"XamLoadSysApp",
+"kFunction"
+],
+"594": [
+"XamUnloadSysApp",
+"kFunction"
+],
+"595": [
+"XamReloadSysApp",
+"kFunction"
+],
+"596": [
+"XamAppLoadPass2SysApps",
+"kFunction"
+],
+"597": [
+"XamProfileGetLiveLegalLocale",
+"kFunction"
+],
+"598": [
+"XamUserIsParentalControlled",
+"kFunction"
+],
+"599": [
+"XamContentLaunchImageFromFileInternal",
+"kFunction"
+],
+"6": [
+"NetDll_ioctlsocket",
+"kFunction"
+],
+"60": [
+"NetDll_XNetInAddrToXnAddr",
+"kFunction"
+],
+"600": [
+"XamContentCreate",
+"kFunction"
+],
+"601": [
+"XamContentCreateEx",
+"kFunction"
+],
+"602": [
+"XamContentClose",
+"kFunction"
+],
+"603": [
+"XamContentDelete",
+"kFunction"
+],
+"604": [
+"XamContentCreateEnumerator",
+"kFunction"
+],
+"605": [
+"XamContentCreateDeviceEnumerator",
+"kFunction"
+],
+"606": [
+"XamContentGetDeviceData",
+"kFunction"
+],
+"607": [
+"XamContentGetDeviceName",
+"kFunction"
+],
+"608": [
+"XamContentSetThumbnail",
+"kFunction"
+],
+"609": [
+"XamContentGetThumbnail",
+"kFunction"
+],
+"61": [
+"NetDll_XNetInAddrToServer",
+"kFunction"
+],
+"610": [
+"XamContentGetCreator",
+"kFunction"
+],
+"611": [
+"XamContentLaunchImage",
+"kFunction"
+],
+"612": [
+"XamContentGetAttributes",
+"kFunction"
+],
+"613": [
+"XamContentGetDeviceState",
+"kFunction"
+],
+"614": [
+"XamContentGetLicenseMask",
+"kFunction"
+],
+"615": [
+"XamContentFlush",
+"kFunction"
+],
+"616": [
+"XamContentResolve",
+"kFunction"
+],
+"617": [
+"XamContentOpenFile",
+"kFunction"
+],
+"618": [
+"XamContentInstall",
+"kFunction"
+],
+"619": [
+"XamContentLockUnlockPackageHeaders",
+"kFunction"
+],
+"62": [
+"NetDll_XNetInAddrToString",
+"kFunction"
+],
+"620": [
+"XamContentCopyInternal",
+"kFunction"
+],
+"621": [
+"XamContentMoveInternal",
+"kFunction"
+],
+"622": [
+"XamContentGetMetaDataInternal",
+"kFunction"
+],
+"623": [
+"XamContentCreateEnumeratorInternal",
+"kFunction"
+],
+"624": [
+"XamContentDeleteInternal",
+"kFunction"
+],
+"625": [
+"XamContentCreateInternal",
+"kFunction"
+],
+"626": [
+"XamContentSetThumbnailInternal",
+"kFunction"
+],
+"627": [
+"XamContentLaunchImageInternal",
+"kFunction"
+],
+"628": [
+"XamContentWritePackageHeader",
+"kFunction"
+],
+"629": [
+"XamContentDismountAndClosePackage",
+"kFunction"
+],
+"63": [
+"NetDll_XNetUnregisterInAddr",
+"kFunction"
+],
+"630": [
+"XamContentResolveInternal",
+"kFunction"
+],
+"631": [
+"XamContentGetAttributesInternal",
+"kFunction"
+],
+"632": [
+"XamContentOpenFileInternal",
+"kFunction"
+],
+"633": [
+"XamContentAggregateCreateEnumerator",
+"kFunction"
+],
+"634": [
+"XamContentCreateAndMountPackage",
+"kFunction"
+],
+"635": [
+"XamContentOpenPackageFile",
+"kFunction"
+],
+"636": [
+"XamContentMountPackage",
+"kFunction"
+],
+"637": [
+"XamContentFlushPackage",
+"kFunction"
+],
+"638": [
+"XamContentClosePackageFile",
+"kFunction"
+],
+"639": [
+"XamContentDuplicateFileHandle",
+"kFunction"
+],
+"64": [
+"NetDll_XNetXnAddrToMachineId",
+"kFunction"
+],
+"640": [
+"XamGetExecutionId",
+"kFunction"
+],
+"641": [
+"XamGetGameRatings",
+"kFunction"
+],
+"642": [
+"XamGetSystemVersion",
+"kFunction"
+],
+"643": [
+"XamContentGetLocalizedString",
+"kFunction"
+],
+"644": [
+"XamContentGetDefaultDevice",
+"kFunction"
+],
+"645": [
+"XamContentInstallInternal",
+"kFunction"
+],
+"646": [
+"XamContentSetMediaMetaDataInternal",
+"kFunction"
+],
+"647": [
+"XamContentGetDeviceSerialNumber",
+"kFunction"
+],
+"648": [
+"XamContentGetMountedPackageByRootName",
+"kFunction"
+],
+"649": [
+"XamContentRegisterChangeCallback",
+"kFunction"
+],
+"65": [
+"NetDll_XNetConnect",
+"kFunction"
+],
+"650": [
+"XamNotifyCreateListener",
+"kFunction"
+],
+"651": [
+"XNotifyGetNext",
+"kFunction"
+],
+"652": [
+"XNotifyPositionUI",
+"kFunction"
+],
+"653": [
+"XNotifyDelayUI",
+"kFunction"
+],
+"654": [
+"XNotifyBroadcast",
+"kFunction"
+],
+"655": [
+"XNotifyRegisterArea",
+"kFunction"
+],
+"656": [
+"XNotifyQueueUI",
+"kFunction"
+],
+"657": [
+"XamNotifyCreateListenerInternal",
+"kFunction"
+],
+"658": [
+"XNotifyUISetOptions",
+"kFunction"
+],
+"659": [
+"XNotifyUIGetOptions",
+"kFunction"
+],
+"66": [
+"NetDll_XNetGetConnectStatus",
+"kFunction"
+],
+"660": [
+"XamContentLaunchImageInternalEx",
+"kFunction"
+],
+"661": [
+"XamShutdown",
+"kFunction"
+],
+"662": [
+"XamAllocDevkitHeapAvailable",
+"kFunction"
+],
+"663": [
+"XamNotifyCreateListenerRangeInternal",
+"kFunction"
+],
+"664": [
+"XNotifyQueueUIEx",
+"kFunction"
+],
+"665": [
+"XamAppRequestLoadEx",
+"kFunction"
+],
+"666": [
+"XuiPNGTextureLoader",
+"kFunction"
+],
+"667": [
+"XuiRenderGetXuiDevice",
+"kFunction"
+],
+"668": [
+"XuiDefault_False",
+"kFunction"
+],
+"669": [
+"XamUserGetReportingInfo",
+"kFunction"
+],
+"67": [
+"NetDll_XNetDnsLookup",
+"kFunction"
+],
+"670": [
+"XamUpdateStart",
+"kFunction"
+],
+"671": [
+"XamUpdateGetProgress",
+"kFunction"
+],
+"672": [
+"XamUpdateGetExtenderInstance",
+"kFunction"
+],
+"673": [
+"XamUpdateFinish",
+"kFunction"
+],
+"674": [
+"XamUpdateAttachExtenderInstance",
+"kFunction"
+],
+"675": [
+"XamUpdateAllocateExtenderBuffer",
+"kFunction"
+],
+"676": [
+"XamRestartTitleLoadAfterUpdate",
+"kFunction"
+],
+"677": [
+"XamUIThreadDisableFontPatching",
+"kFunction"
+],
+"678": [
+"XamUpdateGetBaseSystemVersion",
+"kFunction"
+],
+"679": [
+"XamUpdateGetCurrentSystemVersion",
+"kFunction"
+],
+"68": [
+"NetDll_XNetDnsRelease",
+"kFunction"
+],
+"680": [
+"XamUIThreadEnableFontPatching",
+"kFunction"
+],
+"681": [
+"XamTerminateTitleForUpdate",
+"kFunction"
+],
+"682": [
+"XamSystemUpdateInstallLocal",
+"kFunction"
+],
+"683": [
+"XamUpdateChainPass3FromPass2",
+"kFunction"
+],
+"685": [
+"XamInputGetCapabilitiesEx",
+"kFunction"
+],
+"686": [
+"XamUserIsUnsafeProgrammingAllowed",
+"kFunction"
+],
+"687": [
+"XamDevAuthSetFaultEx",
+"kFunction"
+],
+"688": [
+"XamUpdateGetData",
+"kFunction"
+],
+"689": [
+"XamCacheIntegrityCheck",
+"kFunction"
+],
+"69": [
+"NetDll_XNetQosListen",
+"kFunction"
+],
+"690": [
+"XamCacheStoreFile",
+"kFunction"
+],
+"691": [
+"XamCacheFetchFile",
+"kFunction"
+],
+"692": [
+"XamCacheOpenFile",
+"kFunction"
+],
+"693": [
+"XamCacheCloseFile",
+"kFunction"
+],
+"694": [
+"XamGetCachedTitleName",
+"kFunction"
+],
+"695": [
+"XamCacheReset",
+"kFunction"
+],
+"696": [
+"XamGetCachedGamerTag",
+"kFunction"
+],
+"697": [
+"XamGetCachedGamerTagW",
+"kFunction"
+],
+"698": [
+"XamCacheDeleteFile",
+"kFunction"
+],
+"699": [
+"XamCacheRenameFile",
+"kFunction"
+],
+"7": [
+"NetDll_setsockopt",
+"kFunction"
+],
+"70": [
+"NetDll_XNetQosLookup",
+"kFunction"
+],
+"700": [
+"XamShowSigninUI",
+"kFunction"
+],
+"701": [
+"XamShowSigninUIEx",
+"kFunction"
+],
+"702": [
+"XamShowSigninUIp",
+"kFunction"
+],
+"703": [
+"XamShowFriendsUI",
+"kFunction"
+],
+"704": [
+"XamShowMessagesUI",
+"kFunction"
+],
+"705": [
+"XamShowKeyboardUI",
+"kFunction"
+],
+"706": [
+"XamShowQuickChatUI",
+"kFunction"
+],
+"707": [
+"XamShowVoiceMailUI",
+"kFunction"
+],
+"708": [
+"XamShowGamerCardUI",
+"kFunction"
+],
+"709": [
+"XamShowAchievementsUI",
+"kFunction"
+],
+"71": [
+"NetDll_XNetQosServiceLookup",
+"kFunction"
+],
+"710": [
+"XamShowPlayerReviewUI",
+"kFunction"
+],
+"711": [
+"XamShowMarketplaceUI",
+"kFunction"
+],
+"712": [
+"XamShowPlayersUI",
+"kFunction"
+],
+"713": [
+"XamShowUpdaterUI",
+"kFunction"
+],
+"714": [
+"XamShowMessageBoxUI",
+"kFunction"
+],
+"715": [
+"XamShowDeviceSelectorUI",
+"kFunction"
+],
+"716": [
+"XamShowMessageComposeUI",
+"kFunction"
+],
+"717": [
+"XamShowGameInviteUI",
+"kFunction"
+],
+"718": [
+"XamShowFriendRequestUI",
+"kFunction"
+],
+"719": [
+"XamShowCreateProfileUI",
+"kFunction"
+],
+"72": [
+"NetDll_XNetQosRelease",
+"kFunction"
+],
+"720": [
+"XamShowGamesUI",
+"kFunction"
+],
+"721": [
+"XamShowLiveSignupUI",
+"kFunction"
+],
+"722": [
+"XamShowFriendsUIp",
+"kFunction"
+],
+"723": [
+"XamShowComplaintUI",
+"kFunction"
+],
+"724": [
+"XamShowReputationUI",
+"kFunction"
+],
+"725": [
+"XamShowGamerCardUIForXUID",
+"kFunction"
+],
+"726": [
+"XamShowForcedNameChangeUI",
+"kFunction"
+],
+"727": [
+"XamShowLiveUpsellUI",
+"kFunction"
+],
+"728": [
+"XamShowPasscodeVerifyUI",
+"kFunction"
+],
+"729": [
+"XamShowDirtyDiscErrorUI",
+"kFunction"
+],
+"73": [
+"NetDll_XNetGetTitleXnAddr",
+"kFunction"
+],
+"730": [
+"XamShowSignupCreditCardUI",
+"kFunction"
+],
+"731": [
+"XamShowPrivateChatInviteUI",
+"kFunction"
+],
+"732": [
+"XamShowMessageBoxUIEx",
+"kFunction"
+],
+"733": [
+"XamShowRecentMessageUI",
+"kFunction"
+],
+"734": [
+"XamShowRecentMessageUIEx",
+"kFunction"
+],
+"735": [
+"XamShowMessagesUIEx",
+"kFunction"
+],
+"736": [
+"XamShowAchievementDetailsUI",
+"kFunction"
+],
+"737": [
+"XamShowPersonalizationUI",
+"kFunction"
+],
+"738": [
+"XamShowChangeGamerTileUI",
+"kFunction"
+],
+"739": [
+"XamShowVoiceSettingsUI",
+"kFunction"
+],
+"74": [
+"NetDll_XNetGetDebugXnAddr",
+"kFunction"
+],
+"740": [
+"XamShowVideoChatInviteUI",
+"kFunction"
+],
+"741": [
+"XamShowCustomMessageComposeUI",
+"kFunction"
+],
+"742": [
+"XamShowCustomPlayerListUI",
+"kFunction"
+],
+"743": [
+"XamShowMarketplaceDownloadItemsUI",
+"kFunction"
+],
+"744": [
+"XamShowMarketplaceUIEx",
+"kFunction"
+],
+"745": [
+"XamShowMessageBox",
+"kFunction"
+],
+"746": [
+"XamIsSysUiInvokedByXenonButton",
+"kFunction"
+],
+"747": [
+"XamIsSysUiInvokedByTitle",
+"kFunction"
+],
+"748": [
+"XamIsUIActive",
+"kFunction"
+],
+"749": [
+"XamSysUiDisableAutoClose",
+"kFunction"
+],
+"75": [
+"NetDll_XNetGetEthernetLinkStatus",
+"kFunction"
+],
+"750": [
+"XamUserCreateAchievementEnumerator",
+"kFunction"
+],
+"751": [
+"XamReadTile",
+"kFunction"
+],
+"752": [
+"XamWriteGamerTile",
+"kFunction"
+],
+"753": [
+"XamWriteTile",
+"kFunction"
+],
+"754": [
+"XamReadImage",
+"kFunction"
+],
+"755": [
+"XamUserCreateTitlesPlayedEnumerator",
+"kFunction"
+],
+"756": [
+"XamDecompressPNGToTexture",
+"kFunction"
+],
+"757": [
+"XamReadTileToTexture",
+"kFunction"
+],
+"758": [
+"XamReadString",
+"kFunction"
+],
+"759": [
+"XamUserCreateStatsEnumerator",
+"kFunction"
+],
+"76": [
+"NetDll_XNetGetBroadcastVersionStatus",
+"kFunction"
+],
+"760": [
+"XamPrepareGamerTiles",
+"kFunction"
+],
+"761": [
+"XamClearTitle",
+"kFunction"
+],
+"762": [
+"XamReadStrings",
+"kFunction"
+],
+"763": [
+"XamWriteGamerTileEx",
+"kFunction"
+],
+"764": [
+"XamReadTileEx",
+"kFunction"
+],
+"765": [
+"XamReadTileToTextureEx",
+"kFunction"
+],
+"766": [
+"XamShowMessengerUI",
+"kFunction"
+],
+"767": [
+"XamShowKeyboardUIMessenger",
+"kFunction"
+],
+"768": [
+"XamShowLiveUpsellUIEx",
+"kFunction"
+],
+"769": [
+"XamShowJoinSessionInProgressUI",
+"kFunction"
+],
+"77": [
+"NetDll_XNetQosGetListenStats",
+"kFunction"
+],
+"770": [
+"XamShowGraduateUserUI",
+"kFunction"
+],
+"771": [
+"XamShowGamerCardUIForXUIDp",
+"kFunction"
+],
+"772": [
+"XamShowGuideUI",
+"kFunction"
+],
+"773": [
+"XamShowPartyUI",
+"kFunction"
+],
+"774": [
+"XamShowPartyInviteUI",
+"kFunction"
+],
+"775": [
+"XamUserAddRecentPlayer",
+"kFunction"
+],
+"776": [
+"XamUserUpdateRecentPlayer",
+"kFunction"
+],
+"777": [
+"XamUserCreatePlayerEnumerator",
+"kFunction"
+],
+"778": [
+"XamParseGamerTileKey",
+"kFunction"
+],
+"779": [
+"XamShowCommunitySessionsUI",
+"kFunction"
+],
+"78": [
+"NetDll_XNetGetOpt",
+"kFunction"
+],
+"780": [
+"XamVoiceCreate",
+"kFunction"
+],
+"781": [
+"XamVoiceHeadsetPresent",
+"kFunction"
+],
+"782": [
+"XamVoiceSubmitPacket",
+"kFunction"
+],
+"783": [
+"XamVoiceClose",
+"kFunction"
+],
+"784": [
+"XamVoiceGetBatteryStatus",
+"kFunction"
+],
+"785": [
+"Refresh_",
+"kFunction"
+],
+"786": [
+"Refresh_0",
+"kFunction"
+],
+"787": [
+"XamShowJoinSessionByIdInProgressUI",
+"kFunction"
+],
+"788": [
+"XamShowPartyJoinInProgressUI",
+"kFunction"
+],
+"789": [
+"XamBuildSharedSystemResourceLocator",
+"kFunction"
+],
+"79": [
+"NetDll_XNetSetOpt",
+"kFunction"
+],
+"790": [
+"XamSessionCreateHandle",
+"kFunction"
+],
+"791": [
+"XamSessionRefObjByHandle",
+"kFunction"
+],
+"792": [
+"XamVoiceGetMicArrayStatus",
+"kFunction"
+],
+"793": [
+"XamVoiceSetAudioCaptureRoutine",
+"kFunction"
+],
+"794": [
+"XamVoiceGetDirectionalData",
+"kFunction"
+],
+"795": [
+"XamBuildResourceLocator",
+"kFunction"
+],
+"796": [
+"XamBuildLegacySystemResourceLocator",
+"kFunction"
+],
+"797": [
+"XamBuildGamercardResourceLocator",
+"kFunction"
+],
+"798": [
+"XamBuildDynamicResourceLocator",
+"kFunction"
+],
+"799": [
+"XamBuildXamResourceLocator",
+"kFunction"
+],
+"8": [
+"NetDll_getsockopt",
+"kFunction"
+],
+"80": [
+"NetDll_XNetStartupEx",
+"kFunction"
+],
+"800": [
+"XuiAnimRun",
+"kFunction"
+],
+"801": [
+"XuiApplyLocale",
+"kFunction"
+],
+"802": [
+"XuiBubbleMessage",
+"kFunction"
+],
+"803": [
+"XuiControlIsBackButton",
+"kFunction"
+],
+"804": [
+"XuiControlIsNavButton",
+"kFunction"
+],
+"805": [
+"XuiCreateObject",
+"kFunction"
+],
+"806": [
+"XuiDestroyObject",
+"kFunction"
+],
+"807": [
+"XuiDynamicCast",
+"kFunction"
+],
+"808": [
+"XuiElementAddChild",
+"kFunction"
+],
+"809": [
+"XuiElementFindNamedFrame",
+"kFunction"
+],
+"81": [
+"NetDll_XNetReplaceKey",
+"kFunction"
+],
+"810": [
+"XuiElementGetChildById",
+"kFunction"
+],
+"811": [
+"XuiElementGetFirstChild",
+"kFunction"
+],
+"812": [
+"XuiElementGetFocus",
+"kFunction"
+],
+"813": [
+"XuiElementGetFocusUser",
+"kFunction"
+],
+"814": [
+"XuiElementGetId",
+"kFunction"
+],
+"815": [
+"XuiElementGetLastChild",
+"kFunction"
+],
+"816": [
+"XuiElementGetNext",
+"kFunction"
+],
+"817": [
+"XuiElementGetParent",
+"kFunction"
+],
+"818": [
+"XuiElementGetUserFocus",
+"kFunction"
+],
+"819": [
+"XuiElementInitFocus",
+"kFunction"
+],
+"82": [
+"NetDll_XNetGetXnAddrPlatform",
+"kFunction"
+],
+"820": [
+"XuiElementInitUserFocus",
+"kFunction"
+],
+"821": [
+"XuiElementPlayTimeline",
+"kFunction"
+],
+"822": [
+"XuiElementSetBounds",
+"kFunction"
+],
+"823": [
+"XuiElementSetFocus",
+"kFunction"
+],
+"824": [
+"XuiElementSetUserFocus",
+"kFunction"
+],
+"825": [
+"XuiElementTreeGetFocus",
+"kFunction"
+],
+"826": [
+"XuiFindClass",
+"kFunction"
+],
+"827": [
+"XuiFreeStringTable",
+"kFunction"
+],
+"828": [
+"XuiGetBaseObject",
+"kFunction"
+],
+"829": [
+"XuiGetClass",
+"kFunction"
+],
+"83": [
+"NetDll_XNetGetSystemLinkPort",
+"kFunction"
+],
+"830": [
+"XuiGetObjectClass",
+"kFunction"
+],
+"831": [
+"XuiGetOuter",
+"kFunction"
+],
+"832": [
+"XuiInit",
+"kFunction"
+],
+"833": [
+"XuiLoadFromBinary",
+"kFunction"
+],
+"834": [
+"XuiLoadStringTableFromFile",
+"kFunction"
+],
+"835": [
+"XuiVisualGetBasePath",
+"kFunction"
+],
+"836": [
+"XuiLookupStringTable",
+"kFunction"
+],
+"837": [
+"XuiNavButtonGetPressPath",
+"kFunction"
+],
+"838": [
+"XuiObjectFromHandle",
+"kFunction"
+],
+"839": [
+"XuiObjectGetProperty",
+"kFunction"
+],
+"84": [
+"NetDll_XNetSetSystemLinkPort",
+"kFunction"
+],
+"840": [
+"XuiObjectGetPropertyId",
+"kFunction"
+],
+"841": [
+"XuiProcessInput",
+"kFunction"
+],
+"842": [
+"XuiRegisterClass",
+"kFunction"
+],
+"843": [
+"XuiRenderBegin",
+"kFunction"
+],
+"844": [
+"XuiRenderCreateDC",
+"kFunction"
+],
+"845": [
+"XuiRenderDCDeviceChanged",
+"kFunction"
+],
+"846": [
+"XuiRenderDestroyDC",
+"kFunction"
+],
+"847": [
+"XuiRenderEnd",
+"kFunction"
+],
+"848": [
+"XuiRenderGetBackBufferSize",
+"kFunction"
+],
+"849": [
+"XuiRenderInit",
+"kFunction"
+],
+"85": [
+"NetDll_XNetDnsReverseLookup",
+"kFunction"
+],
+"850": [
+"XuiRenderInitShared",
+"kFunction"
+],
+"851": [
+"XuiRenderPresent",
+"kFunction"
+],
+"852": [
+"XuiRenderSetViewTransform",
+"kFunction"
+],
+"853": [
+"XuiRenderUninit",
+"kFunction"
+],
+"854": [
+"XamShowNuiGuideUI",
+"kFunction"
+],
+"855": [
+"XuiSceneCreate",
+"kFunction"
+],
+"856": [
+"XuiSceneNavigateBack",
+"kFunction"
+],
+"857": [
+"XuiSceneNavigateFirst",
+"kFunction"
+],
+"858": [
+"XuiSceneNavigateForward",
+"kFunction"
+],
+"859": [
+"XuiScenePlayBackFromTransition",
+"kFunction"
+],
+"86": [
+"NetDll_XNetDnsReverseRelease",
+"kFunction"
+],
+"860": [
+"XuiScenePlayBackToTransition",
+"kFunction"
+],
+"861": [
+"XuiScenePlayFromTransition",
+"kFunction"
+],
+"862": [
+"XuiScenePlayToTransition",
+"kFunction"
+],
+"863": [
+"XuiSendMessage",
+"kFunction"
+],
+"864": [
+"XuiSetLocale",
+"kFunction"
+],
+"865": [
+"XuiUninit",
+"kFunction"
+],
+"866": [
+"XuiUnregisterClass",
+"kFunction"
+],
+"867": [
+"XuiTextElementSetText",
+"kFunction"
+],
+"868": [
+"XuiSetTimer",
+"kFunction"
+],
+"869": [
+"XuiTimersRun",
+"kFunction"
+],
+"870": [
+"XuiTextElementGetText",
+"kFunction"
+],
+"871": [
+"XuiVisualSetBasePath",
+"kFunction"
+],
+"872": [
+"XuiHandleIsValid",
+"kFunction"
+],
+"873": [
+"XuiAlloc",
+"kFunction"
+],
+"874": [
+"XuiFree",
+"kFunction"
+],
+"875": [
+"XuiDefault_True",
+"kFunction"
+],
+"876": [
+"XuiDefault_EmptyString",
+"kFunction"
+],
+"877": [
+"XuiDefault_IntegerZero",
+"kFunction"
+],
+"878": [
+"XuiCopyString",
+"kFunction"
+],
+"879": [
+"XuiRealloc",
+"kFunction"
+],
+"880": [
+"XuiControlPlayOptionalVisual",
+"kFunction"
+],
+"881": [
+"XuiKillTimer",
+"kFunction"
+],
+"882": [
+"XuiElementEnableInput",
+"kFunction"
+],
+"883": [
+"XuiElementInputEnabled",
+"kFunction"
+],
+"884": [
+"XuiIsInstanceOf",
+"kFunction"
+],
+"885": [
+"XuiResourceComposeLocator",
+"kFunction"
+],
+"886": [
+"XuiResourceLocatorIsAbsolute",
+"kFunction"
+],
+"887": [
+"XuiBroadcastMessage",
+"kFunction"
+],
+"888": [
+"XuiElementDisallowRecursiveTimelineControl",
+"kFunction"
+],
+"889": [
+"XUIElementPropVal_Construct",
+"kFunction"
+],
+"890": [
+"XUIElementPropVal_Destruct",
+"kFunction"
+],
+"891": [
+"XUIElementPropVal_SetString",
+"kFunction"
+],
+"892": [
+"XuiObjectSetProperty",
+"kFunction"
+],
+"893": [
+"XuiElementGetOpacity",
+"kFunction"
+],
+"894": [
+"XuiElementSetOpacity",
+"kFunction"
+],
+"895": [
+"XuiEditSetTextLimit",
+"kFunction"
+],
+"896": [
+"XuiEditGetTextLimit",
+"kFunction"
+],
+"897": [
+"XuiSliderSetValue",
+"kFunction"
+],
+"898": [
+"XuiSliderGetValue",
+"kFunction"
+],
+"899": [
+"XuiSliderSetRange",
+"kFunction"
+],
+"9": [
+"NetDll_getsockname",
+"kFunction"
+],
+"900": [
+"XuiElementUnlink",
+"kFunction"
+],
+"901": [
+"XuiElementInsertChild",
+"kFunction"
+],
+"902": [
+"XuiSceneNavigateBackToFirst",
+"kFunction"
+],
+"903": [
+"XuiProgressBarSetRange",
+"kFunction"
+],
+"904": [
+"XuiProgressBarSetValue",
+"kFunction"
+],
+"905": [
+"XuiProgressBarGetValue",
+"kFunction"
+],
+"906": [
+"XuiControlAttachVisual",
+"kFunction"
+],
+"907": [
+"XuiCreateTextureBrush",
+"kFunction"
+],
+"908": [
+"XuiDestroyBrush",
+"kFunction"
+],
+"909": [
+"XUIElementPropVal_SetColorFromUint",
+"kFunction"
+],
+"910": [
+"XuiFigureSetFill",
+"kFunction"
+],
+"911": [
+"XuiSliderGetRange",
+"kFunction"
+],
+"912": [
+"XuiFigureSetTexture",
+"kFunction"
+],
+"913": [
+"XuiControlGetItemAssociation",
+"kFunction"
+],
+"914": [
+"XuiResourceLoadAll",
+"kFunction"
+],
+"915": [
+"XuiImageElementSetImagePath",
+"kFunction"
+],
+"916": [
+"XuiImageElementGetImagePath",
+"kFunction"
+],
+"917": [
+"XuiControlGetVisual",
+"kFunction"
+],
+"918": [
+"XuiControlGetNavigation",
+"kFunction"
+],
+"919": [
+"XuiLookupStringTableByIndex",
+"kFunction"
+],
+"920": [
+"XUIElementPropVal_SetBool",
+"kFunction"
+],
+"921": [
+"XuiElementHasFocus",
+"kFunction"
+],
+"922": [
+"XUIElementPropVal_SetUint",
+"kFunction"
+],
+"923": [
+"XUIElementPropVal_Clear",
+"kFunction"
+],
+"924": [
+"XuiEditSetTextFormatInfo",
+"kFunction"
+],
+"925": [
+"XuiCreateSolidBrush",
+"kFunction"
+],
+"926": [
+"XuiSceneInterruptTransitions",
+"kFunction"
+],
+"927": [
+"XuiResourceOpen",
+"kFunction"
+],
+"928": [
+"XuiResourceRead",
+"kFunction"
+],
+"929": [
+"XuiResourceClose",
+"kFunction"
+],
+"930": [
+"XuiVisualCreateInstance",
+"kFunction"
+],
+"931": [
+"XuiElementGetTimeline",
+"kFunction"
+],
+"932": [
+"GetCodecVersion",
+"kFunction"
+],
+"933": [
+"XuiElementIsDescendant",
+"kFunction"
+],
+"934": [
+"XuiSetMessageFilter",
+"kFunction"
+],
+"935": [
+"XuiAttachTextureBrush",
+"kFunction"
+],
+"936": [
+"XuiElementBeginRender",
+"kFunction"
+],
+"937": [
+"XuiElementEndRender",
+"kFunction"
+],
+"938": [
+"XuiDrawShape",
+"kFunction"
+],
+"939": [
+"XuiSelectBrushEx",
+"kFunction"
+],
+"940": [
+"XuiFigureGetShape",
+"kFunction"
+],
+"941": [
+"XuiFillRect",
+"kFunction"
+],
+"942": [
+"XuiVec2TransformCoord",
+"kFunction"
+],
+"943": [
+"XuiMatrixMultiply",
+"kFunction"
+],
+"944": [
+"XuiElementGetXForm",
+"kFunction"
+],
+"945": [
+"XuiElementSetPosition",
+"kFunction"
+],
+"946": [
+"XuiSelectBrush",
+"kFunction"
+],
+"947": [
+"XuiElementRenderChildren",
+"kFunction"
+],
+"948": [
+"XuiFreeUnusedTextures",
+"kFunction"
+],
+"949": [
+"XuiListEnableItemOverride",
+"kFunction"
+],
+"950": [
+"XuiListGetDefaultItemSize",
+"kFunction"
+],
+"951": [
+"XuiResourceSeek",
+"kFunction"
+],
+"952": [
+"XuiElementDiscardResources",
+"kFunction"
+],
+"953": [
+"XuiTabSceneGoto",
+"kFunction"
+],
+"954": [
+"XuiTabSceneGetCurrentTab",
+"kFunction"
+],
+"955": [
+"XamShowWhatsOnUI",
+"kFunction"
+],
+"956": [
+"XamShowEditProfileUI",
+"kFunction"
+],
+"957": [
+"XamShowStorePickerUI",
+"kFunction"
+],
+"958": [
+"XamShowTermsOfUseUI",
+"kFunction"
+],
+"959": [
+"XamShowJoinPartyUI",
+"kFunction"
+],
+"960": [
+"XamShowWordRegisterUI",
+"kFunction"
+],
+"961": [
+"XamOverrideHudOpenType",
+"kFunction"
+],
+"962": [
+"XamShowAchievementsUIEx",
+"kFunction"
+],
+"963": [
+"XamUserGetUserTenure",
+"kFunction"
+],
+"964": [
+"XamUserGetSubscriptionType",
+"kFunction"
+],
+"965": [
+"XamShowGameVoiceChannelUI",
+"kFunction"
+],
+"966": [
+"XamShowAvatarAwardsUI",
+"kFunction"
+],
+"967": [
+"XamShowAvatarAwardGamesUI",
+"kFunction"
+],
+"968": [
+"XamShowVideoRichPresenceUI",
+"kFunction"
+],
+"969": [
+"XamHudGetUserIndex",
+"kFunction"
+],
+"970": [
+"XGetAudioFlags",
+"kFunction"
+],
+"971": [
+"XGetAVPack",
+"kFunction"
+],
+"972": [
+"XGetGameRegion",
+"kFunction"
+],
+"973": [
+"XGetLanguage",
+"kFunction"
+],
+"974": [
+"XapipGetLocale",
+"kFunction"
+],
+"975": [
+"XGetVideoFlags",
+"kFunction"
+],
+"976": [
+"XGetVideoStandard",
+"kFunction"
+],
+"977": [
+"XGetVideoMode",
+"kFunction"
+],
+"978": [
+"XamGetLanguage",
+"kFunction"
+],
+"979": [
+"XUITimeline_Run",
+"kFunction"
+],
+"980": [
+"XamSetAutomation",
+"kFunction"
+],
+"981": [
+"XAutomationpBindController",
+"kFunction"
+],
+"982": [
+"XAutomationpUnbindController",
+"kFunction"
+],
+"983": [
+"XAutomationpInputXenonButton",
+"kFunction"
+],
+"984": [
+"XAutomationpInputPress",
+"kFunction"
+],
+"985": [
+"XAutomationpInputSetState",
+"kFunction"
+],
+"986": [
+"XamEnableOverdraw",
+"kFunction"
+],
+"987": [
+"g_XuiAutomation",
+"kVariable"
+],
+"988": [
+"XamVoiceGetMicArrayAudio",
+"kFunction"
+],
+"989": [
+"XampSystemInput",
+"kFunction"
+],
+"990": [
+"XamInputControl",
+"kFunction"
+],
+"991": [
+"XuiElementGetPosition",
+"kFunction"
+],
+"992": [
+"XamIsMessageBoxActive",
+"kFunction"
+],
+"993": [
+"XamIsBackgroundSceneInTransition",
+"kFunction"
+],
+"994": [
+"XuiElementTreeHasFocus",
+"kFunction"
+],
+"995": [
+"XuiFigureClose",
+"kFunction"
+],
+"996": [
+"GamerCardStartup",
+"kFunction"
+],
+"997": [
+"GamerCardCleanup",
+"kFunction"
+],
+"998": [
+"GamerCardRegisterControls",
+"kFunction"
+],
+"999": [
+"GamerCardUnregisterControls",
+"kFunction"
+]
+},
+"xboxkrnl": {
+"1": [
+"DbgBreakPoint",
+"kFunction"
+],
+"10": [
+"ExAllocatePoolWithTag",
+"kFunction"
+],
+"100": [
+"KeFlushUserModeCurrentTb",
+"kFunction"
+],
+"101": [
+"KeFlushUserModeTb",
+"kFunction"
+],
+"102": [
+"KeGetCurrentProcessType",
+"kFunction"
+],
+"103": [
+"KeGetPMWRegister",
+"kFunction"
+],
+"104": [
+"KeGetPRVRegister",
+"kFunction"
+],
+"105": [
+"KeGetSocRegister",
+"kFunction"
+],
+"106": [
+"KeGetSpecialPurposeRegister",
+"kFunction"
+],
+"107": [
+"KeLockL2",
+"kFunction"
+],
+"108": [
+"KeUnlockL2",
+"kFunction"
+],
+"109": [
+"KeInitializeApc",
+"kFunction"
+],
+"11": [
+"ExAllocatePoolTypeWithTag",
+"kFunction"
+],
+"110": [
+"KeInitializeDeviceQueue",
+"kFunction"
+],
+"111": [
+"KeInitializeDpc",
+"kFunction"
+],
+"112": [
+"KeInitializeEvent",
+"kFunction"
+],
+"113": [
+"KeInitializeInterrupt",
+"kFunction"
+],
+"114": [
+"KeInitializeMutant",
+"kFunction"
+],
+"115": [
+"KeInitializeQueue",
+"kFunction"
+],
+"116": [
+"KeInitializeSemaphore",
+"kFunction"
+],
+"117": [
+"KeInitializeTimerEx",
+"kFunction"
+],
+"118": [
+"KeInsertByKeyDeviceQueue",
+"kFunction"
+],
+"119": [
+"KeInsertDeviceQueue",
+"kFunction"
+],
+"12": [
+"ExConsoleGameRegion",
+"kVariable"
+],
+"120": [
+"KeInsertHeadQueue",
+"kFunction"
+],
+"121": [
+"KeInsertQueue",
+"kFunction"
+],
+"122": [
+"KeInsertQueueApc",
+"kFunction"
+],
+"123": [
+"KeInsertQueueDpc",
+"kFunction"
+],
+"124": [
+"KeIpiGenericCall",
+"kFunction"
+],
+"125": [
+"KeLeaveCriticalRegion",
+"kFunction"
+],
+"126": [
+"KeLeaveUserMode",
+"kFunction"
+],
+"127": [
+"KePulseEvent",
+"kFunction"
+],
+"128": [
+"KeQueryBackgroundProcessors",
+"kFunction"
+],
+"129": [
+"KeQueryBasePriorityThread",
+"kFunction"
+],
+"13": [
+"ExCreateThread",
+"kFunction"
+],
+"130": [
+"KeQueryInterruptTime",
+"kFunction"
+],
+"131": [
+"KeQueryPerformanceFrequency",
+"kFunction"
+],
+"132": [
+"KeQuerySystemTime",
+"kFunction"
+],
+"133": [
+"KeRaiseIrqlToDpcLevel",
+"kFunction"
+],
+"134": [
+"KeRegisterDriverNotification",
+"kFunction"
+],
+"135": [
+"KeReleaseMutant",
+"kFunction"
+],
+"136": [
+"KeReleaseSemaphore",
+"kFunction"
+],
+"137": [
+"KeReleaseSpinLockFromRaisedIrql",
+"kFunction"
+],
+"138": [
+"KeRemoveByKeyDeviceQueue",
+"kFunction"
+],
+"139": [
+"KeRemoveDeviceQueue",
+"kFunction"
+],
+"14": [
+"ExEventObjectType",
+"kVariable"
+],
+"140": [
+"KeRemoveEntryDeviceQueue",
+"kFunction"
+],
+"141": [
+"KeRemoveQueue",
+"kFunction"
+],
+"142": [
+"KeRemoveQueueDpc",
+"kFunction"
+],
+"143": [
+"KeResetEvent",
+"kFunction"
+],
+"144": [
+"KeRestoreFloatingPointState",
+"kFunction"
+],
+"145": [
+"KeRestoreVectorUnitState",
+"kFunction"
+],
+"146": [
+"KeResumeThread",
+"kFunction"
+],
+"147": [
+"KeRetireDpcList",
+"kFunction"
+],
+"148": [
+"KeRundownQueue",
+"kFunction"
+],
+"149": [
+"KeSaveFloatingPointState",
+"kFunction"
+],
+"15": [
+"ExFreePool",
+"kFunction"
+],
+"150": [
+"KeSaveVectorUnitState",
+"kFunction"
+],
+"151": [
+"KeSetAffinityThread",
+"kFunction"
+],
+"152": [
+"KeSetBackgroundProcessors",
+"kFunction"
+],
+"153": [
+"KeSetBasePriorityThread",
+"kFunction"
+],
+"154": [
+"KeSetCurrentProcessType",
+"kFunction"
+],
+"155": [
+"KeSetCurrentStackPointers",
+"kFunction"
+],
+"156": [
+"KeSetDisableBoostThread",
+"kFunction"
+],
+"157": [
+"KeSetEvent",
+"kFunction"
+],
+"158": [
+"KeSetEventBoostPriority",
+"kFunction"
+],
+"159": [
+"KeSetPMWRegister",
+"kFunction"
+],
+"16": [
+"ExGetXConfigSetting",
+"kFunction"
+],
+"160": [
+"KeSetPowerMode",
+"kFunction"
+],
+"161": [
+"KeSetPRVRegister",
+"kFunction"
+],
+"162": [
+"KeSetPriorityClassThread",
+"kFunction"
+],
+"163": [
+"KeSetPriorityThread",
+"kFunction"
+],
+"164": [
+"KeSetSocRegister",
+"kFunction"
+],
+"165": [
+"KeSetSpecialPurposeRegister",
+"kFunction"
+],
+"166": [
+"KeSetTimer",
+"kFunction"
+],
+"167": [
+"KeSetTimerEx",
+"kFunction"
+],
+"168": [
+"KeStallExecutionProcessor",
+"kFunction"
+],
+"169": [
+"KeSuspendThread",
+"kFunction"
+],
+"17": [
+"ExInitializeReadWriteLock",
+"kFunction"
+],
+"170": [
+"KeSweepDcacheRange",
+"kFunction"
+],
+"171": [
+"KeSweepIcacheRange",
+"kFunction"
+],
+"172": [
+"KeTestAlertThread",
+"kFunction"
+],
+"173": [
+"KeTimeStampBundle",
+"kVariable"
+],
+"174": [
+"KeTryToAcquireSpinLockAtRaisedIrql",
+"kFunction"
+],
+"175": [
+"KeWaitForMultipleObjects",
+"kFunction"
+],
+"176": [
+"KeWaitForSingleObject",
+"kFunction"
+],
+"177": [
+"KfAcquireSpinLock",
+"kFunction"
+],
+"178": [
+"KfRaiseIrql",
+"kFunction"
+],
+"179": [
+"KfLowerIrql",
+"kFunction"
+],
+"18": [
+"ExMutantObjectType",
+"kVariable"
+],
+"180": [
+"KfReleaseSpinLock",
+"kFunction"
+],
+"181": [
+"KiBugCheckData",
+"kVariable"
+],
+"182": [
+"LDICreateDecompression",
+"kFunction"
+],
+"183": [
+"LDIDecompress",
+"kFunction"
+],
+"184": [
+"LDIDestroyDecompression",
+"kFunction"
+],
+"185": [
+"MmAllocatePhysicalMemory",
+"kFunction"
+],
+"186": [
+"MmAllocatePhysicalMemoryEx",
+"kFunction"
+],
+"187": [
+"MmCreateKernelStack",
+"kFunction"
+],
+"188": [
+"MmDeleteKernelStack",
+"kFunction"
+],
+"189": [
+"MmFreePhysicalMemory",
+"kFunction"
+],
+"19": [
+"ExQueryPoolBlockSize",
+"kFunction"
+],
+"190": [
+"MmGetPhysicalAddress",
+"kFunction"
+],
+"191": [
+"MmIsAddressValid",
+"kFunction"
+],
+"192": [
+"MmLockAndMapSegmentArray",
+"kFunction"
+],
+"193": [
+"MmLockUnlockBufferPages",
+"kFunction"
+],
+"194": [
+"MmMapIoSpace",
+"kFunction"
+],
+"195": [
+"MmPersistPhysicalMemoryAllocation",
+"kFunction"
+],
+"196": [
+"MmQueryAddressProtect",
+"kFunction"
+],
+"197": [
+"MmQueryAllocationSize",
+"kFunction"
+],
+"198": [
+"MmQueryStatistics",
+"kFunction"
+],
+"199": [
+"MmSetAddressProtect",
+"kFunction"
+],
+"2": [
+"DbgBreakPointWithStatus",
+"kFunction"
+],
+"20": [
+"ExRegisterThreadNotification",
+"kFunction"
+],
+"200": [
+"MmSplitPhysicalMemoryAllocation",
+"kFunction"
+],
+"201": [
+"MmUnlockAndUnmapSegmentArray",
+"kFunction"
+],
+"202": [
+"MmUnmapIoSpace",
+"kFunction"
+],
+"203": [
+"Nls844UnicodeCaseTable",
+"kVariable"
+],
+"204": [
+"NtAllocateVirtualMemory",
+"kFunction"
+],
+"205": [
+"NtCancelTimer",
+"kFunction"
+],
+"206": [
+"NtClearEvent",
+"kFunction"
+],
+"207": [
+"NtClose",
+"kFunction"
+],
+"208": [
+"NtCreateDirectoryObject",
+"kFunction"
+],
+"209": [
+"NtCreateEvent",
+"kFunction"
+],
+"21": [
+"ExRegisterTitleTerminateNotification",
+"kFunction"
+],
+"210": [
+"NtCreateFile",
+"kFunction"
+],
+"211": [
+"NtCreateIoCompletion",
+"kFunction"
+],
+"212": [
+"NtCreateMutant",
+"kFunction"
+],
+"213": [
+"NtCreateSemaphore",
+"kFunction"
+],
+"214": [
+"NtCreateSymbolicLinkObject",
+"kFunction"
+],
+"215": [
+"NtCreateTimer",
+"kFunction"
+],
+"216": [
+"NtDeleteFile",
+"kFunction"
+],
+"217": [
+"NtDeviceIoControlFile",
+"kFunction"
+],
+"218": [
+"NtDuplicateObject",
+"kFunction"
+],
+"219": [
+"NtFlushBuffersFile",
+"kFunction"
+],
+"22": [
+"ExReleaseReadWriteLock",
+"kFunction"
+],
+"220": [
+"NtFreeVirtualMemory",
+"kFunction"
+],
+"221": [
+"NtMakeTemporaryObject",
+"kFunction"
+],
+"222": [
+"NtOpenDirectoryObject",
+"kFunction"
+],
+"223": [
+"NtOpenFile",
+"kFunction"
+],
+"224": [
+"NtOpenSymbolicLinkObject",
+"kFunction"
+],
+"225": [
+"NtProtectVirtualMemory",
+"kFunction"
+],
+"226": [
+"NtPulseEvent",
+"kFunction"
+],
+"227": [
+"NtQueueApcThread",
+"kFunction"
+],
+"228": [
+"NtQueryDirectoryFile",
+"kFunction"
+],
+"229": [
+"NtQueryDirectoryObject",
+"kFunction"
+],
+"23": [
+"ExSemaphoreObjectType",
+"kVariable"
+],
+"230": [
+"NtQueryEvent",
+"kFunction"
+],
+"231": [
+"NtQueryFullAttributesFile",
+"kFunction"
+],
+"232": [
+"NtQueryInformationFile",
+"kFunction"
+],
+"233": [
+"NtQueryIoCompletion",
+"kFunction"
+],
+"234": [
+"NtQueryMutant",
+"kFunction"
+],
+"235": [
+"NtQuerySemaphore",
+"kFunction"
+],
+"236": [
+"NtQuerySymbolicLinkObject",
+"kFunction"
+],
+"237": [
+"NtQueryTimer",
+"kFunction"
+],
+"238": [
+"NtQueryVirtualMemory",
+"kFunction"
+],
+"239": [
+"NtQueryVolumeInformationFile",
+"kFunction"
+],
+"24": [
+"ExSetXConfigSetting",
+"kFunction"
+],
+"240": [
+"NtReadFile",
+"kFunction"
+],
+"241": [
+"NtReadFileScatter",
+"kFunction"
+],
+"242": [
+"NtReleaseMutant",
+"kFunction"
+],
+"243": [
+"NtReleaseSemaphore",
+"kFunction"
+],
+"244": [
+"NtRemoveIoCompletion",
+"kFunction"
+],
+"245": [
+"NtResumeThread",
+"kFunction"
+],
+"246": [
+"NtSetEvent",
+"kFunction"
+],
+"247": [
+"NtSetInformationFile",
+"kFunction"
+],
+"248": [
+"NtSetIoCompletion",
+"kFunction"
+],
+"249": [
+"NtSetSystemTime",
+"kFunction"
+],
+"25": [
+"ExTerminateThread",
+"kFunction"
+],
+"250": [
+"NtSetTimerEx",
+"kFunction"
+],
+"251": [
+"NtSignalAndWaitForSingleObjectEx",
+"kFunction"
+],
+"252": [
+"NtSuspendThread",
+"kFunction"
+],
+"253": [
+"NtWaitForSingleObjectEx",
+"kFunction"
+],
+"254": [
+"NtWaitForMultipleObjectsEx",
+"kFunction"
+],
+"255": [
+"NtWriteFile",
+"kFunction"
+],
+"256": [
+"NtWriteFileGather",
+"kFunction"
+],
+"257": [
+"NtYieldExecution",
+"kFunction"
+],
+"258": [
+"ObCreateObject",
+"kFunction"
+],
+"259": [
+"ObCreateSymbolicLink",
+"kFunction"
+],
+"26": [
+"ExTerminateTitleProcess",
+"kFunction"
+],
+"260": [
+"ObDeleteSymbolicLink",
+"kFunction"
+],
+"261": [
+"ObDereferenceObject",
+"kFunction"
+],
+"262": [
+"ObDirectoryObjectType",
+"kVariable"
+],
+"263": [
+"ObGetWaitableObject",
+"kFunction"
+],
+"264": [
+"ObInsertObject",
+"kFunction"
+],
+"265": [
+"ObIsTitleObject",
+"kFunction"
+],
+"266": [
+"ObLookupAnyThreadByThreadId",
+"kFunction"
+],
+"267": [
+"ObLookupThreadByThreadId",
+"kFunction"
+],
+"268": [
+"ObMakeTemporaryObject",
+"kFunction"
+],
+"269": [
+"ObOpenObjectByName",
+"kFunction"
+],
+"27": [
+"ExThreadObjectType",
+"kVariable"
+],
+"270": [
+"ObOpenObjectByPointer",
+"kFunction"
+],
+"271": [
+"ObReferenceObject",
+"kFunction"
+],
+"272": [
+"ObReferenceObjectByHandle",
+"kFunction"
+],
+"273": [
+"ObReferenceObjectByName",
+"kFunction"
+],
+"274": [
+"ObSymbolicLinkObjectType",
+"kVariable"
+],
+"275": [
+"ObTranslateSymbolicLink",
+"kFunction"
+],
+"276": [
+"RtlAnsiStringToUnicodeString",
+"kFunction"
+],
+"277": [
+"RtlAppendStringToString",
+"kFunction"
+],
+"278": [
+"RtlAppendUnicodeStringToString",
+"kFunction"
+],
+"279": [
+"RtlAppendUnicodeToString",
+"kFunction"
+],
+"28": [
+"ExTimerObjectType",
+"kVariable"
+],
+"280": [
+"RtlAssert",
+"kFunction"
+],
+"281": [
+"RtlCaptureContext",
+"kFunction"
+],
+"282": [
+"RtlCompareMemory",
+"kFunction"
+],
+"283": [
+"RtlCompareMemoryUlong",
+"kFunction"
+],
+"284": [
+"RtlCompareString",
+"kFunction"
+],
+"285": [
+"RtlCompareStringN",
+"kFunction"
+],
+"286": [
+"RtlCompareUnicodeString",
+"kFunction"
+],
+"287": [
+"RtlCompareUnicodeStringN",
+"kFunction"
+],
+"288": [
+"RtlCompareUtf8ToUnicode",
+"kFunction"
+],
+"289": [
+"RtlCopyString",
+"kFunction"
+],
+"29": [
+"MmDoubleMapMemory",
+"kFunction"
+],
+"290": [
+"RtlCopyUnicodeString",
+"kFunction"
+],
+"291": [
+"RtlCreateUnicodeString",
+"kFunction"
+],
+"292": [
+"RtlDowncaseUnicodeChar",
+"kFunction"
+],
+"293": [
+"RtlEnterCriticalSection",
+"kFunction"
+],
+"294": [
+"RtlFillMemoryUlong",
+"kFunction"
+],
+"295": [
+"RtlFreeAnsiString",
+"kFunction"
+],
+"296": [
+"RtlFreeUnicodeString",
+"kFunction"
+],
+"297": [
+"RtlGetCallersAddress",
+"kFunction"
+],
+"298": [
+"RtlGetStackLimits",
+"kFunction"
+],
+"299": [
+"RtlImageXexHeaderField",
+"kFunction"
+],
+"3": [
+"DbgPrint",
+"kFunction"
+],
+"30": [
+"MmUnmapMemory",
+"kFunction"
+],
+"300": [
+"RtlInitAnsiString",
+"kFunction"
+],
+"301": [
+"RtlInitUnicodeString",
+"kFunction"
+],
+"302": [
+"RtlInitializeCriticalSection",
+"kFunction"
+],
+"303": [
+"RtlInitializeCriticalSectionAndSpinCount",
+"kFunction"
+],
+"304": [
+"RtlLeaveCriticalSection",
+"kFunction"
+],
+"305": [
+"RtlLookupFunctionEntry",
+"kFunction"
+],
+"306": [
+"RtlLowerChar",
+"kFunction"
+],
+"307": [
+"RtlMultiByteToUnicodeN",
+"kFunction"
+],
+"308": [
+"RtlMultiByteToUnicodeSize",
+"kFunction"
+],
+"309": [
+"RtlNtStatusToDosError",
+"kFunction"
+],
+"31": [
+"XeKeysGetConsoleCertificate",
+"kFunction"
+],
+"310": [
+"RtlRaiseException",
+"kFunction"
+],
+"311": [
+"RtlRaiseStatus",
+"kFunction"
+],
+"312": [
+"RtlRip",
+"kFunction"
+],
+"313": [
+"_scprintf",
+"kFunction"
+],
+"314": [
+"_snprintf",
+"kFunction"
+],
+"315": [
+"sprintf",
+"kFunction"
+],
+"316": [
+"_scwprintf",
+"kFunction"
+],
+"317": [
+"_snwprintf",
+"kFunction"
+],
+"318": [
+"swprintf",
+"kFunction"
+],
+"319": [
+"RtlTimeFieldsToTime",
+"kFunction"
+],
+"32": [
+"FscGetCacheElementCount",
+"kFunction"
+],
+"320": [
+"RtlTimeToTimeFields",
+"kFunction"
+],
+"321": [
+"RtlTryEnterCriticalSection",
+"kFunction"
+],
+"322": [
+"RtlUnicodeStringToAnsiString",
+"kFunction"
+],
+"323": [
+"RtlUnicodeToMultiByteN",
+"kFunction"
+],
+"324": [
+"RtlUnicodeToMultiByteSize",
+"kFunction"
+],
+"325": [
+"RtlUnicodeToUtf8",
+"kFunction"
+],
+"326": [
+"RtlUnicodeToUtf8Size",
+"kFunction"
+],
+"327": [
+"RtlUnwind",
+"kFunction"
+],
+"328": [
+"RtlUnwind2",
+"kFunction"
+],
+"329": [
+"RtlUpcaseUnicodeChar",
+"kFunction"
+],
+"33": [
+"FscSetCacheElementCount",
+"kFunction"
+],
+"330": [
+"RtlUpperChar",
+"kFunction"
+],
+"331": [
+"RtlVirtualUnwind",
+"kFunction"
+],
+"332": [
+"_vscprintf",
+"kFunction"
+],
+"333": [
+"_vsnprintf",
+"kFunction"
+],
+"334": [
+"vsprintf",
+"kFunction"
+],
+"335": [
+"_vscwprintf",
+"kFunction"
+],
+"336": [
+"_vsnwprintf",
+"kFunction"
+],
+"337": [
+"vswprintf",
+"kFunction"
+],
+"338": [
+"KeTlsAlloc",
+"kFunction"
+],
+"339": [
+"KeTlsFree",
+"kFunction"
+],
+"34": [
+"HalGetCurrentAVPack",
+"kFunction"
+],
+"340": [
+"KeTlsGetValue",
+"kFunction"
+],
+"341": [
+"KeTlsSetValue",
+"kFunction"
+],
+"342": [
+"XboxHardwareInfo",
+"kVariable"
+],
+"343": [
+"XboxKrnlBaseVersion",
+"kVariable"
+],
+"344": [
+"XboxKrnlVersion",
+"kVariable"
+],
+"345": [
+"XeCryptAesKey",
+"kFunction"
+],
+"346": [
+"XeCryptAesEcb",
+"kFunction"
+],
+"347": [
+"XeCryptAesCbc",
+"kFunction"
+],
+"348": [
+"XeCryptBnDwLeDhEqualBase",
+"kFunction"
+],
+"349": [
+"XeCryptBnDwLeDhInvalBase",
+"kFunction"
+],
+"35": [
+"HalGpioControl",
+"kFunction"
+],
+"350": [
+"XeCryptBnDwLeDhModExp",
+"kFunction"
+],
+"351": [
+"XeCryptBnDw_Copy",
+"kFunction"
+],
+"352": [
+"XeCryptBnDw_SwapLeBe",
+"kFunction"
+],
+"353": [
+"XeCryptBnDw_Zero",
+"kFunction"
+],
+"354": [
+"XeCryptBnDwLePkcs1Format",
+"kFunction"
+],
+"355": [
+"XeCryptBnDwLePkcs1Verify",
+"kFunction"
+],
+"356": [
+"XeCryptBnQwBeSigCreate",
+"kFunction"
+],
+"357": [
+"XeCryptBnQwBeSigFormat",
+"kFunction"
+],
+"358": [
+"XeCryptBnQwBeSigVerify",
+"kFunction"
+],
+"359": [
+"XeCryptBnQwNeModExp",
+"kFunction"
+],
+"36": [
+"HalOpenCloseODDTray",
+"kFunction"
+],
+"360": [
+"XeCryptBnQwNeModExpRoot",
+"kFunction"
+],
+"361": [
+"XeCryptBnQwNeModInv",
+"kFunction"
+],
+"362": [
+"XeCryptBnQwNeModMul",
+"kFunction"
+],
+"363": [
+"XeCryptBnQwNeRsaKeyGen",
+"kFunction"
+],
+"364": [
+"XeCryptBnQwNeRsaPrvCrypt",
+"kFunction"
+],
+"365": [
+"XeCryptBnQwNeRsaPubCrypt",
+"kFunction"
+],
+"366": [
+"XeCryptBnQw_Copy",
+"kFunction"
+],
+"367": [
+"XeCryptBnQw_SwapDwQw",
+"kFunction"
+],
+"368": [
+"XeCryptBnQw_SwapDwQwLeBe",
+"kFunction"
+],
+"369": [
+"XeCryptBnQw_SwapLeBe",
+"kFunction"
+],
+"37": [
+"HalReadWritePCISpace",
+"kFunction"
+],
+"370": [
+"XeCryptBnQw_Zero",
+"kFunction"
+],
+"371": [
+"XeCryptChainAndSumMac",
+"kFunction"
+],
+"372": [
+"XeCryptDesParity",
+"kFunction"
+],
+"373": [
+"XeCryptDesKey",
+"kFunction"
+],
+"374": [
+"XeCryptDesEcb",
+"kFunction"
+],
+"375": [
+"XeCryptDesCbc",
+"kFunction"
+],
+"376": [
+"XeCryptDes3Key",
+"kFunction"
+],
+"377": [
+"XeCryptDes3Ecb",
+"kFunction"
+],
+"378": [
+"XeCryptDes3Cbc",
+"kFunction"
+],
+"379": [
+"XeCryptHmacMd5Init",
+"kFunction"
+],
+"38": [
+"HalRegisterPowerDownNotification",
+"kFunction"
+],
+"380": [
+"XeCryptHmacMd5Update",
+"kFunction"
+],
+"381": [
+"XeCryptHmacMd5Final",
+"kFunction"
+],
+"382": [
+"XeCryptHmacMd5",
+"kFunction"
+],
+"383": [
+"XeCryptHmacShaInit",
+"kFunction"
+],
+"384": [
+"XeCryptHmacShaUpdate",
+"kFunction"
+],
+"385": [
+"XeCryptHmacShaFinal",
+"kFunction"
+],
+"386": [
+"XeCryptHmacSha",
+"kFunction"
+],
+"387": [
+"XeCryptHmacShaVerify",
+"kFunction"
+],
+"388": [
+"XeCryptMd5Init",
+"kFunction"
+],
+"389": [
+"XeCryptMd5Update",
+"kFunction"
+],
+"39": [
+"HalRegisterSMCNotification",
+"kFunction"
+],
+"390": [
+"XeCryptMd5Final",
+"kFunction"
+],
+"391": [
+"XeCryptMd5",
+"kFunction"
+],
+"392": [
+"XeCryptParveEcb",
+"kFunction"
+],
+"393": [
+"XeCryptParveCbcMac",
+"kFunction"
+],
+"394": [
+"XeCryptRandom",
+"kFunction"
+],
+"395": [
+"XeCryptRc4Key",
+"kFunction"
+],
+"396": [
+"XeCryptRc4Ecb",
+"kFunction"
+],
+"397": [
+"XeCryptRc4",
+"kFunction"
+],
+"398": [
+"XeCryptRotSumSha",
+"kFunction"
+],
+"399": [
+"XeCryptShaInit",
+"kFunction"
+],
+"4": [
+"DbgPrompt",
+"kFunction"
+],
+"40": [
+"HalReturnToFirmware",
+"kFunction"
+],
+"400": [
+"XeCryptShaUpdate",
+"kFunction"
+],
+"401": [
+"XeCryptShaFinal",
+"kFunction"
+],
+"402": [
+"XeCryptSha",
+"kFunction"
+],
+"403": [
+"XexExecutableModuleHandle",
+"kVariable"
+],
+"404": [
+"XexCheckExecutablePrivilege",
+"kFunction"
+],
+"405": [
+"XexGetModuleHandle",
+"kFunction"
+],
+"406": [
+"XexGetModuleSection",
+"kFunction"
+],
+"407": [
+"XexGetProcedureAddress",
+"kFunction"
+],
+"408": [
+"XexLoadExecutable",
+"kFunction"
+],
+"409": [
+"XexLoadImage",
+"kFunction"
+],
+"41": [
+"HalSendSMCMessage",
+"kFunction"
+],
+"410": [
+"XexLoadImageFromMemory",
+"kFunction"
+],
+"411": [
+"XexLoadImageHeaders",
+"kFunction"
+],
+"412": [
+"XexPcToFileHeader",
+"kFunction"
+],
+"413": [
+"KiApcNormalRoutineNop_",
+"kFunction"
+],
+"414": [
+"XexRegisterPatchDescriptor",
+"kFunction"
+],
+"415": [
+"XexSendDeferredNotifications",
+"kFunction"
+],
+"416": [
+"XexStartExecutable",
+"kFunction"
+],
+"417": [
+"XexUnloadImage",
+"kFunction"
+],
+"418": [
+"XexUnloadImageAndExitThread",
+"kFunction"
+],
+"419": [
+"XexUnloadTitleModules",
+"kFunction"
+],
+"42": [
+"HalSetAudioEnable",
+"kFunction"
+],
+"420": [
+"XexVerifyImageHeaders",
+"kFunction"
+],
+"421": [
+"__C_specific_handler",
+"kFunction"
+],
+"422": [
+"DbgLoadImageSymbols",
+"kFunction"
+],
+"423": [
+"DbgUnLoadImageSymbols",
+"kFunction"
+],
+"424": [
+"RtlImageDirectoryEntryToData",
+"kFunction"
+],
+"425": [
+"RtlImageNtHeader",
+"kFunction"
+],
+"426": [
+"ExDebugMonitorService",
+"kFunction"
+],
+"427": [
+"MmDbgReadCheck",
+"kFunction"
+],
+"428": [
+"MmDbgReleaseAddress",
+"kFunction"
+],
+"429": [
+"MmDbgWriteCheck",
+"kFunction"
+],
+"43": [
+"InterlockedFlushSList",
+"kFunction"
+],
+"430": [
+"ExLoadedCommandLine",
+"kVariable"
+],
+"431": [
+"ExLoadedImageName",
+"kVariable"
+],
+"432": [
+"VdBlockUntilGUIIdle",
+"kFunction"
+],
+"433": [
+"VdCallGraphicsNotificationRoutines",
+"kFunction"
+],
+"434": [
+"VdDisplayFatalError",
+"kFunction"
+],
+"435": [
+"VdEnableClosedCaption",
+"kFunction"
+],
+"436": [
+"VdEnableDisableClockGating",
+"kFunction"
+],
+"437": [
+"VdEnableDisablePowerSavingMode",
+"kFunction"
+],
+"438": [
+"VdEnableRingBufferRPtrWriteBack",
+"kFunction"
+],
+"439": [
+"VdGenerateGPUCSCCoefficients",
+"kFunction"
+],
+"44": [
+"InterlockedPopEntrySList",
+"kFunction"
+],
+"440": [
+"VdGetClosedCaptionReadyStatus",
+"kFunction"
+],
+"441": [
+"VdGetCurrentDisplayGamma",
+"kFunction"
+],
+"442": [
+"VdGetCurrentDisplayInformation",
+"kFunction"
+],
+"443": [
+"VdGetDisplayModeOverride",
+"kFunction"
+],
+"444": [
+"VdGetGraphicsAsicID",
+"kFunction"
+],
+"445": [
+"VdGetSystemCommandBuffer",
+"kFunction"
+],
+"446": [
+"VdGlobalDevice",
+"kVariable"
+],
+"447": [
+"VdGlobalXamDevice",
+"kVariable"
+],
+"448": [
+"VdGpuClockInMHz",
+"kVariable"
+],
+"449": [
+"VdHSIOCalibrationLock",
+"kVariable"
+],
+"45": [
+"InterlockedPushEntrySList",
+"kFunction"
+],
+"450": [
+"VdInitializeEngines",
+"kFunction"
+],
+"451": [
+"VdInitializeRingBuffer",
+"kFunction"
+],
+"452": [
+"VdInitializeScaler",
+"kFunction"
+],
+"453": [
+"VdInitializeScalerCommandBuffer",
+"kFunction"
+],
+"454": [
+"VdIsHSIOTrainingSucceeded",
+"kFunction"
+],
+"455": [
+"VdPersistDisplay",
+"kFunction"
+],
+"456": [
+"VdQuerySystemCommandBuffer",
+"kFunction"
+],
+"457": [
+"VdQueryVideoFlags",
+"kFunction"
+],
+"458": [
+"VdQueryVideoMode",
+"kFunction"
+],
+"459": [
+"VdReadDVERegisterUlong",
+"kFunction"
+],
+"46": [
+"IoAcquireDeviceObjectLock",
+"kFunction"
+],
+"460": [
+"VdReadWriteHSIOCalibrationFlag",
+"kFunction"
+],
+"461": [
+"VdRegisterGraphicsNotification",
+"kFunction"
+],
+"462": [
+"VdRegisterXamGraphicsNotification",
+"kFunction"
+],
+"463": [
+"VdSendClosedCaptionData",
+"kFunction"
+],
+"464": [
+"VdSetCGMSOption",
+"kFunction"
+],
+"465": [
+"VdSetColorProfileAdjustment",
+"kFunction"
+],
+"466": [
+"VdSetCscMatricesOverride",
+"kFunction"
+],
+"467": [
+"VdSetDisplayMode",
+"kFunction"
+],
+"468": [
+"VdSetDisplayModeOverride",
+"kFunction"
+],
+"469": [
+"VdSetGraphicsInterruptCallback",
+"kFunction"
+],
+"47": [
+"IoAllocateIrp",
+"kFunction"
+],
+"470": [
+"VdSetHDCPOption",
+"kFunction"
+],
+"471": [
+"VdSetMacrovisionOption",
+"kFunction"
+],
+"472": [
+"VdSetSystemCommandBuffer",
+"kFunction"
+],
+"473": [
+"VdSetSystemCommandBufferGpuIdentifierAddress",
+"kFunction"
+],
+"474": [
+"VdSetWSSData",
+"kFunction"
+],
+"475": [
+"VdSetWSSOption",
+"kFunction"
+],
+"476": [
+"VdShutdownEngines",
+"kFunction"
+],
+"477": [
+"VdTurnDisplayOff",
+"kFunction"
+],
+"478": [
+"VdTurnDisplayOn",
+"kFunction"
+],
+"479": [
+"KiApcNormalRoutineNop",
+"kFunction"
+],
+"48": [
+"IoBuildAsynchronousFsdRequest",
+"kFunction"
+],
+"480": [
+"VdWriteDVERegisterUlong",
+"kFunction"
+],
+"481": [
+"XVoicedHeadsetPresent",
+"kFunction"
+],
+"482": [
+"XVoicedSubmitPacket",
+"kFunction"
+],
+"483": [
+"XVoicedClose",
+"kFunction"
+],
+"484": [
+"XVoicedActivate",
+"kFunction"
+],
+"485": [
+"XInputdGetCapabilities",
+"kFunction"
+],
+"486": [
+"XInputdReadState",
+"kFunction"
+],
+"487": [
+"XInputdWriteState",
+"kFunction"
+],
+"488": [
+"XInputdNotify",
+"kFunction"
+],
+"489": [
+"XInputdRawState",
+"kFunction"
+],
+"49": [
+"IoBuildDeviceIoControlRequest",
+"kFunction"
+],
+"490": [
+"HidGetCapabilities",
+"kFunction"
+],
+"491": [
+"HidReadKeys",
+"kFunction"
+],
+"492": [
+"XInputdGetDeviceStats",
+"kFunction"
+],
+"493": [
+"XInputdResetDevice",
+"kFunction"
+],
+"494": [
+"XInputdSetRingOfLight",
+"kFunction"
+],
+"495": [
+"XInputdSetRFPowerMode",
+"kFunction"
+],
+"496": [
+"XInputdSetRadioFrequency",
+"kFunction"
+],
+"497": [
+"HidGetLastInputTime",
+"kFunction"
+],
+"498": [
+"XAudioRenderDriverInitialize",
+"kFunction"
+],
+"499": [
+"XAudioRegisterRenderDriverClient",
+"kFunction"
+],
+"5": [
+"DumpGetRawDumpInfo",
+"kFunction"
+],
+"50": [
+"IoBuildSynchronousFsdRequest",
+"kFunction"
+],
+"500": [
+"XAudioUnregisterRenderDriverClient",
+"kFunction"
+],
+"501": [
+"XAudioSubmitRenderDriverFrame",
+"kFunction"
+],
+"502": [
+"XAudioRenderDriverLock",
+"kFunction"
+],
+"503": [
+"XAudioGetVoiceCategoryVolumeChangeMask",
+"kFunction"
+],
+"504": [
+"XAudioGetVoiceCategoryVolume",
+"kFunction"
+],
+"505": [
+"XAudioSetVoiceCategoryVolume",
+"kFunction"
+],
+"506": [
+"XAudioBeginDigitalBypassMode",
+"kFunction"
+],
+"507": [
+"XAudioEndDigitalBypassMode",
+"kFunction"
+],
+"508": [
+"XAudioSubmitDigitalPacket",
+"kFunction"
+],
+"509": [
+"XAudioQueryDriverPerformance",
+"kFunction"
+],
+"51": [
+"IoCallDriver",
+"kFunction"
+],
+"510": [
+"XAudioGetRenderDriverThread",
+"kFunction"
+],
+"511": [
+"XAudioGetSpeakerConfig",
+"kFunction"
+],
+"512": [
+"XAudioSetSpeakerConfig",
+"kFunction"
+],
+"513": [
+"NicSetUnicastAddress",
+"kFunction"
+],
+"514": [
+"NicAttach",
+"kFunction"
+],
+"515": [
+"NicDetach",
+"kFunction"
+],
+"516": [
+"NicXmit",
+"kFunction"
+],
+"517": [
+"NicUpdateMcastMembership",
+"kFunction"
+],
+"518": [
+"NicFlushXmitQueue",
+"kFunction"
+],
+"519": [
+"NicShutdown",
+"kFunction"
+],
+"52": [
+"IoCheckShareAccess",
+"kFunction"
+],
+"520": [
+"NicGetLinkState",
+"kFunction"
+],
+"521": [
+"NicGetStats",
+"kFunction"
+],
+"522": [
+"NicGetOpt",
+"kFunction"
+],
+"523": [
+"NicSetOpt",
+"kFunction"
+],
+"524": [
+"DrvSetSysReqCallback",
+"kFunction"
+],
+"525": [
+"DrvSetUserBindingCallback",
+"kFunction"
+],
+"526": [
+"DrvSetContentStorageCallback",
+"kFunction"
+],
+"527": [
+"DrvSetAutobind",
+"kFunction"
+],
+"528": [
+"DrvGetContentStorageNotification",
+"kFunction"
+],
+"529": [
+"MtpdBeginTransaction",
+"kFunction"
+],
+"53": [
+"IoCompleteRequest",
+"kFunction"
+],
+"530": [
+"MtpdCancelTransaction",
+"kFunction"
+],
+"531": [
+"MtpdEndTransaction",
+"kFunction"
+],
+"532": [
+"MtpdGetCurrentDevices",
+"kFunction"
+],
+"533": [
+"MtpdReadData",
+"kFunction"
+],
+"534": [
+"MtpdReadEvent",
+"kFunction"
+],
+"535": [
+"MtpdResetDevice",
+"kFunction"
+],
+"536": [
+"MtpdSendData",
+"kFunction"
+],
+"537": [
+"MtpdVerifyProximity",
+"kFunction"
+],
+"538": [
+"XUsbcamSetCaptureMode",
+"kFunction"
+],
+"539": [
+"XUsbcamGetConfig",
+"kFunction"
+],
+"54": [
+"IoCompletionObjectType",
+"kVariable"
+],
+"540": [
+"XUsbcamSetConfig",
+"kFunction"
+],
+"541": [
+"XUsbcamGetState",
+"kFunction"
+],
+"542": [
+"XUsbcamReadFrame",
+"kFunction"
+],
+"543": [
+"XUsbcamSnapshot",
+"kFunction"
+],
+"544": [
+"XUsbcamSetView",
+"kFunction"
+],
+"545": [
+"XUsbcamGetView",
+"kFunction"
+],
+"546": [
+"XUsbcamCreate",
+"kFunction"
+],
+"547": [
+"XUsbcamDestroy",
+"kFunction"
+],
+"548": [
+"XMACreateContext",
+"kFunction"
+],
+"549": [
+"XMAInitializeContext",
+"kFunction"
+],
+"55": [
+"IoCreateDevice",
+"kFunction"
+],
+"550": [
+"XMAReleaseContext",
+"kFunction"
+],
+"551": [
+"XMAEnableContext",
+"kFunction"
+],
+"552": [
+"XMADisableContext",
+"kFunction"
+],
+"553": [
+"XMAGetOutputBufferWriteOffset",
+"kFunction"
+],
+"554": [
+"XMASetOutputBufferReadOffset",
+"kFunction"
+],
+"555": [
+"XMAGetOutputBufferReadOffset",
+"kFunction"
+],
+"556": [
+"XMASetOutputBufferValid",
+"kFunction"
+],
+"557": [
+"XMAIsOutputBufferValid",
+"kFunction"
+],
+"558": [
+"XMASetInputBuffer0Valid",
+"kFunction"
+],
+"559": [
+"XMAIsInputBuffer0Valid",
+"kFunction"
+],
+"56": [
+"IoCreateFile",
+"kFunction"
+],
+"560": [
+"XMASetInputBuffer1Valid",
+"kFunction"
+],
+"561": [
+"XMAIsInputBuffer1Valid",
+"kFunction"
+],
+"562": [
+"XMASetInputBuffer0",
+"kFunction"
+],
+"563": [
+"XMASetInputBuffer1",
+"kFunction"
+],
+"564": [
+"XMAGetPacketMetadata",
+"kFunction"
+],
+"565": [
+"XMABlockWhileInUse",
+"kFunction"
+],
+"566": [
+"XMASetLoopData",
+"kFunction"
+],
+"567": [
+"XMASetInputBufferReadOffset",
+"kFunction"
+],
+"568": [
+"XMAGetInputBufferReadOffset",
+"kFunction"
+],
+"569": [
+"ExIsBetaFeatureEnabled",
+"kFunction"
+],
+"57": [
+"IoDeleteDevice",
+"kFunction"
+],
+"570": [
+"XeKeysGetFactoryChallenge",
+"kFunction"
+],
+"571": [
+"XeKeysSetFactoryResponse",
+"kFunction"
+],
+"572": [
+"XeKeysInitializeFuses",
+"kFunction"
+],
+"573": [
+"XeKeysSaveBootLoader",
+"kFunction"
+],
+"574": [
+"XeKeysSaveKeyVault",
+"kFunction"
+],
+"575": [
+"XeKeysGetStatus",
+"kFunction"
+],
+"576": [
+"XeKeysGeneratePrivateKey",
+"kFunction"
+],
+"577": [
+"XeKeysGetKeyProperties",
+"kFunction"
+],
+"578": [
+"XeKeysSetKey",
+"kFunction"
+],
+"579": [
+"XeKeysGenerateRandomKey",
+"kFunction"
+],
+"58": [
+"IoDeviceObjectType",
+"kVariable"
+],
+"580": [
+"XeKeysGetKey",
+"kFunction"
+],
+"581": [
+"XeKeysGetDigest",
+"kFunction"
+],
+"582": [
+"XeKeysGetConsoleID",
+"kFunction"
+],
+"583": [
+"XeKeysGetConsoleType",
+"kFunction"
+],
+"584": [
+"XeKeysQwNeRsaPrvCrypt",
+"kFunction"
+],
+"585": [
+"XeKeysHmacSha",
+"kFunction"
+],
+"586": [
+"XInputdPassThroughRFCommand",
+"kFunction"
+],
+"587": [
+"XeKeysAesCbc",
+"kFunction"
+],
+"588": [
+"XeKeysDes2Cbc",
+"kFunction"
+],
+"589": [
+"XeKeysDesCbc",
+"kFunction"
+],
+"59": [
+"IoDismountVolume",
+"kFunction"
+],
+"590": [
+"XeKeysObscureKey",
+"kFunction"
+],
+"591": [
+"XeKeysHmacShaUsingKey",
+"kFunction"
+],
+"592": [
+"XeKeysSaveBootLoaderEx",
+"kFunction"
+],
+"593": [
+"XeKeysAesCbcUsingKey",
+"kFunction"
+],
+"594": [
+"XeKeysDes2CbcUsingKey",
+"kFunction"
+],
+"595": [
+"XeKeysDesCbcUsingKey",
+"kFunction"
+],
+"596": [
+"XeKeysObfuscate",
+"kFunction"
+],
+"597": [
+"XeKeysUnObfuscate",
+"kFunction"
+],
+"598": [
+"XeKeysConsolePrivateKeySign",
+"kFunction"
+],
+"599": [
+"XeKeysConsoleSignatureVerification",
+"kFunction"
+],
+"6": [
+"DumpWriteDump",
+"kFunction"
+],
+"60": [
+"IoDismountVolumeByFileHandle",
+"kFunction"
+],
+"600": [
+"XeKeysVerifyRSASignature",
+"kFunction"
+],
+"601": [
+"StfsCreateDevice",
+"kFunction"
+],
+"602": [
+"StfsControlDevice",
+"kFunction"
+],
+"603": [
+"VdSwap",
+"kFunction"
+],
+"604": [
+"HalFsbInterruptCount",
+"kVariable"
+],
+"605": [
+"XeKeysSaveSystemUpdate",
+"kFunction"
+],
+"606": [
+"XeKeysLockSystemUpdate",
+"kFunction"
+],
+"607": [
+"XeKeysExecute",
+"kFunction"
+],
+"608": [
+"XeKeysGetVersions",
+"kFunction"
+],
+"609": [
+"XInputdPowerDownDevice",
+"kFunction"
+],
+"61": [
+"IoDismountVolumeByName",
+"kFunction"
+],
+"610": [
+"AniBlockOnAnimation",
+"kFunction"
+],
+"611": [
+"AniTerminateAnimation",
+"kFunction"
+],
+"612": [
+"XUsbcamReset",
+"kFunction"
+],
+"613": [
+"AniSetLogo",
+"kFunction"
+],
+"614": [
+"KeCertMonitorData",
+"kVariable"
+],
+"615": [
+"HalIsExecutingPowerDownDpc",
+"kFunction"
+],
+"619": [
+"VdHSIOTrainCount",
+"kVariable"
+],
+"62": [
+"IoFileObjectType",
+"kVariable"
+],
+"620": [
+"HalGetPowerUpCause",
+"kFunction"
+],
+"621": [
+"VdHSIOTrainingStatus",
+"kVariable"
+],
+"622": [
+"RgcBindInfo",
+"kVariable"
+],
+"623": [
+"VdReadEEDIDBlock",
+"kFunction"
+],
+"624": [
+"VdEnumerateVideoModes",
+"kFunction"
+],
+"625": [
+"VdEnableHDCP",
+"kFunction"
+],
+"626": [
+"VdRegisterHDCPNotification",
+"kFunction"
+],
+"627": [
+"HidReadMouseChanges",
+"kFunction"
+],
+"628": [
+"DumpSetCollectionFacility",
+"kFunction"
+],
+"629": [
+"XexTransformImageKey",
+"kFunction"
+],
+"63": [
+"IoFreeIrp",
+"kFunction"
+],
+"630": [
+"XAudioOverrideSpeakerConfig",
+"kFunction"
+],
+"631": [
+"XInputdReadTextKeystroke",
+"kFunction"
+],
+"632": [
+"DrvXenonButtonPressed",
+"kFunction"
+],
+"633": [
+"DrvBindToUser",
+"kFunction"
+],
+"634": [
+"XexGetModuleImportVersions",
+"kFunction"
+],
+"635": [
+"RtlComputeCrc32",
+"kFunction"
+],
+"636": [
+"XeKeysSetRevocationList",
+"kFunction"
+],
+"637": [
+"HalRegisterPowerDownCallback",
+"kFunction"
+],
+"638": [
+"VdGetDisplayDiscoveryData",
+"kFunction"
+],
+"639": [
+"XInputdSendStayAliveRequest",
+"kFunction"
+],
+"64": [
+"IoInitializeIrp",
+"kFunction"
+],
+"640": [
+"XVoicedSendVPort",
+"kFunction"
+],
+"641": [
+"XVoicedGetBatteryStatus",
+"kFunction"
+],
+"642": [
+"XInputdFFGetDeviceInfo",
+"kFunction"
+],
+"643": [
+"XInputdFFSetEffect",
+"kFunction"
+],
+"644": [
+"XInputdFFUpdateEffect",
+"kFunction"
+],
+"645": [
+"XInputdFFEffectOperation",
+"kFunction"
+],
+"646": [
+"XInputdFFDeviceControl",
+"kFunction"
+],
+"647": [
+"XInputdFFSetDeviceGain",
+"kFunction"
+],
+"648": [
+"XInputdFFCancelIo",
+"kFunction"
+],
+"649": [
+"XInputdFFSetRumble",
+"kFunction"
+],
+"65": [
+"IoInvalidDeviceRequest",
+"kFunction"
+],
+"650": [
+"NtAllocateEncryptedMemory",
+"kFunction"
+],
+"651": [
+"NtFreeEncryptedMemory",
+"kFunction"
+],
+"652": [
+"XeKeysExSaveKeyVault",
+"kFunction"
+],
+"653": [
+"XeKeysExSetKey",
+"kFunction"
+],
+"654": [
+"XeKeysExGetKey",
+"kFunction"
+],
+"655": [
+"DrvSetDeviceConfigChangeCallback",
+"kFunction"
+],
+"656": [
+"DrvDeviceConfigChange",
+"kFunction"
+],
+"657": [
+"HalRegisterHdDvdRomNotification",
+"kFunction"
+],
+"658": [
+"XeKeysSecurityInitialize",
+"kFunction"
+],
+"659": [
+"XeKeysSecurityLoadSettings",
+"kFunction"
+],
+"66": [
+"ExSetBetaFeaturesEnabled",
+"kFunction"
+],
+"660": [
+"XeKeysSecuritySaveSettings",
+"kFunction"
+],
+"661": [
+"XeKeysSecuritySetDetected",
+"kFunction"
+],
+"662": [
+"XeKeysSecurityGetDetected",
+"kFunction"
+],
+"663": [
+"XeKeysSecuritySetActivated",
+"kFunction"
+],
+"664": [
+"XeKeysSecurityGetActivated",
+"kFunction"
+],
+"665": [
+"XeKeysDvdAuthAP25InstallTable",
+"kFunction"
+],
+"666": [
+"XeKeysDvdAuthAP25GetTableVersion",
+"kFunction"
+],
+"667": [
+"XeKeysGetProtectedFlag",
+"kFunction"
+],
+"668": [
+"XeKeysSetProtectedFlag",
+"kFunction"
+],
+"669": [
+"KeEnablePFMInterrupt",
+"kFunction"
+],
+"67": [
+"IoQueueThreadIrp",
+"kFunction"
+],
+"670": [
+"KeDisablePFMInterrupt",
+"kFunction"
+],
+"671": [
+"KeSetProfilerISR",
+"kFunction"
+],
+"672": [
+"VdStartDisplayDiscovery",
+"kFunction"
+],
+"673": [
+"VdSetHDCPRevocationList",
+"kFunction"
+],
+"674": [
+"XeKeysGetUpdateSequence",
+"kFunction"
+],
+"675": [
+"XeKeysDvdAuthExActivate",
+"kFunction"
+],
+"676": [
+"KeGetImagePageTableEntry",
+"kFunction"
+],
+"677": [
+"HalRegisterBackgroundModeTransitionCallback",
+"kFunction"
+],
+"678": [
+"AniStartBootAnimation",
+"kFunction"
+],
+"679": [
+"HalClampUnclampOutputDACs",
+"kFunction"
+],
+"68": [
+"IoReleaseDeviceObjectLock",
+"kFunction"
+],
+"680": [
+"HalPowerDownToBackgroundMode",
+"kFunction"
+],
+"681": [
+"HalNotifyAddRemoveBackgroundTask",
+"kFunction"
+],
+"682": [
+"HalCallBackgroundModeNotificationRoutines",
+"kFunction"
+],
+"683": [
+"HalFsbResetCount",
+"kVariable"
+],
+"684": [
+"HalGetMemoryInformation",
+"kFunction"
+],
+"685": [
+"XInputdGetLastTextInputTime",
+"kFunction"
+],
+"686": [
+"VdEnableWMAProOverHDMI",
+"kFunction"
+],
+"687": [
+"XeKeysRevokeSaveSettings",
+"kFunction"
+],
+"688": [
+"XInputdSetTextMessengerIndicator",
+"kFunction"
+],
+"689": [
+"MicDeviceRequest",
+"kFunction"
+],
+"69": [
+"IoRemoveShareAccess",
+"kFunction"
+],
+"690": [
+"XeKeysGetMediaID",
+"kFunction"
+],
+"691": [
+"XeKeysLoadKeyVault",
+"kFunction"
+],
+"692": [
+"KeGetVidInfo",
+"kFunction"
+],
+"693": [
+"HalNotifyBackgroundModeTransitionComplete",
+"kFunction"
+],
+"694": [
+"IoAcquireCancelSpinLock",
+"kFunction"
+],
+"695": [
+"IoReleaseCancelSpinLock",
+"kFunction"
+],
+"696": [
+"NtCancelIoFile",
+"kFunction"
+],
+"697": [
+"NtCancelIoFileEx",
+"kFunction"
+],
+"698": [
+"HalFinalizePowerLossRecovery",
+"kFunction"
+],
+"699": [
+"HalSetPowerLossRecovery",
+"kFunction"
+],
+"7": [
+"ExAcquireReadWriteLockExclusive",
+"kFunction"
+],
+"70": [
+"IoSetIoCompletion",
+"kFunction"
+],
+"700": [
+"ExReadModifyWriteXConfigSettingUlong",
+"kFunction"
+],
+"701": [
+"HalRegisterXamPowerDownCallback",
+"kFunction"
+],
+"702": [
+"ExCancelAlarm",
+"kFunction"
+],
+"703": [
+"ExInitializeAlarm",
+"kFunction"
+],
+"704": [
+"ExSetAlarm",
+"kFunction"
+],
+"705": [
+"XexActivationGetNonce",
+"kFunction"
+],
+"706": [
+"XexActivationSetLicense",
+"kFunction"
+],
+"707": [
+"IptvSetBoundaryKey",
+"kFunction"
+],
+"708": [
+"IptvSetSessionKey",
+"kFunction"
+],
+"709": [
+"IptvVerifyOmac1Signature",
+"kFunction"
+],
+"71": [
+"IoSetShareAccess",
+"kFunction"
+],
+"710": [
+"IptvGetAesCtrTransform",
+"kFunction"
+],
+"711": [
+"SataCdRomRecordReset",
+"kFunction"
+],
+"712": [
+"XInputdSetTextDeviceKeyLocks",
+"kFunction"
+],
+"713": [
+"XInputdGetTextDeviceKeyLocks",
+"kFunction"
+],
+"714": [
+"XexActivationVerifyOwnership",
+"kFunction"
+],
+"715": [
+"XexDisableVerboseDbgPrint",
+"kFunction"
+],
+"716": [
+"SvodCreateDevice",
+"kFunction"
+],
+"717": [
+"RtlCaptureStackBackTrace",
+"kFunction"
+],
+"718": [
+"XeKeysRevokeUpdateDynamic",
+"kFunction"
+],
+"719": [
+"XexImportTraceEnable",
+"kFunction"
+],
+"72": [
+"IoStartNextPacket",
+"kFunction"
+],
+"720": [
+"ExRegisterXConfigNotification",
+"kFunction"
+],
+"721": [
+"XeKeysSecuritySetStat",
+"kFunction"
+],
+"722": [
+"VdQueryRealVideoMode",
+"kFunction"
+],
+"723": [
+"XexSetExecutablePrivilege",
+"kFunction"
+],
+"724": [
+"XAudioSuspendRenderDriverClients",
+"kFunction"
+],
+"725": [
+"IptvGetSessionKeyHash",
+"kFunction"
+],
+"726": [
+"VdSetCGMSState",
+"kFunction"
+],
+"727": [
+"VdSetSCMSState",
+"kFunction"
+],
+"728": [
+"KeFlushMultipleTb",
+"kFunction"
+],
+"729": [
+"VdGetOption",
+"kFunction"
+],
+"73": [
+"IoStartNextPacketByKey",
+"kFunction"
+],
+"730": [
+"VdSetOption",
+"kFunction"
+],
+"731": [
+"UsbdBootEnumerationDoneEvent",
+"kVariable"
+],
+"732": [
+"StfsDeviceErrorEvent",
+"kVariable"
+],
+"733": [
+"ExTryToAcquireReadWriteLockExclusive",
+"kFunction"
+],
+"734": [
+"ExTryToAcquireReadWriteLockShared",
+"kFunction"
+],
+"735": [
+"XexSetLastKdcTime",
+"kFunction"
+],
+"736": [
+"XInputdControl",
+"kFunction"
+],
+"737": [
+"RmcDeviceRequest",
+"kFunction"
+],
+"738": [
+"LDIResetDecompression",
+"kFunction"
+],
+"739": [
+"NicRegisterDevice",
+"kFunction"
+],
+"74": [
+"IoStartPacket",
+"kFunction"
+],
+"740": [
+"UsbdAddDeviceComplete",
+"kFunction"
+],
+"741": [
+"UsbdCancelAsyncTransfer",
+"kFunction"
+],
+"742": [
+"UsbdGetDeviceSpeed",
+"kFunction"
+],
+"743": [
+"UsbdGetDeviceTopology",
+"kFunction"
+],
+"744": [
+"UsbdGetEndpointDescriptor",
+"kFunction"
+],
+"745": [
+"UsbdIsDeviceAuthenticated",
+"kFunction"
+],
+"746": [
+"UsbdOpenDefaultEndpoint",
+"kFunction"
+],
+"747": [
+"UsbdOpenEndpoint",
+"kFunction"
+],
+"748": [
+"UsbdQueueAsyncTransfer",
+"kFunction"
+],
+"749": [
+"UsbdQueueCloseDefaultEndpoint",
+"kFunction"
+],
+"75": [
+"IoSynchronousDeviceIoControlRequest",
+"kFunction"
+],
+"750": [
+"UsbdQueueCloseEndpoint",
+"kFunction"
+],
+"751": [
+"UsbdRemoveDeviceComplete",
+"kFunction"
+],
+"752": [
+"KeRemoveQueueApc",
+"kFunction"
+],
+"753": [
+"UsbdDriverLoadRequiredEvent",
+"kVariable"
+],
+"754": [
+"UsbdGetRequiredDrivers",
+"kFunction"
+],
+"755": [
+"UsbdRegisterDriverObject",
+"kFunction"
+],
+"756": [
+"UsbdUnregisterDriverObject",
+"kFunction"
+],
+"757": [
+"UsbdCallAndBlockOnDpcRoutine",
+"kFunction"
+],
+"758": [
+"UsbdResetDevice",
+"kFunction"
+],
+"759": [
+"UsbdGetDeviceDescriptor",
+"kFunction"
+],
+"76": [
+"IoSynchronousFsdRequest",
+"kFunction"
+],
+"760": [
+"NomnilGetExtension",
+"kFunction"
+],
+"761": [
+"NomnilStartCloseDevice",
+"kFunction"
+],
+"762": [
+"WifiBeginAuthentication",
+"kFunction"
+],
+"763": [
+"WifiCheckCounterMeasures",
+"kFunction"
+],
+"764": [
+"WifiChooseAuthenCipherSetFromBSSID",
+"kFunction"
+],
+"765": [
+"WifiCompleteAuthentication",
+"kFunction"
+],
+"766": [
+"WifiGetAssociationIE",
+"kFunction"
+],
+"767": [
+"WifiOnMICError",
+"kFunction"
+],
+"768": [
+"WifiPrepareAuthenticationContext",
+"kFunction"
+],
+"769": [
+"WifiRecvEAPOLPacket",
+"kFunction"
+],
+"77": [
+"KeAcquireSpinLockAtRaisedIrql",
+"kFunction"
+],
+"770": [
+"WifiDeduceNetworkType",
+"kFunction"
+],
+"771": [
+"NicUnregisterDevice",
+"kFunction"
+],
+"772": [
+"DumpXitThread",
+"kFunction"
+],
+"773": [
+"XInputdSetWifiChannel",
+"kFunction"
+],
+"774": [
+"NomnilSetLed",
+"kFunction"
+],
+"775": [
+"WifiCalculateRegulatoryDomain",
+"kFunction"
+],
+"776": [
+"WifiSelectAdHocChannel",
+"kFunction"
+],
+"777": [
+"WifiChannelToFrequency",
+"kFunction"
+],
+"778": [
+"MmGetPoolPagesType",
+"kFunction"
+],
+"779": [
+"ExExpansionInstall",
+"kFunction"
+],
+"78": [
+"KeAlertResumeThread",
+"kFunction"
+],
+"780": [
+"ExExpansionCall",
+"kFunction"
+],
+"781": [
+"PsCamDeviceRequest",
+"kFunction"
+],
+"782": [
+"McaDeviceRequest",
+"kFunction"
+],
+"783": [
+"DetroitDeviceRequest",
+"kFunction"
+],
+"784": [
+"XeCryptSha256Init",
+"kFunction"
+],
+"785": [
+"XeCryptSha256Update",
+"kFunction"
+],
+"786": [
+"XeCryptSha256Final",
+"kFunction"
+],
+"787": [
+"XeCryptSha256",
+"kFunction"
+],
+"788": [
+"XeCryptSha384Init",
+"kFunction"
+],
+"789": [
+"XeCryptSha384Update",
+"kFunction"
+],
+"79": [
+"KeAlertThread",
+"kFunction"
+],
+"790": [
+"XInputdGetDevicePid",
+"kFunction"
+],
+"791": [
+"HalGetNotedArgonErrors",
+"kFunction"
+],
+"792": [
+"XeCryptSha384Final",
+"kFunction"
+],
+"793": [
+"HalReadArgonEeprom",
+"kFunction"
+],
+"794": [
+"HalWriteArgonEeprom",
+"kFunction"
+],
+"795": [
+"XeKeysFcrtLoad",
+"kFunction"
+],
+"796": [
+"XeKeysFcrtSave",
+"kFunction"
+],
+"797": [
+"XeKeysFcrtSet",
+"kFunction"
+],
+"798": [
+"XeCryptSha384",
+"kFunction"
+],
+"799": [
+"XeCryptSha512Init",
+"kFunction"
+],
+"8": [
+"ExAcquireReadWriteLockShared",
+"kFunction"
+],
+"80": [
+"KeBlowFuses",
+"kFunction"
+],
+"800": [
+"XAudioRegisterRenderDriverMECClient",
+"kFunction"
+],
+"801": [
+"XAudioUnregisterRenderDriverMECClient",
+"kFunction"
+],
+"802": [
+"XAudioCaptureRenderDriverFrame",
+"kFunction"
+],
+"803": [
+"XeCryptSha512Update",
+"kFunction"
+],
+"804": [
+"XeCryptSha512Final",
+"kFunction"
+],
+"805": [
+"XeCryptSha512",
+"kFunction"
+],
+"806": [
+"XeCryptBnQwNeCompare",
+"kFunction"
+],
+"807": [
+"XVoicedGetDirectionalData",
+"kFunction"
+],
+"808": [
+"DrvSetMicArrayStartCallback",
+"kFunction"
+],
+"809": [
+"DevAuthGetStatistics",
+"kFunction"
+],
+"81": [
+"KeBoostPriorityThread",
+"kFunction"
+],
+"810": [
+"NullCableRequest",
+"kFunction"
+],
+"811": [
+"XeKeysRevokeIsDeviceRevoked",
+"kFunction"
+],
+"812": [
+"DumpUpdateDumpSettings",
+"kFunction"
+],
+"813": [
+"EtxConsumerDisableEventType",
+"kFunction"
+],
+"814": [
+"EtxConsumerEnableEventType",
+"kFunction"
+],
+"815": [
+"EtxConsumerProcessLogs",
+"kFunction"
+],
+"816": [
+"EtxConsumerRegister",
+"kFunction"
+],
+"817": [
+"EtxConsumerUnregister",
+"kFunction"
+],
+"818": [
+"EtxProducerLog",
+"kFunction"
+],
+"819": [
+"EtxProducerLogV",
+"kFunction"
+],
+"82": [
+"KeBugCheck",
+"kFunction"
+],
+"820": [
+"EtxProducerRegister",
+"kFunction"
+],
+"821": [
+"EtxProducerUnregister",
+"kFunction"
+],
+"822": [
+"EtxConsumerFlushBuffers",
+"kFunction"
+],
+"823": [
+"EtxProducerLogXwpp",
+"kFunction"
+],
+"824": [
+"EtxProducerLogXwppV",
+"kFunction"
+],
+"825": [
+"UsbdEnableDisableRootHubPort",
+"kFunction"
+],
+"826": [
+"EtxBufferRegister",
+"kFunction"
+],
+"827": [
+"EtxBufferUnregister",
+"kFunction"
+],
+"828": [
+"DumpRegisterDedicatedDataBlock",
+"kFunction"
+],
+"829": [
+"XeKeysDvdAuthExSave",
+"kFunction"
+],
+"83": [
+"KeBugCheckEx",
+"kFunction"
+],
+"830": [
+"XeKeysDvdAuthExInstall",
+"kFunction"
+],
+"831": [
+"XexShimDisable",
+"kFunction"
+],
+"832": [
+"XexShimEnable",
+"kFunction"
+],
+"833": [
+"XexShimEntryDisable",
+"kFunction"
+],
+"834": [
+"XexShimEntryEnable",
+"kFunction"
+],
+"835": [
+"XexShimEntryRegister",
+"kFunction"
+],
+"836": [
+"XexShimLock",
+"kFunction"
+],
+"837": [
+"XboxKrnlVersion4Digit",
+"kVariable"
+],
+"838": [
+"XeKeysObfuscateEx",
+"kFunction"
+],
+"839": [
+"XeKeysUnObfuscateEx",
+"kFunction"
+],
+"84": [
+"KeCancelTimer",
+"kFunction"
+],
+"840": [
+"XexTitleHash",
+"kFunction"
+],
+"841": [
+"XexTitleHashClose",
+"kFunction"
+],
+"842": [
+"XexTitleHashContinue",
+"kFunction"
+],
+"843": [
+"XexTitleHashOpen",
+"kFunction"
+],
+"844": [
+"XAudioGetRenderDriverTic",
+"kFunction"
+],
+"845": [
+"XAudioEnableDucker",
+"kFunction"
+],
+"846": [
+"XAudioSetDuckerLevel",
+"kFunction"
+],
+"847": [
+"XAudioIsDuckerEnabled",
+"kFunction"
+],
+"848": [
+"XAudioGetDuckerLevel",
+"kFunction"
+],
+"849": [
+"XAudioGetDuckerThreshold",
+"kFunction"
+],
+"85": [
+"KeConnectInterrupt",
+"kFunction"
+],
+"850": [
+"XAudioSetDuckerThreshold",
+"kFunction"
+],
+"851": [
+"XAudioGetDuckerAttackTime",
+"kFunction"
+],
+"852": [
+"XAudioSetDuckerAttackTime",
+"kFunction"
+],
+"853": [
+"XAudioGetDuckerReleaseTime",
+"kFunction"
+],
+"854": [
+"XAudioSetDuckerReleaseTime",
+"kFunction"
+],
+"855": [
+"XAudioGetDuckerHoldTime",
+"kFunction"
+],
+"856": [
+"XAudioSetDuckerHoldTime",
+"kFunction"
+],
+"857": [
+"DevAuthShouldAlwaysEnforce",
+"kFunction"
+],
+"858": [
+"XAudioGetUnderrunCount",
+"kFunction"
+],
+"859": [
+"DrvSetAudioLatencyCallback",
+"kFunction"
+],
+"86": [
+"KeContextFromKframes",
+"kFunction"
+],
+"860": [
+"XVoicedIsActiveProcess",
+"kFunction"
+],
+"861": [
+"KeExecuteOnProtectedStack",
+"kFunction"
+],
+"862": [
+"XeKeysVerifyPIRSSignature",
+"kFunction"
+],
+"863": [
+"XeCryptAesCtr",
+"kFunction"
+],
+"864": [
+"XeCryptAesCbcMac",
+"kFunction"
+],
+"865": [
+"XeCryptAesDmMac",
+"kFunction"
+],
+"866": [
+"EmaExecute",
+"kFunction"
+],
+"867": [
+"XeKeysGetTruncatedSecondaryConsoleId",
+"kFunction"
+],
+"868": [
+"ExFreeDebugPool",
+"kFunction"
+],
+"869": [
+"VdQueryVideoCapabilities",
+"kFunction"
+],
+"87": [
+"KeContextToKframes",
+"kFunction"
+],
+"870": [
+"UsbdGetDeviceRootPortType",
+"kFunction"
+],
+"871": [
+"VdGet3dVideoFormat",
+"kFunction"
+],
+"872": [
+"VdGetWSS2Data",
+"kFunction"
+],
+"873": [
+"VdSet3dVideoFormat",
+"kFunction"
+],
+"874": [
+"VdSetWSS2Data",
+"kFunction"
+],
+"875": [
+"XexReserveCodeBuffer",
+"kFunction"
+],
+"876": [
+"XexCommitCodeBuffer",
+"kFunction"
+],
+"877": [
+"RtlSetVectoredExceptionHandler",
+"kFunction"
+],
+"878": [
+"RtlClearVectoredExceptionHandler",
+"kFunction"
+],
+"879": [
+"XAudioSetProcessFrameCallback",
+"kFunction"
+],
+"88": [
+"KeCreateUserMode",
+"kFunction"
+],
+"880": [
+"UsbdGetRootHubDeviceNode",
+"kFunction"
+],
+"881": [
+"UsbdGetPortDeviceNode",
+"kFunction"
+],
+"882": [
+"UsbdGetNatalHub",
+"kFunction"
+],
+"883": [
+"UsbdGetNatalHardwareVersion",
+"kFunction"
+],
+"884": [
+"UsbdNatalHubRegisterNotificationCallback",
+"kFunction"
+],
+"885": [
+"KeCallAndBlockOnDpcRoutine",
+"kFunction"
+],
+"886": [
+"KeCallAndWaitForDpcRoutine",
+"kFunction"
+],
+"887": [
+"TidDeviceRequest",
+"kFunction"
+],
+"888": [
+"DmPrintData",
+"kFunction"
+],
+"889": [
+"VdSetStudioRGBMode",
+"kFunction"
+],
+"89": [
+"KeDebugMonitorData",
+"kVariable"
+],
+"890": [
+"UsbdTitleDriverResetAllUnrecognizedPorts",
+"kFunction"
+],
+"891": [
+"UsbdTitleDriverSetUnrecognizedPort",
+"kFunction"
+],
+"892": [
+"UsbdResetEndpoint",
+"kFunction"
+],
+"893": [
+"UsbdSetTimer",
+"kFunction"
+],
+"894": [
+"UsbdCancelTimer",
+"kFunction"
+],
+"895": [
+"UsbdQueueIsochTransfer",
+"kFunction"
+],
+"896": [
+"KeSetPageRelocationCallback",
+"kFunction"
+],
+"897": [
+"XexRegisterUsermodeModule",
+"kFunction"
+],
+"899": [
+"TitleDeviceAuthRequest",
+"kFunction"
+],
+"9": [
+"ExAllocatePool",
+"kFunction"
+],
+"90": [
+"KeDelayExecutionThread",
+"kFunction"
+],
+"900": [
+"KeRegisterSwapNotification",
+"kFunction"
+],
+"901": [
+"XInputdGetFailedConnectionOrBind",
+"kFunction"
+],
+"902": [
+"XInputdSetFailedConnectionOrBindCallback",
+"kFunction"
+],
+"904": [
+"XInputdSetMinMaxAuthDelay",
+"kFunction"
+],
+"905": [
+"VgcHandler_SetHandlers",
+"kFunction"
+],
+"906": [
+"VvcHandlerCancelTransfers",
+"kFunction"
+],
+"907": [
+"VvcHandlerRetrieveVoiceExtension",
+"kFunction"
+],
+"909": [
+"MmResetLowestAvailablePages",
+"kFunction"
+],
+"91": [
+"KeDeleteUserMode",
+"kFunction"
+],
+"916": [
+"VeSetHandlers",
+"kFunction"
+],
+"917": [
+"HalConfigureVeDevice",
+"kFunction"
+],
+"918": [
+"XeCryptSha224Init",
+"kFunction"
+],
+"919": [
+"XeCryptAesCreateKeySchedule",
+"kFunction"
+],
+"92": [
+"KeDisconnectInterrupt",
+"kFunction"
+],
+"920": [
+"XeCryptAesEncryptOne",
+"kFunction"
+],
+"921": [
+"XeCryptAesDecryptOne",
+"kFunction"
+],
+"922": [
+"XeCryptAesCbcEncrypt",
+"kFunction"
+],
+"923": [
+"XeCryptAesCbcDecrypt",
+"kFunction"
+],
+"924": [
+"XeCryptAesGcmInitialize",
+"kFunction"
+],
+"925": [
+"XeCryptAesGcmUpdate",
+"kFunction"
+],
+"926": [
+"XeCryptAesGcmFinalize",
+"kFunction"
+],
+"927": [
+"XeCryptEccGetCurveParameters",
+"kFunction"
+],
+"928": [
+"XeCryptEccEcdhGenerateKeypair",
+"kFunction"
+],
+"929": [
+"XeCryptEccEcdhExponentiate",
+"kFunction"
+],
+"93": [
+"KeEnableFpuExceptions",
+"kFunction"
+],
+"930": [
+"XeCryptEccEcdsaGenerateSignature",
+"kFunction"
+],
+"931": [
+"XeCryptEccEcdsaVerifySignature",
+"kFunction"
+],
+"94": [
+"KeEnablePPUPerformanceMonitor",
+"kFunction"
+],
+"95": [
+"KeEnterCriticalRegion",
+"kFunction"
+],
+"96": [
+"KeEnterUserMode",
+"kFunction"
+],
+"97": [
+"KeFlushCacheRange",
+"kFunction"
+],
+"98": [
+"KeFlushCurrentEntireTb",
+"kFunction"
+],
+"99": [
+"KeFlushEntireTb",
+"kFunction"
+]
+}
+}

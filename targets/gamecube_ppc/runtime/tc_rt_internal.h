@@ -17,11 +17,19 @@ static inline u32 tcrt_fold(u32 a)
     return (a - 0xc0000000u < TCRT_RAM_SIZE) ? a - 0x40000000u : a;
 }
 
+/* The hardware registers (target.json memory.mmio; tests/test_gc_io.py compares): a store is logged in order and
+ * reported as an IO line, a read faults. */
+static inline int tcrt_mmio(u32 a)
+{
+    return (a - 0xcc000000u < 0x10000u) || (a - 0xe0000000u < 0x4000u);
+}
+
 int tcrt_init(const char *dol, const char *code_ranges);
 void tcrt_reset(void);
 void tcrt_poke(u32 addr, const u8 *data, u32 len);
 void tcrt_set_call_returns(const u32 rets[16], const u64 frets[16]);
 void tcrt_report(FILE *out, u32 r3, u64 f1_bits, u32 r4);
+void tcrt_set_hw(const u32 *words); /* vectors.txt H: what reads of hardware registers answer, in turn */
 /* tc_strict.h (included by tc_rt.c): the stricter judge's vectors.txt lines J and U (header), N and W (per
  * vector, after tcrt_reset, which forgets them), and its report (CS lines). */
 void tcrt_strict_line(const char *line);

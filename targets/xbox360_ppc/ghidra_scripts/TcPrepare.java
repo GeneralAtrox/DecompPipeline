@@ -93,16 +93,22 @@ public class TcPrepare extends TcVectors {
                 + "). There is no decompiler output: translate asm.txt directly. The signature comes from the\n"
                 + "   registers the code reads before writing them. */\n";
         Files.write(packet.resolve("ghidra.c"), cText.getBytes("UTF-8"));
+        Map<Function, Proto> called = new LinkedHashMap<>();
+        for (Function c : calledBy()) called.put(c, c == fn ? proto : isImport(c) ? importProto(c) : prototypeOf(di, c));
+        passThrough(proto, called);
+        TcTrack.on = TcTrack.of(listing, body, calledBy(), proto, flow);  // pointer calls' arguments, float NaN words
         StringBuilder callees = new StringBuilder();
-        for (Function c : calledBy()) {
-            Proto cp = isImport(c) ? importProto(c) : prototypeOf(di, c);
+        for (Function c : called.keySet()) {
+            Proto cp = called.get(c);
             StringBuilder regs = new StringBuilder();
             for (String r : calleeRegs(cp)) regs.append(regs.length() > 0 ? "," : "").append('"').append(r).append('"');
             if (callees.length() > 0) callees.append(",\n    ");
             String cname = isImport(c) ? c.getName() : "fn_" + hex(c.getEntryPoint().getOffset());
-            callees.append(String.format("{\"addr\":\"%s\",\"regs\":[%s],\"signature\":\"%s\"%s}",
+            List<String> keeps = keeps(c);
+            callees.append(String.format("{\"addr\":\"%s\",\"regs\":[%s],\"signature\":\"%s\"%s%s}",
                 hex(c.getEntryPoint().getOffset()), regs, esc(cSignature(cname, cp)),
-                isImport(c) ? ",\"import\":\"" + esc(c.getName().substring(IMPORT_PREFIX.length())) + "\"" : ""));
+                isImport(c) ? ",\"import\":\"" + esc(c.getName().substring(IMPORT_PREFIX.length())) + "\"" : "",
+                keeps.isEmpty() ? "" : ",\"keeps\":" + jsonList(keeps)));
         }
         di.dispose();
         if (proto.unsupported == null && refuse != null) proto.unsupported = refuse;
@@ -210,17 +216,59 @@ public class TcPrepare extends TcVectors {
             jsonList(widened), nhints, sites, inv, jsonList(examples));
     }
 
-    // The functions fn calls or tail-branches to (helper families excepted: they run inline), sorted by entry.
+    // The functions fn calls or tail-branches to (helper families excepted: they run inline), sorted by entry; fn
+    // itself when it calls its own entry (TcOracle mocks that call like any other).
     List<Function> calledBy() {
         Set<Function> called = new TreeSet<>(Comparator.comparing(Function::getEntryPoint));
         for (Instruction in : listing.getInstructions(body, true)) {
             for (Reference r : in.getReferencesFrom()) {
-                if (!r.getReferenceType().isFlow() || body.contains(r.getToAddress())) continue;
+                if (!r.getReferenceType().isFlow() || body.contains(r.getToAddress()) && !selfCall(r)) continue;
                 Function t = fm.getFunctionAt(r.getToAddress());
-                if (t != null && t != fn && !isHelper(t)) called.add(t);
+                if (t != null && !isHelper(t)) called.add(t);
             }
         }
         return new ArrayList<>(called);
+    }
+
+    // The volatile registers a bl to c leaves as they were (TcFlow.clobbers), its results r3 and f1 aside; meta.json
+    // "keeps" (context.md lists them). The oracle's mock keeps them too (TcOracle.clobber).
+    static final List<String> KEEP_ORDER = new ArrayList<>();
+
+    static {
+        KEEP_ORDER.add("r0");
+        for (int i = 4; i <= 12; i++) KEEP_ORDER.add("r" + i);
+        KEEP_ORDER.add("f0");
+        for (int i = 2; i <= 13; i++) KEEP_ORDER.add("f" + i);
+        KEEP_ORDER.add("ctr");
+    }
+
+    List<String> keeps(Function c) {
+        if (flow == null) flow = new TcFlow(currentProgram, monitor);
+        Set<String> w = flow.clobbers(c.getEntryPoint());
+        List<String> out = new ArrayList<>();
+        for (String r : KEEP_ORDER) if (!w.contains(r)) out.add(r);
+        return out;
+    }
+
+    // The registers fn passes on untouched to a call that compares them (the shared rule, TcPassThrough) are inputs as
+    // well, added as param_rN like the other registers Ghidra's signature misses. fn's own entry, when it calls
+    // itself, compares the registers fn takes so far.
+    void passThrough(Proto proto, Map<Function, Proto> called) throws Exception {
+        TcPassThrough.take(fn, flow, ARG_REG, () -> {
+            Map<Address, Set<String>> at = new HashMap<>();
+            for (Function c : called.keySet()) at.put(c.getEntryPoint(), new HashSet<>(calleeRegs(called.get(c))));
+            return at;
+        }, r -> {
+            for (Param q : proto.params) if (q.storage.equals(r)) return false;
+            if (!proto.inputs.add(r)) return false;
+            Param q = new Param();
+            q.name = "param_" + r;
+            q.kind = r.startsWith("f") ? "f64" : "u64";
+            q.storage = r;
+            proto.params.add(q);
+            proto.paramIsPointer.add(false);
+            return true;
+        });
     }
 
     // An import's compared registers: the argument registers the caller writes between the previous call (or the
@@ -236,9 +284,11 @@ public class TcPrepare extends TcVectors {
             Instruction b = listing.getInstructionBefore(in.getAddress());
             for (int n = 0; b != null && body.contains(b.getAddress()) && n < 64; n++) {
                 if (b.getFlowType().isCall()) break;
-                for (PcodeOp op : b.getPcode()) {
-                    String r = flow.nameOf(op.getOutput());
-                    if (r != null && r.matches(ARG_REG)) p.inputs.add(r);
+                if (!TcFlow.identityMove(TcFlow.word(b))) {
+                    for (PcodeOp op : b.getPcode()) {
+                        String r = flow.nameOf(op.getOutput());
+                        if (r != null && r.matches(ARG_REG)) p.inputs.add(r);
+                    }
                 }
                 if (b.getAddress().equals(fn.getEntryPoint())) break;
                 b = listing.getInstructionBefore(b.getAddress());

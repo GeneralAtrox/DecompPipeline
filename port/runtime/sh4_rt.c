@@ -14,12 +14,12 @@
 #define MODE_SZ 0x00100000u
 #define MODE_PR 0x00080000u
 
-static u32 g_xf[16];
-static u32 g_fr[16];
+u32 port_sh4_xf[16]; /* tx/tc_rt_inline.h reads and writes these inline, like port_sh4_fr */
+u32 port_sh4_fr[16]; /* tx/tc_rt.h reads and writes these inline */
 static u32 g_mode;  /* FPSCR.FR | SZ | PR in their FPSCR bit positions */
 static u32 g_fpscr = 0x00040001u; /* FPSCR's other fields: sh4_rt_set_fpu_mode's DN=1, RM=1 until sh4_lds_fpscr */
-static u32 g_gs[7]; /* r8..r14 */
-static u32 g_ro[4]; /* r4..r7 as the last tc_call passed them, or as a translated callee handed one back (TcOut) */
+u32 port_sh4_gs[7]; /* r8..r14 */
+u32 port_sh4_ro[4]; /* r4..r7 as the last tc_call passed them, or as a translated callee handed one back (TcOut) */
 static u32 g_t; /* T: as a translated caller handed it over, or as a translated callee handed it back (TcTflag) */
 extern const unsigned int port_fsca_sin[2][65536]; /* fsca: gen fsca_table.c (core/fsca.py): [0] nearest, [1] to zero */
 
@@ -118,33 +118,33 @@ void sh4_ftrv(f32 v[4])
 {
     f32 out[4];
     for (int row = 0; row < 4; row++) { /* XMTRX is column-major: row r is xf r, r+4, r+8, r+12 */
-        f32 m[4] = {u2f(g_xf[row]), u2f(g_xf[row + 4]), u2f(g_xf[row + 8]), u2f(g_xf[row + 12])};
+        f32 m[4] = {u2f(port_sh4_xf[row]), u2f(port_sh4_xf[row + 4]), u2f(port_sh4_xf[row + 8]), u2f(port_sh4_xf[row + 12])};
         out[row] = sh4_fipr(m, v);
     }
     for (int i = 0; i < 4; i++) v[i] = out[i];
 }
 
-f32 sh4_xf(int i) { return (i >= 0 && i < 16) ? u2f(g_xf[i]) : 0.0f; }
+f32 sh4_xf(int i) { return (i >= 0 && i < 16) ? u2f(port_sh4_xf[i]) : 0.0f; }
 
 void sh4_set_xf(int i, f32 v)
 {
-    if (i >= 0 && i < 16) g_xf[i] = f2u(v);
+    if (i >= 0 && i < 16) port_sh4_xf[i] = f2u(v);
 }
 
-f32 sh4_fr(int i) { return (i >= 0 && i < 16) ? u2f(g_fr[i]) : 0.0f; }
+f32 sh4_fr(int i) { return (i >= 0 && i < 16) ? u2f(port_sh4_fr[i]) : 0.0f; }
 
 void sh4_set_fr(int i, f32 v)
 {
-    if (i >= 0 && i < 16) g_fr[i] = f2u(v);
+    if (i >= 0 && i < 16) port_sh4_fr[i] = f2u(v);
 }
 
 void sh4_frchg(void)
 {
     if (g_mode & MODE_PR) return;
     for (int i = 0; i < 16; i++) {
-        u32 t = g_fr[i];
-        g_fr[i] = g_xf[i];
-        g_xf[i] = t;
+        u32 t = port_sh4_fr[i];
+        port_sh4_fr[i] = port_sh4_xf[i];
+        port_sh4_xf[i] = t;
     }
     g_mode ^= MODE_FR;
 }
@@ -167,9 +167,9 @@ void sh4_ftrv_fv(int n)
 {
     if (n < 0 || n > 12 || (n & 3)) return;
     f32 v[4];
-    for (int i = 0; i < 4; i++) v[i] = u2f(g_fr[n + i]);
+    for (int i = 0; i < 4; i++) v[i] = u2f(port_sh4_fr[n + i]);
     sh4_ftrv(v);
-    for (int i = 0; i < 4; i++) g_fr[n + i] = f2u(v[i]);
+    for (int i = 0; i < 4; i++) port_sh4_fr[n + i] = f2u(v[i]);
 }
 
 void sh4_fipr_fv(int m, int n)
@@ -177,18 +177,18 @@ void sh4_fipr_fv(int m, int n)
     if (m < 0 || m > 12 || (m & 3) || n < 0 || n > 12 || (n & 3)) return;
     f32 a[4], b[4];
     for (int i = 0; i < 4; i++) {
-        a[i] = u2f(g_fr[m + i]);
-        b[i] = u2f(g_fr[n + i]);
+        a[i] = u2f(port_sh4_fr[m + i]);
+        b[i] = u2f(port_sh4_fr[n + i]);
     }
-    g_fr[n + 3] = f2u(sh4_fipr(a, b));
+    port_sh4_fr[n + 3] = f2u(sh4_fipr(a, b));
 }
 
-u32 sh4_r(int i) { return (i >= 8 && i < 15) ? g_gs[i - 8] : (i >= 4 && i < 8) ? g_ro[i - 4] : 0; }
+u32 sh4_r(int i) { return (i >= 8 && i < 15) ? port_sh4_gs[i - 8] : (i >= 4 && i < 8) ? port_sh4_ro[i - 4] : 0; }
 
 void sh4_set_r(int i, u32 v)
 {
-    if (i >= 8 && i < 15) g_gs[i - 8] = v;
-    if (i >= 4 && i < 8) g_ro[i - 4] = v;
+    if (i >= 8 && i < 15) port_sh4_gs[i - 8] = v;
+    if (i >= 4 && i < 8) port_sh4_ro[i - 4] = v;
 }
 
 u32 sh4_t(void) { return g_t; }
@@ -269,11 +269,11 @@ void sh4_ldc_gbr(u32 v) { g_gbr = v; }
 /* The register state an in-between frame (frame_extra.c) must leave as it found it. */
 void sh4_rt_extra_state(void)
 {
-    port_extra_state(g_xf, sizeof g_xf);
-    port_extra_state(g_fr, sizeof g_fr);
+    port_extra_state(port_sh4_xf, sizeof port_sh4_xf);
+    port_extra_state(port_sh4_fr, sizeof port_sh4_fr);
     port_extra_state(&g_mode, sizeof g_mode);
     port_extra_state(&g_fpscr, sizeof g_fpscr);
-    port_extra_state(g_gs, sizeof g_gs);
+    port_extra_state(port_sh4_gs, sizeof port_sh4_gs);
     port_extra_state(&g_gbr, sizeof g_gbr);
 }
 

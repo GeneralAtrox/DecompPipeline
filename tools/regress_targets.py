@@ -43,7 +43,7 @@ ENTRY = {"prepare": ["core.ghidra"], "judge": ["core.check"], "readable": ["core
 # targets/T/<first part>: its class (anything else under targets/T is "gate", unknown)
 TARGET_PARTS = {"ghidra_scripts": "prepare", "template": "prepare", "ghidra_lang": "prepare",
                 "target.json": "prepare", "runtime": "judge", "runtime_rd": "readable", "README.md": "none",
-                "xemu": "none", "tools": "none", "match_include": "judge"}
+                "xemu": "judge", "tools": "none", "match_include": "judge"}  # xemu: the junk oracle's (core/junk_ram)
 
 
 def modules(root=TOOL):

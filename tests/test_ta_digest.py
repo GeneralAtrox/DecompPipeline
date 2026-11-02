@@ -191,7 +191,7 @@ class PortHalf(unittest.TestCase):
                  "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}), encoding="utf-8")
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
             cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
-                  f'/I"{KIT / "host"}" /I"{rd}" t.c "{KIT / "runtime" / "ta_digest.c"}" /Fet.exe')
+                  f'/I"{KIT / "base"}" /I"{rd}" t.c "{KIT / "runtime" / "ta_digest.c"}" /Fet.exe')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
                                errors="replace", timeout=300)

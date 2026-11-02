@@ -141,7 +141,7 @@ class Emitter:
                     pa = f"{ind}px_a(&a, {', '.join(new[k][0] for k in FULL_ORDER)}, {new[('S', 0)][0]});"
                 elif keys == FULL_ARGS and all(("s", k) in new for k in range(8)):
                     pa = f"{ind}px_b(&a, {', '.join(new[k][0] for k in FULL_ORDER + S_ORDER)});"
-                if pa and len(pa.replace(' ', '')) < sum(len(x.replace(' ', '')) for x in lines):
+                if pa and ("sp", 0) not in new and len(pa.replace(' ', '')) < sum(len(x.replace(' ', '')) for x in lines):
                     lines = [pa]
             out += lines
             self.avals.update(new)
@@ -151,7 +151,7 @@ class Emitter:
             elif any(k[0] == "s" for k in new):
                 self.avals.pop(("S", 0), None)
             t = self.r(coerce(s.target, "u32"))
-            if s.note == "dead":
+            if s.note == "dead" or s.kind == "v":
                 out.append(f"{ind}(void)tc_call({t}, &a);")
             elif s.kind == "f":
                 out.append(f"{ind}f1 = tc_callf({t}, &a);")
@@ -297,7 +297,7 @@ def function_text(ft, fn, structured=True, short=False):
     code = "\n".join(x for x in body if not x.strip().startswith("/*"))
     named = set(IDENT.findall(code))
     params = {p[0] for p in ft.sig.params}
-    local = [n for n in named if n in fn.types and n not in params and n != "g_"]
+    local = [n for n in named if n in fn.types and n not in params and n != "g_" and n != "sp0" and n != "tcr12" and n != "tcr13" and not n.startswith("tcnv")]
     for extra in ("ct_", "sw_", "fl_", "jt_"):
         if extra in named and extra not in local:  # (a second text of the same function has it already)
             local.append(extra)
@@ -309,6 +309,13 @@ def function_text(ft, fn, structured=True, short=False):
         sig.params = used
         sig.text = f"{sig.ret} {sig.name}({ptxt})"
     out = ["#include \"tc_rt.h\"", ""]
+    if "sp0" in named:                  # port form: the stack pointer arrives in tc_sp (tc_call sets it from TcArgs.sp)
+        out += ["extern __declspec(thread) u32 tc_sp;", ""]
+    for r in ("12", "13"):              # a funclet's parent frame (tc_call sets it from TcArgs.r12); the thread's processor block
+        if f"tcr{r}" in named:
+            out += [f"extern __declspec(thread) u32 tc_r{r};", ""]
+    if any(n.startswith("tcnv") for n in named):
+        out += ["extern __declspec(thread) const u64 *tc_nv;", ""]
     need = {h for h in HELPERS if h in named}
     for h in list(need):
         need |= set(DEPS.get(h, []))
@@ -323,6 +330,14 @@ def function_text(ft, fn, structured=True, short=False):
     out.append(sig.text)
     out.append("{")
     out += declarations(local, fn)
+    if "sp0" in named:
+        out.append("    u32 sp0 = tc_sp;")
+    if "tcr12" in named:
+        out.append("    u32 tcr12 = tc_r12;")
+    if "tcr13" in named:
+        out.append("    u32 tcr13 = tc_r13;")
+    for n in sorted(n for n in named if n.startswith("tcnv")):
+        out.append(f"    u64 {n} = tc_nv[{n[4:]}];")
     if "tc_call" in named or "tc_callf" in named:
         out.append("    TcArgs a = {0};")
     for n, _, _, _ in sig.params:

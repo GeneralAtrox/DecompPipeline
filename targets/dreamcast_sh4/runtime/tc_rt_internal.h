@@ -34,6 +34,10 @@ static inline int tcrt_area5(u32 a, u32 size)
     return a < 0xe0000000u && z >= a && (a & 0x1c000000u) == 0x14000000u && (z & 0x1c000000u) == 0x14000000u
            && (a ^ z) < 0x04000000u;
 }
+/* PVR video memory in the P2 view (0xa5000000..0xa57fffff): served only for a function whose listed hardware ops say
+ * so (TcHw "read vram", vectors.txt header line v). The word at a 4-aligned A is the same function as TcBase.vramWord. */
+static inline int tcrt_vram(u32 a, u32 size) { return a >= 0xa5000000u && size <= 0x00800000u && a - 0xa5000000u <= 0x00800000u - size; }
+static inline u32 tcrt_vram_word(u32 a) { return ((a >> 2) & 0x1fffffu) * 0x9e3779b1u + 0x7f4a7c15u; }
 /* P4 operand-cache address array (tc_p4.c): stores there are logged and compared, not faults */
 #define TCRT_P4_OCA_LO 0xf4000000u
 #define TCRT_P4_OCA_HI 0xf5000000u
@@ -46,7 +50,7 @@ static inline int tcrt_p4_logged(u32 a, u32 size)
     return (a >= TCRT_P4_OCA_LO && a <= TCRT_P4_OCA_HI - size) || (a >= TCRT_P4_QACR_LO && a <= TCRT_P4_QACR_HI - size);
 }
 #define TCRT_SP 0x8cffe000u
-#define TCRT_RETS 64 /* scripted call results per vector (line C, TcOracle.RETS); a later call returns 0 */
+#define TCRT_RETS 1024 /* scripted call results per vector at most (line C; TcOracle.RETS, 256 unless core/oracle_limits lists more); a later call returns 0 */
 
 int tcrt_init(const char *image, const char *code_ranges, const char *fsca_table);
 void tcrt_reset(void);
@@ -70,6 +74,7 @@ void tcrt_set_ro_mask(u32 mask);        /* header line O: r(4+k) compared at exi
 void tcrt_report_ro(FILE *out);         /* line RO: r4..r7 at exit, only after a line O */
 void tcrt_set_t_export(void);          /* header line t: T compared at exit (TcTflag) */
 void tcrt_report_t(FILE *out);         /* line RT: T at exit, only after a line t */
+void tcrt_set_vram(void);              /* header line v: video memory window reads (TcHw "read vram") */
 void tcrt_set_area5(void);             /* header line y: area-5 reads return 0 (TcHw "read area5") */
 u32 tcrt_low(int index);                 /* for the generated thunk: a parameter in r0..r3 */
 void tcrt_set_retx(u32 value);           /* for the generated thunk: the extra result word (line RETX) */

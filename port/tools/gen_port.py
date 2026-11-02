@@ -31,6 +31,7 @@ sys.path.insert(0, str(HERE))
 import game_config  # noqa: E402
 import scene_map  # noqa: E402
 import tx_port  # noqa: E402
+import tx_sqfast  # noqa: E402
 
 CHUNK_STUBS = 36
 CHUNK_ROWS = 180
@@ -77,6 +78,7 @@ def args_parse():
     p.add_argument("--engine", action="store_true", help="also compile the engine's readable files (default: stubs)")
     p.add_argument("--tx", default=None, help="translator C: tools/dp_judge.py --sp-input's --out folder")
     p.add_argument("--tx-mode", default=None, choices=tx_port.MODES, help="mix (default): readable C first; only")
+    p.add_argument("--sq-fast", action="store_true", help="the store-queue helpers a block at a time (game.json sq_fast; tx_sqfast.py)")
     return p.parse_args()
 
 
@@ -245,6 +247,8 @@ def translator_c(cfg, tx, reg, readable, files, paths, engine):
     platform -= own_float_maths(names, set(ok) | set(files), lambda x: paths.read_json(paths.HARNESS / x / "meta.json"))
     texts, glue_why = tx_port.inbound(reg, readable_abi, paths, ok, platform)
     why.update(glue_why)
+    if lookalike.ledger_warning(paths.ROOT):
+        print(lookalike.ledger_warning(paths.ROOT), file=sys.stderr)
     passing = lookalike.readable_sources(paths.ROOT) - set(cfg.get("tx_first") or [])  # game.json tx_first
     sq = {a for a in texts if tx_port.store_queues(ok[a].read_text(encoding="utf-8"))}
     rd, txs = tx_port.pick(tx[1], files, passing, texts, platform, sq)
@@ -267,11 +271,13 @@ def main():
         files = [x for x in files if int(x, 16) < game_end]
     write_if_changed(out / "port_entry.c", game_config.port_entry_c(cfg))
     from core import fsca  # noqa: E402  (load_core put the pipeline on the path)
-    write_if_changed(out / "fsca_table.c", fsca.table_c())
+    write_if_changed(out / "fsca_table.c", fsca.table_c(table_file=paths.fsca_table()))  # read, not rebuilt
     tx = tx_port.settings(cfg, a.tx, a.tx_mode)
     txs, tx_texts, tx_why = [], {}, {}
     if tx:
         files, txs, tx_texts, tx_why = translator_c(cfg, tx, reg, readable, files, paths, a.engine)
+        if a.sq_fast or cfg.get("sq_fast"):
+            print(f"sq_fast: {tx_sqfast.apply(tx_texts, out, write_if_changed)} translated functions with store queues")
     sigs, notes = library.raw_declarations(reg, files)
     for x in [*txs, *tx_why]:  # a translated (or left-out) function no readable file names: its raw signature
         if x not in reg.functions and x not in sigs and (paths.HARNESS / x / "meta.json").is_file():
@@ -383,7 +389,9 @@ def main():
     if tx:
         report += [f"translator C ({tx[1]}, {tx[0]}): {len(txs)} functions; readable C: {len(files)}; "
                    f"not used: {len(tx_why)}", *[f"  tx {x}: {w}" for x, w in sorted(tx_why.items())]]
-    (out / "gen_report.txt").write_text("\n".join(report) + "\n", encoding="utf-8")
+    from core import lookalike  # noqa: E402
+    report += [w for w in [lookalike.ledger_warning(paths.ROOT)] if tx and w]
+    write_if_changed(out / "gen_report.txt", "\n".join(report) + "\n")  # a no-change run rewrites nothing
     print("\n".join(report))
 
 

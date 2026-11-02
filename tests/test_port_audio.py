@@ -117,6 +117,53 @@ int main(void)
 """
 
 
+ADPCM_LOOP_MAIN_C = r"""#include <stdio.h>
+#include <stdarg.h>
+#include "game.h"
+#include "aica.h"
+
+static u8 g_sound[AICA_RAM_SIZE];
+void *host_map_fixed(u32 addr, u32 size) { (void)addr, (void)size; return g_sound; }
+void port_log(const char *fmt, ...) { (void)fmt; }
+void cdda_read(s16 *stereo, u32 frames) { for (u32 i = 0; i < 2u * frames; i++) stereo[i] = 0; }
+void audio_start(void) {}
+u32 port_vblank_count(void) { return 0; }
+void port_wait_vblank(void) {}
+u32 port_vblank_phase(int look) { (void)look; return 0; }
+
+#define FRAMES 2000u
+#define LOOP_START 1400u
+#define PERIOD (FRAMES - LOOP_START)
+
+int main(void)
+{
+    static s16 out[2 * (FRAMES + 4u * PERIOD)];
+    u32 seed = 12345u;
+    u8 *ram = aica_ram();
+    for (u32 i = 0; i < FRAMES / 2u; i++) {
+        seed = seed * 1103515245u + 12345u;
+        ram[0x1000u + i] = (u8)(seed >> 16);
+    }
+    aica_voice_sample(0, 0x1000u, FRAMES, AICA_ADPCM);
+    aica_voice_step(0, 0x10000u);
+    aica_voice_level(0, 15, 0);
+    aica_voice_play(0, 0, 1, LOOP_START, 0);
+    aica_next_frames(FRAMES + 4u * PERIOD);
+    aica_mix(out, FRAMES + 4u * PERIOD);
+    for (u32 k = 0; k <= 4u; k++) { /* the first pass through the loop (decoded straight on), then the wraps */
+        u32 sum = 0, moved = 0;
+        for (u32 i = 0; i < 2u * PERIOD; i++) {
+            s16 x = out[2u * (LOOP_START + k * PERIOD) + i];
+            sum = sum * 31u + (u16)x;
+            moved += x != out[2u * (LOOP_START + k * PERIOD)];
+        }
+        printf("%u %u ", sum, moved);
+    }
+    return 0;
+}
+"""
+
+
 def build_audio(d, main_c):
     """Compiles aica.c, ac_digi.c and main_c at /W4 /WX in d; returns (the compile, audio.exe's path)."""
     (d / "port_config.h").write_text(game_config.port_config_h(
@@ -126,7 +173,7 @@ def build_audio(d, main_c):
     (d / "audio_main.c").write_text(main_c, encoding="utf-8")
     rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
     srcs = " ".join(f'"{p}"' for p in [KIT / "runtime" / "aica.c", KIT / "sdk" / "ac_digi.c", d / "audio_main.c"])
-    cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
+    cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" '
           f'/I"{rd}" {srcs} /Fe:audio.exe')
     vc = str(game_config.vcvars32()).replace("/", "\\")
     r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
@@ -157,6 +204,26 @@ class AudioClock(unittest.TestCase):
                 want = (1 + k / 4 - 0.32) * 735.735
                 self.assertLessEqual(abs(pos - want), 1.5, f"quarter {k}: {pos} != {want:.1f} ({got})")
             self.assertEqual(got[5:], [0, 1])
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+
+class AdpcmLoop(unittest.TestCase):
+    @unittest.skipUnless(HAVE_VC, NO_VC)
+    def test_each_wrap_plays_what_the_first_pass_played(self):
+        """A plain ADPCM loop late in a sample: every pass after a wrap, the kept decoder state's as well as the first
+        wrap's decode from frame 0, gives the same samples as the first pass through the loop, decoded straight on."""
+        d = work_dir()
+        try:
+            r, exe = build_audio(d, ADPCM_LOOP_MAIN_C)
+            self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-1000:])
+            self.assertNotIn("warning", r.stdout.lower())
+            run = subprocess.run([str(exe)], capture_output=True, text=True, timeout=60)
+            self.assertEqual(run.returncode, 0)
+            got = [int(x) for x in run.stdout.split()]
+            self.assertEqual(len(got), 10, run.stdout)
+            self.assertGreater(got[1], 100, "the fixture must make sound")
+            self.assertEqual(got[0::2], [got[0]] * 5, run.stdout)
         finally:
             shutil.rmtree(d, ignore_errors=True)
 

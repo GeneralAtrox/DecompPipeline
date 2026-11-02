@@ -38,6 +38,8 @@ extern int xe_model_ftrc;
 extern int xe_model_ghmem;
 /* "sqwt": the oracle's store-queue model (TcSq) in place of the hardware's */
 extern int xe_model_sqwt;
+/* "sqlog": with sqwt, a pref's block logged as writes (xe_sq.c) */
+extern int xe_model_sqlog;
 void xe_ghmem_begin(u32 image_base, u32 image_size);
 void xe_ghmem_read(u32 a, int size);
 void xe_ghmem_write(u32 a, int size);
@@ -56,6 +58,10 @@ u32 xe_rd(u32 a, int size);
 u32 xe_rd_text(u32 a, int size); /* a PC-relative literal */
 void xe_wr(u32 a, u32 v, int size);
 void xe_pref(u32 a);
+void xe_sq_entry(const Xe *x);
+void xe_sq_callee(const Xe *x, u32 target);
+u32 xe_sq_ptr(const Xe *x);
+void xe_sq_moved(const Xe *x, u32 before);
 
 /* FPSCR */
 #define XE_FPSCR_FR 0x00200000u

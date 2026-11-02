@@ -107,7 +107,7 @@ void sh4_fipr_fv(int m, int n)
  * each call (FC). */
 #define FPSCR_BITS 0x003fffffu
 #define MODES (MODE_FR | MODE_SZ | MODE_PR)
-#define MAX_FC 4096 /* TcOracle.CALL_LIMIT */
+#define MAX_FC 8192 /* core/oracle_limits.CALLS[1] */
 
 static u32 g_fpscr;
 static int g_fs; /* line N given */

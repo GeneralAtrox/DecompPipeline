@@ -10,6 +10,8 @@ call (r4 and r9 kept, the subroutine's work lost). Pass and fail controls:
    still a call (control);
 3. `and #7,r0; shll2 r0; braf r0` into eight bra's: a switch over the 8 targets (the bit-width pass); flag bits
    built by rotcl in a local subroutine bound `shll2 r9; braf r9` the same way; an unbounded braf gets no table;
+   the cases of such a table that the body misses (Spawn 8c0703ba: Ghidra never saw them) join the body, unless another
+   function's entry lies in them;
 4. core/asm_modules: the leaf is a local piece of a module (reads r9 at entry, hands back r9 and r4); a leaf
    handing back only r4 is TcOut's class; a leaf sharing nothing is a plain private callee; a leaf whose address a
    word of the image holds is no local;
@@ -142,8 +144,8 @@ def bra_run(n):
 
 
 class BrafWidth(unittest.TestCase):
-    def switch_targets(self, words):
-        ft = tx.FunctionTranslator(image(words), BASE, SIG, tx.TargetFacts())
+    def switch_targets(self, words, body=None, entries=None):
+        ft = tx.FunctionTranslator(image(words), BASE, SIG, tx.TargetFacts(), body, entries=entries)
         ft.discover()
         return sorted(t for ts in ft.switches.values() for t in ts)
 
@@ -166,6 +168,29 @@ class BrafWidth(unittest.TestCase):
             words[len(head) + 2 * k] = 0xb000 | (((leaf_at - at - 4) // 2) & 0xfff)
         braf_at = BASE + 2 * (len(head) + len(calls) + 1)
         self.assertEqual(self.switch_targets(words), [braf_at + 4 + 4 * k for k in range(8)])
+
+    def flag_words(self):
+        """The flag-bits function; (words, braf address, body without the 8 bra slots)."""
+        head = [0x4f22, 0xe900]
+        calls = [None, 0x0009] * 3
+        tail = [0x4908, 0x0923, 0x0009] + bra_run(8)
+        leaf_at = BASE + 2 * (len(head) + len(calls) + len(tail))
+        words = head + calls + tail + [0xc801, 0x000b, 0x4924]
+        for k in range(3):
+            at = BASE + 2 * (len(head) + 2 * k)
+            words[len(head) + 2 * k] = 0xb000 | (((leaf_at - at - 4) // 2) & 0xfff)
+        braf_at = BASE + 2 * (len(head) + len(calls) + 1)
+        end = braf_at + 4 + 4 * 8
+        body = [(BASE, braf_at + 3), (end, end + 3), (leaf_at, leaf_at + 5)]
+        return words, braf_at, body
+
+    def test_cases_the_body_misses_join_it(self):  # Spawn 8c0703ba: the bra slots are code in no function
+        words, braf_at, body = self.flag_words()
+        self.assertEqual(self.switch_targets(words, body), [braf_at + 4 + 4 * k for k in range(8)])
+
+    def test_cases_with_another_entry_are_not_taken(self):  # control: a function starts inside the run
+        words, braf_at, body = self.flag_words()
+        self.assertEqual(self.switch_targets(words, body, entries={BASE, braf_at + 12}), [])
 
     def test_unbounded_braf_gets_no_table(self):  # control: braf r0 of an argument
         self.assertEqual(self.switch_targets([0x0423, 0x0009] + bra_run(2)), [])

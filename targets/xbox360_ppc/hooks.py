@@ -1,5 +1,5 @@
 """Xbox 360 hooks (core/target_hooks): the check, the agent sandbox and the uninitialised-stack scan, which core
-implements for the SH-4. The modules beside this file hold the Xenon versions. There is no byte-match check:
+implements for the SH-4, and the scope of a scoped oracle change (x360_scope). The modules beside this file hold the Xenon versions. There is no byte-match check:
 Xbox 360 titles were built with Microsoft's Xenon compiler, which DP cannot run (DESIGN.md)."""
 import pathlib
 import sys
@@ -10,6 +10,7 @@ if _here not in sys.path:
 
 import x360_agent  # noqa: E402
 import x360_check  # noqa: E402
+import x360_scope  # noqa: E402
 
 
 def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harness_dir=None):
@@ -24,3 +25,7 @@ def uninit_stack(packet, meta):
     """core/stack_uninit reads SH-4 asm; the oracle starts every frame zeroed in both oracle and runner, so a
     read-before-write frame word is equal on both sides and needs no report."""
     return []
+
+
+def stamp_scope(cfg, addr, scope):
+    return x360_scope.in_scope(cfg, addr, scope)

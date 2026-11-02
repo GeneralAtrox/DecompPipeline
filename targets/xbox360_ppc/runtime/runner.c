@@ -23,6 +23,16 @@ static int hexval(int c)
     return -1;
 }
 
+/* Fills the stack the function will run on with one pattern before each vector. A local the C never sets (an
+ * argument slot of a TcArgs it fills only in part) then reads the same bits on every run and machine, not a host
+ * address left by the last vector, and never equals an expected value by luck of what was there before. */
+#define TC_PAINT 0xa5a5a5a5a5a5a5a5ull
+static __declspec(noinline) void paint_stack(void)
+{
+    volatile u64 pad[1 << 13];
+    for (int i = 0; i < (1 << 13); i++) pad[i] = TC_PAINT;
+}
+
 static int run_one(const u64 *r, const f64 *f, u64 *r3, f64 *f1)
 {
     __try {
@@ -105,6 +115,7 @@ int main(int argc, char **argv)
             tcrt_set_call_returns(rets, frets);
             u64 r3 = 0;
             f64 f1 = 0.0;
+            paint_stack();
             int code = run_one(r, f, &r3, &f1);
             if (code) fprintf(out, "CRASH %08x\n", (u32)code);
             u64 b;

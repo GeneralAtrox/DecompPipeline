@@ -3,7 +3,8 @@
 //
 // Script args: 0 output path; 1.. function entries (hex); none = every function.
 // Output, one line per word of each body: "addr<TAB>word<TAB>mnemonic", the mnemonic "??" where Ghidra decoded no
-// instruction (a gap inside the body), lower case, as Ghidra prints it (simplified forms included: li, mr, slwi).
+// instruction (a gap inside the body), lower case, as Ghidra prints it (simplified forms included: li, mr, slwi). A
+// vector word TcSetup replaced by a stand-in is listed with its original word and "tcvmx:<mnemonic>" (TcVmx's reading).
 //@category DecompPipeline
 import ghidra.app.script.GhidraScript;
 import ghidra.program.model.address.*;
@@ -35,6 +36,11 @@ public class TcDecodeAudit extends GhidraScript {
                         int w = currentProgram.getMemory().getInt(at);
                         Instruction in = listing.getInstructionAt(at);
                         String m = in == null ? "??" : in.getMnemonicString().toLowerCase();
+                        TcVmx.Op vop = TcBase.vmxOpAt(currentProgram, at);  // TcSetup put a stand-in over this vector word
+                        if (vop != null) {
+                            w = vop.word;
+                            m = "tcvmx:" + vop.mn;
+                        }
                         if (in == null) gaps++;
                         words++;
                         pw.println(String.format("%08x\t%08x\t%s", at.getOffset(), w, m));

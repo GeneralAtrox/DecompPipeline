@@ -42,6 +42,9 @@ void vmfs_name(const u8 *entry, char *out); /* the entry's name as a C string (1
 
 /* Saves (or replaces) a data file of blocks blocks; time is a BUS_TIME (NULL: now). VMFS_OK, _FULL or _GAME. */
 int vmfs_save(u8 *img, const char *name, const u8 *data, u32 blocks, const u8 *time, u8 copyflag);
+int vmfs_save_game(u8 *img, const char *name, const u8 *data, u32 blocks, const u8 *time, u8 copyflag); /* a card holds one game, from block 0 */
+u32 vmfs_rewrite(u8 *img, u32 entry, const u8 *data, u32 start, u32 blocks);
+u32 vmfs_load_from(const u8 *img, u32 entry, u8 *buf, u32 start, u32 blocks);
 u32 vmfs_load(u8 *img, u32 entry, u8 *buf, u32 blocks); /* blocks 0: the whole file; the blocks moved */
 void vmfs_delete(u8 *img, u32 entry);
 

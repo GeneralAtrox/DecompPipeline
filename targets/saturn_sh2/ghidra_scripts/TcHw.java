@@ -34,6 +34,7 @@ final class TcHw {
     final Map<Long, Integer> widths = new HashMap<>();  // listed register -> its width in bytes (4 unless narrower)
     final TreeSet<Long> writes = new TreeSet<>();  // listed registers stored to
     boolean gbr, bl, cache;
+    boolean logging;  // TcExit reads a stored register back: the bytes stored, not the listed read value
 
     // Script arg 11: "-", or "hw" then "_"-separated items: "r" + register + "." + value (8 hex digits each; 2 per
     // byte of a narrower register),
@@ -100,12 +101,24 @@ final class TcHw {
 
     // TcFold: the bytes of a load inside one listed register (big endian), else null.
     byte[] read(long off, int size) {
+        if (logging) return null;
         Map.Entry<Long, Long> e = reads.floorEntry(off);
         int w = e == null ? 0 : width(e.getKey());
         if (e == null || off + size > e.getKey() + w) return null;
         byte[] b = new byte[size];
         for (int i = 0; i < size; i++) b[i] = (byte) (e.getValue() >> (8 * (w - 1 - (off - e.getKey() + i))));
         return b;
+    }
+
+    // TcExit: the bytes stored in a listed register (a function that reads and writes one: SMPC SF, VDP2 TVMD).
+    static byte[] stored(EmulatorHelper emu, Address a, int n) {
+        if (on == null) return emu.readMemory(a, n);
+        on.logging = true;
+        try {
+            return emu.readMemory(a, n);
+        } finally {
+            on.logging = false;
+        }
     }
 
     // A register's value as the arg gave it: 8 hex digits, 2 per byte of a narrower register.

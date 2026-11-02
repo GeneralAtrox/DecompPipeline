@@ -284,6 +284,12 @@ def before_agent(cfg, reg, addr, meta, mode, log=print):
     log(f"{kind}: {note}"[:300])
     if mode != "start":
         return None
+    if kind == "machine" and res["verdict"] == "PASS":
+        return "start", (path, "\n## work.c already passes the check\n\nThe readable pass (core/rtx) lifted raw.c and the "
+                               "judge passed it. Do not read raw.c and do not rewrite the file. Read work.c, give its "
+                               "locals (n1, x1, ...) the names their meaning calls for with small edits, and use a "
+                               "header's constant where context.md names the number. Then run `python check.py` once "
+                               f"and stop at DEV PASS. What is left: {note[:300]}\n")
     if kind == "machine":
         return "start", (path, "\n## work.c is a machine readable file\n\nThe readable pass (core/rtx) lifted the "
                                "translator's raw C: control flow, types, fields and the constants it could name from "

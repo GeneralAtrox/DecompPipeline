@@ -7,6 +7,7 @@ import re
 from .. import draft_run, readable, readable_abi
 from .cast import Cast, Var
 from .flow import Unsupported
+from . import pointer
 from .lift import Job
 
 
@@ -41,14 +42,14 @@ def make(cfg, reg, addr, meta, raw_text, spec):
     job.used_params = set()
     job.typedefs = set(reg.typedefs) | {"Vec3", "Mat4"}
 
-    def pointer(t, depth=0):
+    def is_pointer(t, depth=0):
         """Whether t is a pointer type, through typedefs (a function-pointer typedef too)."""
         t = re.sub(r"\b(?:const|volatile)\b", "", t or "").strip()
         if "*" in t:
             return True
         target = reg.typedefs.get(t)
-        return target is not None and depth < 8 and pointer(target, depth + 1)
-    job.pointer = pointer
+        return target is not None and depth < 8 and is_pointer(target, depth + 1)
+    job.pointer = is_pointer
     job.callee_types, job.callee_ret, job.callee_params = {}, {}, {}
     for c in meta["callees"]:
         try:
@@ -59,6 +60,8 @@ def make(cfg, reg, addr, meta, raw_text, spec):
         job.callee_types[c["addr"]] = [t for t, _ in ps]
         job.callee_ret[n] = r
         job.callee_params[n] = [t for t, _ in ps]
+    from .. import compare, paths
+    job.pointer_ca, job.call_total = pointer.pointer_ca(compare.parse_results(paths.HARNESS / addr / "expected.txt"))
     job.types = _types(reg)
     job.etypes, job.families = {}, {}
     job.global_types = {n: t for n, t, dims in names.globals.values() if not dims}

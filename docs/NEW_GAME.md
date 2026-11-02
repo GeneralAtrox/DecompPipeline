@@ -21,7 +21,7 @@ readable round and a native port follow (steps 6 and 8); a port can already run 
   only on proof that the judge lost none of the mutants it killed before.
 - **Prepare:** `ghidra_kill_s` gives a slow machine more wall time without changing any stamp; a failed prepare
   keeps the old harness. `tools/selective_restamp.py` refreshes only the harnesses a judge change touches.
-- **Port kit** (port/README.md lists every module and the game.json key that turns it on): Kamui 1, more of
+- **Port kit** (port/README.md lists every module; port/CONTRACT.md each SDK module and the game.json key that turns it on): Kamui 1, more of
   Kamui 2, ADX and Sofdec movies with sound, a game's own sound driver on an emulated AICA ARM7, the VMU screen,
   save file images, the console's heap layout, fibres, gdFs and ADXF, controllers set up without
   pdInitPeripheral, translucent modifier volumes, the game's own float maths in place of the host's, and the x87
@@ -52,6 +52,13 @@ Every long command should run under `tools/bounded.py SECONDS ...`, which kills 
 
 ## 1. Get the main binary off your disc
 
+Choosing between regions of a new game: check which regions libretro-database's cheat list covers (`cht/`, for the
+consoles where it has one). When the regions are otherwise equal, prefer the one with a list: its addresses then apply
+directly (see the cheat-hints line in the readable stage). It is a tiebreaker only; leftover symbols or debug names,
+and speed and language needs, come first. Record the choice and why in the game's notes. This is for new games; an
+existing game stays on its disc. A list for another region still helps: Toy Commander's USA address falls 8 bytes after
+our Europe disc's missile decrement, so check such hints near the same function.
+
 The short way does steps 1 and 2's setup in one command, for a Dreamcast, Saturn or GameCube disc. It extracts the
 binary into the workspace, writes `project.json` and `oracle/TcInputs.java`, runs `decomp.py setup`, and then
 checks Ghidra's decoding of every function against the target's own decoder:
@@ -63,6 +70,10 @@ python tools/bounded.py 3600 -- python tools/game_setup.py setup <image.gdi|.cue
 (Saturn overlays: `--file NAME@ADDR`; carried decisions: `--fields FILE`; see the tool's docstring. The Xbox 360 has
 `targets/xbox360_ppc/tools/x360setup.py`.) The hand steps it replaces follow; you still need the scan below to
 find overlays and the library list.
+
+Fill in the game's `LOCATIONS.md`, which setup leaves in the game folder: per machine, where its disc, BIOS, emulators,
+extracted data, clones, launcher mirror and logs are (AGENTS.md). Another route to a workspace gets the skeleton from
+`python tools/game_setup.py locations <workspace>`.
 
 Then add the game to this machine's progress page (`Dashboard.bat`, docs/DASHBOARD.md); nothing is added by itself:
 `python tools/dashboard.py add "<game folder>"`. It writes a starter `progress.json` there. Keep that file current:
@@ -201,11 +212,13 @@ figures and the causes of the rest). How the stage works: docs/TRANSLATOR_STAGE.
 - A designer (a strong model, one system at a time) writes the system's header (`readable/include/sys/sNN.h`),
   names (`readable/names/SNN.json`: functions, globals, read-only strings) and requests. The rules are in
   `docs/DESIGN_BRIEF_HEADERS.md`; Toy Commander's `readable/DESIGN_BRIEF.md` is a complete example.
+- With no designer yet, `tools/name_pass.py` names every function and parameter in one pass (one no-tools session per 30, on config `readable_model`; Vigilante 8, on Haiku: 2,297 functions for $0.12). Only names: types, order and storage stay the raw signature's, and the judge still decides every file. It is what lets a passing machine file be adopted; run it before the first readable chunk.
 - `refine.py header` must end with `headers OK` after every design edit.
 - Cheat codes name globals: with the user's yes to get the game's list (libretro-database `cht/Sega - Dreamcast` first), `tools/cheat_names.py` writes `readable/cheat_hints.md` before the designers start; a designer names a global from it only when the code that uses the address agrees.
 - A raw return type the decompiler got wrong is corrected in the names entry (`"raw_ret": "s32"`), never in raw C:
   `tools/sig_override.py --candidates` lists likely ones, `--apply` (servers stopped) carries the harness, matched
   C and callers, then `refine.py verify` the files it lists.
+- Run `tools/sig_override.py --candidates` after the raw stage and add `raw_ret` for the `read` and `fr0_exit` rows: a function typed void has no result the judge compares. Vigilante 8 had 74, most of whose call sites read the result, and it stopped 36 lifts. Then `tools/stack_params.py` after a lift run types the parameters callers pass a frame buffer.
 
 ## 6. Readable round
 
@@ -237,7 +250,7 @@ The kit holds no game code; your game's repository holds a port folder with:
 
 1. `game.json`: `decomp` (this workspace), `entry` (the first function to call, `void name(void)`, with its
    address), `image_base` (where the boot file loads), and optionally `disc`, `boot_file` (else IP.BIN's),
-   `must_work` and `fsca_table`. port/README.md lists every key.
+   `must_work` and `fsca_table`. port/CONTRACT.md lists every key.
 2. `sdk`: the kit modules whose function names your registry has. `python xproject.py --project <workspace>
    --from <earlier workspace> names` carries names over for byte-identical library functions; leave out a module
    your registry lacks names for and write your own. With `sy_sys`, also `console` (country, language, broadcast).
@@ -254,6 +267,12 @@ The kit holds no game code; your game's repository holds a port folder with:
    passes and the translator's judged C for the rest; `only` uses translator C everywhere; `tx_first` lists
    functions whose readable C yields to translator C. The port takes only the very text judged there (each row
    keeps the C's sha256). Overlays: overlays.json `translator_c`.
+
+6. The game log's map: copy `<workspace>/port_starter/scene_dump.json` (tools/game_setup.py writes it) to
+   `<port folder>/scene_dump.json` and fill in the fields the readable C names (game mode, stage, round, how many
+   characters, each player's health or lives, the timer, each character's action state), `"log": true` on the ones to
+   list when they change. Every play run then writes what the player did and how the game went into `port.log`, and
+   a playtest report is answered from that log, not from questions to the player (port/README.md "Game log").
 
 Toy Commander's `port/` (game.json, must_work.txt, its hardware and Kamui 2 files) is a complete example. A
 replacement that only needs SDK names belongs in the kit's `sdk/`; one bound to your game's own code stays with

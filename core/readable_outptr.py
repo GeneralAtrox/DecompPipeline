@@ -313,6 +313,22 @@ def deliver(runs, guest, mem):
     return "".join(out)
 
 
+def parked_bytes(runs, guest, mem):
+    """deliver's counterpart for the bytes it hides: per byte of the buffer, the hex of a byte the original stored
+    to before the call when both paints' runs hold the same value there, else "--" (delivered, or paint-dependent)."""
+    runs = [((ob, None) if isinstance(ob, str) else ob, flip) for ob, flip in runs]
+    n = min(len(h) for (h, _), _ in runs) // 2
+    out = []
+    for k in range(n):
+        a = guest + k
+        init, poked = mem.initial(a), mem_poked(mem, a)
+        vals = {int(h[2 * k:2 * k + 2], 16) for (h, _), _ in runs}
+        unwritten = all(int(h[2 * k:2 * k + 2], 16) == (init if poked else canary(a) ^ flip)
+                        and not (st and st[k:k + 1] == "1") for (h, st), flip in runs)
+        out.append("--" if unwritten or len(vals) != 1 else f"{vals.pop():02x}")
+    return "".join(out)
+
+
 def mem_poked(mem, a):
     return any(base <= a < base + len(data) for base, data in mem.patches)
 

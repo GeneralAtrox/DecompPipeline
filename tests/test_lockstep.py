@@ -142,7 +142,7 @@ def build(out, runtime=KIT / "runtime"):
     (out / "stubs.c").write_text(STUBS_C, encoding="utf-8")
     srcs = [out / "driver.c", out / "stubs.c"] + [runtime / n for n in RUNTIME if (runtime / n).is_file()]
     rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
-    cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 /I"{out}" /I"{runtime}" /I"{KIT / "runtime"}" /I"{rd}" '
+    cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 /I"{out}" /I"{runtime}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" /I"{rd}" '
           + " ".join(f'"{p}"' for p in srcs) + f' /Fe"{out / "lockstep.exe"}" /link /LARGEADDRESSAWARE '
           '/DYNAMICBASE:NO /BASE:0x5a000000')
     vc = str(game_config.vcvars32()).replace("/", "\\")
@@ -313,7 +313,7 @@ class LockstepWatchHost(unittest.TestCase):
             (out / "watch.c").write_text(WATCH_C, encoding="utf-8")
             build(out)  # port_config.h
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
-            cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 /I"{out}" /I"{KIT / 'runtime'}" /I"{rd}" "{out / 'watch.c'}" '
+            cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 /I"{out}" /I"{KIT / 'runtime'}" /I"{KIT / 'base'}" /I"{rd}" "{out / 'watch.c'}" '
                   f'"{KIT / "runtime" / "lockstep_watch.c"}" /Fe"{out / "watch.exe"}"')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=out, capture_output=True,
@@ -376,7 +376,7 @@ class LockstepEntryHost(unittest.TestCase):
             (out / "entry.c").write_text(ENTRY_C, encoding="utf-8")
             build(out)  # port_config.h
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
-            cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 /I"{out}" /I"{KIT / 'runtime'}" /I"{rd}" "{out / 'entry.c'}" '
+            cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 /I"{out}" /I"{KIT / 'runtime'}" /I"{KIT / 'base'}" /I"{rd}" "{out / 'entry.c'}" '
                   f'"{KIT / "runtime" / "lockstep_watch.c"}" /Fe"{out / "entry.exe"}"')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=out, capture_output=True,

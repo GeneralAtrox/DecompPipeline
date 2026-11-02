@@ -24,22 +24,37 @@ RET_R3 = {"u8": "(u64)", "u16": "(u64)", "u32": "(u64)", "s8": "(u64)(s64)", "s1
 FMA_MODES = {"two_roundings": 0, "fused": 1}
 
 
+MAX_C = 2_000_000  # work.c cap here; core/lint's 60 KB is an agent-readability limit, and 38 Too Human functions
+#                    (2,000 to 8,000 instructions) have translator C past it even in the short form
+
+
 def lint(src, meta):
-    """core/lint's rules (R2-R6), with the float rule worded for this target: f64 is the register type here."""
+    """core/lint's rules (R2-R6), with the float rule worded for this target: f64 is the register type here, and the
+    size cap is MAX_C (core/lint's 60 KB cap is waived up to it)."""
     out = []
     for e in core_lint(src, meta):
+        if e == "work.c is larger than 60 KB":
+            if len(src) > MAX_C:
+                out.append(f"work.c is larger than {MAX_C // 1000} KB")
+            continue
         out.append(e.replace("double precision (use f32 only)", "write f64, the tc_rt.h type, not double"))
     return out
 
 
-def gen_thunk(meta):
+# A double the declared prototype passes in an integer register (Ghidra's guess for a parameter past f13): the
+# register holds its 64 bits, so the C parameter is those bits as a double, as the translator's entry rebuilds r3..r10.
+BITS_F64 = "static f64 tc_bits_f64(u64 x)\n{\n    union { f64 d; u64 b; } v;\n    v.b = x;\n    return v.d;\n}\n"
+
+
+def gen_thunk(meta, stack_base=None):
+    """stack_base: a C expression for the caller's stack pointer (the port kit); None is the judge's fixed one."""
     args = []
     for p in meta["params"]:
         st, kind = p["storage"], p["kind"]
         if re.fullmatch(r"r([3-9]|10)", st):
-            if kind not in INT_KINDS:
+            if kind not in INT_KINDS and kind != "f64":
                 raise ValueError(f"parameter {p['name']} in {st} has kind {kind}")
-            e = f"{INT_KINDS[kind]}r[{int(st[1:]) - 3}]"
+            e = f"tc_bits_f64(r[{int(st[1:]) - 3}])" if kind == "f64" else f"{INT_KINDS[kind]}r[{int(st[1:]) - 3}]"
         elif re.fullmatch(r"f([1-9]|1[0-3])", st):
             e = f"f[{int(st[1:]) - 1}]"
             if kind == "f32":
@@ -47,10 +62,10 @@ def gen_thunk(meta):
             elif kind != "f64":
                 raise ValueError(f"parameter {p['name']} in {st} has kind {kind}")
         elif st == "stack":
-            a = cmp.SP + p["stack_offset"]
-            e = {"f32": f"rdf32(0x{a:08x}u)", "f64": f"rdf64(0x{a:08x}u)"}.get(kind)
+            a = f"0x{cmp.SP + p['stack_offset']:08x}u" if stack_base is None else f"{stack_base} + 0x{p['stack_offset']:x}u"
+            e = {"f32": f"rdf32({a})", "f64": f"rdf64({a})"}.get(kind)
             if e is None:  # a stack argument occupies a doubleword; an int lives in its low (higher-address) word
-                e = f"{INT_KINDS.get(kind, '')}rd64(0x{a:08x}u)"
+                e = f"{INT_KINDS.get(kind, '')}rd64({a})"
         else:
             raise ValueError(f"unsupported parameter storage {st}")
         args.append(e)
@@ -64,8 +79,9 @@ def gen_thunk(meta):
         body = f"*out_r3 = {RET_R3[ret]}{call};"
     else:
         raise ValueError(f"unsupported return kind {ret}")
+    helper = BITS_F64 if "tc_bits_f64" in call else ""
     return f"""#include "tc_rt.h"
-{meta['signature']};
+{helper}{meta['signature']};
 void tc_thunk(const u64 *r, const f64 *f, u64 *out_r3, f64 *out_f1);
 void tc_thunk(const u64 *r, const f64 *f, u64 *out_r3, f64 *out_f1)
 {{

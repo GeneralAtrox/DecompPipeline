@@ -9,7 +9,9 @@ reason}}).
 
 A site counts as
 - reached: some valid vector reaches it;
-- explained: unreached, and the harness's reach pass gave the reason it could not reach it;
+- explained: unreached, and the harness's reach pass gave the reason it could not reach it, or every run that
+  reached it (the first pass's or the reach pass's) makes an SH-4 address error and so is left out of the harness
+  (TcAlign);
 - untried: unreached, and the harness predates the reach pass (no "reach" key) or the pass was off: re-prepare it
   (tools/call_coverage.py reach).
 Functions without a harness summary, or with a summary without "call_sites", are counted apart (no data).
@@ -21,6 +23,25 @@ from . import filelock
 
 def _read_json(path):
     return json.loads(filelock.read_text(path)) if path.exists() else None
+
+
+ADDRESS_ERROR = ("reached only by runs that make an SH-4 address error (an access the console stops at): "
+                 "the harness leaves those runs out")
+
+
+def reasons(summary):
+    """{site: reason} for the unreached sites of an oracle summary that the reach pass explains: its own reasons, and
+    the sites with none whose every reaching run was left out for an address error. The reach pass targets every site
+    no run reached and gives each it leaves open a reason, and call_sites counts the written vectors only; so with the
+    pass run and runs left out (summary "address_errors"), a site counted 0 with no reason was reached by runs that
+    were left out: those of the first pass (the pass never targeted it) or the pass's own (it found it)."""
+    reach = summary.get("reach")
+    why = dict((reach or {}).get("unreached") or {})
+    if reach is not None and sum((summary.get("address_errors") or {}).get("left_out") or []):
+        for site, n in (summary.get("call_sites") or {}).items():
+            if not n and site not in why:
+                why[site] = ADDRESS_ERROR
+    return why
 
 
 def site_rows(addrs, harness_dir=None):
@@ -39,9 +60,9 @@ def site_rows(addrs, harness_dir=None):
         sites = s["call_sites"]
         reach = s.get("reach")
         unreached = sorted(x for x, n in sites.items() if not n)
-        reasons = dict((reach or {}).get("unreached") or {})
+        why = reasons(s)
         out[a] = {"total": len(sites), "reached": len(sites) - len(unreached), "unreached": unreached,
-                  "reasons": {x: reasons[x] for x in unreached if x in reasons}, "tried": reach is not None,
+                  "reasons": {x: why[x] for x in unreached if x in why}, "tried": reach is not None,
                   "reach_runs": (reach or {}).get("runs", 0), "found": list((reach or {}).get("found") or [])}
     return out
 

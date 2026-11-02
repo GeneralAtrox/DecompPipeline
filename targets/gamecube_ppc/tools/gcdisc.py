@@ -1,7 +1,7 @@
-"""Read a GameCube disc image (GCM/ISO, or a WIA/RVZ file through rvz.py): disc header, file list, file extraction,
+"""Read a GameCube disc image (GCM/ISO; WIA/RVZ through rvz.py; CISO through ciso.py): disc header, file list, extraction,
 the code on it (main.dol and the REL modules, also inside Yaz0 files and RARC archives) and the workspace setup.
 
-    python gcdisc.py info    <image.iso|.gcm|.rvz|.wia>
+    python gcdisc.py info    <image.iso|.gcm|.rvz|.wia|.ciso>
     python gcdisc.py list    <image> [out.tsv]
     python gcdisc.py extract <image> <out_dir> [NAME ...]   (default: main.dol; --code: main.dol and every REL file)
     python gcdisc.py scan    <image> [out.tsv]
@@ -42,7 +42,7 @@ import sys
 import zlib
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-import rvz  # noqa: E402
+import ciso, rvz  # noqa: E402
 
 GC_MAGIC, WII_MAGIC = 0xC2339F3D, 0x5D1C9EA3
 DOL_OFF, APPLOADER = 0x420, 0x2440
@@ -75,7 +75,7 @@ class Disc:
         with open(self.path, "rb") as f:
             magic = f.read(4)
         try:
-            self.img = rvz.Image(self.path) if magic in (b"RVZ\x01", b"WIA\x01") else Plain(self.path)
+            self.img = (rvz.Image if magic[:3] in (b"RVZ", b"WIA") else ciso.Image if magic == b"CISO" else Plain)(self.path)
         except ValueError as e:
             raise SystemExit(str(e))
         self.size = self.img.size

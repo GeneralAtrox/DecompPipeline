@@ -101,6 +101,7 @@ static int create(TexEntry *e, u32 w, u32 h)
     if (!levels) {
         levels = pvr_decode(e->tcw, w, h, e->stride, g_texels, g_texels_cap);
         texels = g_texels;
+        pvr_keys_note(e->tcw, w, h, e->stride, texels);
     }
     if (!levels) return 0;
     for (u32 i = 0; i < levels; i++) {

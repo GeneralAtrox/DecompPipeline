@@ -98,7 +98,8 @@ Every rule is enforced automatically. Breaking one fails the attempt.
 - `twi`/`tw` (traps, often `twllei rX,0` before a divide) never fire on the test inputs: skip them.
 - `fctiwz f0,f1; stfd f0,d(r1); lwz r3,d+4(r1)` is `r3 = (u32)ppc_fctiwz(f1)` (zero-extended by lwz).
   `fcmpu`/`fcmpo` then a branch: a NaN compares unordered (every one of <, >, == is false).
-- A callee's results: tc_call returns its r3 (64-bit), tc_callf its f1 (both scripted by the test harness).
+- A callee's results: tc_call returns its r3 (64-bit), tc_callf its f1 (both scripted by the test harness). Where
+  the original reads both after one call, take the other from tc_lastr() (r3) or tc_lastf() (f1): no new call.
 
 ## Procedure
 
@@ -133,13 +134,18 @@ def context_md(meta, summary):
     for c in meta["callees"]:
         regs = ", ".join(c["regs"]) or "none"
         what = f" ({c['import']})" if c.get("import") else ""
-        lines.append(f"- 0x{c['addr']}{what}: Ghidra's guess `{c['signature']}`. Argument registers compared: {regs}")
+        keeps = f". Keeps {', '.join(c['keeps'])} (unchanged by the call)" if c.get("keeps") else ""
+        lines.append(f"- 0x{c['addr']}{what}: Ghidra's guess `{c['signature']}`. Argument registers compared: {regs}"
+                     + keeps)
     if meta.get("frame_helpers"):
         lines += ["", "Frame helpers (skip these bl, R5): " + ", ".join(meta["frame_helpers"])]
     if any(r.startswith("s") for c in meta["callees"] for r in c["regs"]):
         lines += ["", "sN is a stack argument: the doubleword at r1+0x50+8N when the call is made. Set it in args.s[N]."]
     lines += ["", "Every call gets a scripted return value in r3 and f1 from the test harness. Use what tc_call or",
-              "tc_callf returns.", "", "## Globals the code names (r13 offsets and lis/addi pairs)", ""]
+              "tc_callf returns. After a call, every other volatile register (r0, r4-r12, f0, f2-f13, ctr) is 0,",
+              "except the ones a callee above keeps: they hold what they held before the call (the callee never",
+              "writes them, and the original may rely on that).", "",
+              "## Globals the code names (r13 offsets and lis/addi pairs)", ""]
     lines += [f"- 0x{g}" for g in meta["globals"]] or ["None."]
     if meta.get("ppc_special"):
         lines += ["", "## Instructions with a ppc_ helper", "",
