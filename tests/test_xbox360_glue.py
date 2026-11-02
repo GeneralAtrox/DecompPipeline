@@ -16,7 +16,7 @@ import sys
 import unittest
 
 sys.path[:0] = [str(pathlib.Path(__file__).resolve().parent)]
-from test_xbox360_ppc import (BASE, TEXT, THUNK, TOOL, X360, bl, synthetic_image, synthetic_xex,  # noqa: E402
+from test_xbox360_ppc import (BASE, IDATA, TEXT, THUNK, TOOL, X360, bl, synthetic_image, synthetic_xex,  # noqa: E402
                               tmpdir)
 from core import toolcfg  # noqa: E402
 
@@ -71,9 +71,9 @@ class Scan(unittest.TestCase):
         self.assertIsNone(main["refuse"])
         self.assertEqual((f[f"{TEXT + 0x200:08x}"]["source"], f[f"{TEXT + 0x200:08x}"]["size"]), ("bl", 8))
         self.assertEqual(f[f"{TEXT + 0x400:08x}"]["source"], "pointer")
-        self.assertEqual(f[f"{TEXT + 0x300:08x}"]["refuse"], "unsupported: VMX")
+        self.assertIsNone(f[f"{TEXT + 0x300:08x}"]["refuse"])  # vector code is judged now (TcVmx), not refused
         self.assertEqual(f[f"{TEXT + 0x100:08x}"]["kind"], "frame_helper")
-        self.assertEqual(cat["stats"]["phase1"], 3)
+        self.assertEqual(cat["stats"]["phase1"], 4)
 
     def test_proof_shape(self):
         import proof_pick
@@ -134,7 +134,7 @@ class Glue(unittest.TestCase):
 
     def test_target_json(self):
         t = json.loads((X360 / "target.json").read_text(encoding="utf-8"))
-        self.assertEqual(t["fma"], "two_roundings")
+        self.assertEqual(t["fma"], "fused")  # the user's decision, 2026-10-24 (DESIGN.md, open question 1)
         self.assertIn(t["fma"], x360_check.FMA_MODES)
         self.assertEqual(int(t["abi"]["entry_sp"], 16), cmp.SP)
         self.assertEqual(int(t["judge_memory"]["stack_lo"], 16), cmp.STACK[0])
@@ -247,6 +247,133 @@ class Runtime(unittest.TestCase):
         self.assertEqual(res[2]["calls"][0][0], 0x82010200)
         self.assertEqual(res[2]["r3"], 2)
         self.assertNotIn("CODEREAD", got.split("V ")[2])
+
+
+class ScopedStamp(unittest.TestCase):
+    """A scoped oracle change (target.json "stamp_scopes") re-stamps only the functions its scope reaches."""
+
+    def test_scope(self):
+        import hashlib
+        from unittest import mock
+        from core import oracle_stamp, paths, target_hooks
+        import x360_scope
+        d = tmpdir("x360scope_")
+        try:
+            # 0x82000000: fmuls f1,f1,f2 (opcode 59); 0x82000004: fmul f1,f1,f2 (63, a double); 0x82000008: frsp f1,f1
+            (d / "image.bin").write_bytes(bytes.fromhex("ec2100b2" "fc2100b2" "fc200818"))
+            (d / "bodies.txt").write_text("82000000 82000000 82000004\n82000004 82000004 82000008\n"
+                                          "82000008 82000008 8200000c\n", encoding="utf-8")
+            cfg = {"binary_path": d / "image.bin", "load_address": "0x82000000", "binary_sha256": "ab"}
+            # (the FPSCR.SZ entry modes are an SH-4 fact: another target's project gets none)
+            with mock.patch.object(paths, "FUNCTION_BODIES", d / "bodies.txt"), \
+                    mock.patch.object(paths, "PROJECT", {"target": "xbox360_ppc"}):
+                self.assertEqual([x360_scope.in_scope(cfg, a, "single_fp") for a in ("82000000", "82000004", "82000008")],
+                                 [True, False, True])
+                self.assertTrue(x360_scope.in_scope(cfg, "8200000c", "single_fp"))  # no body: in scope
+                self.assertTrue(x360_scope.in_scope(cfg, "82000004", "another"))  # unknown scope: in scope
+                (d / "TcFixups.java").write_text("old", encoding="utf-8")
+                old = {"TcFixups.java": d / "TcFixups.java"}
+                before = {a: oracle_stamp.stamp_of(cfg, a, old, "-", None, 48, 48) for a in ("82000000", "82000004")}
+                (d / "TcFixups.java").write_text("new!", encoding="utf-8")
+                (d / "TcSingle.java").write_text("added", encoding="utf-8")  # a file the change adds
+                new = dict(old, **{"TcSingle.java": d / "TcSingle.java"})
+                sha = {t: hashlib.sha256(t.encode()).hexdigest() for t in ("old", "new!", "added")}
+                sc = dict(cfg, stamp_scopes=[{"scope": "single_fp", "scripts": {
+                    "TcFixups.java": [sha["old"], sha["new!"]], "TcSingle.java": [None, sha["added"]]}}])
+                with mock.patch.object(target_hooks, "get", return_value=x360_scope.in_scope):
+                    now = {a: oracle_stamp.stamp_of(sc, a, new, "-", None, 48, 48) for a in before}
+                    self.assertNotEqual(now["82000000"], before["82000000"])  # fmuls: re-prepared
+                    self.assertEqual(now["82000004"], before["82000004"])  # fmul only: kept
+                    (d / "TcFixups.java").write_text("newer!", encoding="utf-8")  # a later edit: every stamp moves
+                    self.assertNotEqual(oracle_stamp.stamp_of(sc, "82000004", new, "-", None, 48, 48), before["82000004"])
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+
+class Setup(unittest.TestCase):
+    """x360setup.py without Ghidra: one command from a default.xex to a workspace (the hand steps of the proof)."""
+
+    def test_setup(self):
+        import contextlib
+        import io
+        import x360setup
+        self.enterContext(contextlib.redirect_stdout(io.StringIO()))  # setup's summary lines
+        d = tmpdir("x360setup_")
+        try:
+            img = synthetic_image()
+            src = d / "default.xex"
+            src.write_bytes(synthetic_xex(img, encrypt=False))
+            (d / "roots.txt").write_text(f"{TEXT:08x}  # main\n\n", encoding="utf-8")
+            ws = d / "ws"
+            cfg = x360setup.setup(src, ws, "Too Human!", roots_file=d / "roots.txt")
+            for n in ("image.bin", "image.json", "catalog_inputs.json", "code_ranges.txt", "ghidra_setup.txt",
+                      "setup_roots.json", "project.json", "oracle/TcInputs.java"):
+                self.assertTrue((ws / n).is_file(), n)
+            self.assertEqual((ws / "image.bin").read_bytes()[TEXT - BASE:IDATA - BASE], img[TEXT - BASE:IDATA - BASE])
+            self.assertEqual(json.loads((ws / "project.json").read_text(encoding="utf-8")), cfg)
+            self.assertEqual((cfg["ghidra_name"], cfg["binary"], cfg["priority"], cfg["ghidra_setup_timeout_s"]),
+                             ("TooHuman", "image.bin", [f"{TEXT:08x}"], 1800))
+            self.assertEqual(cfg["game_ranges"], [[f"{TEXT:08x}", f"{TEXT + 0x10000:08x}"]])
+            self.assertEqual(cfg["global_ranges"], [["82020000", "82030000"]])
+            self.assertEqual(cfg["fixed_regs"], {"r13": "0x7fff0000"})
+            self.assertTrue(8700 <= cfg["port"] < 8800)
+            listed = (ws / "ghidra_setup.txt").read_text(encoding="utf-8")
+            self.assertIn(f"{TEXT:08x}", listed)  # the root and the leaf it calls
+            self.assertIn(f"{TEXT + 0x200:08x}", listed)
+            self.assertNotIn(f"{TEXT + 0x300:08x}", listed)  # not reached from the root
+            with self.assertRaises(SystemExit):  # never overwrites a workspace
+                x360setup.setup(src, ws, "Too Human!", roots_file=d / "roots.txt")
+            (d / "bad.json").write_text(json.dumps({"functions": [{"addr": "82010004"}]}), encoding="utf-8")
+            with self.assertRaises(SystemExit):  # a root the catalog doesn't have
+                x360setup.setup(src, d / "ws2", roots_file=d / "bad.json")
+            whole = x360setup.setup(src, d / "ws3")  # no roots: the whole catalog
+            self.assertNotIn("priority", whole)
+            self.assertEqual(whole["ghidra_setup_timeout_s"], 7200)
+            self.assertIn(f"{TEXT + 0x300:08x}", (d / "ws3" / "ghidra_setup.txt").read_text(encoding="utf-8"))
+
+            # gate G2: a disagreement counts only in a function the target prepares
+            word = lambda a: struct.unpack_from(">I", img, a - BASE)[0]  # noqa: E731
+            (d / "audit.tsv").write_text(
+                f"{TEXT:08x}\t{word(TEXT):08x}\tmfspr\n"          # agrees
+                f"{TEXT + 0x300:08x}\t{word(TEXT + 0x300):08x}\ttcvmx:stvx128\n"  # a vector word TcVmx reads: agrees
+                f"{TEXT + 4:08x}\t{word(TEXT + 4):08x}\t??\n"      # in a prepared function: fails G2
+                f"{THUNK + 4:08x}\t{word(THUNK + 4):08x}\t??\n"    # an import record (the loader's): expected
+                f"{THUNK + 8:08x}\t{word(THUNK + 8):08x}\t??\n"    # the thunk's code: fails G2
+                "# a comment line\n", encoding="utf-8")
+            words, bad, expected, patched = x360setup.g2(d / "audit.tsv", ws, BASE)
+            self.assertEqual((words, expected, patched, [b[:8] for b in bad]),
+                             (5, 0, 1, [f"{TEXT + 4:08x}", f"{THUNK + 8:08x}"]))
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_roots_and_runs(self):
+        import x360setup
+        d = tmpdir("x360roots_")
+        try:
+            (d / "a.json").write_text(json.dumps({"functions": [{"addr": "8201ABCD"}, "82010000"]}), encoding="utf-8")
+            (d / "b.txt").write_text("8201ABCD # a\n# none\n\n82010000\n", encoding="utf-8")
+            for n in ("a.json", "b.txt"):
+                self.assertEqual(x360setup.read_roots(d / n), ["8201abcd", "82010000"], n)
+            # the decode audit's functions: every one the setup made by default (no arguments), the roots on request
+            self.assertEqual(x360setup.audit_args(d, "all"), [])
+            self.assertEqual(x360setup.audit_args(d, "roots"), [])  # no setup_roots.json: the whole catalog
+            (d / "setup_roots.json").write_text(json.dumps({"functions": ["8201abcd", "82010000"]}), encoding="utf-8")
+            self.assertEqual(x360setup.audit_args(d, "all"), [])
+            self.assertEqual(x360setup.audit_args(d, "roots"), ["8201abcd", "82010000"])
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+        sec = lambda lo, hi, code: {"start": lo, "end": hi, "code": code}  # noqa: E731
+        self.assertEqual(x360setup.code_runs([sec(0x3000, 0x4000, True), sec(0x1000, 0x2000, True),
+                                              sec(0x2000, 0x3000, True), sec(0x5000, 0x6000, False),
+                                              sec(0x7000, 0x8000, True)]),
+                         [["00001000", "00004000"], ["00007000", "00008000"]])
+
+
+class KitStart(unittest.TestCase):
+    def test_no_pad_read_before_the_window(self):
+        """The base decides once, at the first read, whether host devices can be read: a read before the window opens leaves a played run with no keyboard or pads."""
+        src = (X360 / "port" / "runtime" / "xb_main.c").read_text(encoding="utf-8")
+        self.assertNotIn("xb_pads_poll", src[src.index("int port_main("):])
 
 
 if __name__ == "__main__":

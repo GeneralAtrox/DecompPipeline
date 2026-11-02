@@ -1,4 +1,4 @@
-/* Dreamcast port kit: the guest side of start-up (the host's main, host/host_main.cpp, comes first). Maps guest
+/* Dreamcast port kit: the guest side of start-up (the host's main, base/host_main.cpp, comes first). Maps guest
  * RAM, loads the boot file from the user's disc image into it, installs the guest-call dispatcher and runs the game's
  * entry function (game.json "entry", called by the generated port_entry.c) until it stops, faults or the watchdog
  * fires. Functions with no readable C and no platform-layer replacement are logging stubs (tools/gen_port.py).
@@ -14,7 +14,7 @@
  *            [--save-dir DIR] [--vmu A1,B1,..|none]   (save files, default data\saves beside port.exe and none
  *                                  kept by a --fixed-clock run; the memory card sockets, sdk/bu_vmu.c, default A1)
  *            [--vmu-screen off|side|over]   (the cards' LCDs beside or over the picture, gfx/gfx_vmu.c; default off)
- *            [--settings FILE|none]   (the saved options, host/host_settings.cpp; default data\settings.txt)
+ *            [--settings FILE|none]   (the saved options, base/host_settings.cpp; default data\settings.txt)
  *            [--flash FILE]       (the console's 128 KB flash ROM image, sdk/fm_mng.c; default a stock console's)
  *            [--audio on|off] [--audio-dump FILE.wav]   (the sound device, off by default in --headless and
  *                                  --fixed-clock runs; the mix as a WAV file, gfx/gfx_audio.c)
@@ -41,7 +41,10 @@
 #include "host.h"
 #include "scene_dump.h"
 #include "session.h"
+#include "game_log.h"
 #include "lockstep.h"
+#include "prof.h"
+#include "play_stats.h"
 
 #ifdef PORT_CHECKED
 #include <rtcapi.h>
@@ -92,15 +95,29 @@ static void log_game_thread(void)
     log_stack_strings(sp, 0x2000);
 }
 
+/* How a port_exit reads as the game log's last line: who ended the run. */
+static const char *end_words(const char *why, int code)
+{
+    static char text[300];
+    if (!strcmp(why, "the window was closed")) return "the window was closed by the user";
+    if (!strcmp(why, "the entry function returned")) return "the game's own exit (its entry function returned)";
+    if (!strcmp(why, "--stop-at reached")) return "stopped at the vertical blank asked for (--stop-at)";
+    sprintf_s(text, sizeof text, "%s: %s", code ? "stopped by the build" : "stopped", why);
+    return text;
+}
+
 void port_exit(const char *why, int code)
 {
     if (InterlockedExchange(&g_exiting, 1)) return;
     port_log("EXIT: %s after %u vertical blanks\n", why, port_vblank_count());
+    play_stats_report();
+    game_log_end(end_words(why, code), code, code != 0);
     dispatch_report();
     guest_p4_report();
     port_stub_report();
     port_extra_report();
     pvr_oit_report();
+    prof_report();
     lockstep_close();
     port_log_flush();
     ExitProcess((UINT)code);
@@ -129,7 +146,7 @@ static int __cdecl rtc_report(int type, const wchar_t *file, int line, const wch
 static DWORD WINAPI watchdog(void *arg)
 {
     (void)arg;
-    Sleep(g_seconds * 1000u);
+    Sleep(g_seconds * 1000u); /* not the tick: a watchdog or sampler thread */
     port_log("WATCHDOG: %lu s elapsed\n", g_seconds);
     log_game_thread();
     port_exit("watchdog", 2);
@@ -174,13 +191,15 @@ static int load_boot(const char *image, const char *dump)
     return 0;
 }
 
-/* Called by the host's main (host/host_main.cpp) with the saved settings and the defaults before the command line. */
+/* Called by the host's main (base/host_main.cpp) with the saved settings and the defaults before the command line. */
 int port_main(int argc, char **argv)
 {
     const char *image = NULL, *log = "port.log", *fsca = NULL, *dump = NULL, *must = NULL;
     host_set_args(argc, argv);
     for (int i = 1, used; i < argc; i += used) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
+        if ((used = input_live_option(a, v)) != 0) continue; /* every argument is offered to it first: the options below
+                                                                  would otherwise hide --fixed-clock and --fast-until */
         used = v ? 2 : 1;
         if (!strcmp(a, "--disc") && v) image = v;
         else if (!strcmp(a, "--seconds") && v) g_seconds = (DWORD)atoi(v);
@@ -197,11 +216,14 @@ int port_main(int argc, char **argv)
         else if (!strcmp(a, "--thunks") && v) g_thunks = strcmp(v, "off") != 0;
         else if ((used = input_option(a, v)) == 0 && (used = audio_option(a, v)) == 0 && (used = gfx_option(a, v)) == 0
                  && (used = extra_option(a, v)) == 0 && (used = session_option(a, v)) == 0 &&
-                 (used = scene_dump_option(a, v)) == 0 &&
-                 (used = lockstep_option(a, v)) == 0 && (used = diag_option(a, v)) == 0)
+                 (used = scene_dump_option(a, v)) == 0 && (used = game_log_option(a, v)) == 0 &&
+                 (used = lockstep_option(a, v)) == 0 && (used = diag_option(a, v)) == 0 &&
+                 (used = prof_option(a, v)) == 0 && (used = play_stats_option(a, v)) == 0 &&
+                 (used = pace_option(a, v)) == 0)
             used = 1; /* unknown: skipped */
     }
     port_log_open(log);
+    game_log_start();
     host_phangrade_start();
 #ifdef PORT_CHECKED
     _RTC_SetErrorFuncW(rtc_report);

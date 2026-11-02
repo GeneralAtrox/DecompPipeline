@@ -6,12 +6,17 @@
  * none ready) is shown after the wait, as --present tick does.
  *
  *   --present tick|interp   one shown frame per rendered one (the kit's default; the checks use it), or in-between
- *                           frames too (a play run's default, host/host_main.cpp)
+ *                           frames too (a play run's default, base/host_main.cpp)
  *   --interp-frames N       --fixed-clock runs: in-between frames per vertical blank waited for (default 1)
  *   --interp-verify 1       logs what in-between frames wrote in guest RAM, and checks that it all went back
  *   --fps N                 real time: at most N in-between frames a second (default 0: as many as the display takes
  *                           and the time allows; with VSync on, the display's refresh is the limit)
  *   --interp-copy-threads N threads that copy guest RAM (default 4; 1: this thread alone)
+ *   --interp-scene on|only|off  a game with no draw function gets in-between frames anyway: the renderer blends the
+ *                           scene it drew with the one before (pvr/pvr_blend.c). No game code runs, so there is no
+ *                           copy of guest RAM and nothing to undo. With on a game's own draw function takes
+ *                           precedence; with only it is not used; off uses the draw function alone. Default off,
+ *                           or only for a game with game.json interp_scene
  *
  * Guest RAM is copied when the first in-between frame after a vertical blank is drawn (the vertical blank's hook
  * may write it) and copied back after each one. */
@@ -21,12 +26,15 @@
 #include "port.h"
 #include "platform.h"
 #include "host.h"
+#include "prof.h"
+#include "play_stats.h"
 
 #define EXTRA_STATES 16
 #define PAGE 4096u
 #define VERIFY_RANGES 6
 
-static int g_interp, g_verify, g_inited;
+static int g_scene_mode = PORT_INTERP_SCENE ? 2 : 0;
+static int g_interp, g_verify, g_inited, g_held, g_noted; /* g_held: the frame of a flip waits for its in-between frames */
 static u32 g_fixed_frames = 1u;
 static PortExtraDrawFn g_draw;
 static PortExtraReadyFn g_ready;
@@ -121,11 +129,12 @@ int extra_option(const char *arg, const char *value)
     else if (!strcmp(arg, "--interp-verify")) g_verify = atoi(value) != 0;
     else if (!strcmp(arg, "--fps")) g_fps = (u32)atoi(value);
     else if (!strcmp(arg, "--interp-copy-threads")) g_copy_threads = (u32)atoi(value);
+    else if (!strcmp(arg, "--interp-scene")) g_scene_mode = !strcmp(value, "only") ? 2 : !strcmp(value, "on");
     else return 0;
     return 2;
 }
 
-/* The host's menu (host/host_menu.cpp): the same as the options, at any time */
+/* The host's menu (base/host_menu.cpp): the same as the options, at any time */
 void extra_set_interp(int on) { g_interp = on != 0; }
 int extra_interp(void) { return g_interp; }
 void extra_set_fps(unsigned fps) { g_fps = fps; }
@@ -133,6 +142,7 @@ unsigned extra_fps(void) { return g_fps; }
 
 void port_set_extra_draw(PortExtraDrawFn draw, PortExtraReadyFn ready)
 {
+    if (g_scene_mode == 2) return; /* --interp-scene only */
     g_draw = draw;
     g_ready = ready;
 }
@@ -174,6 +184,7 @@ static void undo_all(void)
 }
 
 int port_extra_drawing(void) { return g_drawing; }
+int extra_scene(void) { return g_interp && g_scene_mode && !g_draw; }
 u32 port_extra_count(void) { return g_count; }
 
 static int init(void)
@@ -195,10 +206,15 @@ static int init(void)
 
 int port_extra_begin(u32 vblanks)
 {
-    if (!g_interp || !g_draw || g_drawing) return 0;
+    if (!g_interp || g_drawing || (!g_draw && !(g_scene_mode && pvr_blend_ready()))) return 0;
     if (host_fixed_clock() && host_fast_until()) return 0; /* --fast-until: ticks only until real time starts */
-    if (g_ready && !g_ready()) return 0;
-    if (!g_inited && !init()) return 0;
+    if (g_draw && g_ready && !g_ready()) return 0;
+    if (g_draw && !g_inited && !init()) return 0;
+    if (!g_draw && !g_noted) { /* scene blending: no game code runs, so no copy of guest RAM and nothing to set up */
+        port_log("frame_extra: in-between frames on, from the scene before (--interp-scene)%s\n",
+                 host_fixed_clock() ? " (a fixed number per vertical blank)" : "");
+        g_noted = 1;
+    }
     /* the cost is only measured when one is drawn: one that was slow once (a load) would keep them all out, so a
      * rendered frame that got none for want of time lowers it a little, and the next one that fits measures again */
     if (g_starved && !g_count) g_cost_us -= g_cost_us / 16u;
@@ -249,28 +265,51 @@ static u64 qpc(void)
 
 /* Draws one in-between frame and puts everything back; returns what that cost, in microseconds (not --interp-verify's
  * checks, so they do not starve the real-time pacing). */
+static u64 draw_scene_one(f32 alpha)
+{
+    LARGE_INTEGER f;
+    u64 t0 = qpc(), pt = prof_begin(PROF_X_DRAW);
+    play_stats_draw(1);
+    g_drawing = 1;
+    g_count += pvr_blend_draw(alpha) != 0;
+    g_drawing = 0;
+    play_stats_draw(0);
+    prof_end(pt);
+    g_total++;
+    QueryPerformanceFrequency(&f);
+    return (qpc() - t0) * 1000000u / (u64)f.QuadPart;
+}
+
 static u64 draw_one(f32 alpha)
 {
     static u64 spent[3];
+    if (!g_draw) return draw_scene_one(alpha);
     u8 *ram = (u8 *)(uintptr_t)GUEST_RAM_BASE;
     u32 i;
     LARGE_INTEGER f;
-    u64 t0 = qpc(), t1, t2, t3, t4;
+    u64 t0 = qpc(), t1, t2, t3, t4, pt = prof_begin(PROF_X_COPY);
     if (g_ram_vblank != port_vblank_count()) {
         copy_ram(g_ram, ram);
         g_ram_vblank = port_vblank_count();
     }
     for (i = 0; i < g_nstates; i++) memcpy(g_states[i].saved, g_states[i].p, g_states[i].size);
     t1 = qpc();
+    prof_end(pt);
+    pt = prof_begin(PROF_X_DRAW);
+    play_stats_draw(1);
     g_drawing = 1;
     int shown = g_draw(alpha);
     g_drawing = 0;
+    play_stats_draw(0);
+    prof_end(pt);
     t2 = qpc();
     if (g_verify) verify(1);
     t3 = qpc();
+    pt = prof_begin(PROF_X_COPY);
     copy_ram(ram, g_ram);
     for (i = 0; i < g_nstates; i++) memcpy(g_states[i].p, g_states[i].saved, g_states[i].size);
     undo_all();
+    prof_end(pt);
     t4 = qpc();
     spent[0] += t1 - t0;
     spent[1] += t2 - t1;
@@ -285,6 +324,22 @@ static u64 draw_one(f32 alpha)
         spent[0] = spent[1] = spent[2] = 0;
     }
     return (t4 - t0 - (t3 - t2)) * 1000000u / (u64)f.QuadPart;
+}
+
+int port_extra_flip(u32 vblanks)
+{
+    if (gfx_held() || !port_extra_begin(vblanks)) return 0; /* a held frame is not counted: gfx_present drops it */
+    gfx_frame_done();
+    return g_held = 1;
+}
+
+int port_extra_pending(void) { return g_held; }
+
+void port_extra_land(void)
+{
+    if (!g_held) return;
+    g_held = 0;
+    if (!g_count) gfx_show();
 }
 
 int port_extra_idle(u64 deadline_us)
@@ -311,7 +366,7 @@ int port_extra_idle(u64 deadline_us)
 
 void port_extra_report(void)
 {
-    if (g_inited)
+    if (g_inited || g_noted)
         port_log("frame_extra: %u in-between frames after %u rendered frames; %u time(s) too little time left, %u time(s) "
                  "the display not taking one; one costs about %llu us\n", g_total, g_begun, g_no_time, g_not_shown,
                  g_cost_us);

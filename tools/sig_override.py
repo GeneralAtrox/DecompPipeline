@@ -41,7 +41,7 @@ def judge(paths, check, cfg, addr, text):
 
 
 def apply_one(paths, check, cfg, addr, kind, report):
-    from core import callee_drift, sig_override, sig_rewrite
+    from core import callee_drift, sig_override, sig_rewrite, translate_stage
     mp = paths.HARNESS / addr / "meta.json"
     meta = paths.read_json(mp)
     old = meta["ret"]
@@ -54,6 +54,12 @@ def apply_one(paths, check, cfg, addr, kind, report):
     if mc.exists():
         new = sig_rewrite.rewrite(mc.read_text(encoding="utf-8"), addr, old, kind)
         verdict = judge(paths, check, cfg, addr, new) if new is not None else "NOT_REWRITTEN"
+        if verdict != "PASS":  # register-style raw C the rewrite has no form for: the translator's, on the new meta
+            with tempfile.TemporaryDirectory() as td:
+                out = pathlib.Path(td) / f"{addr}.c"
+                if translate_stage.translate(cfg, addr, out)["ok"]:
+                    new = out.read_text(encoding="utf-8")
+                    verdict = judge(paths, check, cfg, addr, new)
         if verdict == "PASS":
             backup(paths, mc, f"{addr}.c")
             mc.write_text(new, encoding="utf-8", newline="\n")
@@ -110,7 +116,7 @@ def main():
         bad = proto and sig_override.readable_mismatch(readable.parse_proto(proto)[0], kind)
         if bad:
             report["readable_proto"].append(f"{addr}: {bad} ({fname})")
-        if meta and meta["ret"] != kind:
+        if meta and (meta["ret"] != kind or meta.get("ret_reg")):
             report["pending"].append(f"{addr}: harness ret {meta['ret']}, raw_ret {kind}")
             if a.apply:
                 apply_one(paths, check, cfg, addr, kind, report)

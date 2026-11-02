@@ -13,6 +13,7 @@
  *
  * The twiddle and VQ decoding are adapted from Lodoss (port/src/setup/pvr.cpp), MIT License, Copyright (c) 2026
  * GeneralAtrox; see that project's LICENSE. */
+#include <intrin.h>
 #include <string.h>
 #include "pvr_int.h"
 
@@ -50,8 +51,17 @@ int pvr_palette_range(u32 tcw, u32 *first, u32 *count)
     return 1;
 }
 
-/* The Morton index of (x, y) in a square of side `side` (a power of two). */
-static u32 morton(u32 x, u32 y)
+/* The bits of v (below 16) spread to the even bits of a word. */
+static u32 spread(u32 v)
+{
+    v = (v | v << 8) & 0x00ff00ffu;
+    v = (v | v << 4) & 0x0f0f0f0fu;
+    v = (v | v << 2) & 0x33333333u;
+    return (v | v << 1) & 0x55555555u;
+}
+
+/* The Morton index of (x, y) in a square of side `side` (a power of two): y in the even bits, x in the odd. */
+static u32 morton_any(u32 x, u32 y)
 {
     u32 r = 0;
     for (u32 bit = 0; (x | y) >> bit; bit++) {
@@ -61,17 +71,23 @@ static u32 morton(u32 x, u32 y)
     return r;
 }
 
-/* The twiddled index of texel (x, y) in a w x h texture: squares of the smaller side, in order along the longer. */
+/* The twiddled index of texel (x, y) in a w x h texture: squares of the smaller side, in order along the longer.
+ * The sides are powers of two (the TSP's size bits; a mip level 1 << i; a VQ index square half a side), so the
+ * division is a shift and the bits spread without a loop. Any other side takes the arithmetic the shift stands for. */
 static u32 twiddled(u32 x, u32 y, u32 w, u32 h)
 {
     u32 side = w < h ? w : h;
-    return (x / side + y / side) * side * side + morton(x % side, y % side);
+    unsigned long shift;
+    if ((side & (side - 1u)) || x >= 0x10000u || y >= 0x10000u)
+        return (x / side + y / side) * side * side + morton_any(x % side, y % side);
+    _BitScanForward(&shift, side);
+    return (((x >> shift) + (y >> shift)) << (2u * shift)) + (spread(y & (side - 1u)) | spread(x & (side - 1u)) << 1);
 }
 
 static u32 expand5(u32 v) { return (v << 3) | (v >> 2); }
 static u32 expand6(u32 v) { return (v << 2) | (v >> 4); }
 
-static u32 texel(u16 v, u32 fmt)
+static __forceinline u32 texel(u16 v, u32 fmt)
 {
     u32 r, g, b, a;
     switch (fmt) {
@@ -101,13 +117,28 @@ static u32 palette_texel(u32 index)
 
 static u32 clamp8(s32 v) { return v < 0 ? 0u : v > 255 ? 255u : (u32)v; }
 
+/* BT.601 in 16.16 fixed point, the products of the pair's U and V (terms of one texel's three channels). */
+static s32 g_yuv_rv[256], g_yuv_gu[256], g_yuv_gv[256], g_yuv_bu[256];
+static volatile int g_yuv_ready;
+
+static void yuv_tables(void)
+{
+    for (s32 i = 0; i < 256; i++) {
+        g_yuv_rv[i] = 91881 * (i - 128);
+        g_yuv_gu[i] = 22554 * (i - 128);
+        g_yuv_gv[i] = 46802 * (i - 128);
+        g_yuv_bu[i] = 116130 * (i - 128);
+    }
+    g_yuv_ready = 1;
+}
+
 /* One texel from its Y and its pair's U and V (BT.601, 16.16 fixed point). */
 static u32 yuv(u32 y, u32 u, u32 v)
 {
-    s32 c = (s32)y << 16, du = (s32)u - 128, dv = (s32)v - 128;
-    u32 r = clamp8((c + 91881 * dv + 32768) >> 16);
-    u32 g = clamp8((c - 22554 * du - 46802 * dv + 32768) >> 16);
-    u32 b = clamp8((c + 116130 * du + 32768) >> 16);
+    s32 c = (s32)y << 16;
+    u32 r = clamp8((c + g_yuv_rv[v] + 32768) >> 16);
+    u32 g = clamp8((c - g_yuv_gu[u] - g_yuv_gv[v] + 32768) >> 16);
+    u32 b = clamp8((c + g_yuv_bu[u] + 32768) >> 16);
     return r | g << 8 | b << 16 | 0xff000000u;
 }
 
@@ -183,22 +214,31 @@ static void level_vq(const u8 *vram, u32 base, u32 index_at, u32 w, u32 h, u32 f
         }
 }
 
-static void level_twiddled(const u8 *vram, u32 at, u32 w, u32 h, u32 fmt, u32 *out)
+/* One loop a format: the format is a constant where the loop is inlined, so the texel switch goes. */
+static __forceinline void twiddled_loop(const u8 *vram, u32 at, u32 w, u32 h, u32 fmt, u32 *out)
 {
     for (u32 y = 0; y < h; y++)
         for (u32 x = 0; x < w; x++) out[y * w + x] = texel(rd16(vram, at + twiddled(x, y, w, h) * 2u), fmt);
 }
 
+static void level_twiddled(const u8 *vram, u32 at, u32 w, u32 h, u32 fmt, u32 *out)
+{
+    if (fmt == FMT_1555) twiddled_loop(vram, at, w, h, FMT_1555, out);
+    else if (fmt == FMT_565) twiddled_loop(vram, at, w, h, FMT_565, out);
+    else twiddled_loop(vram, at, w, h, FMT_4444, out);
+}
+
 /* A palettized level: texel t's index is byte t (8-bit) or nibble t (4-bit, low nibble first) from `at` texels. */
 static void level_palette(const u8 *vram, u32 tcw, u32 at, u32 w, u32 h, u32 *out)
 {
-    u32 first = 0, count, pal4 = tcw_fmt(tcw) == FMT_PAL4, base = tcw_addr(tcw);
+    u32 first = 0, count, pal4 = tcw_fmt(tcw) == FMT_PAL4, base = tcw_addr(tcw), colour[256];
     pvr_palette_range(tcw, &first, &count);
+    for (u32 i = 0; i < count; i++) colour[i] = palette_texel(first + i); /* the entries once, not a texel at a time */
     for (u32 y = 0; y < h; y++)
         for (u32 x = 0; x < w; x++) {
             u32 t = at + twiddled(x, y, w, h);
             u32 index = pal4 ? (u32)(rd8(vram, base + t / 2u) >> (t & 1u) * 4u) & 15u : rd8(vram, base + t);
-            out[y * w + x] = palette_texel(first + index);
+            out[y * w + x] = colour[index];
         }
 }
 
@@ -210,6 +250,8 @@ u32 pvr_decode(u32 tcw, u32 w, u32 h, u32 stride, u32 *out, u32 out_texels)
     if (pvr_tcw_layout(tcw) & TCW_NON_TWIDDLED) {
         u32 pitch = (tcw & TCW_STRIDE) && stride ? stride : w;
         if ((tcw & TCW_STRIDE) && !stride) pvr_todo("pvr: a stride texture before the stride is set");
+        u32 pair_at = ~0u, u = 0, v = 0;
+        if (fmt == FMT_YUV422 && !g_yuv_ready) yuv_tables();
         for (u32 y = 0; y < h; y++)
             for (u32 x = 0; x < w; x++) {
                 u32 at = base + (y * pitch + x) * 2u;
@@ -217,7 +259,7 @@ u32 pvr_decode(u32 tcw, u32 w, u32 h, u32 stride, u32 *out, u32 out_texels)
                     out[y * w + x] = texel(rd16(vram, at), fmt);
                 } else { /* the pair's words: Y0 << 8 | U, then Y1 << 8 | V */
                     u32 pair = at & ~3u;
-                    u32 u = rd8(vram, pair), v = rd8(vram, pair + 2u);
+                    if (pair != pair_at) pair_at = pair, u = rd8(vram, pair), v = rd8(vram, pair + 2u);
                     out[y * w + x] = yuv(rd8(vram, at + 1u), u, v);
                 }
             }

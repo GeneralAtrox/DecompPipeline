@@ -14,7 +14,8 @@ NEW_MEMBER_RE = re.compile(r"(gen|Gen)[A-Z0-9]\w*|GEN_[A-Z0-9_]+")
 TYPES = {"TcInputs", "TcBase", "Vec", "Proto", "Param", "List", "ArrayList", "Map", "HashMap", "TreeMap",
          "LinkedHashMap", "Set", "HashSet", "TreeSet", "Arrays", "Collections", "Math", "Float", "Integer", "Long",
          "Short", "Byte", "Double", "Boolean", "Character", "String", "StringBuilder", "Iterator", "IllegalArgumentException"}
-BASE_CONSTANTS = {"RAM_LO", "RAM_HI", "SCR", "SCR_SIZE", "SP", "SENTINEL", "STACK_LO", "STEP_LIMIT"}
+BASE_CONSTANTS = {"RAM_LO", "RAM_HI", "SCR", "SCR_SIZE", "SP", "SENTINEL", "STACK_LO", "STEP_LIMIT",
+                  "SPECIAL_FLOAT", "SPECIAL_WORD"}
 CALLS = {
     # random numbers (rnd is seeded by TcPrepare)
     "nextInt", "nextFloat", "nextLong", "nextBoolean", "nextDouble",

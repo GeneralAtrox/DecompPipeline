@@ -29,6 +29,22 @@ def readable_sources(ws):
     return {p.stem for p in (ws / "readable" / "src").glob("8c*.c") if led.get(p.stem, {}).get("status") == "readable"}
 
 
+def ledger_missing(ws):
+    """How many readable/src files sit in a workspace with no state/readable.json (0 when the ledger exists): readable_sources
+    then finds none passing, so a mix build quietly takes translator C for everything."""
+    if (ws / "state" / "readable.json").exists():
+        return 0
+    return len(list((ws / "readable" / "src").glob("8c*.c")))
+
+
+def ledger_warning(ws):
+    """The warning gen_port gives for ledger_missing(ws), or "" when nothing is lost."""
+    n = ledger_missing(ws)
+    return (f"WARNING: {n} readable C files in {ws}/readable/src but no state/readable.json: none counts as passing, so this "
+            "build takes translator C for every function. Copy the ledger from the workspace the readable C was judged in "
+            "(the launcher's live push carries it).") if n else ""
+
+
 def matched_targets(ws):
     """Target functions with verified raw C: a `matched` ledger row and matched/ADDR.c."""
     led = json.loads((ws / "state" / "ledger.json").read_text(encoding="utf-8"))["functions"]

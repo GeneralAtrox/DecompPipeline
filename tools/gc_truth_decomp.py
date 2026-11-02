@@ -9,6 +9,7 @@ import bisect
 import pathlib
 import re
 import struct
+import sys
 
 SYMBOL = re.compile(r"^(\S+) = ([^:\s]+):0x([0-9A-Fa-f]+); // (.*)$")
 CODE_SECTIONS = (".init", ".text")
@@ -154,14 +155,15 @@ def dol_size(head):
 
 
 def dol_bytes(path):
-    """The main DOL of a GameCube disc image (GCM/ISO: its offset is the u32 at 0x420), or the file itself."""
-    with open(path, "rb") as f:
-        head = f.read(0x440)
-        if len(head) >= 0x440 and head[0x1c:0x20] == b"\xc2\x33\x9f\x3d":  # the GameCube disc magic
-            off = struct.unpack(">I", head[0x420:0x424])[0]
-            f.seek(off)
-            dh = f.read(0x100)
-            f.seek(off)
-            return f.read(dol_size(dh))
-        f.seek(0)
-        return f.read()
+    """The main DOL of a GameCube disc image (ISO/GCM, RVZ/WIA or CISO, through gcdisc), or the file itself."""
+    sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1] / "targets" / "gamecube_ppc" / "tools"))
+    import gcdisc
+    try:
+        disc = gcdisc.Disc(path)
+    except SystemExit:  # no GameCube disc header: a main.dol itself
+        return pathlib.Path(path).read_bytes()
+    off = disc.u32(gcdisc.DOL_OFF)
+    try:
+        return disc.read(off, dol_size(disc.read(off, 0x100)))
+    finally:
+        disc.close()

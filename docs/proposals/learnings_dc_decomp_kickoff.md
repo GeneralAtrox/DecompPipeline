@@ -55,6 +55,10 @@ bytes or more start with the same 16 bytes there. It has no symbols: its only na
 NAOMI library, which the Dreamcast build lacks. So no names; what it gives is the split between code shared with the
 arcade game and code only the Dreamcast version has (shop, adventure, VMU), a hint for systems and readable design.
 
+## Sonic Adventure's SDK as an answer key (measured 2026-11-01)
+Adds 2 to 4% of unnamed library names; its use is explaining SDK functions and checking the judge from outside. Licence: reference
+only, no code copied. Results, tables and planted tests: docs/proofs/sonic_sdk/README.md.
+
 ## Later (the mod stage; the user's call)
 - A text map: every string with every pointer to it, and the text each disc file holds. It is the ground for
   translation mods (two of their projects, Boku Doraemon and Illbleed, are Japanese games aimed at translation).

@@ -225,7 +225,7 @@ public abstract class TcVectors extends TcOracle {
             if (nv == null && (r.callFault || !TcRepair.entry(this, v, r.faultAddr)
                 && !(rescue && TcRepair.ret(this, v, r.faultAddr, r.calls.size(), consts, h))
                 && !TcRepair.index(this, v, r.faultAddr, loads))) break;
-            if (nv != null) v = nv;
+            if (nv != null) v = TcLate.kept(v, nv);  // the repaired copy keeps the genretfn draws
             repairs++;
             r = runOracle(v);
         }

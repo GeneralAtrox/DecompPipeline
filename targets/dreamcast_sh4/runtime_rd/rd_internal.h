@@ -4,7 +4,7 @@
 
 #include "tc_rt_internal.h"
 
-#define RD_MAX_CALLS 4096 /* TcOracle.CALL_LIMIT */
+#define RD_MAX_CALLS 8192 /* core/oracle_limits.CALLS[1] */
 /* The call record of tc_rt.c (TcOracle.callRecord): target, r4..r7, fr4..fr11, s0..s7, fr12..fr15, r0..r3, r8..r14
  * (36 fields), and with line Q fr0..fr3, xf0..xf15 and the FPSCR mode word (57 fields) */
 #define RD_LOG_FIELDS 57
@@ -96,6 +96,9 @@ void tcrt_set_t_export(void);      /* header line t (TcTflag) */
 void tcrt_report_t(FILE *out);     /* line RT: T at exit, only after a line t */
 void tcrt_set_area5(void);         /* header line y: area-5 reads return 0 (rd_veh.c) */
 extern int rd_area5;
+void tcrt_set_vram(void);          /* header line v: video memory window reads (rd_veh.c fills a page on the first read) */
+extern int rd_vram;
+char rd_guess_ret(const u32 *sp, u32 ebp, uintptr_t lo, uintptr_t hi); /* rd_p4.c: a call's result kind */
 void rd_sh4_set_fq(const u32 bits[16]); /* fr0..fr15 at entry (line Q) */
 void rd_sh4_report_fq(FILE *out);       /* line QH: fr0..fr15 and the FPSCR mode word at exit */
 

@@ -166,7 +166,10 @@ def main(argv=None, run=probe, slot=wait_slot):
             failed.append(key)
     if failed:
         return done(1, f"land smoke: FAIL ({', '.join(failed)})")
-    return done(0, f"land smoke: PASS ({', '.join(k for k, v in report['projects'].items() if v.get('addr'))})")
+    probed = [k for k, v in report["projects"].items() if v.get("addr")]
+    if not probed:  # nothing was run: no verdict, not a pass
+        return done(1, "land smoke: FAIL (no project probed)")
+    return done(0, f"land smoke: PASS ({', '.join(probed)})")
 
 
 if __name__ == "__main__":

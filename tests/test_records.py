@@ -290,7 +290,7 @@ class Readable(Records):
         try:
             if slots:
                 busylog.start_slots(slots)
-            cfg = {"model": "m", "effort": None, "readable_effort": None, "function_lock_wait_s": 0.2}
+            cfg = {"readable_model": "m", "effort": None, "readable_effort": None, "function_lock_wait_s": 0.2}
             status = fn_claim.cycle(cfg, A, 3, lambda m: None)
             if slots:
                 busylog.end_slots(slots)

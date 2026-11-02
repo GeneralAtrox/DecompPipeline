@@ -25,7 +25,7 @@
 #define STENCIL_INSIDE 0x01u
 #define STENCIL_VOLUME (STENCIL_PARITY | STENCIL_INSIDE)
 
-enum { MV_PARITY, MV_INCLUDE, MV_DROP, MV_SHADE, MV_STATES };
+enum { MV_PARITY, MV_INCLUDE, MV_DROP, MV_SHADE, MV_DBG_FLAG, MV_DBG_VOL, MV_STATES };
 
 static ID3D11DepthStencilState *g_mv[MV_STATES];
 static ID3D11BlendState *g_no_color, *g_shade;
@@ -85,6 +85,10 @@ static int ready(void)
                             D3D11_STENCIL_OP_ZERO) &&
               stencil_state(MV_SHADE, FALSE, STENCIL_SHADOW | STENCIL_INSIDE, STENCIL_VOLUME, D3D11_COMPARISON_EQUAL,
                             D3D11_STENCIL_OP_ZERO, D3D11_STENCIL_OP_ZERO) &&
+              stencil_state(MV_DBG_FLAG, FALSE, STENCIL_SHADOW, STENCIL_VOLUME, D3D11_COMPARISON_EQUAL, D3D11_STENCIL_OP_ZERO,
+                            D3D11_STENCIL_OP_ZERO) &&
+              stencil_state(MV_DBG_VOL, FALSE, STENCIL_INSIDE, STENCIL_VOLUME, D3D11_COMPARISON_EQUAL, D3D11_STENCIL_OP_ZERO,
+                            D3D11_STENCIL_OP_ZERO) &&
               blend_state(&g_no_color, 0) && blend_state(&g_shade, 1) &&
               pvr_full_vs() &&
               SUCCEEDED(ID3D11Device_CreatePixelShader(dev, g_pvr_shadow, sizeof g_pvr_shadow, NULL, &g_shadow));
@@ -114,21 +118,21 @@ static void draw_batches(const PvrScene *s, u32 first, u32 end, u32 state, UINT 
 static f32 min3(f32 a, f32 b, f32 c) { return a < b ? (a < c ? a : c) : (b < c ? b : c); }
 static f32 max3(f32 a, f32 b, f32 c) { return a > b ? (a > c ? a : c) : (b > c ? b : c); }
 
-/* A triangle's screen box, clipped to the frame (640x480, widescreen wider); 0 if it is off screen. */
+/* A triangle's screen box, clipped to the frame (640x480, a wider or taller frame more); 0 if it is off screen. */
 static int tri_box(const PvrVtx *v, f32 box[4])
 {
-    f32 side = 320.0f * (port_widescreen() - 1.0f);
+    f32 side = 320.0f * (port_widescreen() - 1.0f), over = 240.0f * (port_tallscreen() - 1.0f);
     box[0] = max3(min3(v[0].x, v[1].x, v[2].x), -side, -side);
-    box[1] = max3(min3(v[0].y, v[1].y, v[2].y), 0.0f, 0.0f);
+    box[1] = max3(min3(v[0].y, v[1].y, v[2].y), -over, -over);
     box[2] = min3(max3(v[0].x, v[1].x, v[2].x), 640.0f + side, 640.0f + side);
-    box[3] = min3(max3(v[0].y, v[1].y, v[2].y), 480.0f, 480.0f);
+    box[3] = min3(max3(v[0].y, v[1].y, v[2].y), 480.0f + over, 480.0f + over);
     return box[0] < box[2] && box[1] < box[3];
 }
 
 int pvr_modvol_trans_needed(const PvrScene *s, u32 pass)
 {
     const u32 *tr = s->range[pass][PVRX_LIST_TRANSLUCENT], *r = s->range[pass][PVRX_LIST_TRANS_MOD];
-    f32 vol[4] = {1.0e9f, 480.0f, -1.0e9f, 0.0f}, b[4];
+    f32 vol[4] = {1.0e9f, 1.0e9f, -1.0e9f, -1.0e9f}, b[4];
     for (u32 i = r[0]; i < r[1]; i++)
         for (u32 k = 0; k + 3u <= s->batch[i].count; k += 3u)
             if (tri_box(&s->vtx[s->batch[i].first + k], b)) {
@@ -176,7 +180,12 @@ void pvr_modvol_draw(const PvrScene *s, u32 pass, ID3D11Buffer *frame_consts)
     ID3D11DeviceContext_PSSetShader(cx, g_shadow, NULL, 0);
     ID3D11DeviceContext_PSSetConstantBuffers(cx, 0, 1, &frame_consts);
     ID3D11DeviceContext_OMSetBlendState(cx, g_shade, NULL, 0xffffffffu);
-    ID3D11DeviceContext_OMSetDepthStencilState(cx, g_mv[MV_SHADE], STENCIL_SHADOW | STENCIL_INSIDE);
+    if (g_pvr_debug & PVR_DBG_SHADOWFLAG)
+        ID3D11DeviceContext_OMSetDepthStencilState(cx, g_mv[MV_DBG_FLAG], STENCIL_SHADOW);
+    else if (g_pvr_debug & PVR_DBG_SHADOWVOL)
+        ID3D11DeviceContext_OMSetDepthStencilState(cx, g_mv[MV_DBG_VOL], STENCIL_INSIDE);
+    else
+        ID3D11DeviceContext_OMSetDepthStencilState(cx, g_mv[MV_SHADE], STENCIL_SHADOW | STENCIL_INSIDE);
     ID3D11DeviceContext_Draw(cx, 3, 0);
 }
 

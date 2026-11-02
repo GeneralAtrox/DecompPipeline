@@ -24,6 +24,30 @@ MAX_DIRS = 20000   # discovery stops (and says so) past this many folders per ro
 MAX_DEPTH = 6
 
 
+def check(name, status, value=None, target=None, source=None, missing=None):
+    return {"name": name, "status": status, "value": value, "target": target, "source": source, "missing": missing}
+
+
+def unmeasured(name, missing, target=None):
+    return check(name, "unmeasured", target=target, missing=missing)
+
+
+def at_most(name, value, target, source, unit=""):
+    """A cost-like number: pass at or under target, partial up to twice it, fail beyond."""
+    if value is None:
+        return unmeasured(name, source, f"<= {target}{unit}")
+    st = "pass" if value <= target else "partial" if value <= 2 * target else "fail"
+    return check(name, st, round(value, 4), f"<= {target}{unit}", source)
+
+
+def at_least(name, value, target, source, unit="%"):
+    """A share-like number: pass at or over target, partial from 90% of it, fail below."""
+    if value is None:
+        return unmeasured(name, source, f">= {target}{unit}")
+    st = "pass" if value >= target else "partial" if value >= 0.9 * target else "fail"
+    return check(name, st, round(value, 1), f">= {target}{unit}", source)
+
+
 def load_json(p, default=None):
     p = pathlib.Path(p)
     try:

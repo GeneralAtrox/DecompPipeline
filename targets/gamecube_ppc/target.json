@@ -45,9 +45,11 @@
     "TcFlow.java",
     "TcJunk.java",
     "TcOracle.java",
+    "TcPassThrough.java",
     "TcPrepare.java",
     "TcSingle.java",
     "TcNaN.java",
+    "TcEstimate.java",
     "TcTrack.java",
     "TcStrict.java",
     "TcVectors.java"

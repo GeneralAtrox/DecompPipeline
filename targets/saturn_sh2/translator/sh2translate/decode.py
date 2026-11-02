@@ -225,3 +225,14 @@ def disasm(i):
     if o == "illegal":
         return f".word 0x{i.word:04x}"
     return f"{o} {m},{n}"
+
+
+def mask_of(x, y):
+    """(N, step) when one of two symbolic values (translate.symexec: ("c", k) a constant) is a constant mask of
+    contiguous bits k = (N - 1) * step and the other is not a constant: their and is step * v for some v in 0..N-1
+    (Robo Pit 0601e1fc: mov #0x7c,r1; and r0,r1 indexes a table of 32 words). Else None."""
+    if (x[0] == "c") == (y[0] == "c"):
+        return None
+    k = x[1] if x[0] == "c" else y[1]
+    step = k & -k
+    return (k // step + 1, step) if k and not (k // step) & (k // step + 1) else None

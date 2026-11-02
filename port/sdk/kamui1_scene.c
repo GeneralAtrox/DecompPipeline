@@ -44,6 +44,7 @@ void (*k1_render_done)(void);
 static u32 *g_head;                         /* the head words (host view of the guest buffer) */
 static u32 g_buffer, g_buffer_size;         /* the vertex buffer (P2) and its bytes */
 static u32 g_wait_vsync = 1u, g_last_flip;
+static u32 g_list_room[K1_LISTS], g_overrun[K1_LISTS]; /* each list's room in bytes; a list that wrote past it (logged once) */
 #ifdef PORT_KAMUI1_LIST_WORD
 static u32 g_list_word = PORT_KAMUI1_LIST_WORD; /* the guest address of Kamui's list table word */
 #else
@@ -62,11 +63,16 @@ u32 *k1_list_state(void) { return g_head ? &g_head[HEAD_STATE] : NULL; }
 
 /* Lays the head and the lists out in the vertex buffer; bytes[i] are the lists' wishes (scaled down if they do not
  * fit), and fills desc as Kamui does. */
-static s32 make_lists(K1VertexBuffDesc *desc, const u32 bytes[K1_LISTS])
+static s32 make_lists(K1VertexBuffDesc *desc, const u32 wishes[K1_LISTS], u32 direct)
 {
-    u32 room, total = 0, at;
+    u32 room, total = 0, at, bytes[K1_LISTS];
     if (!g_buffer || g_buffer_size <= HEAD_BYTES) return K1_ERROR;
     room = g_buffer_size - HEAD_BYTES;
+    memcpy(bytes, wishes, sizeof bytes);
+    (void)direct;
+#ifdef PORT_KAMUI1_DIRECT_AT
+    if (direct < K1_LISTS) bytes[direct] = 0; /* its room is elsewhere: the others do not give up any of theirs */
+#endif
     for (u32 i = 0; i < K1_LISTS; i++) total += bytes[i];
     g_head = host(g_buffer);
     memset(g_head, 0, HEAD_BYTES);
@@ -75,8 +81,17 @@ static s32 make_lists(K1VertexBuffDesc *desc, const u32 bytes[K1_LISTS])
     for (u32 i = 0; i < K1_LISTS; i++) {
         u32 n = total > room ? (u32)((double)bytes[i] * room / total) : bytes[i];
         g_head[HEAD_START + i] = g_head[HEAD_TABLE + i] = at;
-        at += n & ~(LIST_ALIGN - 1u);
+        g_list_room[i] = n & ~(LIST_ALIGN - 1u);
+        at += g_list_room[i];
     }
+#ifdef PORT_KAMUI1_DIRECT_AT
+    if (direct < K1_LISTS) {
+        g_head[HEAD_START + direct] = g_head[HEAD_TABLE + direct] = (PORT_KAMUI1_DIRECT_AT & AREA_MASK) | P2_BASE;
+        g_list_room[direct] = PORT_KAMUI1_DIRECT_BYTES & ~(LIST_ALIGN - 1u);
+        port_log("kamui1: list %u (direct) has its own room, %u bytes at %08x\n", direct, g_list_room[direct],
+                 g_head[HEAD_START + direct]);
+    }
+#endif
     g_head[HEAD_BANKS] = (u32)(uintptr_t)&g_head[HEAD_START];
     if (g_list_word)
         *(u32 *)host(g_list_word) = (u32)(uintptr_t)&g_head[HEAD_TABLE];
@@ -90,37 +105,39 @@ static s32 make_lists(K1VertexBuffDesc *desc, const u32 bytes[K1_LISTS])
     }
     port_log("kamui1: vertex buffer %08x, %u bytes; lists %u %u %u %u %u bytes%s\n", g_buffer, g_buffer_size,
              bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], total > room ? " (scaled to fit)" : "");
+    memset(g_overrun, 0, sizeof g_overrun);
     return K1_OK;
 }
 
 /* The buffer model's direct list (header comment): no share of its own, so the largest other list's room. */
-static void direct_list_room(const K1SysConfig *c, u32 bytes[K1_LISTS])
+static u32 direct_list_room(const K1SysConfig *c, u32 bytes[K1_LISTS])
 {
     u32 list = c->buffer_model & ~K1_BUFFER_DIRECT, most = 0;
-    if (!(c->flags & K1_CONFIG_BUFFER_MODEL) || !(c->buffer_model & K1_BUFFER_DIRECT) || list >= K1_LISTS) return;
-    if (bytes[list]) return;
+    if (!(c->flags & K1_CONFIG_BUFFER_MODEL) || !(c->buffer_model & K1_BUFFER_DIRECT) || list >= K1_LISTS) return K1_LISTS;
+    if (bytes[list]) return K1_LISTS;
     for (u32 i = 0; i < K1_LISTS; i++)
         if (bytes[i] > most) most = bytes[i];
     bytes[list] = most;
     port_log("kamui1: buffer model %x: list %u goes straight to the TA on the console; buffered here (%u bytes)\n",
              c->buffer_model, list, most);
+    return list;
 }
 
 /* The configuration's vertex buffer, shared by its list percentages. */
 s32 kmSetSystemConfiguration(void *config)
 {
     K1SysConfig *c = config;
-    u32 bytes[K1_LISTS];
+    u32 bytes[K1_LISTS], direct;
     if (!c || !c->vertex_buffer || !c->vertex_buffer_size) return K1_ERROR;
     g_config = c;
     g_buffer = c->vertex_buffer;
     g_buffer_size = c->vertex_buffer_size;
     for (u32 i = 0; i < K1_LISTS; i++)
         bytes[i] = (u32)((double)(g_buffer_size - HEAD_BYTES) * c->list_share[i] / PERCENT);
-    direct_list_room(c, bytes);
+    direct = direct_list_room(c, bytes);
     port_log("kamui1: system configuration, %u frame buffer(s), texture memory %u KB\n", c->frame_buffer_count,
              k1_texture_bytes(c) >> 10);
-    return make_lists(c->buffer_desc ? host(c->buffer_desc) : NULL, bytes);
+    return make_lists(c->buffer_desc ? host(c->buffer_desc) : NULL, bytes, direct);
 }
 
 /* The lists by byte sizes (no punch-through list), in the configured vertex buffer. */
@@ -129,7 +146,7 @@ KMSTATUS kmCreateVertexBuffer(KMVERTEXBUFFDESC *bufferDesc, s32 opaquePolygonSiz
 {
     u32 bytes[K1_LISTS] = {(u32)opaquePolygonSize, (u32)opaqueModifierSize, (u32)transPolygonSize,
                            (u32)transModifierSize, 0u};
-    return make_lists((K1VertexBuffDesc *)bufferDesc, bytes);
+    return make_lists((K1VertexBuffDesc *)bufferDesc, bytes, K1_LISTS);
 }
 
 /* Kamui frees the vertex buffer here; the lists are gone until the next set-up. */
@@ -175,6 +192,11 @@ KMSTATUS kmRender(void)
         u32 start = guest_fold(g_head[HEAD_START + i]), end = guest_fold(g_head[HEAD_TABLE + i]);
         pass.start[i] = start;
         pass.end[i] = end > start ? end : start;
+        if (end - start > g_list_room[i] && !g_overrun[i]) {
+            g_overrun[i] = 1u;
+            port_log("kamui1: list %u wrote %u bytes into room for %u: it runs into the next list (game.json kamui1.direct_list)\n",
+                     i, end - start, g_list_room[i]);
+        }
         g_head[HEAD_TABLE + i] = g_head[HEAD_START + i];
     }
     pass.autosort = 1;
@@ -189,14 +211,17 @@ KMSTATUS kmRender(void)
 /* Shows the frame once the vsync count of vertical blanks has passed since the last flip. A game loop that waits for
  * the vertical blank itself and then renders and flips has already waited that blank, so a count of 1 flips at once
  * and the loop runs at 60 Hz, as on the console (a forced extra blank halved it and dropped one-blank pad edges); a
- * second flip in the same blank still waits for the next one. */
+ * second flip in the same blank still waits for the next one. With --present interp (--interp-scene) the frame is
+ * counted at once and held: the wait for the next vertical blank, the game's own, draws in-between frames and then
+ * shows it if it drew none (runtime/frame_extra.c, port_extra_flip). */
 KMSTATUS kmFlipFrameBuffer(void)
 {
     u32 target = g_last_flip + g_wait_vsync;
+    port_extra_land(); /* a frame held for in-between frames that no wait has landed */
     while ((s32)(port_vblank_count() - target) < 0)
         port_wait_vblank();
     g_last_flip = port_vblank_count();
-    gfx_present();
+    if (!port_extra_flip(g_wait_vsync)) gfx_present();
     return K1_OK;
 }
 

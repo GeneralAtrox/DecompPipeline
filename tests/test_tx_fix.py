@@ -77,6 +77,19 @@ class HeldTargets(unittest.TestCase):
         self.assertNotIn("tc_call(0x8c000000u", c)
         self.assertIn("calls itself", c)
 
+    def test_recursion_with_a_stack_parameter(self):
+        # Spawn SST_BASE 8c9a5960: the C was refused; the recursion hands on the word in the slot at the call
+        meta = {"name": "fn_8c000000", "signature": "void fn_8c000000(u32 p_r4, s32 p_5, s32 p_6)", "ret": "void",
+                "params": [{"name": "p_r4", "kind": "u32", "storage": "r4", "stack_offset": -1},
+                           {"name": "p_5", "kind": "s32", "storage": "stack", "stack_offset": 0},
+                           {"name": "p_6", "kind": "s32", "storage": "stack", "stack_offset": 4}],
+                "callees": [{"addr": "8c000000", "regs": ["r4"]}]}
+        c = translate(image(SELF, {0x18: E}), tx.Signature.from_meta(meta))
+        self.assertIn("calls itself", c)
+        self.assertIn("body(r15, 0x8c000010u, p_r4, (s32)rd32(r15), (s32)rd32(r15 + 4u));", c)
+        self.assertIn("static void body(u32 sp, u32 ret_addr, u32 p_r4, s32 p_5, s32 p_6)", c)
+        self.assertNotIn("tc_call(r8", c)
+
     def test_unsigned_byte_table(self):
         c = translate(image(TABLE, {0xA0: [0xE014, RTS, NOP]}), sig(["r4"], "u32", {}))
         self.assertIn("case 0x8c0000a0u:", c)     # case 1 (r0 = 20), offset 0x90 read unsigned

@@ -27,7 +27,16 @@ platform is a **target** under `targets/` with its own README: `dreamcast_sh4`, 
 | docs/TOOLS.md | Every operator tool, `decomp.py audit`, the regression suite |
 | docs/DASHBOARD.md | `Dashboard.bat`: each game's road from disc to port, the work board, the function treemap; the two files agents keep current |
 | docs/DEFINITION_OF_DONE.md | When a game counts as done |
-| port/README.md | The port kit's modules and what a game turns on in its game.json |
+| port/README.md | The port kit's modules and what a game turns on in its game.json. On a playtest report, read the run's log first (port/README.md "Game log"): do not ask the player what they did; if the log cannot answer, fix the log |
+
+## Each game has a LOCATIONS.md
+
+The user: "Each project should have an md about where to find files, emulators". `LOCATIONS.md` in the game folder gives,
+per machine, the actual paths under these headings: disc and game files, BIOS and firmware, emulators, extracted data,
+workspaces and clones, launcher mirror and live line, logs, not allowed here, known absent. Read it before searching a
+machine for something, and keep it current. `tools/game_setup.py setup` writes the skeleton (`locations` for any other
+workspace, the Xbox 360's included), never over an existing file; `tools/doctor.py` notes a missing one, as a warning, not
+a failure (core/locations).
 
 ## Layout (every file at most 400 lines: `decomp.py sizes`; files listed in tests/sizes_over_400.txt may only shrink)
 
@@ -46,6 +55,7 @@ platform is a **target** under `targets/` with its own README: `dreamcast_sh4`, 
 | `core/readable_outptr.py`, `varargs_audit.py`, `design_requests.py` | Callee out-pointers into the caller's stack (the original's bytes delivered at the call); `refine.py varargs` (the variadic convention at every recorded call); `refine.py requests` (design gaps the readable agents reported) |
 | `core/readable_outrun.py`, `readable_stack.py`, `runtime_rd/rd_trace.c` | The matched raw C runs behind the out-pointer delivery (trace, painted runs, cached); raw.c's guest stack addresses (annotated raw.c, context.md, RR6) and stored stack addresses paired with the readable ones; the trace of how far the original reads a callee's buffer |
 | `core/library.py`, `library_decls.py` | `refine.py library`: every readable file compiled as one program with the port's game.h at /W4 /WX, archived with lib.exe /WX, plus one unit of every file's external declarations |
+| `core/port_map.py`, `core/port_map_edges.py`, `core/port_map_native.py` | The port readiness map (`tools/port_map.py`): walks a call tree from an entry and marks each function ready, needs raw C, needs readable C, kit or native. Edges come from asm.txt, meta.json and graph.tsv, compared with each other and with the C text; indirect calls, jump tables and every disagreement are counted, and a tree is never reported complete. Native bindings are the ones the build honours (game.json `hardware`/`wrap`, `port/hand`, a registry-named definition) or a comment `implements ADDR`; any other address in a comment is reported as only a citation. Drift compares what native code stands on against a `record` baseline or git dates. |
 | `core/oracle_fresh.py`, `core/final_audit.py` | Today's oracle stamp computed without writes, the stamp scan and raw recount (`tools/fresh_oracle.py`); the checks of `tools/final_audit.py` |
 | `core/lookalike.py`, `lookalike_adopt.py`, `draft.py`, `draft_calls.py`, `draft_run.py`, `draft_gate.py`, `readopt.py` | Readable files without an agent: `refine.py lookalike` (identical functions of another project), machine drafts (`refine.py draft`, `run --draft`), re-adopting earlier attempts (`verify --adopt`, `refine.py adopt`) |
 | `core/rodata_strings.py`, `names_insert.py` | `refine.py strings [targets|@FILE|--scope] [--write]`: read-only strings raw.c passes or loads from a literal pool with no registry name get a content-derived `g_str_`/`g_fmt_` name (`const char NAME[N]`, `"machine": "strings"`) in the names file of the system using them most (a tie: the lowest-address user's; none: strings.json); a dry run by default, never renames an entry |
@@ -133,7 +143,8 @@ Dry runs without tokens: set `TCD_AGENT_COMMAND` to `["{python}", "{root}/tools/
 The `claude` CLI on PATH runs the sessions (its own login). `model` is an alias: on 2026-10-10 the CLI updated and `haiku` moved from
 claude-haiku-4-5 to claude-haiku-5-5. Each attempt records the model actually used, its effort and thinking tokens.
 `effort` (`low` ... `max`, or `null` for the CLI default, which adapts per turn) is passed as `--effort`; pinned to `high`.
-Readable attempts use `readable_effort` (null: `effort`; `refine.py run --effort` overrides it for one run; a raw.c
+Readable attempts run on `readable_model` (`refine.py run --model` overrides it; never `model`, which is raw C's) and use
+`readable_effort` (null: `effort`; `refine.py run --effort` overrides it for one run; a raw.c
 over `readable_large_bytes`, 4096, uses `readable_effort_large`, medium, and TASK.md says how to work through it) and stop
 past `readable_output_cap` output tokens (40000). `agent_system_prompt: "lean"` replaces the CLI's system prompt
 with a short constant one (`"cli"` keeps it). Sessions load no CLAUDE.md and no memory. See docs/HAIKU_WORKFLOW.md.
@@ -153,6 +164,37 @@ bit for bit:
 The whole build (the agent's work.c and our runtime) uses MSVC `/W4 /WX`: any compiler warning fails the attempt (rule R11).
 
 The agent only ever sees the dev results. The hidden set is checked after the session, so overfitting the visible tests fails.
+
+## Which model does what
+
+The user (2026-10-31): Haiku "failed to fix the translator and add the new inputs needed. Thats an Opus 5.5 job." And on an artwork
+matching script: "the concept of "success" was too broad", so a wrong match, "like finding a tree in the sea", counted as success
+and "Sonnet blindly accepted it." And (2026-11-01): "I have swapped all chats to Opus now, as i dont think Haiku or Sonnet are good
+long term", and "Unless Haiku has proven to be good at readable C, use Opus."
+
+| Model | Good for | Not for |
+|-------|----------|---------|
+| Haiku | Raw C: one function's attempt with a fixed, machine-checked answer, under the judge (config `model`) | Readable C, until proven below. Fixing a translator, oracle inputs, tools, or working out why something fails. After 2 attempts without progress, the cause goes up; it doesn't get more Haiku |
+| Sonnet | No standing role | Starting a card or a run on it by default |
+| Opus | Every card's chat. Readable C (config `readable_model`). Root causes; translators, judges, oracles and input generators; anything where the method or the meaning of "correct" has to be worked out | Raw C attempts, which stay on Haiku |
+
+Readable C is written by Opus unless Haiku is proven good at it. Proof means the same functions run on both models, with Haiku's
+readability judged as good as Opus's and the check shown to reject planted bad names. Passing the judge proves behaviour, not
+readability, so it doesn't count.
+
+Don't hold a cheap model's run or pay for retries when something underneath is wrong: put a stronger model on the cause, and leave
+the volume with the cheap model. Cost is tracked per function, not capped (the user's rule on Vigilante 8).
+
+**A score is not proof until it has been shown to reject wrong answers.** This holds for every model, and for any check an agent
+writes, such as an image matcher, a replay comparison or a coverage figure:
+
+1. Before trusting a check, say what a wrong answer looks like and feed it some. Plant wrong answers and near misses: the check
+   must fail them. Report how many it wrongly accepts, as the mutation check does for the judge.
+2. Success is stated before the run, as a specific bar that wrong results can't reach. A threshold moved after seeing results is
+   a new check, and it is proven again.
+3. Whoever wrote the check doesn't grade by it alone. Look at a sample of what it accepted, by eye for a picture, against the
+   original for data. If nobody has, report it as unverified rather than as a result.
+4. A check that reads "PASS" on everything, or on results that look wrong, is a bug in the check. Stop and fix that first.
 
 ## Anti-cheat (lessons from the blog post)
 
@@ -188,6 +230,20 @@ Only then is it promoted (holding every Ghidra slot, compiled once, rolled back 
 exist; expected results always come from the original code, so a promoted generator cannot make wrong C pass.
 TcPrepare (locked) also rejects any vector that patches memory outside `[RAM_LO, RAM_HI)`, the C runner's guest
 memory: such an input would let the original read where every C version must fault.
+
+## Test rules
+
+The user's rules (2026-11-01), for DP and every port. Proof and survey: `docs/proofs/test-rules.md`.
+
+1. **Expected values come from original evidence:** the original executable, an emulator capture or an independent decode of the
+   disc's data, never the port's own output. Every golden or expected file records its source in a `provenance.json` beside it (DP's
+   in `tests/goldens_provenance.json`; `port/tools/provenance.py`). `port/tools/regress.py --accept-*` labels what it refreshes
+   `native-baseline`: it catches a change and **supports no fidelity claim**, however the picture looks. Over original evidence it
+   fails. So never say a game matches the original on a native baseline's pass. List them with `tools/golden_survey.py`.
+2. **A bug fix's check must fail on the unfixed build.** One that passes there didn't reproduce the bug. Run
+   `py -3.12 tools/fails_before.py prove -- CMD`, and put the trailer it prints in the commit message. A port's check adds
+   `--unfixed-cmd`. If no check can reproduce the bug, write `Fails-before: n/a <why>`. `tests/test_test_rules.py` catches a
+   subject that says it fixes something and has no trailer; a fix worded otherwise still owes one. A commit that repairs a landing doesn't.
 
 ## Changing the checker
 

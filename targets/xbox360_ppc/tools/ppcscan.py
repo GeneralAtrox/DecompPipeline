@@ -38,8 +38,9 @@ SPR_VRSAVE = 256
 CLASSES = ("vmx", "fpu", "fma", "estimate", "fconv", "fp_mode", "atomic", "cache", "barrier", "sys", "trap",
            "ld64", "r13")
 
-# Phase 1 refusals, in the order they are reported (DESIGN.md).
-REFUSE = (("vmx", "unsupported: VMX"), ("fp_mode", "unsupported: FPSCR"), ("estimate", "unsupported: estimate"),
+# Refusals by instruction class, in the order they are reported (DESIGN.md). Vector words ("vmx") are not refused by
+# class any more: the oracle runs them in TcVmx and refuses the ones it cannot (vector estimates, Direct3D formats).
+REFUSE = (("fp_mode", "unsupported: FPSCR"), ("estimate", "unsupported: estimate"),
           ("atomic", "unsupported: atomic"), ("cache", "unsupported: cache"), ("sys", "unsupported: system"))
 
 
@@ -228,15 +229,18 @@ def scan(img, desc):
     for t in sorted(ptrs):
         if t not in added and not covered(t) and not in_helper(t) and not in_thunk(t) and im.word(t) != 0:
             added[t] = "pointer"
-    # An added entry runs to the next entry, helper, thunk or the end of its code section.
+    # An added entry runs to the next entry, helper, thunk or the end of its code section, and stops at its first
+    # zero word: an illegal instruction, so alignment padding, and what follows it (data, or a routine no entry
+    # names) is not the entry's code.
     bounds = sorted(set(starts) | set(added) | set(helper_lo) | set(thunks) | {hi for _, hi in im.code})
     for t, src in added.items():
         i = bisect.bisect_right(bounds, t)
         end = bounds[i] if i < len(bounds) else im.code_section(t)[1]
         end = min(end, im.code_section(t)[1])
-        while end > t + 4 and im.word(end - 4) == 0:  # alignment padding is not the function's
-            end -= 4
-        funcs[t] = {"size": end - t, "source": src}
+        a = t + 4
+        while a < end and im.word(a) != 0:
+            a += 4
+        funcs[t] = {"size": a - t, "source": src}
     out = []
     for begin in sorted(funcs):
         f = funcs[begin]

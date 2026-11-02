@@ -24,8 +24,12 @@ class Spec(flow.Target):
     # the bit casts the lift may add where the raw C had none (the translator's own text, runtime/tc_rt.h)
     helper_src = {"u2f": "static f32 u2f(u32 x) { union { u32 u; f32 f; } v; v.u = x; return v.f; }",
                   "f2u": "static u32 f2u(f32 x) { union { u32 u; f32 f; } v; v.f = x; return v.u; }"}
+    # the arrays of the translator's fipr and ftrv blocks (core/rtx/vectors)
+    vector_locals = {"v_": "vec", "a_": "lhs", "b_": "rhs"}
     args_type = "TcArgs"
     call_fns = ("tc_call", "tc_callf")
+    # a call through a computed pointer takes every register argument of the convention: r4..r7, then fr4..fr11
+    pointer_args = tuple(f"r{4 + i}" for i in range(4)) + tuple(f"fr{4 + i}" for i in range(8))
     link = "pr"
     sp_reg, sp_init = "r15", 0x8CFFE000
     ram = (0x8C000000, 0x8D000000)  # main RAM
@@ -72,8 +76,13 @@ class Spec(flow.Target):
         bad = calls_used(body.body) & self.refuse
         if bad:
             raise Unsupported(f"runtime state a readable file has no form for: {sorted(bad)}")
+
+    def prepare(self, body):
+        """A jump table becomes a switch over its index (core/rtx/jumptable); one that cannot is refused."""
+        from core.rtx import jumptable
         from core.rtx.cast import Case
         from core.rtx.lift import all_stmts
+        jumptable.rewrite(body)
         for _, _, s in all_stmts(body.body):
             if isinstance(s, Case) and s.v is not None and flow.is_int(s.v) and 0x8C000000 <= s.v.v < 0x8D000000:
                 raise Unsupported("a computed jump (a switch over code addresses)")

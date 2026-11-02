@@ -10,6 +10,7 @@
 #include "platform.h"
 #include "port_dispatch.h"
 #include "overlay.h"
+#include "game_log.h"
 
 #define DISPATCH_TOP 40u
 
@@ -121,6 +122,17 @@ static void fatal(EXCEPTION_POINTERS *ep)
     dispatch_report();
     port_stub_report();
     port_log_flush();
+    {
+        char how[400];
+        sprintf_s(how, sizeof how,
+                  "FAULT %08lx at %08x%s, eax=%08lx ebx=%08lx ecx=%08lx edx=%08lx esi=%08lx edi=%08lx ebp=%08lx esp=%08lx",
+                  er->ExceptionCode, (u32)(uintptr_t)er->ExceptionAddress,
+                  er->ExceptionCode == EXCEPTION_ACCESS_VIOLATION && er->NumberParameters >= 2
+                      ? (er->ExceptionInformation[0] == 1 ? " (write)" : er->ExceptionInformation[0] == 8 ? " (execute)" : " (read)")
+                      : "",
+                  c->Eax, c->Ebx, c->Ecx, c->Edx, c->Esi, c->Edi, c->Ebp, c->Esp);
+        game_log_end(how, 3, 1);
+    }
     ExitProcess(3);
 }
 
@@ -220,6 +232,7 @@ static LONG call_guest(CONTEXT *c)
     return EXCEPTION_CONTINUE_EXECUTION;
 }
 
+u32 sh4_r(int i); /* sh4_rt.c: the callee-saved registers the translated caller left in the register file */
 static LONG CALLBACK handler(EXCEPTION_POINTERS *ep)
 {
     const EXCEPTION_RECORD *er = ep->ExceptionRecord;
@@ -233,7 +246,7 @@ static LONG CALLBACK handler(EXCEPTION_POINTERS *ep)
             c->Eip = (DWORD)(uintptr_t)port_code_function(target);
             return EXCEPTION_CONTINUE_EXECUTION;
         }
-        port_log("CALL %08x: not guest code\n", target);
+        port_log("CALL %08x: not guest code (r8..r14 as the caller saved them: %08x %08x %08x %08x %08x %08x %08x)\n", target, sh4_r(8), sh4_r(9), sh4_r(10), sh4_r(11), sh4_r(12), sh4_r(13), sh4_r(14));
         fatal(ep);
     }
     if (rom_read(ep)) return EXCEPTION_CONTINUE_EXECUTION;

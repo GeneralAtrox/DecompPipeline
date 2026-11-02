@@ -35,16 +35,12 @@ def clone(e):
 
 
 def _join(*states):
-    out = None
-    for s in states:
-        if s is None:
-            continue
-        if out is None:
-            out = dict(s)
-            continue
-        for k, v in s.items():
-            out[k] = out.get(k, frozenset()) | v
-    return out
+    """The states joined; a variable a state has no assignment for still holds its entry value on that path."""
+    live = [s for s in states if s is not None]
+    if not live:
+        return None
+    keys = {k for s in live for k in s}
+    return {k: frozenset().union(*(s.get(k, frozenset({("entry", k)})) for s in live)) for k in keys}
 
 
 class _Webs:

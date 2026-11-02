@@ -26,6 +26,9 @@ own code throughout: see [REFERENCES.md](REFERENCES.md).
 - **The 3 functions that do not build** (8013ad9c, 801a6bdc, 801ad1d4) are over DP's 60 KB file cap even in
   compact form (65 KB, 130 KB and 74 KB).
 
+- **Widened test set (2026-10-30, `docs/proofs/2026-10-30/gc-tx/RESULT.md`):** 271 harnesses (the 83 plus 188 newly prepared).
+  217 PASS, 28 FAIL, 26 ERROR (the ERRORs are instructions the oracle does not model; 25 FAILs have no valid vectors).
+
 ## Layout
 
 - `ppctranslate/decode.py`: the instruction decoder. `image.py` reads the DOL.

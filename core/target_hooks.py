@@ -4,7 +4,8 @@ A hook module may define any of
   run_check(cfg, addr, work_file, sets, build_dir, harness_dir)  the official check (core/check.run_check)
   build_sandbox(cfg, addr, meta, summary, prev_work, previous_text)  the agent's sandbox (core/agent.build_sandbox)
   uninit_stack(packet, meta)  the frame words read before any write (core/stack_uninit.scan_packet, SH-4 asm)
-Targets without hooks.py (dreamcast_sh4) run the core versions unchanged.
+  stamp_scope(cfg, addr, scope)  whether a scoped oracle change reaches the function (core/oracle_stamp)
+A target without hooks.py, or a hook its module does not define, runs the core version unchanged.
 """
 import importlib.util
 

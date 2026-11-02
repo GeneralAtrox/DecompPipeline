@@ -1,4 +1,4 @@
-"""The game's port configuration, game.json, in the game's port folder (see port/README.md for every key).
+"""The game's port configuration, game.json, in the game's port folder (see port/CONTRACT.md for every key).
 
 Paths in game.json are relative to the folder that holds it. The kit reads it; nothing game-specific lives in the
 kit itself. load() validates and resolves; the write_* functions emit the generated files the kit's runtime and
@@ -19,9 +19,12 @@ ADDR = re.compile(r"[0-9a-f]{8}")
 NAME = re.compile(r"[A-Za-z_]\w*")
 REQUIRED = ("name", "decomp", "entry", "image_base")
 KNOWN = set(REQUIRED) | {"boot_file", "disc", "fsca_table", "must_work", "sdk", "sources", "hardware", "wrap",
-                         "console", "id", "boot_sha256", "arrows", "widescreen", "aica_arm", "kamui1", "lockstep_sample_pcs",
-                         "lockstep_rtc_pcs", "lockstep_scene_pcs", "translator_c", "tx_first", "not_code", "texture_pack"}
+                         "console", "id", "boot_sha256", "arrows", "widescreen", "interp_scene", "aica_arm", "aica_arm_fast", "aica_arm_native", "kamui1", "lockstep_sample_pcs",
+                         "lockstep_rtc_pcs", "lockstep_scene_pcs", "translator_c", "tx_first", "not_code", "texture_pack", "vram_init", "sq_queue_only", "sq_fast",
+                         "contract"}
 CONSOLE = ("country", "language", "broadcast")
+CONTRACT_DOC = KIT / "CONTRACT.md"  # its "Contract version: X.Y.Z" line is the kit's version, the only copy
+_warned_no_contract = []
 
 
 class ConfigError(SystemExit):
@@ -84,6 +87,40 @@ def vcpkg_root():
     return root if root and (root / "scripts" / "buildsystems" / "vcpkg.cmake").is_file() else None
 
 
+def contract_version(doc=CONTRACT_DOC):
+    """The kit's game contract version (port/CONTRACT.md), as (major, minor, patch)."""
+    m = re.search(r"^Contract version: (\d+)\.(\d+)\.(\d+)$", doc.read_text(encoding="utf-8"), re.M)
+    if not m:
+        raise ConfigError(f"{doc}: no 'Contract version: X.Y.Z' line")
+    return tuple(int(x) for x in m.groups())
+
+
+def check_contract(raw, game_dir, kit=None):
+    """game.json "contract", the contract version the game was built against: another major version stops, a newer
+    minor warns, a missing key warns once a run (port/CONTRACT.md "Versions"). Returns the version, or None."""
+    kit = kit or contract_version()
+    have = ".".join(map(str, kit))
+    given = raw.get("contract")
+    if given is None:
+        if not _warned_no_contract:
+            _warned_no_contract.append(1)
+            print(f'warning: {game_dir / "game.json"} has no "contract" key: add "contract": "{have}" '
+                  "(port/CONTRACT.md)", file=sys.stderr)
+        return None
+    m = re.fullmatch(r"(\d+)\.(\d+)\.(\d+)", str(given))
+    if not m:
+        raise ConfigError(f'game.json contract: {given!r} (the contract version, like "{have}")')
+    want = tuple(int(x) for x in m.groups())
+    if want[0] != kit[0]:
+        raise ConfigError(f"This game was built against contract {given}, but this kit has contract {have}. "
+                          f"A different major version means the game needs updating first: read port/CONTRACT.md "
+                          f"for what changed, then set game.json \"contract\" to \"{have}\".")
+    if want[1] > kit[1]:
+        print(f"warning: game.json contract {given} is newer than this kit's {have}: the game may use what this kit "
+              "lacks (port/CONTRACT.md)", file=sys.stderr)
+    return str(given)
+
+
 def sdk_modules():
     """The kit's SDK replacement modules: {name: path}."""
     return {p.stem: p for p in sorted(SDK_DIR.glob("*.c"))}
@@ -105,6 +142,7 @@ def load(game_dir):
     unknown = sorted(set(raw) - KNOWN)
     if missing or unknown:
         raise ConfigError(f"game.json: missing {missing}, unknown {unknown}")
+    contract = check_contract(raw, game_dir)
     entry = raw["entry"]
     if not isinstance(entry, dict) or not NAME.fullmatch(str(entry.get("name", ""))):
         raise ConfigError('game.json "entry": {"name": C name, "addr": hex}')
@@ -143,17 +181,57 @@ def load(game_dir):
     if not isinstance(widescreen, bool):
         raise ConfigError(f"game.json widescreen: {widescreen!r} "
                           "(true: the game widens its culling by port_widescreen())")
+    interp_scene = raw.get("interp_scene", False)
+    if not isinstance(interp_scene, bool):
+        raise ConfigError(f"game.json interp_scene: {interp_scene!r} "
+                          "(true: in-between frames blend the scenes, not the game's draw function: runtime/frame_extra.c)")
     if raw.get("texture_pack") is not None and not isinstance(raw["texture_pack"], str):
         raise ConfigError(f"game.json texture_pack: {raw['texture_pack']!r} (a folder, relative to game.json, that "
                           "holds a texture pack's index.txt: pvr/pvr_pack.c; it may be built later)")
+    # bytes the game reads from texture memory that nothing it uploads covers (the console holds the frame buffers or
+    # leftovers there, which the port keeps elsewhere): {byte offset in texture memory: hex bytes}
+    vi = raw.get("vram_init", {})
+    if not isinstance(vi, dict):
+        raise ConfigError('game.json vram_init: {"byte offset in texture memory": "hex bytes"}')
+    vram_init = []
+    for a, h in vi.items():
+        if not re.fullmatch(r"[0-9a-fA-F]{1,6}", str(a)):
+            raise ConfigError(f"game.json vram_init: {a!r} is not a hex byte offset in the 8 MB texture memory")
+        at = int(a, 16)
+        if not isinstance(h, str) or not re.fullmatch(r"([0-9a-fA-F]{2})+", h) or at + len(h) // 2 > 0x800000:
+            raise ConfigError(f"game.json vram_init {a}: hex bytes inside the 8 MB texture memory, got {h!r}")
+        vram_init.append((at, h.lower()))
+    sq_queue_only = raw.get("sq_queue_only", False)
+    if not isinstance(sq_queue_only, bool):
+        raise ConfigError(f"game.json sq_queue_only: {sq_queue_only!r} (true: a store into the store-queue window 0xe0000000.. stays in the "
+                          "queue the translated code models, it does not also land in RAM)")
+    sq_fast = raw.get("sq_fast", False)
+    if not isinstance(sq_fast, bool):
+        raise ConfigError(f"game.json sq_fast: {sq_fast!r} (true: the translated store-queue helpers a block at a time, tools/tx_sqfast.py)")
     aica_arm = raw.get("aica_arm", False)
     if not isinstance(aica_arm, bool):
         raise ConfigError(f"game.json aica_arm: {aica_arm!r} (true: the game's own sound driver runs on the kit's "
                           "AICA ARM7, runtime/aica_arm.c)")
+    aica_arm_fast = raw.get("aica_arm_fast", False)
+    if not isinstance(aica_arm_fast, bool) or (aica_arm_fast and not aica_arm):
+        raise ConfigError(f"game.json aica_arm_fast: {aica_arm_fast!r} (true, with aica_arm: the ARM skips its idle scan "
+                          "loops exactly, runtime/arm7_scan.c)")
+    native_c = os.environ.get("DP_AICA_ARM_NATIVE") or raw.get("aica_arm_native")  # the env: a proof build without editing game.json
+    if native_c is not None:
+        native_c = (game_dir / str(native_c)).resolve() if aica_arm else None
+        if native_c is None or not native_c.is_file():
+            raise ConfigError(f"game.json aica_arm_native: {raw.get('aica_arm_native')!r} (with aica_arm: the C file "
+                              "tools/arm7_translate.py made of the sound driver, relative to game.json; it must exist)")
     k1 = raw.get("kamui1", {})
-    if not isinstance(k1, dict) or set(k1) - {"list_word"}:
-        raise ConfigError('game.json kamui1: {"list_word": the guest address of the Kamui 1 list table word}')
+    if not isinstance(k1, dict) or set(k1) - {"list_word", "direct_list"}:
+        raise ConfigError('game.json kamui1: {"list_word": the guest address of the Kamui 1 list table word, '
+                          '"direct_list": {"at": guest address, "bytes": size} the direct list own room}')
     kamui1 = {"list_word": _addr(k1["list_word"], "kamui1.list_word")} if "list_word" in k1 else {}
+    if "direct_list" in k1:
+        dl = k1["direct_list"]
+        if not isinstance(dl, dict) or set(dl) != {"at", "bytes"}:
+            raise ConfigError('game.json kamui1.direct_list: {"at": guest address (RAM the game leaves free), "bytes": room}')
+        kamui1["direct_list"] = {"at": _addr(dl["at"], "kamui1.direct_list.at"), "bytes": _int(dl["bytes"], "kamui1.direct_list.bytes")}
     # where the port's vertical blank comes (the SDK's render and vsync-wait entries): tools/lockstep_emu.lua samples
     # the emulator there, not at a vertical blank inside the frame's draw
     pcs = raw.get("lockstep_sample_pcs", [])
@@ -198,9 +276,9 @@ def load(game_dir):
             "image_base": _addr(raw["image_base"], "image_base"), "boot_file": boot, "disc": path("disc"),
             "fsca_table": path("fsca_table"), "must_work": path("must_work"),
             "sdk": [mods[m] for m in sdk], "sources": sources, "hardware": hardware, "wrap": wrap,
-            "console": console, "arrows": arrows, "widescreen": widescreen, "texture_pack": path("texture_pack"), "aica_arm": aica_arm, "kamui1": kamui1,
+            "sq_fast": sq_fast, "console": console, "arrows": arrows, "widescreen": widescreen, "interp_scene": interp_scene, "texture_pack": path("texture_pack"), "aica_arm": aica_arm, "aica_arm_fast": aica_arm_fast, "aica_arm_native": native_c, "kamui1": kamui1, "vram_init": vram_init, "sq_queue_only": sq_queue_only,
             "lockstep_sample_pcs": pcs, "lockstep_rtc_pcs": rtc, "lockstep_scene_pcs": scene,
-            "translator_c": tc, "tx_first": first, "not_code": not_code}
+            "translator_c": tc, "tx_first": first, "not_code": not_code, "contract": contract}
 
 
 def c_string(s):
@@ -220,14 +298,27 @@ def port_config_h(cfg, own_crt=(), bu_image=False):
     stick = int(cfg.get("arrows") == "stick")
     lines.append(f"#define PORT_ARROWS_STICK {stick} /* 1: the arrow keys move only the stick (game.json arrows) */")
     lines.append(f"#define PORT_WIDESCREEN {int(bool(cfg.get('widescreen')))} /* 1: Hor+ in play runs (game.json) */")
+    lines.append(f"#define PORT_INTERP_SCENE {int(bool(cfg.get('interp_scene')))} /* 1: in-between frames by scene blending (game.json) */")
+    if cfg.get("vram_init"):  # pvr/pvr_state.c: texture memory starts with these bytes (game.json vram_init)
+        lines.append("#define PORT_VRAM_INIT " + ", ".join(
+            "{0x%xu, %s}" % (at, c_string(h)) for at, h in cfg["vram_init"]) + ", {0, 0}")
+    if cfg.get("sq_queue_only"):  # runtime/tx/tx_rt.c: translated stores into the store-queue window do not land in RAM
+        lines.append("#define PORT_SQ_QUEUE_ONLY 1")
     if cfg.get("texture_pack"):  # pvr/pvr_pack.c: the pack folder the renderer reads (game.json texture_pack)
         lines.append(f"#define PORT_TEXTURE_PACK {c_string(str(cfg['texture_pack']).replace(chr(92), '/'))}")
     if cfg.get("aica_arm"):  # runtime/aica_arm.c: the game's sound driver runs on the AICA's ARM7 (off: no ARM)
         lines.append("#define PORT_AICA_ARM 1")
+        if cfg.get("aica_arm_native"):  # runtime/aica_arm.c runs the driver as the translated blocks (the interpreter stays selectable)
+            lines.append("#define PORT_AICA_ARM_NATIVE 1")
+        if cfg.get("aica_arm_fast"):  # runtime/arm7_scan.c on by default (the environment can still switch it)
+            lines.append("#define PORT_AICA_ARM_FAST 1")
     if cfg["console"]:
         lines += [f"#define PORT_CONSOLE_{k.upper()} 0x{v:x}" for k, v in cfg["console"].items()]
     if cfg.get("kamui1", {}).get("list_word"):  # sdk/kamui1_scene.c: where the game reads Kamui 1's list table word
         lines.append(f"#define PORT_KAMUI1_LIST_WORD 0x{cfg['kamui1']['list_word']}u")
+    if cfg.get("kamui1", {}).get("direct_list"):  # sdk/kamui1_scene.c: the direct list's own room (the game's vertex buffer is not it)
+        dl = cfg["kamui1"]["direct_list"]
+        lines += [f"#define PORT_KAMUI1_DIRECT_AT 0x{dl['at']}u", f"#define PORT_KAMUI1_DIRECT_BYTES {dl['bytes']}u"]
     if own_crt:  # runtime/port_libm.c leaves these out: the game's own judged C defines them (gen_port.py OWN_CRT)
         lines += [f"#define PORT_OWN_CRT_{n} 1" for n in sorted(own_crt)]
     if bu_image:  # sdk/bu_vmu.c's file image functions take the game's BUS_BACKUPFILEHEADER (a game without it has none)
@@ -272,7 +363,7 @@ def port_files_cmake(cfg, readable_src, readable_files, readable_include, rd_rt_
     lines += cmake_list("PORT_READABLE", [readable_src / f"{x}.c" for x in readable_files])
     lines += cmake_list("PORT_READABLE_NO_PCH", [readable_src / f"{x}.c" for x in no_pch])
     lines += [f'set(PORT_READABLE_INCLUDE "{readable_include.as_posix()}")', f'set(PORT_RD_RT "{rd_rt_dir.as_posix()}")']
-    lines += cmake_list("PORT_SDK_SOURCES", cfg["sdk"]) + cmake_list("PORT_GAME_SOURCES", cfg["sources"])
+    lines += cmake_list("PORT_SDK_SOURCES", cfg["sdk"]) + cmake_list("PORT_GAME_SOURCES", cfg["sources"] + ([cfg["aica_arm_native"]] if cfg.get("aica_arm_native") else []))
     if tx:
         lines += cmake_list("PORT_TX", tx[0]) + cmake_list("PORT_TX_CALLS", tx[1])
         lines.append(f'set(PORT_TC_RT "{pathlib.Path(tx[2]).as_posix()}")')

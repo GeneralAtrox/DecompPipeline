@@ -4,7 +4,8 @@ of one vector (the PowerPC counterpart of core/compare.py, used by ppc_check).
 vectors.txt (TcVectors.writeVector): V id set, R r3..r10, F f1..f8 (double bits), C r3 per mocked call, D f1 per
 mocked call (double bits), M addr bytes, E.
 expected.txt / runner output: V, RET r3 f1 r4, W addr bytes (below STACK_LO), CALL target r3..r10 f1..f8 s0..s7 (25
-fields; expected.txt: a CA line after one through a function pointer), FN (expected.txt: the words a float store left
+fields; expected.txt: a CA line after one through a function pointer), IO addr size value (a store into a hardware
+register: the GX FIFO, the video and DMA registers; in the order made), FN (expected.txt: the words a float store left
 a NaN in), CJ, CS and XR (core/strict_judge), COV, FAULT, CODEREAD, CRASH, E.
 """
 import os
@@ -60,7 +61,7 @@ def parse_results(path):
             continue
         k = t[0]
         if k == "V":
-            cur = {"set": t[2], "writes": {}, "calls": [], "faults": [], "cov": set(), "done": False}
+            cur = {"set": t[2], "writes": {}, "calls": [], "faults": [], "cov": set(), "done": False, "io": []}
             res[int(t[1])] = cur
         elif cur is None:
             continue
@@ -71,6 +72,8 @@ def parse_results(path):
             a, data = int(t[1], 16), bytes.fromhex(t[2]) if len(t) > 2 else b""
             for i, b in enumerate(data):
                 cur["writes"][a + i] = b
+        elif k == "IO":
+            cur["io"].append((int(t[1], 16), int(t[2]), int(t[3], 16), len(t) > 4))
         elif k == "CALL":
             call = [int(x, 16) for x in t[1:CALL_FIELDS + 1]]
             if "nofp" in t[CALL_FIELDS + 1:]:  # TcOracle.noFloatArgs: crxor 6,6,6 before a variadic call
@@ -147,6 +150,11 @@ def compare_return(meta, exp, act):
     if ret in ("f32", "f64") and not same_f64(exp["f1"], act.get("f1", 0)):
         out.append(f"return value f1: expected 0x{exp['f1']:016x} ({_d(exp['f1'])}), "
                    f"got 0x{act.get('f1', 0):016x} ({_d(act.get('f1', 0))})")
+    if meta.get("r3_result") and ret not in ("u32", "s32", "u64") and exp["r3"] != act.get("r3"):  # core/ret_reg.judged
+        out.append(f"return value r3: expected 0x{exp['r3']:08x}, got 0x{act.get('r3', 0):08x} (the signature returns {ret})")
+    if meta.get("f1_result") and ret not in ("f32", "f64") and not same_f64(exp["f1"], act.get("f1", 0)):
+        out.append(f"return value f1: expected 0x{exp['f1']:016x} ({_d(exp['f1'])}), "
+                   f"got 0x{act.get('f1', 0):016x} ({_d(act.get('f1', 0))}) (the signature returns {ret})")
     return out
 
 
@@ -176,6 +184,28 @@ def compare_memory(sections, vec, exp, act):
     if len(bad) > 6:
         bad = bad[:6] + [f"... and {len(bad) - 6} more differing memory words"]
     return bad
+
+
+def compare_io(exp, act):
+    """The stores into and reads of hardware registers, in order: the same count, and each one the same kind, address,
+    size and value (the GX FIFO takes its words in order, and a read can pop one: the order is part of the result)."""
+    ei, ai, out = exp.get("io", []), act.get("io", []), []
+    for k in range(max(len(ei), len(ai))):
+        if k >= len(ei):
+            out.append(f"hardware register store #{k + 1}: the original makes only {len(ei)}; yours writes "
+                       f"{ai[k][1]} byte(s) to 0x{ai[k][0]:08x}")
+            break
+        if k >= len(ai):
+            out.append(f"hardware register store #{k + 1}: missing; the original writes {ei[k][1]} byte(s) to "
+                       f"0x{ei[k][0]:08x} here (you made {len(ai)})")
+            break
+        if ei[k] != ai[k]:
+            kind = lambda e: "read of" if e[3] else "store of"
+            out.append(f"hardware register access #{k + 1}: expected {kind(ei[k])} {ei[k][1]} byte(s) "
+                       f"0x{ei[k][2]:0{2 * ei[k][1]}x} at 0x{ei[k][0]:08x}, got {kind(ai[k])} {ai[k][1]} byte(s) "
+                       f"0x{ai[k][2]:0{2 * ai[k][1]}x} at 0x{ai[k][0]:08x}")
+            break
+    return out
 
 
 def compare_calls(meta, exp, act):
@@ -220,7 +250,8 @@ def compare_vector(meta, sections, vec, exp, act, strict=None, report=None):
         diffs.append(f"R8: read machine code at {act['coderead']}")
     for f in act["faults"]:
         diffs.append(f"invalid guest memory access: {f}")
-    diffs += compare_return(meta, exp, act) + compare_memory(sections, vec, exp, act) + compare_calls(meta, exp, act)
+    diffs += compare_return(meta, exp, act) + compare_memory(sections, vec, exp, act) + compare_io(exp, act)
+    diffs += compare_calls(meta, exp, act)
     return diffs + strict_judge.compare(meta, exp, act, REG_INDEX, strict_judge.XR_PPC, int.__eq__, strict, report,
                                         ">I")
 

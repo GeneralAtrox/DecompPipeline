@@ -9,7 +9,8 @@
   "catalog_fixups": false,
   "harness_reuse": false,
   "fsca_table": false,
-  "fma": "two_roundings",
+  "fma": "fused",
+  "stamp_scopes": [],
   "phase": 1,
   "translator": {
     "name": "xenon-translate",
@@ -63,9 +64,22 @@
     "TcFixups.java",
     "TcFlow.java",
     "TcOracle.java",
+    "TcRun.java",
+    "TcPassThrough.java",
     "TcPrepare.java",
-    "TcVectors.java"
+    "TcSingle.java",
+    "TcNaN.java",
+    "TcTrack.java",
+    "TcVectors.java",
+    "TcVmx.java",
+    "TcVmxDecode.java",
+    "TcVmxFloat.java",
+    "TcVmxInt.java",
+    "TcVmxLanes.java",
+    "TcVmxOp.java",
+    "TcVmxTables.java"
   ],
+  "shared_scripts": ["ppc"],
   "known_blockers": [],
   "blocker_kinds": [
     {"id": "ghidra_timeout", "status": ["error"], "detail": "^Ghidra (timeout|stopped)",

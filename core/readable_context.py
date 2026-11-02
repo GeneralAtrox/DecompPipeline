@@ -118,6 +118,73 @@ def split_pointers(reg, cfg, raw_text, consts, ext, mirror=None):
     return pointers, rest
 
 
+def default_placement(params):
+    """Where the convention puts a prototype's parameters, in order: r4..r7, fr4..fr11, then the stack words."""
+    out, ints, floats, stack = [], 4, 4, 0
+    for kind, _ in params:
+        if kind == "f32" and floats <= 11:
+            out.append(f"fr{floats}")
+            floats += 1
+        elif kind != "f32" and ints <= 7:
+            out.append(f"r{ints}")
+            ints += 1
+        else:
+            out.append(f"stack+{stack}")
+            stack += 4
+    return out
+
+
+def placement_note(reg, addr, callee, cproto):
+    """A line under a callee whose parameters are not where the convention puts them: raw.c's order of registers is
+    then not the prototype's, and an agent reading raw.c passes them in the wrong order (V8 Matrix_BuildRowD takes r5,
+    r6, r4; Math_LookupTileFromBits takes fr5, fr4)."""
+    from . import paths, readable_abi
+    from . import readable_check as rcheck
+    where = readable_abi.callee_where(reg, callee, rcheck.callee_storage(paths.HARNESS / addr, callee))[0]
+    params = readable.parse_proto(cproto)[2]
+    if len(where) != len(params) or not all(where) or where == default_placement(params):
+        return []
+    shown = ", ".join(f"{n or i + 1}: " + (f"s{int(s[6:]) // 4}" if s.startswith("stack+") else s)
+                      for i, ((_, n), s) in enumerate(zip(params, where)))
+    return [f"  Not the usual order: its parameters, in the prototype's order, are read from {shown}. Pass raw.c's "
+            f"value for each register as that parameter."]
+
+
+def jump_table_lines(image, raw_text):
+    """context.md's jump tables. raw.c's `switch (sw_)` names each arm by its target address, and the table that maps
+    an index to it is data no raw.c line shows: agents guessed the indexes no dev vector reaches, and the hidden
+    vectors failed. Returns the table entries that land on an arm of raw.c's switch; entries are read from the image."""
+    arms = {int(m, 16) for m in re.findall(r"\bcase 0x([0-9a-fA-F]{8})u?:", raw_text)}
+    lines = []
+    for reg_, base in dict.fromkeys(re.findall(r"\bsw_ = (r\d+) \+ 0x([0-9a-fA-F]{8})u?;", raw_text)):
+        read = re.search(rf"\b{reg_} = \(u32\)\(s32\)\((s16|s8)\)rd(?:16|8)\(\w+ \+ 0x([0-9a-fA-F]{{8}})u?\);", raw_text)
+        if not read or not arms:
+            continue
+        kind, table, base = read.group(1), int(read.group(2), 16), int(base, 16)
+        size, fmt = (2, "<h") if kind == "s16" else (1, "<b")
+        off = table - check.IMAGE_BASE
+        limit = min((a for a in arms if a > table), default=table)
+        count = (limit - table) // size
+        if not 0 <= off <= len(image) - count * size:
+            continue
+        words = [struct.unpack_from(fmt, image, off + i * size)[0] for i in range(count)]
+        # a byte table's entries are scaled in code raw.c does not spell the same way each time: the scale that hits an arm
+        scale = next((k for k in ((1,) if size == 2 else (1, 2, 4)) if words and base + words[0] * k in arms), None)
+        if scale is None:
+            continue
+        shown = []
+        for i, w in enumerate(words):
+            if base + w * scale not in arms:  # past the table's end (padding, or a target outside raw.c's arms)
+                break
+            shown.append(f"{i} -> case 0x{base + w * scale:08x}")
+        lines.append(f"- Table at 0x{table:08x} ({kind} entries): " + ", ".join(shown))
+    if not lines:
+        return []
+    return ["", "## Jump tables behind raw.c's `switch (sw_)`", "",
+            "The index is the value before raw.c scales it to the entry size. These come from the game's own bytes: use "
+            "them for your `case` labels, also for indexes no check vector reaches.", ""] + lines
+
+
 def context_md(reg, addr, meta, cfg=None, raw_text="", types_body=None, decls=None, ext=None, views=None):
     """types_body: the lean types.h text (readable_lean.headers_for), shown as the section "Types and constants";
     views: its core/lean_select.Views (what the cap cut: core/lean_cap);
@@ -142,6 +209,7 @@ def context_md(reg, addr, meta, cfg=None, raw_text="", types_body=None, decls=No
     for a in sigs:
         cproto = reg.proto(a, raw_sig=(decls or {}).get(a) or sigs[a])
         lines.append(f"- tc_call(0x{a}) -> `{cproto}`")
+        lines += placement_note(reg, addr, next(c for c in meta["callees"] if c["addr"] == a), cproto)
         if readable.is_variadic(cproto):
             lines.append(variadic_note(reg, a, cproto))
     if not sigs:
@@ -153,6 +221,7 @@ def context_md(reg, addr, meta, cfg=None, raw_text="", types_body=None, decls=No
     from . import sh4_asm
     lines += readable_stack.context_lines(reg, addr, meta, raw_text,  # guest stack addresses are no globals
                                           asm_text=sh4_asm.read_packet(paths.PACKETS / addr))
+    lines += jump_table_lines(cfg["binary_path"].read_bytes(), raw_text or "") if cfg else []
     lines += ["", "## Globals raw.c uses", ""]
     pool = own_pool(meta)
     data = [g for g in meta["globals"] if g not in pool]

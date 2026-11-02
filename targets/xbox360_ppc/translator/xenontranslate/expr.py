@@ -16,6 +16,7 @@ INT_BITS = {"u8": 8, "u16": 16, "u32": 32, "u64": 64, "s8": 8, "s16": 16, "s32":
 SIGNED = {"s8", "s16", "s32", "s64"}
 FLOAT = {"f32", "f64"}
 TRUTH = {"bool", "flag"}
+FLOAT_CMP = set()   # the C text of each float relational compare render() made: structure.neg keeps these (NaN)
 
 
 def is_float(t):
@@ -617,5 +618,7 @@ def _render(e: Expr) -> str:
             op, b = "-", Const(-b.v, e.ty)          # x + 0xfffffff0u -> x - 0x10u (the same u32 sum)
         if op == "+" and _int(b) and e.ty in SIGNED and b.v < 0:
             op, b = "-", Const(-b.v, e.ty)
-        return f"{render(a, PREC[op], 'l', op)} {op} {render(b, PREC[op], 'r', op)}"
+        text = f"{render(a, PREC[op], 'l', op)} {op} {render(b, PREC[op], 'r', op)}"
+        if op in ("<", "<=", ">", ">=") and (a.ty in FLOAT or b.ty in FLOAT): FLOAT_CMP.add(text)  # noqa: E701
+        return text
     raise TypeError(e)

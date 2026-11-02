@@ -2,7 +2,7 @@
 1. agent_env sets CLAUDE_CODE_PROMPT_CACHE_TTL from cfg cache_ttl ("5m" or "1h"); null leaves the CLI's own choice;
    anything else is refused;
 2. run_attempt starts the session with that environment;
-3. the wiring: config.json has 5m for raw attempts and null for readable ones; refine's sessions take
+3. the wiring: config.json has 5m for raw attempts and readable ones; refine's sessions take
    readable_cache_ttl in place of cache_ttl.
 Run: python -W error tests/test_cache_ttl.py (also from test_tooling.py).
 """
@@ -55,7 +55,7 @@ class CacheTtl(unittest.TestCase):
 
     def test_wiring(self):
         cfg = json.loads((TOOL / "config.json").read_text(encoding="utf-8"))
-        self.assertEqual((cfg["cache_ttl"], cfg["readable_cache_ttl"]), ("5m", None))
+        self.assertEqual((cfg["cache_ttl"], cfg["readable_cache_ttl"]), ("5m", "5m"))
         src = (TOOL / "core" / "refine.py").read_text(encoding="utf-8")
         self.assertIn('cache_ttl=cfg.get("readable_cache_ttl")', src)
         src = (TOOL / "core" / "agent.py").read_text(encoding="utf-8")  # the session env, plus the warm check's address

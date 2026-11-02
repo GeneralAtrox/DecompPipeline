@@ -18,20 +18,44 @@ include("${PORT_GEN}/port_files.cmake")
 file(GLOB PORT_GENERATED CONFIGURE_DEPENDS "${PORT_GEN}/stubs_*.c" "${PORT_GEN}/dispatch_*.c"
      "${PORT_GEN}/scene_map.c" "${PORT_GEN}/fsca_table.c")
 file(GLOB PORT_RUNTIME CONFIGURE_DEPENDS runtime/*.c runtime/gfx/*.c runtime/media/*.c pvr/*.c)
-# The desktop host (C++20): entry, data folder, settings, crash reports. Laid out after Lodoss's port (MIT, the
-# user's own); the guest runtime, the renderer and the SDK modules stay C.
-file(GLOB PORT_HOST CONFIGURE_DEPENDS host/*.cpp)
+# The port base (base/, README.md "The port base"): the window, menu bar, settings, log, session, scene dump, pads and
+# clock every console kit stands on. Its C joins the kit's C; its C++20 is the desktop host: entry, data folder,
+# settings, crash reports (laid out after Lodoss's port, MIT, the user's own). The guest runtime, the renderer and the
+# SDK modules stay C.
+file(GLOB PORT_BASE_C CONFIGURE_DEPENDS base/*.c)
+list(APPEND PORT_RUNTIME ${PORT_BASE_C})
+file(GLOB PORT_HOST CONFIGURE_DEPENDS base/*.cpp)
 # Host libraries from vcpkg (vcpkg.json; tools/build.py configures with its toolchain, x86-windows): SDL3 for the
 # window and input. Direct3D 11, DXGI and WIC come with the Windows SDK.
 find_package(SDL3 CONFIG REQUIRED)
 
 # The judge's flags for readable C (core/readable_check.py C_FLAGS, /O1): the port compiles exactly what was verified.
-set(PORT_C_FLAGS /fp:strict /arch:SSE2 /W4 /WX /O1)
+set(PORT_C_BASE /fp:strict /arch:SSE2 /W4 /WX)
+set(PORT_C_FLAGS ${PORT_C_BASE} /O1)
+# The kit's own C (runtime, renderer, SDK modules, tx_rt.c) is not judged: it gets /O2 (same /fp:strict arithmetic, so the
+# same floating-point results), while the readable C, the translator C, the game's own sources and the generated glue
+# keep the judge's /O1 exactly. PORT_KIT_O2=OFF puts the kit back on /O1.
+option(PORT_KIT_O2 "compile the kit's own C at /O2 (the judged and generated C stay at the judge's /O1)" ON)
+set(PORT_KIT_OPT /O1)
+if(PORT_KIT_O2)
+  set(PORT_KIT_OPT /O2)
+endif()
+# PORT_GAME_O2: the game's own C (readable, translator, game sources, generated glue) at /O2 too. Off by default: it is not
+# the judge's flag, so a game turns it on (-DPORT_GAME_O2=ON) only with a whole-replay proof that its frames and audio
+# are identical (docs/RUNTIME_TARGET.md, "What native code must match"). /fp:strict stays.
+option(PORT_GAME_O2 "compile the game's readable and translator C at /O2 instead of the judge's /O1" OFF)
+set(PORT_GAME_OPT /O1)
+if(PORT_GAME_O2)
+  set(PORT_GAME_OPT /O2)
+endif()
 # A checked build (tools/build.py --checked, its own build folder): no optimisation and run-time stack checks, which
 # stop the run naming a local that a callee wrote past (an undersized stack buffer).
 option(PORT_CHECKED "unoptimised build with /RTC1 stack checks" OFF)
 if(PORT_CHECKED)
-  set(PORT_C_FLAGS /fp:strict /arch:SSE2 /W4 /WX /Od /RTC1)
+  set(PORT_C_BASE /fp:strict /arch:SSE2 /W4 /WX)
+  set(PORT_C_FLAGS ${PORT_C_BASE} /Od /RTC1)
+  set(PORT_KIT_OPT /Od)
+  set(PORT_GAME_OPT /Od /RTC1)
 endif()
 # The host's C++: no guest code, so no judge flags; the same zero-warning bar.
 set(PORT_CXX_FLAGS /W4 /WX /permissive- /utf-8 /EHsc /arch:SSE2 /DNOMINMAX /DWIN32_LEAN_AND_MEAN)
@@ -52,7 +76,7 @@ typedef int port_no_readable;
 endif()
 add_library(readable STATIC ${PORT_READABLE})
 target_include_directories(readable BEFORE PRIVATE "${PORT_GEN}/include" "${PORT_READABLE_INCLUDE}" "${PORT_RD_RT}")
-target_compile_options(readable PRIVATE ${PORT_C_FLAGS} /TC)
+target_compile_options(readable PRIVATE ${PORT_C_BASE} ${PORT_GAME_OPT} /TC)
 # game.h, precompiled once: every readable file starts with it, and it is most of each file's compile time. A file
 # that starts otherwise, or has game.json wrap defines, compiles without it (gen_port.py no_pch).
 option(PORT_PCH "precompile game.h for the readable C" ON)
@@ -76,10 +100,14 @@ set_property(TARGET readable PROPERTY C_STANDARD 11)
 # glue join the executable. Without it the build is as before.
 if(PORT_TX)
   add_library(txc STATIC ${PORT_TX})
-  target_include_directories(txc BEFORE PRIVATE runtime/tx "${PORT_TC_RT}")
-  target_compile_options(txc PRIVATE ${PORT_C_FLAGS} /TC)
+  # runtime/tx/tc_rt_inline.h (forced in) wraps the judge's tc_rt.h (PORT_TC_RT_H) with the hot half of it inline; the judged header is
+  # still the one the translated C is written against and stays on the path behind the wrapper.
+  target_include_directories(txc BEFORE PRIVATE runtime/tx "${PORT_GEN}/include" "${PORT_TC_RT}")
+  target_compile_definitions(txc PRIVATE "PORT_TC_RT_H=\"${PORT_TC_RT}/tc_rt.h\"")
+  target_compile_options(txc PRIVATE "/FI${CMAKE_CURRENT_SOURCE_DIR}/runtime/tx/tc_rt_inline.h")
+  target_compile_options(txc PRIVATE ${PORT_C_BASE} ${PORT_GAME_OPT} /TC)
   set_property(TARGET txc PROPERTY C_STANDARD 11)
-  set(PORT_TX_RUNTIME runtime/tx/tx_rt.c ${PORT_TX_CALLS})
+  set(PORT_TX_RUNTIME runtime/tx/tx_rt.c runtime/tx/tx_spin.c ${PORT_TX_CALLS})
 endif()
 
 # The PowerVR renderer's shaders: fxc (Windows SDK) compiles pvr/pvr.hlsl into headers at build time.
@@ -114,9 +142,25 @@ add_custom_command(OUTPUT ${PORT_SHADER_HEADERS}
 add_executable(port ${PORT_HOST} ${PORT_RUNTIME} ${PORT_TX_RUNTIME} ${PORT_SDK_SOURCES} ${PORT_GAME_SOURCES} ${PORT_GENERATED} "${PORT_GEN}/port_entry.c"
                ${PORT_SHADER_HEADERS})
 target_include_directories(port BEFORE PRIVATE "${PORT_GEN}/include" "${PORT_READABLE_INCLUDE}" runtime runtime/tx pvr
-                           sdk host "${PORT_RD_RT}" "${PORT_SHADERS}")
-target_compile_options(port PRIVATE "$<$<COMPILE_LANGUAGE:C>:${PORT_C_FLAGS};/TC>"
+                           sdk base "${PORT_RD_RT}" "${PORT_SHADERS}")
+target_compile_options(port PRIVATE "$<$<COMPILE_LANGUAGE:C>:${PORT_C_BASE};/TC>"
                        "$<$<COMPILE_LANGUAGE:CXX>:${PORT_CXX_FLAGS}>")
+# Optimisation per file: the kit's own C at PORT_KIT_OPT; everything that comes from the game or its translation at the
+# judge's flags (with PORT_CHECKED both are /Od /RTC1).
+set(PORT_KIT_C ${PORT_RUNTIME} ${PORT_SDK_SOURCES})
+if(PORT_TX)
+  list(APPEND PORT_KIT_C runtime/tx/tx_rt.c runtime/tx/tx_spin.c)
+endif()
+set(PORT_JUDGED_C ${PORT_GENERATED} ${PORT_GAME_SOURCES} "${PORT_GEN}/port_entry.c")
+if(PORT_TX)
+  list(APPEND PORT_JUDGED_C ${PORT_TX_CALLS})
+endif()
+set_source_files_properties(${PORT_KIT_C} PROPERTIES COMPILE_OPTIONS "${PORT_KIT_OPT}")
+if(PORT_CHECKED)
+  set_source_files_properties(${PORT_JUDGED_C} PROPERTIES COMPILE_OPTIONS "/Od;/RTC1")
+else()
+  set_source_files_properties(${PORT_JUDGED_C} PROPERTIES COMPILE_OPTIONS "${PORT_GAME_OPT}")
+endif()
 if(PORT_CHECKED)
   target_compile_definitions(port PRIVATE PORT_CHECKED=1) # runtime/main.c logs the /RTC failures
 endif()

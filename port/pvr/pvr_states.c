@@ -5,7 +5,8 @@
  * compare modes on 1/w, which the depth buffer holds scaled, so "greater" means nearer as on the PowerVR; the
  * translucent list never writes depth. The opaque and punch-through lists also write stencil bit 0x80 as the
  * reference value gives it (set for shadow polygons, pvr_modvol.c), so it follows the visible polygon. Sampling
- * (TSP 18..8): flip and clamp per axis, point / bilinear / trilinear, and the mip-map D adjust as a LOD bias.
+ * (TSP 18..8): flip and clamp per axis (see address), point / bilinear / trilinear, and the mip-map D adjust as a LOD
+ * bias.
  * --aniso N (a look-review prototype) makes the filtered modes anisotropic; point sampling stays point. */
 #include <math.h>
 #include <string.h>
@@ -24,7 +25,7 @@
 #define TSP_DADJ_SHIFT 8
 #define ISP_DEPTH_SHIFT 29
 #define ISP_ZWRITE_OFF (1u << 26)
-#define SAMPLERS 64u
+#define SAMPLERS 256u
 #define STENCIL_SHADOW 0x80u
 #define DEPTH_STATES 32u /* mode, depth write, shadow stencil */
 
@@ -103,15 +104,22 @@ ID3D11DepthStencilState *pvr_depth_state(u32 list, u32 isp)
     return g_depth[key];
 }
 
-static D3D11_TEXTURE_ADDRESS_MODE address(u32 tsp, u32 clamp, u32 flip)
+/* A repeating axis clamps when the batch's coordinates stay within 0..1 on it and the frame is drawn finer than 640
+ * pixels wide: nothing repeats then, and a pixel centre closer to the quad's edge than the console's grid allows would
+ * blend in the texel from the texture's far side (a one-pixel line beside a glyph cut from the atlas's first column).
+ * At 640 wide the console's own sampling stands. */
+static D3D11_TEXTURE_ADDRESS_MODE address(u32 tsp, u32 clamp, u32 flip, u32 inside)
 {
     if (tsp & clamp) return D3D11_TEXTURE_ADDRESS_CLAMP;
-    return tsp & flip ? D3D11_TEXTURE_ADDRESS_MIRROR : D3D11_TEXTURE_ADDRESS_WRAP;
+    if (tsp & flip) return D3D11_TEXTURE_ADDRESS_MIRROR;
+    return inside && g_gfx.draw_w > 640u ? D3D11_TEXTURE_ADDRESS_CLAMP : D3D11_TEXTURE_ADDRESS_WRAP;
 }
 
-ID3D11SamplerState *pvr_sampler_state(u32 tsp)
+ID3D11SamplerState *pvr_sampler_state(u32 tsp, u32 uv_out)
 {
-    u32 key = tsp & 0x7ff00u, filter = (tsp >> TSP_FILTER_SHIFT) & 3u, dadj = (tsp >> TSP_DADJ_SHIFT) & 15u;
+    if (g_gfx.draw_w <= 640u) uv_out = 0; /* the console's sampling: one sampler per TSP */
+    u32 key = (tsp & 0x7ff00u) | (uv_out & 3u) << 20 | (u32)(g_gfx.draw_w > 640u) << 22;
+    u32 filter = (tsp >> TSP_FILTER_SHIFT) & 3u, dadj = (tsp >> TSP_DADJ_SHIFT) & 15u;
     D3D11_SAMPLER_DESC d;
     for (u32 i = 0; i < g_nsamplers; i++)
         if (g_samplers[i].key == key) return g_samplers[i].s;
@@ -120,8 +128,8 @@ ID3D11SamplerState *pvr_sampler_state(u32 tsp)
     d.Filter = filter == 0 ? D3D11_FILTER_MIN_MAG_MIP_POINT
              : filter == 1 ? D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT
                            : D3D11_FILTER_MIN_MAG_MIP_LINEAR;
-    d.AddressU = address(tsp, TSP_CLAMP_U, TSP_FLIP_U);
-    d.AddressV = address(tsp, TSP_CLAMP_V, TSP_FLIP_V);
+    d.AddressU = address(tsp, TSP_CLAMP_U, TSP_FLIP_U, !(uv_out & PVR_UVO_U));
+    d.AddressV = address(tsp, TSP_CLAMP_V, TSP_FLIP_V, !(uv_out & PVR_UVO_V));
     d.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
     d.MipLODBias = dadj ? log2f((f32)dadj / 4.0f) : 0.0f;
     d.MaxAnisotropy = 1;

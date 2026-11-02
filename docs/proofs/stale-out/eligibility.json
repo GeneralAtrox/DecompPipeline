@@ -1,0 +1,1964 @@
+{
+ "8c010f98": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 10
+ },
+ "8c012378": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c012a6e": {
+  "verdict": "PASS",
+  "eligible_words": 6,
+  "eligible_vectors": 4,
+  "vectors_with_parked": 99
+ },
+ "8c013850": {
+  "verdict": "PASS",
+  "eligible_words": 23,
+  "eligible_vectors": 17,
+  "vectors_with_parked": 103
+ },
+ "8c014b36": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 9
+ },
+ "8c0161c0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c0166dc": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c017382": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 8
+ },
+ "8c018234": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c01a5cc": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c01b6d4": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 99
+ },
+ "8c01eefa": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 5
+ },
+ "8c01f288": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 5
+ },
+ "8c01f4ee": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 32
+ },
+ "8c0200a2": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 1
+ },
+ "8c020b30": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 5
+ },
+ "8c021cba": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 90
+ },
+ "8c022260": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 1
+ },
+ "8c025e22": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 61
+ },
+ "8c028bf8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 4
+ },
+ "8c029b68": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 103
+ },
+ "8c02d97c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 61
+ },
+ "8c02e5cc": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 13
+ },
+ "8c03054c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c0327d8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c033238": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 38
+ },
+ "8c0347e4": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c035af0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c0364ae": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c0377b8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c037b22": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 38
+ },
+ "8c0383a0": {
+  "verdict": "PASS",
+  "eligible_words": 1,
+  "eligible_vectors": 1,
+  "vectors_with_parked": 10
+ },
+ "8c039178": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c03a4b0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 3
+ },
+ "8c03abd2": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 5
+ },
+ "8c03bf3c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 100
+ },
+ "8c03c530": {
+  "verdict": "PASS",
+  "eligible_words": 88,
+  "eligible_vectors": 36,
+  "vectors_with_parked": 96
+ },
+ "8c03ec88": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c03fa54": {
+  "verdict": "PASS",
+  "eligible_words": 4,
+  "eligible_vectors": 3,
+  "vectors_with_parked": 96
+ },
+ "8c0405ec": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 10
+ },
+ "8c04273c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c042a94": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c043490": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 19
+ },
+ "8c043e32": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 8
+ },
+ "8c0446e4": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c046b2a": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 91
+ },
+ "8c046ffa": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c0471a0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c0475c0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 62
+ },
+ "8c047e82": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c048bcc": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 67
+ },
+ "8c0499b0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 7
+ },
+ "8c04a268": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 4
+ },
+ "8c04b724": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 44
+ },
+ "8c04c994": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c04caa0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c04ce18": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 79
+ },
+ "8c04d2c4": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c04d900": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c04e010": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 77
+ },
+ "8c04e55a": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 47
+ },
+ "8c04f7b0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05003e": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 77
+ },
+ "8c050634": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 2
+ },
+ "8c052c78": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 8
+ },
+ "8c0531c4": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c0555f8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 35
+ },
+ "8c0589cc": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c0593b2": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05ac92": {
+  "verdict": "PASS",
+  "eligible_words": 2,
+  "eligible_vectors": 2,
+  "vectors_with_parked": 96
+ },
+ "8c05b270": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05bb64": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05c09c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05c49c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 17
+ },
+ "8c05c994": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 62
+ },
+ "8c05cdf8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05cfb6": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05db36": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05dd10": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05dff0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05e506": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05e8ac": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05ea88": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05ed5c": {
+  "verdict": "FAIL",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05f2ec": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05f630": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05f904": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c060578": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 11
+ },
+ "8c0630ae": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c063da2": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 23
+ },
+ "8c063fa4": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c0675e0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 97
+ },
+ "8c06f2b8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 55
+ },
+ "8c06f6de": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 86
+ },
+ "8c071742": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 18
+ },
+ "8c0734a0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c074596": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c074aea": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 71
+ },
+ "8c07519c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c0760a4": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c076b72": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 74
+ },
+ "8c0774cc": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 13
+ },
+ "8c0794e8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 69
+ },
+ "8c07e4be": {
+  "verdict": "PASS",
+  "eligible_words": 214,
+  "eligible_vectors": 120,
+  "vectors_with_parked": 240
+ },
+ "8c07f9ac": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c08ea7c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 97
+ },
+ "8c0923e0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 0
+ },
+ "8c092d58": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c093040": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c0117f4": {
+  "verdict": "PASS",
+  "eligible_words": 27,
+  "eligible_vectors": 22,
+  "vectors_with_parked": 102
+ },
+ "8c0126ec": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c01343c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 17
+ },
+ "8c0143ba": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c015946": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c016344": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 13
+ },
+ "8c016e8e": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 74
+ },
+ "8c017978": {
+  "verdict": "PASS",
+  "eligible_words": 6,
+  "eligible_vectors": 3,
+  "vectors_with_parked": 98
+ },
+ "8c0192e0": {
+  "verdict": "PASS",
+  "eligible_words": 22,
+  "eligible_vectors": 14,
+  "vectors_with_parked": 37
+ },
+ "8c01b21c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 99
+ },
+ "8c01e97c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c01f002": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 7
+ },
+ "8c01f3cc": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 3
+ },
+ "8c01fec4": {
+  "verdict": "PASS",
+  "eligible_words": 1,
+  "eligible_vectors": 1,
+  "vectors_with_parked": 94
+ },
+ "8c02018a": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 11
+ },
+ "8c020be0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 31
+ },
+ "8c021e14": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 6
+ },
+ "8c022e04": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 33
+ },
+ "8c027610": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 69
+ },
+ "8c028e94": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c02a41a": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 97
+ },
+ "8c02da80": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 61
+ },
+ "8c02ed6c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 15
+ },
+ "8c03064c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 39
+ },
+ "8c032fa4": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 78
+ },
+ "8c0344a4": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 1
+ },
+ "8c034978": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c035bb8": {
+  "verdict": "PASS",
+  "eligible_words": 4,
+  "eligible_vectors": 2,
+  "vectors_with_parked": 23
+ },
+ "8c036558": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c037936": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 25
+ },
+ "8c037c12": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 34
+ },
+ "8c038620": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 97
+ },
+ "8c03923e": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c03a63e": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 2
+ },
+ "8c03af80": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 14
+ },
+ "8c03c280": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 13
+ },
+ "8c03cafa": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c03ef3e": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c04017c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 97
+ },
+ "8c041094": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 64
+ },
+ "8c04281e": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c042b68": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c04365e": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c044156": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c04472a": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 87
+ },
+ "8c046c6c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 91
+ },
+ "8c047042": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c047258": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c0479bc": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 39
+ },
+ "8c048a28": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 34
+ },
+ "8c048fac": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 64
+ },
+ "8c049bfc": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c04ae00": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c04c4aa": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c04c9d6": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c04cb68": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 53
+ },
+ "8c04d170": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 8
+ },
+ "8c04d30e": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c04dc10": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 87
+ },
+ "8c04e2b2": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 30
+ },
+ "8c04e794": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c04f804": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c0500ea": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c051d92": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c052e5a": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 8
+ },
+ "8c053216": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c05650e": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 31
+ },
+ "8c058cbe": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 18
+ },
+ "8c059440": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 47
+ },
+ "8c05af04": {
+  "verdict": "PASS",
+  "eligible_words": 28,
+  "eligible_vectors": 16,
+  "vectors_with_parked": 96
+ },
+ "8c05b2fc": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05bf46": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05c27c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05c62a": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c05cb40": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05ce7c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05d814": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05db96": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05dda2": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05e074": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05e650": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05e932": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05eb9c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05f0f0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05f40c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05f700": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05f9bc": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 95
+ },
+ "8c060808": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 101
+ },
+ "8c06315a": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c063e56": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c064e48": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 0
+ },
+ "8c06d424": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c06f580": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c06f78c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 85
+ },
+ "8c071c18": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 0
+ },
+ "8c073e28": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 24
+ },
+ "8c0749aa": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 9
+ },
+ "8c074f52": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c075b4c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 94
+ },
+ "8c07612c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 57
+ },
+ "8c076f04": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 76
+ },
+ "8c077b6c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 82
+ },
+ "8c07d854": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c07eb14": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 2
+ },
+ "8c0805a0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c08ec6c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c09256c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 74
+ },
+ "8c092ea0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c097534": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 3
+ },
+ "8c011f6c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 99
+ },
+ "8c012852": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 78
+ },
+ "8c013740": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 21
+ },
+ "8c0149b4": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 8
+ },
+ "8c016148": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c0163e6": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 97
+ },
+ "8c017248": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 94
+ },
+ "8c017f18": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 107
+ },
+ "8c01a180": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 4
+ },
+ "8c01b460": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 70
+ },
+ "8c01ea4a": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 51
+ },
+ "8c01f144": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 6
+ },
+ "8c01f462": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 30
+ },
+ "8c01ffe4": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 1
+ },
+ "8c020276": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 3
+ },
+ "8c02173e": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 27
+ },
+ "8c021fa8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 9
+ },
+ "8c024254": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 3
+ },
+ "8c02872c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 83
+ },
+ "8c029308": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 84
+ },
+ "8c02b8c0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 32
+ },
+ "8c02e0d6": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 2
+ },
+ "8c03039c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 66
+ },
+ "8c031de0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 10
+ },
+ "8c033026": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c0345f8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 7
+ },
+ "8c034ae0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 1
+ },
+ "8c036434": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c0365d2": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c037a4a": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 46
+ },
+ "8c037cd8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 10
+ },
+ "8c038c2c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 67
+ },
+ "8c039320": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 37
+ },
+ "8c03a824": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 9
+ },
+ "8c03b938": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 2
+ },
+ "8c03c3a0": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 97
+ },
+ "8c03ea14": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c03f0e8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 7
+ },
+ "8c040278": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 51
+ },
+ "8c042524": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 33
+ },
+ "8c042920": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c042d16": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c0437cc": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 9
+ },
+ "8c044418": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 2
+ },
+ "8c04630a": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 75
+ },
+ "8c046dbc": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c0470e8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c047304": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c047e14": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c048ad8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 36
+ },
+ "8c04916a": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 4
+ },
+ "8c049f1c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c04b56a": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 49
+ },
+ "8c04c6f8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c04ca3c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c04cc28": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c04d1fe": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c04d470": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 2
+ },
+ "8c04dc3c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 13
+ },
+ "8c04e3a2": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 48
+ },
+ "8c04f2ac": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c04f8ee": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 45
+ },
+ "8c05034c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 50
+ },
+ "8c052b24": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 2
+ },
+ "8c052ec4": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 6
+ },
+ "8c054958": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c056a0a": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 0
+ },
+ "8c058e4c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 2
+ },
+ "8c059604": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 65
+ },
+ "8c05b242": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05b87c": {
+  "verdict": "PASS",
+  "eligible_words": 1049,
+  "eligible_vectors": 22,
+  "vectors_with_parked": 96
+ },
+ "8c05bfbc": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05c3a2": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 7
+ },
+ "8c05c710": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c05cbbc": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05cf50": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05da54": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05dc42": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05ddee": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05e374": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05e794": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05e9e8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05ec72": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05f1a6": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05f504": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05f7f8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c05fe5c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 63
+ },
+ "8c0624b6": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c0633cc": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 3
+ },
+ "8c063f34": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c065e78": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 102
+ },
+ "8c06d604": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c06f698": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c06fc14": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 55
+ },
+ "8c0721d8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 25
+ },
+ "8c074254": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 100
+ },
+ "8c074a0c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 93
+ },
+ "8c075036": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c075ec8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 93
+ },
+ "8c076324": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 1
+ },
+ "8c077286": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 10
+ },
+ "8c078f94": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c07de6c": {
+  "verdict": "PASS",
+  "eligible_words": 28,
+  "eligible_vectors": 28,
+  "vectors_with_parked": 100
+ },
+ "8c07f4b8": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 8
+ },
+ "8c080938": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 98
+ },
+ "8c08ff2c": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c092b08": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c092f58": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 96
+ },
+ "8c097dee": {
+  "verdict": "PASS",
+  "eligible_words": 0,
+  "eligible_vectors": 0,
+  "vectors_with_parked": 90
+ }
+}

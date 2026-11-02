@@ -38,6 +38,20 @@ u32 Shc_BitFieldGetU16(u32 spec, const u16 *half)
     return shld(value, (s32)(spec & 0xffu) - 32);
 }
 
+/* Shc_DivS32: dividend / divisor (r1 / r0, signed, truncated toward zero). The game's readable C steps the SH-4 div1
+ * chain 32 times; a game that calls it in a hot loop (a movie player) spent a fifth of the whole run in the chain. The same
+ * result for every input: a zero divisor sets errno and returns 0; INT_MIN / -1 is INT_MIN (the chain wraps; the host's
+ * idiv would trap). Checked against the chain over the edge values and 300,000 random pairs. */
+s32 Shc_DivS32(s32 divisor, s32 dividend)
+{
+    if (divisor == 0) {
+        g_errno = SHC_ERRNO_DIV0;
+        return 0;
+    }
+    if (divisor == -1) return (s32)(0u - (u32)dividend);
+    return dividend / divisor;
+}
+
 /* Shc_ModU32: dividend % divisor (r1 % r0, unsigned). A zero divisor sets errno and returns 0. */
 u32 Shc_ModU32(u32 divisor, u32 dividend)
 {

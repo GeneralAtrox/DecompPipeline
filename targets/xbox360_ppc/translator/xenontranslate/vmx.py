@@ -7,14 +7,15 @@ the AltiVec Technology Programming Environments Manual's operation descriptions 
 (REFERENCES.md); the operand order of every VMX128 form was checked against a reference disassembler's operand
 display (tools/check_decoder.py).
 
-Floating-point model (DESIGN NOTE: the judge's vector phase does not exist yet, so none of this is proven against an
-oracle; it is one place to change):
+Floating-point model (the judge's vector phase runs these helpers against TcVmx, the oracle's Java executor, on the
+same inputs; the two are written apart from the same manual text, so a disagreement is a fault in one of them):
 - non-Java mode as the Xbox 360 runs it: denormal inputs and results are flushed to zero of the same sign;
-- a NaN operand gives that NaN quieted (operands in instruction order), an invalid operation the default NaN
-  0x7fc00000;
-- the multiply-adds round once (fused); the dot products (vmsum3fp128 / vmsum4fp128) sum exact products in double
-  and round once to single; the estimates (vrefp, vrsqrtefp, vexptefp, vlogefp) are computed to single precision,
-  not with the hardware's tables;
+- a NaN operand gives that NaN quieted (operands in instruction order; a multiply-add takes vA, then the addend, then
+  the multiplier), an invalid operation the default NaN 0x7fc00000;
+- the multiply-adds round once (fused); the dot products (vmsum3fp128 / vmsum4fp128) sum exact products and round once
+  to single (xv_dot1: exact limb arithmetic); the estimates (vrefp, vrsqrtefp, vexptefp, vlogefp) are computed to single
+  precision, not with the hardware's tables, and the Direct3D pack/unpack formats are not modelled, so a function
+  using either is refused before it is judged (catalog "unsupported: vector estimate", TcFixups.refuseVector);
 - saturating integer operations do not record VSCR[SAT].
 """
 from __future__ import annotations
@@ -130,7 +131,8 @@ static f32 xv_rnd1(f64 s, f64 e)
     }
     return (f32)xv_b2f(b);
 }""", ["xv_f2b", "xv_b2f"])
-# a * b + c in one rounding (a * b is exact in double; TwoSum gives the error of the double sum)
+# a * b + c in one rounding (a * b is exact in double; TwoSum gives the error of the double sum); the NaN operand
+# priority is x, then the addend z, then y (the scalar PowerPC multiply-add rule, as TcVmx.fma3)
 helper("xv_fma1", """
 static u32 xv_fma1(u32 x, u32 y, u32 z, int neg)
 {
@@ -140,10 +142,13 @@ static u32 xv_fma1(u32 x, u32 y, u32 z, int neg)
     f64 bb = s - p;
     f64 e = (p - (s - bb)) + (c - bb);
     u32 r = xv_fw(xv_rnd1(s, e));
-    r = xv_nan3(r, x, y, z, 3);
-    if (neg && !xv_isnan(r)) r ^= 0x80000000u;
+    if (xv_isnan(x)) return x | 0x00400000u;
+    if (xv_isnan(z)) return z | 0x00400000u;
+    if (xv_isnan(y)) return y | 0x00400000u;
+    if (xv_isnan(r)) return 0x7fc00000u;
+    if (neg) r ^= 0x80000000u;
     return r;
-}""", ["xv_wf", "xv_fw", "xv_rnd1", "xv_nan3", "xv_isnan"])
+}""", ["xv_wf", "xv_fw", "xv_rnd1", "xv_isnan"])
 
 
 def lanes_fp2(name, expr):
@@ -171,16 +176,19 @@ static xv xv_vmaddfp(xv a, xv b, xv c)
     for (k = 0; k < 4; k++) r.w[k] = xv_fma1(a.w[k], b.w[k], c.w[k], 0);
     return r;
 }""", ["xv_fma1"])
-# -(a * b - c) = -a * b + c: the product's sign flipped, one rounding (a NaN result keeps its sign)
+# vnmsubfp / vnmsubfp128: -(a * b - c) with one rounding, the negation after it (so an exact zero is -0); the NaN
+# operand priority is a, then the addend c, then b (a NaN result keeps its sign, as TcVmx.fma3)
 helper("xv_vnmsubfp", """
 static xv xv_vnmsubfp(xv a, xv b, xv c)
 {
     xv r;
     int k;
     for (k = 0; k < 4; k++) {
-        u32 x = xv_isnan(a.w[k]) ? a.w[k] : a.w[k] ^ 0x80000000u;
-        r.w[k] = xv_fma1(x, b.w[k], c.w[k], 0);
-        if (xv_isnan(r.w[k]) && r.w[k] == ((a.w[k] ^ 0x80000000u) | 0x00400000u)) r.w[k] ^= 0x80000000u;
+        u32 x = a.w[k], y = b.w[k], z = c.w[k];
+        if (xv_isnan(x)) r.w[k] = x | 0x00400000u;
+        else if (xv_isnan(z)) r.w[k] = z | 0x00400000u;
+        else if (xv_isnan(y)) r.w[k] = y | 0x00400000u;
+        else r.w[k] = xv_fma1(x, y, z ^ 0x80000000u, 1);
     }
     return r;
 }""", ["xv_fma1", "xv_isnan"])
@@ -214,27 +222,15 @@ static xv xv_vminfp(xv a, xv b)
     }
     return r;
 }""", ["xv_wf", "xv_fw", "xv_nan3", "xv_isnan"])
-# dot products: exact products summed in double, rounded once to single, in every word
 helper("xv_dot", """
 static xv xv_dot(xv a, xv b, int n)
 {
     xv r;
     int k;
-    f64 t = 0.0;
-    u32 w = 0;
-    int nan = 0;
-    for (k = 0; k < n; k++) {
-        t += (f64)xv_wf(a.w[k]) * (f64)xv_wf(b.w[k]);
-        if (!nan && (xv_isnan(a.w[k]) || xv_isnan(b.w[k]))) {
-            w = xv_nan3(0u, a.w[k], b.w[k], 0, 2);
-            nan = 1;
-        }
-    }
-    if (!nan) w = xv_fw((f32)t);
-    if (!nan && xv_isnan(w)) w = 0x7fc00000u;
+    u32 w = xv_dot1(a.w, b.w, n);
     for (k = 0; k < 4; k++) r.w[k] = w;
     return r;
-}""", ["xv_wf", "xv_fw", "xv_nan3", "xv_isnan"])
+}""", ["xv_dot1"])
 helper("xv_vmsum3fp", """
 static xv xv_vmsum3fp(xv a, xv b)
 {
@@ -890,6 +886,8 @@ def helper_text(names):
     return out
 
 
+from . import vmx_dot, vmx_unpack  # noqa: E402,F401  (register xv_dot1 and xv_vupkd3d)
+
 # ------------------------------------------------------------------------------------------------- lifting
 # AltiVec and VMX128 names -> (helper, operand list) where operands are fields of the instruction
 SAME = {
@@ -949,8 +947,10 @@ def lift(ft, i):
         return [Assign(f"v{i.vd}", vcall("xv_vscr", [Var("vscr", "u32")]))]
     if o == "mtvscr":
         return [Assign("vscr", Call("xv_w3", [V(i.vb)], "u32"))]
-    if o in ("vupkd3d128", "vpkd3d128"):
-        raise TranslateError(f"{o} at {i.addr:08x}: the Direct3D pack/unpack formats are not modelled")
+    if o == "vupkd3d128":
+        return vmx_unpack.lift(ft, i, o, V, vcall, s)
+    if o == "vpkd3d128":
+        raise TranslateError(f"{o} at {i.addr:08x}: the Direct3D pack formats are not modelled")
     base = SAME.get(o, o)
     fn = "xv_" + base
     d = f"v{i.vd}"

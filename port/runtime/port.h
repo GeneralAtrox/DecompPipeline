@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include "rd_rt.h"
 #include "port_config.h"
+#include "base.h"    /* the port base (base/base.h) */
+#include "console.h" /* what this kit supplies the base */
 
 #define GUEST_RAM_BASE 0x8c000000u
 #define GUEST_RAM_SIZE 0x01000000u /* 16 MB main RAM */
@@ -25,13 +27,6 @@
 #define GUEST_P4_QACR0 0xff000038u
 #define GUEST_P4_QACR1 0xff00003cu
 
-/* port_log.c: one log, stdout and port.log */
-extern FILE *g_port_log;
-void port_log_open(const char *path);
-void port_log(const char *fmt, ...);
-void port_log_flush(void);
-const char *port_log_path(void); /* the log file, "" if none */
-
 /* guest_mem.c */
 int guest_mem_init(void);
 int guest_is_ram(u32 addr);
@@ -48,10 +43,7 @@ int disc_boot_name(PortDisc *d, char *out, int cap); /* IP.BIN's boot file name 
 u8 *disc_read_file(PortDisc *d, const char *path, u32 *size_out);
 void disc_set_run(PortDisc *d); /* the disc gdFs reads at run time (platform.h host_disc_*) */
 
-/* host.c (the rest is in platform.h) */
-void host_set_args(int argc, char **argv); /* the command line, for host_arg */
-char *const *host_args(int *argc);         /* that list (the host's: defaults, settings, command line) */
-void host_set_save_dir(const char *dir);   /* --save-dir */
+/* host.c (the rest is in platform.h and base.h) */
 void host_extra_state(void);               /* registers the virtual clock with frame_extra.c */
 
 /* sh4_rt.c */
@@ -78,14 +70,24 @@ int diag_option(const char *arg, const char *value);
 void diag_install(void);         /* after dispatch_install */
 void diag_fault_chain(u32 esp); /* at a fault, with a switch on: the host return addresses up the stack */
 
-/* rom_read.c: finishes a read of the boot ROM area as if the ROM held zeros; 0 if it cannot */
+/* rom_read.c: finishes a read of the boot ROM area as if the ROM held zeros, skips a store there; 0 if it cannot */
 struct _EXCEPTION_POINTERS;
 int rom_read(struct _EXCEPTION_POINTERS *ep);
 
-/* gfx/gfx_input.c: --input NAME@VBLANK[+N],.. (a scripted press, held N vertical blanks, default 6); 0 if not ours */
-int input_option(const char *arg, const char *value);
+/* base/input.c: --input NAME@VBLANK[+N],.. (a scripted press, held N vertical blanks, default 6); 0 if not ours */
+/* base/live.c: --live-input on|off; notes the arguments that make a run play by itself (never consumes them) */
 /* gfx/gfx_audio.c: --audio on|off, --audio-dump FILE.wav; 0 if not ours */
 int audio_option(const char *arg, const char *value);
+
+/* gfx/gfx_vmu.c: --vmu-screen off|side|over (the menu bar's Display > VMU screen, runtime/console_dc.c) */
+void gfx_vmu_set_mode(int mode);
+int gfx_vmu_mode(void);
+const char *gfx_vmu_mode_name(int mode);
+/* pvr/pvr_pack.c: --texture-pack on|off|NAME|DIR (the menu bar's Display > Texture pack, runtime/console_dc.c) */
+u32 pvr_pack_choices(const char *const **labels, const char *const **values); /* off, the game's default, packs/ */
+int pvr_pack_choice(void);
+void pvr_pack_set_choice(int choice);
+int pvr_pack_available(void); /* there is a pack to choose */
 
 /* port_stub.c */
 void port_stub_report(void);
@@ -94,7 +96,8 @@ void port_stub_hot(int top); /* the most-called stubs */
  * run with exit code 3, since start-up cannot go on correctly past it. Returns 0 if the file cannot be read. */
 int port_stub_must_work(const char *path);
 
-/* port_entry.c (generated): calls the game's entry function, game.json "entry" */
+/* port_entry.c (generated): calls the game's entry function, game.json "entry"; port_version is --version's line */
+extern const char port_version[];
 void port_game_entry(void);
 
 /* main.c */

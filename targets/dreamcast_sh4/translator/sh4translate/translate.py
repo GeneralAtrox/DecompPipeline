@@ -105,6 +105,7 @@ class Signature:
     sz_exits: dict | None = None    # {callee: "XY"}: its SZ at return entered with 0 (X) and 1 (Y), "u" unknown
     t_state: bool = False           # T handed over like r8..r14: a callee's T read after it (meta "t_out"), or the
                                     # function's own, read by its callers (meta "t_export"; TcTflag)
+    stack_offsets: dict | None = None   # {parameter name: byte offset of its stack slot at entry} (meta stack_offset)
 
     @classmethod
     def from_meta(cls, meta):
@@ -119,7 +120,8 @@ class Signature:
                    bool(meta.get("fpscr_state")), sq_callee_bytes(meta.get("sq_callee")),
                    frozenset(r for regs in (meta.get("r_out") or {}).values() for r in regs.split(","))
                    | frozenset(meta.get("r_exports") or ()),
-                   *fpscr_sz(meta.get("fpscr_sz")), t_state=bool(meta.get("t_out") or meta.get("t_export")))
+                   *fpscr_sz(meta.get("fpscr_sz")), t_state=bool(meta.get("t_out") or meta.get("t_export")),
+                   stack_offsets={p["name"]: p.get("stack_offset", -1) for p in meta["params"] if p["storage"] == "stack"})
 
     @classmethod
     def generic(cls, addr):
@@ -559,7 +561,49 @@ class FunctionTranslator:
         if n > 64:
             return None
         out = tuple((a + 4 + (k << min(tz, 31))) & U32 for k in range(n))
+        if tz == 2 and not all(self.local(t) for t in out):
+            self._bra_run(out)
         return out if all(self.local(t) and self.img.has(t, 2) for t in out) else None
+
+    def _bra_run(self, slots):
+        """The case slots of a `shll2 rN; braf rN` table that the body misses (Ghidra cannot see where a braf on a flag word goes, so the
+        slots and the cases they `bra` to are code in no function: Spawn 8c0703ba's clip table at 8c070d3a, `nop nop`, then `bra X; nop`
+        six times, the cases up to 8c070e5f). When every missing slot is two nops, or a `bra` with a nop in its slot to code of the body or
+        to code below the next body address after the run, and no other function's entry lies in what is missing, that code is body too
+        (self.ranges, as the catalog's own ranges are)."""
+        miss = [t for t in slots if not self.local(t)]
+        if not miss or not self.local(slots[-1] + 4) or miss != list(slots[len(slots) - len(miss):]):
+            return
+        lo, tops = miss[0], []
+        for t in miss:
+            if not self.img.has(t, 4):
+                return
+            i, j = self.img.insn(t), self.img.insn(t + 2)
+            if i.op == "nop" and j.op == "nop":
+                continue
+            if i.op != "bra" or j.op != "nop" or not self.img.has(i.ea, 2):
+                return
+            if not self.local(i.ea):
+                tops.append(i.ea)
+        hi = max(tops + [slots[-1] + 4])
+        while not self.local(hi) and hi - lo < 0x800:
+            hi += 2
+        if not self.local(hi) or any(lo <= e < hi for e in self.entries if e != self.entry):
+            return
+        if any(not self.local(i.ea) and not lo <= i.ea < hi for i in (self.img.insn(t) for t in miss if self.img.insn(t).op == "bra")):
+            return
+        a = lo
+        while a < hi:
+            if self.local(a):
+                a += 2
+                continue
+            e = a
+            while e < hi and not self.local(e):
+                e += 2
+            if not self.img.has(a, e - a):
+                return
+            self.ranges.append((a, e))
+            a = e
 
     def _widths(self):
         """{address: (w, tz) per r0..r15 before it} over the paths width_table follows (context-sensitive returns)."""
@@ -1408,6 +1452,13 @@ class FunctionTranslator:
         return [x for x in [f"r{k}" for k in range(8)] + [f"fr{k}" for k in range(4, 12)]
                 if x not in given and (x not in self.state or x in self.sig.r_out)]
 
+    def stack_slot(self, name, st):
+        """The byte offset at entry of a parameter in a stack slot (storage "stack" with the meta's stack_offset,
+        or sK), -1 for any other."""
+        if st == "stack":
+            return (self.sig.stack_offsets or {}).get(name, -1)
+        return 4 * int(st[1:]) if st[:1] == "s" and st[1:].isdigit() else -1
+
     def self_call(self):
         """A call of the function itself. DP's oracle runs it (its entry is inside the body, so it is no mocked
         callee): the C recurses, through the body helper with the stack pointer and the return address the call
@@ -1423,6 +1474,11 @@ class FunctionTranslator:
                 if kind == "f32":
                     self.helpers.add("u2f")
                 args.append(f"u2f({st})" if kind == "f32" else st if kind == "u32" else f"({kind}){st}")
+            elif (k := self.stack_slot(name, st) if kind != "f32" else -1) >= 0:
+                # a stack parameter: the word in its slot at the call (the body reads the slots through sp anyway)
+                w = f"rd32({'r15' if k == 0 else f'r15 + {k}u'})"
+                args.append(w if kind == "u32" else f"({kind}){w}")
+                continue
             else:
                 raise TranslateError(f"a call of the function itself with a parameter in {st} at {a:08x}")
             self.use(st)

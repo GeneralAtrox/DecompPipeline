@@ -77,7 +77,7 @@ public abstract class TcOracle extends TcInputs {
     // Leaving `body` (TcPrepare: TcTail.extent, the function's body and the shared tails it runs) is a call only when a
     // call instruction (jsr, bsr, bsrf) did it, or a jump (a tail call) reached another function's entry: those are the
     // callees, mocked and compared; so is a computed jump Ghidra knows no target of (`jmp @r1` through a pointer the
-    // run loaded: Spawn GEND 8c563e0e) to an address outside the program's loaded bytes, where no code of it can run.
+    // run loaded: Spawn GEND 8c563e0e), wherever it lands (a tail call, as jsr @rN; the user's decision D4, 2026-10-30).
     // Anything else (a switch case Ghidra left outside the body, a jump into the image without a function there,
     // bytes that are no instruction) is code no packet, block list or coverage count shows, and that a C version is
     // never tested on: TcPrepare refuses the function. prev: the address last stepped, or -1 right after a mocked call.
@@ -86,7 +86,7 @@ public abstract class TcOracle extends TcInputs {
         if ((last != null && last.getFlowType().isCall()) || fm.getFunctionAt(pca) != null) return true;
         if (last == null || !last.getFlowType().isComputed() || !last.getFlowType().isJump()) return false;
         for (Reference r : last.getReferencesFrom()) if (r.getReferenceType().isFlow()) return false;
-        return !currentProgram.getMemory().getLoadedAndInitializedAddressSet().contains(pca);
+        return true;  // a computed jump Ghidra knows no target of leaves the function: a mocked tail call, as jsr @rN
     }
 
     // A run leaving the body for an address that is no code of the program (no instruction byte in the code ranges, the
@@ -223,7 +223,7 @@ public abstract class TcOracle extends TcInputs {
             emu.writeRegister("FPSCR_SZ", BigInteger.ZERO);
             emu.writeRegister("FPSCR_FR", BigInteger.ZERO);
         }
-        if (sr != null) sr.enter(emu, v);  // MD=1, RB=0, BL=0, the vector's IMASK (TcSr)
+        if (sr != null) sr.enter(emu, v); TcLate.enter(emu, v);  // BL=0, the vector's IMASK (TcSr; no MD bit on the SH-2); GBR (TcLate)
         emu.writeRegister(emu.getPCRegister(), u(fn.getEntryPoint().getOffset()));
     }
 

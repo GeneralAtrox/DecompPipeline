@@ -1,0 +1,32 @@
+[
+ [
+  "821c64f0",
+  "821e55d0",
+  "XDK Direct3D: 545 functions, 75 called from outside, leaves for 33 callees; found by tools/boundary.py (seeds: 18 functions calling Vd* imports, 4 building GPU-window addresses)"
+ ],
+ [
+  "821e5990",
+  "821e5994",
+  "XACT3CreateEngine, the game's one direct call into sound (8209dc6c): replaced with the kit's engine; XACT and the XAudio2 under it run no more"
+ ],
+ [
+  "82264068",
+  "8226406c",
+  "XAudio2Create, called from 82240670 under 82218d30 (the UI library's start) for its own sounds: replaced with the kit's engine, so the XAudio2 layer runs no more"
+ ],
+ [
+  "821b09f8",
+  "821b09fc",
+  "the session's voice chat starting (runtime/xb_net_game.c): voice isn't carried, so its XAudio2 voices and voice engine run no more"
+ ],
+ [
+  "82141248",
+  "8214124c",
+  "the stage select's message handler, reached through the table at 8752e948 (runtime/xb_net_stage.c): it answers the other player's go-ahead, which the game's own leaves unanswered"
+ ],
+ [
+  "7ffc0000",
+  "7ffc2000",
+  "the methods of the kit's XACT objects (runtime/xb_xact.c), called through guest vtables"
+ ]
+]

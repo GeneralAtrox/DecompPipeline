@@ -19,7 +19,15 @@ every function Ghidra found (tools/decode_check.py), through the Ghidra broker l
       base plus a CRC of the name, references) and oracle/TcInputs.java from the target's template. --fields merges a
       JSON object of the workspace's own decisions into project.json (e.g. catalog_overrides carried over from an
       earlier workspace of the same game); it may not set target, binary or binary_sha256.
+      Then the skeleton of the game's LOCATIONS.md (core/locations), never over an existing file.
       Unless --no-ghidra, the `ghidra` step below.
+  locations <workspace>
+      Only that skeleton, for a workspace set up another way.
+  console <id> <name> <game> [--dir DIR]
+      A new console on the port base (port/base, port/README.md "Adding a console"): copies port/base/template/console_template.c
+      to <DIR>/console_<id>.c (default port/<id>/) with every function of base/console.h stubbed and the id, console name
+      and game name filled in. What is left is the machine: the drift test (tests/test_port_base.py) fails until the kit's
+      files hold none of the base's parts (a window, pad reads, a log, a menu).
   ghidra <workspace>
       `decomp.py setup` (import, analysis, TcSetup, the catalog fixups, TcCatalog), then `check`.
   check <workspace>
@@ -44,10 +52,12 @@ import time
 import zlib
 
 TOOL = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TOOL))
 sys.path.insert(0, str(TOOL / "tools"))
 for _t in ("dreamcast_sh4", "saturn_sh2", "gamecube_ppc"):
     sys.path.insert(0, str(TOOL / "targets" / _t / "tools"))
 import decode_check  # noqa: E402
+from core import locations  # noqa: E402
 
 PORT_BASE = {"dreamcast_sh4": 8600, "saturn_sh2": 8900, "gamecube_ppc": 8800}  # gcdisc.py's own rule for GameCube
 FIXED = ("target", "binary", "binary_sha256")
@@ -176,6 +186,35 @@ def gamecube(image, ws, name, rels="all"):
     return cfg
 
 
+STARTER_MAP = {
+    "_help": "Starter scene map for the port kit (port/tools/scene_map.py has the format). Copy it to <game>/port/"
+             "scene_dump.json and fill in fields from the readable C: never a value the readable headers do not name. "
+             "\"log\": true puts a line in the game log (port/base/game_log.h) whenever the value changes; every field "
+             "is in its snapshots. Name at least the game mode, the stage or level, the round, the number of "
+             "characters or players, each player's health or lives and the timer; say in the report what the readable C "
+             "does not yet name.",
+    "_example": [
+        {"key": "game_mode", "global": "g_game_mode", "enum_prefix": "GAME_MODE_", "log": True},
+        {"key": "stage", "global": "g_stage", "log": True},
+        {"key": "player{i}_life", "expr": "g_players[{i}].life", "type": "s32", "index": 4, "log": True},
+    ],
+    "root": "..",
+    "log_every": 600,
+    "fields": [],
+    "counts": [],
+    "task": [],
+}
+
+
+def write_starter_map(ws):
+    """<workspace>/port_starter/scene_dump.json: the game log's map to fill in (a Dreamcast port is the kit's)."""
+    out = pathlib.Path(ws) / "port_starter" / "scene_dump.json"
+    if not out.exists():
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(STARTER_MAP, indent=2) + "\n", encoding="utf-8", newline="\n")
+    return out
+
+
 def setup(image, ws, target=None, name=None, fields=None, files=(), context=(), first_context=False, rels="all"):
     ws = pathlib.Path(ws)
     if (ws / "project.json").exists():
@@ -198,6 +237,8 @@ def setup(image, ws, target=None, name=None, fields=None, files=(), context=(), 
         raise SystemExit(f"{target}: not a disc target of this tool")
     cfg.update(extra)
     (ws / "project.json").write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8", newline="\n")
+    if target == "dreamcast_sh4":
+        write_starter_map(ws)
     oracle = ws / "oracle" / "TcInputs.java"
     if not oracle.exists():
         oracle.parent.mkdir(parents=True, exist_ok=True)
@@ -205,8 +246,33 @@ def setup(image, ws, target=None, name=None, fields=None, files=(), context=(), 
     shown = {k: cfg[k] for k in ("name", "binary", "port", "image_gaps", "game_ranges", "global_ranges", "fixed_regs",
                                  "seed_functions", "seed_entries") if k in cfg}
     print(f"{ws / 'project.json'}: {json.dumps(shown)}" + (f"; from --fields: {sorted(extra)}" if extra else ""))
+    write_locations(ws, cfg["name"])
     print(f'To show it on the dashboard (docs/DASHBOARD.md): python tools/dashboard.py add "<its game folder>"')
     return cfg
+
+
+def write_locations(ws, name):
+    f = locations.write_skeleton(ws, name)
+    print(f"{f}: fill in where this game's files and emulators are, per machine (AGENTS.md)" if f
+          else f"{locations.file_for(ws)} exists: left as it is")
+
+
+def new_console(ident, name, game, out_dir=None):
+    """port/<ident>/console_<ident>.c from the template: base/console.h's side of a new console, every function stubbed."""
+    if not re.fullmatch(r"[a-z][a-z0-9_]*", ident):
+        raise SystemExit(f"console id {ident!r}: lower-case letters, digits and _, starting with a letter")
+    src = TOOL / "port" / "base" / "template" / "console_template.c"
+    out = pathlib.Path(out_dir) if out_dir else TOOL / "port" / ident
+    dest = out / f"console_{ident}.c"
+    if dest.exists():
+        raise SystemExit(f"{dest} exists: not overwritten")
+    text = src.read_text(encoding="utf-8")
+    for key, value in (("@ID@", ident), ("@NAME@", name), ("@GAME@", game)):
+        text = text.replace(key, value)
+    out.mkdir(parents=True, exist_ok=True)
+    dest.write_text(text, encoding="utf-8", newline="\n")
+    print(f"{dest}: the {name} on the port base; fill in each TODO (the machine), then build it with the base's files")
+    return dest
 
 
 def timing(ws, step, seconds, **more):
@@ -266,7 +332,12 @@ def main(argv):
     s.add_argument("--first-as-context", action="store_true")
     s.add_argument("--rels", default="all")
     s.add_argument("--no-ghidra", action="store_true")
-    for c in ("ghidra", "check"):
+    c = sub.add_parser("console")
+    c.add_argument("id")
+    c.add_argument("name")
+    c.add_argument("game")
+    c.add_argument("--dir")
+    for c in ("ghidra", "check", "locations"):
         sub.add_parser(c).add_argument("workspace")
     a = ap.parse_args(argv[1:])
     if a.cmd == "setup":
@@ -274,6 +345,13 @@ def main(argv):
         cfg = setup(a.image, a.workspace, a.target, a.name, a.fields, a.file, a.context, a.first_as_context, a.rels)
         timing(a.workspace, "disc", time.perf_counter() - t, target=cfg["target"])
         return 0 if a.no_ghidra else ghidra_step(a.workspace)
+    if a.cmd == "console":
+        new_console(a.id, a.name, a.game, a.dir)
+        return 0
+    if a.cmd == "locations":
+        cfg = json.loads((pathlib.Path(a.workspace) / "project.json").read_text(encoding="utf-8"))
+        write_locations(a.workspace, cfg["name"])
+        return 0
     return (ghidra_step if a.cmd == "ghidra" else check_step)(a.workspace)
 
 

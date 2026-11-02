@@ -7,7 +7,8 @@ import re
 # shares them); `pref @a` sends a's queue to a's 32-byte RAM block: the bytes stored since, and the rest from the block that queue last
 # held (when that is a's own block, those bytes stay as they are, unread: it may be machine code, which the C must not read, R8; a store
 # hands its bytes to the queue for the same reason). At entry the stream before the pointer is taken as sent (the queues hold the blocks
-# 0x40 and 0x20 before it), and a callee that moves the pointer up through the window sends each block it passes.
+# 0x40 and 0x20 before it; a pointer inside its line has the bytes below it in the queue, stored earlier), and a callee that
+# moves the pointer up through the window sends each block it passes.
 SQ_WRITE = re.compile(r"\bwr(8|16|32|f32)\(")
 SQ_HELPERS = [
     "/* The SH-4 store queues: a store in the window 0xe0000000..0xe3ffffff lands in RAM and fills its bytes of queue",
@@ -21,9 +22,12 @@ SQ_HELPERS = [
     "}",
     "static void sq_start(SqQueues *q, u32 p)",
     "{",
+    "    u32 j, line = p & 0xffffffe0u, k = (p >> 5) & 1u;",
     "    q->from[0] = 0; q->from[1] = 0; q->marked[0] = 0; q->marked[1] = 0;",
-    "    p &= 0xffffffe0u;",
-    "    if (sq_in(p)) { sq_held(q, p - 0x40u); sq_held(q, p - 0x20u); }",
+    "    if (!sq_in(line)) return;",
+    "    sq_held(q, line - 0x40u); sq_held(q, line - 0x20u);",
+    "    /* p inside its line: the bytes below it are the stream's earlier stores, still in the queue */",
+    "    for (j = 0; j < (p & 31u); j++) { q->marked[k] |= 1u << j; q->bytes[k][j] = rd8(line + j); }",
     "}",
     "static void sq_put(SqQueues *q, u32 a, u32 n, u32 v)",
     "{",

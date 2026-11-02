@@ -24,13 +24,13 @@ sys.path.insert(0, str(TOOL / "tests"))  # its sibling test modules, also when r
 import game_config  # noqa: E402
 import gen_port  # noqa: E402
 sys.path.insert(0, str(TOOL))
-sys.path.insert(0, str(TOOL / "tests"))
 from test_sync import TMP  # noqa: E402,F401  (sets DECOMP_PROJECT when run alone)
 from core import readable  # noqa: E402  (pointer_adapter's prototypes)
 from test_lockstep import HAVE_VC, NO_VC, LockstepCompare, LockstepCounter, LockstepTimer  # noqa: E402,F401
 from test_overlays import OverlayBuilt, OverlayGroups, OverlayWindows  # noqa: E402,F401  (overlays)
+from test_overlay_slots import OverlaySlotWindows, OverlaySlots, OverlaySlotsBuilt  # noqa: E402,F401  (slot overlays)
 
-GAME = {"name": "Fixture Game", "decomp": "../decomp", "entry": {"name": "Fx_Main", "addr": "8c011000"},
+GAME = {"name": "Fixture Game", "contract": "1.0.0", "decomp": "../decomp", "entry": {"name": "Fx_Main", "addr": "8c011000"},
         "image_base": "8c010000", "sdk": ["sy_heap"], "sources": ["src/own.c"], "hardware": {"0x8C012000": "Fx_Hw"},
         "console": {"country": "0x32", "language": 1, "broadcast": "0x31"}}
 # Game material the kit must never hold: guest addresses in RAM (P1 0x8c..., P0 0x0c...; only the bases are kept),
@@ -734,10 +734,10 @@ class RuntimeCompiles(unittest.TestCase):
             sys.path.insert(0, str(TOOL))
             from core import fsca  # gen_port.py's fsca_table.c, which sh4_rt.c reads
             (d / "fsca_table.c").write_text(fsca.table_c(), encoding="utf-8")
-            srcs = " ".join(f'"{p}"' for p in sorted((KIT / "runtime").glob("*.c")) + [d / "fsca_table.c"])
+            srcs = " ".join(f'"{p}"' for p in sorted((KIT / "runtime").glob("*.c")) + [b for b in sorted((KIT / "base").glob("*.c")) if b.name not in ("input.c", "pad_style.c", "present_cpu.c", "audio_out.c")] + [d / "fsca_table.c"])
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
             cl = (f'cl /nologo /c /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
-                  f'/I"{KIT / "host"}" /I"{rd}" {srcs}')
+                  f'/I"{KIT / "base"}" /I"{rd}" {srcs}')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
                                errors="replace", timeout=300)
@@ -766,7 +766,7 @@ class RuntimeCompiles(unittest.TestCase):
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
             srcs = " ".join(f'"{p}"' for p in [KIT / "sdk" / "sy_heap.c", KIT / "runtime" / "heap.c",
                                                 d / "fx_use.c", d / "fx_row.c", d / "fx_main.c"])
-            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /MT /I"{d}" /I"{KIT / "runtime"}" '
+            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /MT /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" '
                   f'/I"{rd}" {srcs} /Fe:fx.exe')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
@@ -790,7 +790,7 @@ class RuntimeCompiles(unittest.TestCase):
                  "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}), encoding="utf-8")
             (d / "blanks.c").write_text(AICA_BLANKS_C, encoding="utf-8")
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
-            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
+            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" '
                   f'/I"{rd}" "{d / "blanks.c"}" /Fe:blanks.exe')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
@@ -814,7 +814,7 @@ class RuntimeCompiles(unittest.TestCase):
                  "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}), encoding="utf-8")
             (d / "layout.c").write_text(HEAP_LAYOUT_C, encoding="utf-8")
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
-            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
+            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" '
                   f'/I"{rd}" "{d / "layout.c"}" "{KIT / "runtime" / "heap.c"}" /Fe:layout.exe')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
@@ -838,7 +838,7 @@ class RuntimeCompiles(unittest.TestCase):
             (d / "shc_main.c").write_text(SHC_MAIN_C, encoding="utf-8")
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
             srcs = " ".join(f'"{p}"' for p in [KIT / "sdk" / "shc_long.c", d / "shc_main.c"])
-            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
+            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" '
                   f'/I"{rd}" {srcs} /Fe:shc.exe')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
@@ -863,7 +863,7 @@ class RuntimeCompiles(unittest.TestCase):
             (d / "k2_main.c").write_text(K2_MAIN_C, encoding="utf-8")
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
             srcs = " ".join(f'"{p}"' for p in [KIT / "sdk" / "kamui2_misc.c", d / "k2_main.c"])
-            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
+            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" '
                   f'/I"{KIT / "sdk"}" /I"{KIT / "pvr"}" /I"{rd}" {srcs} /Fe:k2.exe')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
@@ -889,7 +889,7 @@ class RuntimeCompiles(unittest.TestCase):
             (d / "fm_main.c").write_text(FM_MAIN_C, encoding="utf-8")
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
             srcs = " ".join(f'"{p}"' for p in [KIT / "sdk" / "fm_mng.c", d / "fm_main.c"])
-            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
+            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" '
                   f'/I"{rd}" {srcs} /Fe:fm.exe')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
@@ -916,7 +916,7 @@ class RuntimeCompiles(unittest.TestCase):
             (d / "lib_main.c").write_text(LIB_MAIN_C, encoding="utf-8")
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
             srcs = " ".join(f'"{p}"' for p in [KIT / "sdk" / "lib_ctx.c", KIT / "runtime" / "coro.c", d / "lib_main.c"])
-            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
+            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" '
                   f'/I"{rd}" {srcs} /Fe:lib.exe')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
@@ -935,11 +935,11 @@ class RuntimeCompiles(unittest.TestCase):
         game build's vcpkg headers (manifest mode), so the build checks them, as it does runtime/gfx."""
         d = pathlib.Path(tempfile.mkdtemp(dir=TOOL / "tests" / ".work" if (TOOL / "tests" / ".work").is_dir() else None))
         try:
-            files = [p for p in sorted((KIT / "host").glob("*.cpp")) if "<SDL3/" not in p.read_text(encoding="utf-8")]
+            files = [p for p in sorted((KIT / "base").glob("*.cpp")) if "<SDL3/" not in p.read_text(encoding="utf-8")]
             self.assertTrue(files)
             srcs = " ".join(f'"{p}"' for p in files)
             cl = (f'cl /nologo /c /std:c++20 /W4 /WX /permissive- /utf-8 /EHsc /arch:SSE2 /DNOMINMAX '
-                  f'/DWIN32_LEAN_AND_MEAN /O2 /I"{KIT / "host"}" {srcs}')
+                  f'/DWIN32_LEAN_AND_MEAN /O2 /I"{KIT / "base"}" /I"{KIT / "runtime"}" {srcs}')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
                                errors="replace", timeout=300)

@@ -9,6 +9,7 @@
 #include "port_dispatch.h"
 #include "overlay.h"
 #include "tx_rt.h"
+#include "prof.h"
 
 /* The original's stack: the boot ROM starts the game with r15 at RAM + 0xf400, below the boot file at RAM + 0x10000
  * (the heap runs from the boot file's end to the top of RAM, so the judge's entry r15 is no place for it here). The
@@ -60,57 +61,25 @@ uint32_t port_tx_f2u(float value)
 #define ABSENT(a) (AREA5(a) || P4_RESERVED(a))
 u8 rd8(u32 addr) { return ABSENT(addr) ? 0 : *(const volatile u8 *)(uintptr_t)addr; }
 u16 rd16(u32 addr) { return ABSENT(addr) ? 0 : *(const volatile u16 *)(uintptr_t)addr; }
-/* A word the game busy-waits on until an interrupt handler changes it (the game's sources name it: port_spin_word),
- * in a loop the judge's TcSpin cannot turn into tc_spin (it stores counters each pass). Read SPIN_READS times
- * unchanged within one vertical blank, the read waits for the next one, as the interrupt comes while the console
- * spins (sdk/ac_digi.c's rule for a polled voice). Up to SPIN_WORDS words; none unless a game names one. */
-#define SPIN_WORDS 4
-#define SPIN_READS 64u
-#define AREA_MASK 0x1fffffffu
-static u32 g_spin_word[SPIN_WORDS] = {AREA_MASK, AREA_MASK, AREA_MASK, AREA_MASK}, g_spin_value[SPIN_WORDS],
-                                      g_spin_reads[SPIN_WORDS], g_spin_blank[SPIN_WORDS];
-
-void port_spin_word(u32 addr)
-{
-    for (int i = 0; i < SPIN_WORDS; i++) {
-        if (g_spin_word[i] != AREA_MASK && g_spin_word[i] != (addr & AREA_MASK)) continue;
-        g_spin_word[i] = addr & AREA_MASK;
-        port_log("tx: spin word %08x: a read unchanged %u times within a vertical blank waits for the next\n", addr,
-                 SPIN_READS);
-        return;
-    }
-    port_log("tx: spin word %08x not kept (%d words at most)\n", addr, SPIN_WORDS);
-}
-
-static u32 spin_read(int i, u32 addr, u32 value)
-{
-    u32 blank = port_vblank_count();
-    if (value != g_spin_value[i] || blank != g_spin_blank[i]) {
-        g_spin_value[i] = value;
-        g_spin_blank[i] = blank;
-        g_spin_reads[i] = 0;
-    } else if (++g_spin_reads[i] >= SPIN_READS) {
-        port_wait_vblank();
-        g_spin_reads[i] = 0;
-        g_spin_blank[i] = port_vblank_count();
-        value = *(const volatile u32 *)(uintptr_t)addr;
-        g_spin_value[i] = value;
-    }
-    return value;
-}
-
 u32 rd32(u32 addr)
 {
     if (ABSENT(addr)) return 0;
     u32 value = *(const volatile u32 *)(uintptr_t)addr;
-    for (int i = 0; i < SPIN_WORDS && g_spin_word[i] != AREA_MASK; i++)
-        if ((addr & AREA_MASK) == g_spin_word[i]) return spin_read(i, addr, value);
-    return value;
+    return port_tx_spin_on ? port_tx_spin_read(addr, value) : value; /* tx_spin.c: a named spin word waits */
 }
+u32 port_tx_rd32_slow(u32 addr) { return rd32(addr); }
 f32 rdf32(u32 addr) { return port_tx_u2f(rd32(addr)); }
-void wr8(u32 addr, u8 value) { *(volatile u8 *)(uintptr_t)addr = value; }
-void wr16(u32 addr, u16 value) { *(volatile u16 *)(uintptr_t)addr = value; }
-void wr32(u32 addr, u32 value) { *(volatile u32 *)(uintptr_t)addr = value; }
+/* game.json sq_queue_only: the translated C models the store queues itself (SqQueues: the bytes stored and the pref that sends
+ * them to RAM), so a store into the window 0xe0000000..0xe3ffffff must not also land in the RAM it mirrors: a drawer that stores
+ * into one block and sends the queue to another would overwrite the blocks it has already sent. */
+#ifdef PORT_SQ_QUEUE_ONLY
+#define SQ_WINDOW(a) ((a) - 0xe0000000u < 0x04000000u)
+#else
+#define SQ_WINDOW(a) 0
+#endif
+void wr8(u32 addr, u8 value) { if (SQ_WINDOW(addr)) return; *(volatile u8 *)(uintptr_t)addr = value; }
+void wr16(u32 addr, u16 value) { if (SQ_WINDOW(addr)) return; *(volatile u16 *)(uintptr_t)addr = value; }
+void wr32(u32 addr, u32 value) { if (SQ_WINDOW(addr)) return; *(volatile u32 *)(uintptr_t)addr = value; }
 void wrf32(u32 addr, f32 value) { wr32(addr, port_tx_f2u(value)); }
 void port_tx_wr32(uint32_t addr, uint32_t value) { wr32(addr, value); }
 
@@ -138,7 +107,7 @@ uint32_t port_tx_enter(uint32_t frame, uint32_t args)
 
 void port_tx_leave(uint32_t sp, uint32_t args) { g_sp = sp + args; }
 
-static PortTcGlue glue_of(u32 addr)
+static PortTcGlue glue_search(u32 addr)
 {
     for (int c = 0; c < port_tx_nchunks; c++) {
         const PortTcRow *rows = port_tx_chunks[c].rows;
@@ -153,6 +122,38 @@ static PortTcGlue glue_of(u32 addr)
         return NULL;
     }
     return NULL;
+}
+
+/* The calls repeat a few hundred targets a frame: the last glue found for each slot (the table is fixed once the port runs). */
+#define GLUE_CACHE 2048u
+static struct {
+    u32 addr;
+    PortTcGlue fn; /* NULL: the address has no glue (the call goes to a readable function: dispatch_of) */
+    const PortDispatch *dispatch;
+    int set, dispatch_set;
+} g_glue_cache[GLUE_CACHE];
+
+static PortTcGlue glue_of(u32 addr)
+{
+    u32 slot = ((addr >> 2) ^ (addr >> 13)) % GLUE_CACHE;
+    if (g_glue_cache[slot].set && g_glue_cache[slot].addr == addr) return g_glue_cache[slot].fn;
+    g_glue_cache[slot].addr = addr;
+    g_glue_cache[slot].fn = glue_search(addr);
+    g_glue_cache[slot].set = 1;
+    g_glue_cache[slot].dispatch_set = 0;
+    return g_glue_cache[slot].fn;
+}
+
+/* The dispatch table's row for a folded address, kept beside its glue slot (the table is fixed once the port runs). */
+static const PortDispatch *dispatch_of(u32 addr)
+{
+    u32 slot = ((addr >> 2) ^ (addr >> 13)) % GLUE_CACHE;
+    if (!(g_glue_cache[slot].set && g_glue_cache[slot].addr == addr)) glue_of(addr);
+    if (!g_glue_cache[slot].dispatch_set) {
+        g_glue_cache[slot].dispatch = port_dispatch_find(addr);
+        g_glue_cache[slot].dispatch_set = 1;
+    }
+    return g_glue_cache[slot].dispatch;
 }
 
 /* The guest address of a host function readable C handed over as a pointer (a callback it stored where the original
@@ -188,21 +189,79 @@ static u32 site_off(const void *site)
     return (u32)(uintptr_t)site - (u32)(uintptr_t)GetModuleHandleW(NULL);
 }
 
-static void call(u32 target, const PortTcArgs *a, PortTcRet *o, int want_f, const void *site)
+#define MAX_CALL_HOOKS 32u
+static struct {
+    u32 addr;
+    PortCallHookFn before, after;
+    void *arg;
+} g_call_hooks[MAX_CALL_HOOKS];
+static u32 g_ncall_hooks;
+
+void port_hook_call(u32 addr, PortCallHookFn before, PortCallHookFn after, void *arg)
+{
+    if (g_ncall_hooks >= MAX_CALL_HOOKS) {
+        port_log("tx: call hook for %08x refused: %u hooks already\n", addr, MAX_CALL_HOOKS);
+        return;
+    }
+    g_call_hooks[g_ncall_hooks].addr = guest_fold(addr);
+    g_call_hooks[g_ncall_hooks].before = before;
+    g_call_hooks[g_ncall_hooks].after = after;
+    g_call_hooks[g_ncall_hooks].arg = arg;
+    g_ncall_hooks++;
+}
+
+static void call_hooks(u32 target, int after)
+{
+    u32 at = guest_fold(target);
+    for (u32 i = 0; i < g_ncall_hooks; i++) {
+        PortCallHookFn fn = after ? g_call_hooks[i].after : g_call_hooks[i].before;
+        if (g_call_hooks[i].addr == at && fn) fn(at, g_call_hooks[i].arg);
+    }
+}
+
+/* A target with no host function, or one called by argument words, is logged the first time it is called, whatever
+ * came before: the first 64 calls used to hide a late one behind a loop (per-character code a game loads late). */
+#define NO_FN_SEEN 1024u
+#define FIRST_SLOTS 4096u /* a power of two over NO_FN_SEEN: the table is never full */
+static int first_call(int words, u32 target)
+{
+    static u32 seen[2][FIRST_SLOTS]; /* open addressing; a slot is taken where used[] says so */
+    static unsigned char used[2][FIRST_SLOTS];
+    static u32 n[2];
+    static int full_logged[2];
+    u32 slot = ((target >> 2) ^ (target >> 14)) % FIRST_SLOTS;
+    while (used[words][slot]) {
+        if (seen[words][slot] == target) return 0;
+        slot = (slot + 1u) % FIRST_SLOTS;
+    }
+    if (n[words] == NO_FN_SEEN) {
+        if (!full_logged[words]++)
+            port_log("tx: more than %u distinct targets %s; later ones are not logged\n", NO_FN_SEEN,
+                     words ? "called by argument words" : "with no host function");
+        return 0;
+    }
+    seen[words][slot] = target;
+    used[words][slot] = 1;
+    n[words]++;
+    return 1;
+}
+
+static void call_unhooked(u32 target, const PortTcArgs *a, PortTcRet *o, int want_f, const void *site)
 {
     PortTcGlue g;
     const PortDispatch *d = NULL;
     PortFn fn = NULL;
+    u32 delta = 0;
     const char *name = "a host function";
     o->r0 = 0;
     o->fr0 = 0.0f;
     /* fr4..fr11 as the callee finds them: readable C may read one from the FPU state (a loader's hidden argument).
      * A body that keeps the whole FPU as state has them there already (and its locals may be another bank's). */
     if (!g_fpu_whole)
-        for (int i = 0; i < 8; i++) sh4_set_fr(4 + i, a->fr[i]);
+        for (int i = 0; i < 8; i++) port_sh4_fr[4 + i] = port_tx_f2u(a->fr[i]);
     /* r4..r7 as the callee got them: a caller reading one after the call (meta r_out) reads the callee's output, which
      * a translated callee hands back with sh4_set_r before returning (TcOut), else the argument it kept */
-    for (int i = 0; i < 4; i++) sh4_set_r(4 + i, a->r[i]);
+    for (int i = 0; i < 4; i++) port_sh4_ro[i] = a->r[i];
     if (target && !guest_is_ram(target)) { /* a host function pointer from readable C */
         u32 guest = guest_of_host(target);
         fn = (PortFn)(uintptr_t)target;
@@ -213,34 +272,55 @@ static void call(u32 target, const PortTcArgs *a, PortTcRet *o, int want_f, cons
     if (d) {
         const PortDispatch *og = overlay_glue(target);
         g = og ? (PortTcGlue)og->fn : NULL;
+        delta = overlay_delta();
     } else
         g = glue_of(guest_fold(target));
     if (g) {
+        u32 saved = tx_ovl_delta; /* a slot unit's translator C reads it; a call out of it and back sets it again */
         for (int i = 0; i < 4; i++) g_rlo[i] = a->rlo[i];
         for (int i = 0; i < 8; i++) g_slo[i] = a->s[i];
         g_slo_set = 1;
+        if (d) tx_ovl_delta = delta;
         g(a, o);
+        tx_ovl_delta = saved;
         for (int i = 0; i < 4; i++) g_rlo[i] = 0; /* a readable callee left them */
         g_slo_set = 0;
         return;
     }
     if (!fn) {
-        if (!d) d = port_dispatch_find(guest_fold(target));
+        if (!d) d = dispatch_of(guest_fold(target));
         if (d) fn = d->fn, name = d->name;
     }
     if (!fn) {
-        if (g_no_fn++ < 64u)
-            port_log("tx: call %08x from port.exe+%08x: no host function; returns 0\n", target, site_off(site));
+        g_no_fn++;
+        if (first_call(0, target))
+            port_log("tx: call %08x from port.exe+%08x: no host function; returns 0 (r4..r7 %08x %08x %08x %08x, caller r0..r3 %08x %08x %08x %08x; each target is logged once; %u calls so far)\n",
+                     target, site_off(site), a->r[0], a->r[1], a->r[2], a->r[3], a->rlo[0], a->rlo[1], a->rlo[2], a->rlo[3], g_no_fn);
         return;
     }
-    if (g_word_calls++ < 64u)
-        port_log("tx: call %08x (%s) from port.exe+%08x by argument words\n", target, name, site_off(site));
+    g_word_calls++;
+    if (first_call(1, target))
+        port_log("tx: call %08x (%s) from port.exe+%08x by argument words (each target is logged once)\n", target, name, site_off(site));
     if (want_f)
         o->fr0 = ((TxWordFnF)(uintptr_t)fn)(a->r[0], a->r[1], a->r[2], a->r[3], a->s[0], a->s[1], a->s[2],
                                               a->s[3], a->s[4], a->s[5], a->s[6], a->s[7]);
     else
         o->r0 = ((TxWordFn)(uintptr_t)fn)(a->r[0], a->r[1], a->r[2], a->r[3], a->s[0], a->s[1], a->s[2],
                                              a->s[3], a->s[4], a->s[5], a->s[6], a->s[7]);
+}
+
+static void call(u32 target, const PortTcArgs *a, PortTcRet *o, int want_f, const void *site)
+{
+    u32 at = target;
+    if (g_prof_on) prof_call(target);
+    if (!g_ncall_hooks) {
+        call_unhooked(target, a, o, want_f, site);
+        return;
+    }
+    if (at && !guest_is_ram(at) && guest_of_host(at)) at = guest_of_host(at); /* a host function pointer */
+    call_hooks(at, 0);
+    call_unhooked(target, a, o, want_f, site);
+    call_hooks(at, 1);
 }
 
 u32 tc_call(u32 target, const PortTcArgs *args)

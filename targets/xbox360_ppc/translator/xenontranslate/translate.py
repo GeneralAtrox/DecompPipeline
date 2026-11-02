@@ -49,6 +49,7 @@ class Facts:
     fixed: dict = field(default_factory=dict)       # "r13" -> value
     helpers: list = field(default_factory=list)     # [(family, lo, hi_exclusive)]: frame helpers
     stack_args: int = 0x50
+    port: bool = False      # the port kit's form: r1 is the caller's real stack pointer (TcArgs.sp), not the judge's constant
 
     @classmethod
     def from_target(cls, tj, fixed, helper_ranges=()):
@@ -75,20 +76,21 @@ class Signature:
     callees: dict | None = None     # {callee address: [the registers DP compares at a call to it]}
     generic: bool = False
     returns: dict | None = None     # {callee address: 'r' / 'f' / 'v'}: where its result is (meta, then returns.py)
+    keeps: dict | None = None       # {callee address: {registers the mocked callee leaves alone}} (meta "keeps")
 
     @classmethod
     def from_meta(cls, meta):
-        callees = None
-        rets = {}
+        callees, rets, keeps = None, {}, {}
         if "callees" in meta:
             callees = {int(c["addr"], 16): list(c.get("regs", [])) for c in meta["callees"]}
+            keeps = {int(c["addr"], 16): set(c["keeps"]) for c in meta["callees"] if c.get("keeps")}
             for c in meta["callees"]:
                 r = (c.get("signature") or "").split(" ", 1)[0]
                 if r:
                     rets[int(c["addr"], 16)] = "v" if r == "void" else "f" if r in ("f32", "f64") else "r"
         return cls(meta["name"], meta["signature"],
                    [(p["name"], p["kind"], p["storage"], p.get("stack_offset", -1)) for p in meta["params"]],
-                   meta["ret"], callees, returns=rets)
+                   meta["ret"], callees, returns=rets, keeps=keeps)
 
     @classmethod
     def generic_for(cls, addr):
@@ -357,7 +359,7 @@ class FunctionTranslator:
         p = a - 4
         while len(out) < n and self.in_body(p) and self.dol.has(p, 4):
             i = self.dol.insn(p)
-            if i.op in ("b", "bclr", "bcctr") or (i.op == "bc" and i.lk):
+            if i.op in ("b", "bcctr") or (i.op in ("bc", "bclr") and i.lk) or (i.op == "bclr" and i.bo & 0x14 == 0x14):
                 break
             out.append(i)
             p -= 4
@@ -365,7 +367,7 @@ class FunctionTranslator:
 
     def jump_table(self, i):
         """The targets of a bctr through a table, by running the straight-line code before it for every index the
-        bounding compare allows (cmplwi rI,N then a branch away when above): each index's CTR, all in the body."""
+        bounding compare allows (cmplwi rI,N then a branch or a return away when above): each index's CTR, all in the body."""
         tr = self.trace_back(i.addr)
         k = next((j for j, x in enumerate(tr) if x.op == "cmpli" and x.l == 0), None)
         if k is None:
@@ -398,11 +400,20 @@ class FunctionTranslator:
             b = 0 if ra == 0 else g(ra)
             return None if b is None or off is None else (b + off) & 0xFFFFFFFF
 
+        # A copy made before the compare holds the index too (mr r10,r11; cmplwi r11,N; slwi r0,r10,2)
+        same, written = {reg}, set()
+        for x in reversed(code[:at]):
+            if x.op == "or" and x.rs == x.rb and x.ra not in written and x.rs not in written:
+                if x.rs in same:
+                    same.add(x.ra)
+                elif x.ra in same:
+                    same.add(x.rs)
+            written.update(gpr_writes(x))
         for j, x in enumerate(code):
             if j == at:
-                rv[reg] = idx
+                rv.update((r, idx) for r in same)
             o = x.op
-            if x.op in ("bc", "cmpi", "cmpli", "cmp", "cmpl") or o.startswith(("st", "dcb")):
+            if x.op in ("bc", "bclr", "cmpi", "cmpli", "cmp", "cmpl") or o.startswith(("st", "dcb")):
                 continue
             w = gpr_writes(x)
             val = None
@@ -505,13 +516,9 @@ class FunctionTranslator:
                     elif rg[0] == "s":
                         args.append(("s", k, self.stack_arg(k)))
         out = [CallS(target, args, addr, auto=auto)]
-        out.append(Clobber("r0", q(0)))
-        for k in range(4, 13):
-            out.append(Clobber(f"r{k}", q(0)))
-        out.append(Clobber("f0", FZERO))
-        for k in range(2, 14):
-            out.append(Clobber(f"f{k}", FZERO))
-        out.append(Clobber("ctr", q(0)))
+        # the mock leaves alone the volatile registers the callee never writes (meta "keeps"); the rest it zeroes
+        keeps = (self.sig.keeps or {}).get(target.v & 0xFFFFFFFF, ()) if isinstance(target, Const) else ()
+        out += [Clobber(r, FZERO if r[0] == "f" else q(0)) for r in CALL_CLOBBERS if r not in keeps]
         if not tail:
             out.append(Assign("lr", q(addr + 4)))
         return out
@@ -528,15 +535,25 @@ class FunctionTranslator:
         addrs = sorted(self.reach)
         entry = Block("L_entry")
         st = entry.stmts
-        st.append(Assign("r1", q(self.facts.entry_sp)))
+        if self.facts.port:
+            st.append(Assign("r1", X.cast(U64, Var("sp0", "u32"))))   # emit.py: u32 sp0 = tc_sp (set by tc_call)
+            st.append(Assign("r12", X.cast(U64, Var("tcr12", "u32"))))   # a funclet (a __finally block) reads its parent frame from r12
+            from .fn_parts import is_funclet
+            if is_funclet(self.dol, self.entry):
+                for k in range(18):
+                    st.append(Assign(f"r{14 + k}", Var(f"tcnv{k}", "u64")))
+        else:
+            st.append(Assign("r1", q(self.facts.entry_sp)))
         for r in ("r2", "r13"):
-            if r in self.facts.fixed:
+            if r == "r13" and self.facts.port:
+                st.append(Assign(r, X.cast(U64, Var("tcr13", "u32"))))   # each guest thread has its own processor block
+            elif r in self.facts.fixed:
                 st.append(Assign(r, q(self.facts.fixed[r])))
         st.append(Assign("lr", q(self.facts.sentinel)))
         for name, kind, stg, off in self.sig.params:
             pv = Var(name, kind)
             if re.fullmatch(r"r([3-9]|10)", stg):
-                st.append(Assign(stg, X.cast(U64, pv)))
+                st.append(Assign(stg, fbits(pv) if kind == "f64" else X.cast(U64, pv)))  # f64: the register's bits
             elif re.fullmatch(r"f([1-9]|1[0-3])", stg):
                 st.append(Assign(stg, X.cast("f64", pv)))
             elif stg == "stack":
@@ -1007,6 +1024,9 @@ class FunctionTranslator:
                             X.shl(X.cast("u32", CA()), 29)), Var("xbc", "u32"))
             return [Assign(f"r{i.rd}", X.cast(U64, e))]
         v = self.spr_var(i.spr)
+        if v in ("tb", "tbu") and self.facts.port:       # the port reads the host clock (runtime tc_timebase)
+            tb = Call("tc_timebase", [], U64)
+            return [Assign(f"r{i.rd}", tb if v == "tb" else X.shr(tb, 32))]
         if v in ("tb", "tbu"):
             self.notes.append(f"time base read at {i.addr:08x}: a variable the function never sets (0)")
         if v == "vrsave":
@@ -1251,6 +1271,9 @@ class FunctionTranslator:
         return out
 
 
+CALL_CLOBBERS = ["r0", *(f"r{k}" for k in range(4, 13)), "f0", *(f"f{k}" for k in range(2, 14)), "ctr"]
+
+
 class Clobber(Assign):
     """A register a mocked callee leaves 0 (not a value of this function's own)."""
     __slots__ = ()
@@ -1285,56 +1308,10 @@ def all_stmts(blocks):
             yield from b.term.default
 
 
-def fill_auto_args(ft, blocks):
-    """A call whose callee DP's meta does not list (indirect, or no meta) passes every argument register the
-    function may have set: written by its own code (not a callee's clobber) or a parameter; and the stack argument
-    doublewords when the function writes its outgoing argument area."""
-    defined = {stg for _, _, stg, _ in ft.sig.params}
-    for s_ in all_stmts(blocks[1:]):
-        if not isinstance(s_, (Clobber, CallS)):
-            defined |= s_.writes()
-    regs = [r for r in ARG_REGS if r in defined]
-    for s_ in all_stmts(blocks):
-        if isinstance(s_, CallS) and s_.auto:
-            s_.args = [("r", int(r[1:]) - 3, R(int(r[1:]))) if r[0] == "r" else ("f", int(r[1:]) - 1, F(int(r[1:])))
-                       for r in regs]
-            s_.args += [("s", k, ft.stack_arg(k)) for k in range(8)]
-
-
-def var_types(ft, blocks):
-    from .passes import children
-    types = {n: k for n, k, _, _ in ft.sig.params}
-    types.update(ft.temps)
-
-    def walk(e):
-        if isinstance(e, Var):
-            types.setdefault(e.name, e.ty)
-        for c in children(e):
-            walk(c)
-    for b in blocks:
-        sts = list(b.stmts) + (list(b.term.default) if isinstance(b.term, Switch) else [])
-        for s_ in sts:
-            for w in s_.writes():
-                types.setdefault(w, ft.temps.get(w) or vtype(w))
-            for e in s_.exprs():
-                walk(e)
-        for e in b.term.exprs():
-            walk(e)
-    types["g_"] = "u32"
-    return types
-
-
-def generic_ret(blocks):
-    w = set()
-    for s_ in all_stmts(blocks[1:]):
-        if not isinstance(s_, Clobber):
-            w |= s_.writes() if not isinstance(s_, CallS) else {"r3"}
-    return "u64" if "r3" in w else "f64" if "f1" in w else "void"
-
-
 def translate_function(dol, entry, sig, facts, body, comments=False, structured=True, optimise=True, returns=None):
     """(C text, FunctionTranslator) for the function at entry whose body is [(lo, hi_exclusive)]. returns: the
     whole executable's return kinds (returns.analyse), for callees DP's meta does not describe."""
+    from .fn_parts import fill_auto_args, generic_ret, is_funclet, var_types  # noqa: E402  (in their own file: the cap)
     from . import emit, passes
     if returns:
         sig.returns = {**returns, **(sig.returns or {})}
@@ -1347,16 +1324,30 @@ def translate_function(dol, entry, sig, facts, body, comments=False, structured=
             ft = FunctionTranslator(dol, entry, sig, facts, body, comments=comments)
             blocks = ft.build()
     fill_auto_args(ft, blocks)
+    if facts.port:                      # the callee starts on the caller's stack pointer
+        for s_ in all_stmts(blocks):
+            if isinstance(s_, CallS):
+                s_.args.append(("sp", 0, X.cast("u32", R(1))))
+                s_.args.append(("r12", 0, X.cast("u32", R(12))))
+                if isinstance(s_.target, Const) and is_funclet(ft.dol, s_.target.v & 0xFFFFFFFF):
+                    for k in range(18):         # the funclet runs on the parent's registers
+                        s_.args.append(("nv", k, R(14 + k)))
+                if isinstance(s_.target, Const):    # known before the passes: what a callee leaves alone keeps its value through them (keeps.py)
+                    t_ = s_.target.v & 0xFFFFFFFF
+                    k_ = (sig.returns or {}).get(t_)
+                    if k_ in ("r", "f", "v"):
+                        s_.kind = k_
+                        s_.keep_other = {"r": "f1", "f": "r3"}.get(k_) in (sig.keeps or {}).get(t_, ())
     types = var_types(ft, blocks)
     fn = passes.Fn(blocks, types, (facts.stack_lo, facts.stack_hi))
-    params = {n for n, _, _, _ in sig.params}
+    params = {n for n, _, _, _ in sig.params} | ({"sp0", "tcr12", "tcr13"} | {f"tcnv{k}" for k in range(18)} if facts.port else set())
     entry_vals = {n: passes.zero(t) for n, t in types.items()
                   if n not in params and n not in ft.temps and n != "g_" and t != "xv"}
     if optimise:
-        passes.optimise(fn, entry_vals, ft.notes, returns=sig.returns)
+        passes.optimise(fn, entry_vals, ft.notes, returns=sig.returns, port=bool(facts.port))
     else:
         passes.remove_unreachable(fn)
-        passes.choose_calls(fn, ft.notes, sig.returns)
+        from .other_result import choose_calls; choose_calls(fn, ft.notes, sig.returns, port=bool(facts.port))  # noqa: E702
     src = emit.function_text(ft, fn, structured)
     if len(src) > 58000:                # DP's work.c cap is 60 KB: the short calls, then no optional whitespace
         src = emit.compact(emit.function_text(ft, fn, structured, short=True))

@@ -106,7 +106,7 @@ def setup(a):
     paths.FUNCTION_BODIES = state / "function_bodies.txt"  # TcCatalog writes it with the catalog
     paths.FSCA_TABLE, paths.MSVC_ENV = state / "fsca" / paths.FSCA_TABLE.name, state / "msvc_env.json"
     for name in ("msvc_env.json", "msvc_env_x86.json", "code_ranges.txt", "catalog.json", "vectors.json",
-                 "fr0_results.txt"):
+                 "fr0_results.txt", "fret_callers.txt"):
         if (live["state"] / name).exists() and not (a.catalog and name in ("code_ranges.txt", "catalog.json")):
             shutil.copyfile(live["state"] / name, state / name)
     fsca_table(live["state"], paths.FSCA_TABLE)

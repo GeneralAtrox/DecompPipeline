@@ -19,8 +19,9 @@ public class TcClass {
     static final Set<Integer> SPR_PLAIN = Set.of(1, 8, 9);
     static final int SPR_VRSAVE = 256;
 
-    // ppcscan.REFUSE in order: the class, then the reason the catalog and the oracle give.
-    static final String[][] REFUSE = {{"vmx", "VMX"}, {"fp_mode", "FPSCR"}, {"estimate", "estimate"},
+    // ppcscan.REFUSE in order: the class, then the reason the catalog and the oracle give. Vector words ("vmx") are
+    // not refused by class any more: TcVmx executes them (TcOracle); TcFixups.refuse names the ones it cannot.
+    static final String[][] REFUSE = {{"fp_mode", "FPSCR"}, {"estimate", "estimate"},
         {"atomic", "atomic"}, {"cache", "cache"}, {"sys", "system"}};
 
     static List<String> classify(int w) {

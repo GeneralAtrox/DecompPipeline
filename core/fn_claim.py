@@ -12,11 +12,16 @@ other's files, and the ledger recorded `error` ([Errno 2] ... work.c) and `block
   have finished it while this one waited in its queue), then refine.refine. An infrastructure error (core/infra:
   an OSError, or an InfraError from a refused tool-written file) is retried once with the attempts left; a second one
   is recorded as `infra_error` (a redo keeps the old file's verdict, with redo_failed outcome infra_error).
+- run_all: refine.py run's batch. Once the plan's limit has rejected a session (core/usage) it starts no more functions:
+  V8's run went through 268 of them in 52 minutes, each failing in seconds. A passing 429 or 529 does not stop it.
 """
+import concurrent.futures
 import os
 import sys
+import threading
+import time
 
-from . import build_prune, busylog, filelock, infra, paths, readable, refine
+from . import build_prune, busylog, filelock, infra, paths, readable, refine, usage
 
 LOCKS = paths.STATE / "fnlocks"
 Busy = filelock.Busy
@@ -98,3 +103,49 @@ def run_one(cfg, addr, attempts, log, redo=False, since=None, model=None, effort
     except Busy as e:
         log(f"{e}; not run, its ledger row is untouched")
         return f"busy (not run): {e}"
+
+
+LIMIT_EXIT = 3  # refine.py run stopped on the plan's limit
+
+
+def run_all(a, cfg, todo, since=None):
+    """One worker per function: run_one holds the function's claim for its whole cycle (a function another process
+    holds is skipped as busy, its row untouched) and retries an infrastructure error once. Exits LIMIT_EXIT when the
+    plan's limit left functions not started; their rows are untouched."""
+    build_prune.maybe_sweep(cfg, log=lambda m: print(m, flush=True))  # by age and size, when due
+    lock = threading.Lock()
+
+    def one(addr):
+        def log(msg):
+            with lock:
+                print(f"[{addr}] {msg}", flush=True)
+        if usage.Usage().blocked_until():
+            return addr, None
+        try:
+            return addr, run_one(cfg, addr, a.attempts, log, redo=a.redo, since=since, model=a.model,
+                                 effort=a.effort, draft=a.draft or cfg.get("readable_draft", "start"))
+        except Exception as e:  # one bad function must not stop the batch (an old file keeps its verdict)
+            try:  # after a pass wrote readable/src (PassNotRecorded) the status is readable, never error
+                return addr, refine.record_error(addr, str(e), passed=isinstance(e, refine.PassNotRecorded))
+            except Exception as e2:  # the ledger itself cannot be written: the row stays; verify repairs it
+                return addr, (f"error: {e}; the ledger write failed too ({type(e2).__name__}: {e2}); "
+                              f"run `refine.py verify {addr}`")
+
+    n = max(1, min(a.workers, len(todo)))  # the threads the pool will start: each a worker (core/busylog)
+    busylog.start_slots(n)
+    not_run = 0
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=a.workers) as ex:
+            for addr, status in ex.map(one, todo):
+                if status is None:
+                    not_run += 1
+                else:
+                    print(f"== {addr}: {status}", flush=True)
+    finally:
+        busylog.end_slots(n)
+    if not_run:
+        until = usage.Usage().blocked_until()
+        at = time.strftime("%a %H:%M", time.localtime(until)) if until else "now"
+        print(f"PLAN LIMIT: stopped; {not_run} function(s) not started, their rows untouched. "
+              f"It resets {at}; run the same command again then.", flush=True)
+        sys.exit(LIMIT_EXIT)

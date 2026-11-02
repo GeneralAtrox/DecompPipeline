@@ -166,12 +166,15 @@ class Context(unittest.TestCase):
             self.assertEqual(consts, [("8c010044", 0x0C010100)])
             self.assertEqual(readable_context.split_pointers(reg, cfg, raw, consts, None, {}), ([], consts))
 
-        def rr3(src, named=lambda v: raw_consts.resolve(reg, None, v), m=mirror):
+        def rr3(src, named=lambda v: raw_consts.resolve(reg, None, v), m=mirror, strict=False):
             body = f'#include "game.h"\n\nvoid F(void)\n{{\n    {src}\n}}\n'
-            return [e for e in readable_lint(body, "F", "void F(void)", named, m) if e.startswith("RR3")]
+            return [e for e in readable_lint(body, "F", "void F(void)", named, m, strict) if e.startswith("RR3")]
         self.assertEqual(len(rr3("Cb_Set((void *)(uintptr_t)0x0c010100u);")), 1)
         self.assertIn("Cb_Run", rr3("Cb_Set((void *)(uintptr_t)0x0c010100u);")[0])
         self.assertEqual(rr3("Cb_Set((void *)(uintptr_t)0x0c010390u);"), [])  # control: names nothing
+        strict = rr3("Cb_Set((void *)(uintptr_t)0x0c010390u);", strict=True)  # readable_strict_mirror: refused unnamed
+        self.assertEqual(len(strict), 1)
+        self.assertIn("no registry name", strict[0])
         self.assertEqual(rr3("Cb_Set((void *)(uintptr_t)0x0c010100u);", m={}), [])  # control: no mirrors
         self.assertEqual(len(rr3("Cb_Set((void *)(uintptr_t)0x8c010390u);", m={})), 1)  # the 0x8c rule as before
 

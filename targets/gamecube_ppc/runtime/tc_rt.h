@@ -48,7 +48,7 @@ void wrf64(u32 addr, f64 value);     /* stfd */
  * in the same order, with the same target. A tail call (b to another function) is `return tc_call(...)`.
  * tc_call returns the callee's r3, tc_callf its f1. (The test harness's mocked callee sets both.) Where the original
  * reads both after one call, take the other from tc_lastr() (r3) or tc_lastf() (f1): the last call's result, no
- * new call. */
+ * new call. A callee returning 64 bits gives r3:r4 (high:low): read r4 with tc_lastr4(). */
 typedef struct {
     u32 r[8];
     f64 f[8];
@@ -58,6 +58,7 @@ typedef struct {
 u32 tc_call(u32 target, const TcArgs *args);
 f64 tc_callf(u32 target, const TcArgs *args);
 u32 tc_lastr(void);  /* the last call's r3 (0 before any call) */
+u32 tc_lastr4(void); /* the last call's r4: the low word of a 64-bit result r3:r4 */
 f64 tc_lastf(void);  /* the last call's f1 (0 before any call) */
 
 /* PowerPC instruction helpers, bit-exact with the reference model (the oracle). */
@@ -72,6 +73,8 @@ f64 ppc_fnmsubs(f64 a, f64 c, f64 b); /* fnmsubs: -(f64)(f32)((a * c) - b) */
 f64 ppc_fsel(f64 a, f64 c, f64 b);   /* fsel fD,fA,fC,fB: a >= 0.0 ? c : b (NaN a gives b) */
 f64 ppc_fabs(f64 x);                 /* fabs: clears the sign bit */
 f64 ppc_fnabs(f64 x);                /* fnabs: sets the sign bit */
+f64 ppc_frsqrte(f64 x);              /* frsqrte: the 750CL's table estimate of 1/sqrt(x) (not the exact value) */
+f64 ppc_fres(f64 x);                 /* fres: the 750CL's table estimate of 1/x */
 u32 ppc_cntlzw(u32 x);               /* cntlzw: leading zeros, 32 for 0 */
 u32 ppc_rlwinm(u32 s, int sh, int mb, int me);         /* rlwinm rA,rS,SH,MB,ME */
 u32 ppc_rlwimi(u32 a, u32 s, int sh, int mb, int me);  /* rlwimi rA,rS,SH,MB,ME (a: rA before) */

@@ -25,7 +25,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 from test_sync import TMP  # noqa: E402,F401  (sets DECOMP_PROJECT when run alone)
 
-from core import data_funcs, ret_use, sh4_asm, sig_override, sig_rewrite, stack_uninit  # noqa: E402
+from core import compare, data_funcs, ret_use, sh4_asm, sig_override, sig_rewrite, stack_uninit  # noqa: E402
 
 UNUSED = {"sites": 3, "unknown": 0, "r0": 0, "fr0": 0, "address_taken": False}
 
@@ -61,6 +61,15 @@ class Override(unittest.TestCase):
         self.assertNotIn("ret_override", meta)
         with self.assertRaises(ValueError):
             sig_override.apply_meta(meta, "double")
+
+    def test_same_type_leaves_a_wrong_result_register(self):
+        meta = {"ret": "u32", "ret_reg": "r4", "signature": "u32 fn_8c064780(u32 param_r4)"}
+        self.assertTrue(sig_override.apply_meta(meta, "u32"))
+        self.assertNotIn("ret_reg", meta)
+        self.assertEqual(meta["ret_override"], {"from": "u32", "to": "u32", "ret_reg": "r4"})
+        self.assertFalse(sig_override.apply_meta(meta, "u32"))
+        wrong = compare.compare_return(meta, {"r0": 0x8cc002a8, "fr0": 0, "retx": 5}, {"r0": 0x8cc002ac, "fr0": 0, "retx": 5})
+        self.assertIn("return value r0", wrong[0])  # the judge now reads r0, and still rejects a wrong one
 
     def test_names(self):
         with tempfile.TemporaryDirectory() as td:
@@ -127,6 +136,20 @@ class Candidates(unittest.TestCase):
         self.assertEqual(sorted(got), ["8c000100", "8c000500"])
         self.assertEqual((got["8c000100"]["case"], got["8c000100"]["suggest"]), ("f32_unread", "void"))
         self.assertEqual((got["8c000500"]["case"], got["8c000500"]["suggest"]), ("tail", "s32"))
+
+    def test_a_void_its_callers_read(self):
+        call = [("bsr 0x8c000100", "call 8c000100"), ("_nop", ""), ("mov r0,r1", ""), ("bsr 0x8c000200", "call 8c000200"),
+                ("_nop", ""), ("mov #0x0,r2", "")] + RTS
+        with tempfile.TemporaryDirectory() as td:
+            root = pathlib.Path(td)
+            workspace(root, {
+                "8c000100": ("void", body(0x8c000100, [("mov #0x1,r0", "")] + RTS)),  # r0 set, its caller reads r0
+                "8c000200": ("void", body(0x8c000200, [("mov #0x1,r0", "")] + RTS)),  # r0 set, no caller reads it
+                "8c000300": ("void", body(0x8c000300, call)),
+            })
+            got = {c["addr"]: c for c in ret_use.Project(root).candidates()}
+        self.assertEqual(list(got), ["8c000100"])
+        self.assertEqual((got["8c000100"]["case"], got["8c000100"]["suggest"]), ("read", "u32"))
 
 
 def frame(write_both):

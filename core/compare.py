@@ -1,7 +1,6 @@
 """Parsing the harness and runner output, and the byte-exact comparison of one vector (used by core/check.py).
 
-vectors.txt (TcVectors): V id set, R r4..r7, F, X, H fr12..fr15, L r0..r3, G r8..r14, Q fr0..fr15, C, M addr bytes,
-E.
+vectors.txt (TcVectors): V id set, R r4..r7, F, X, H fr12..fr15, L r0..r3, G r8..r14, Q fr0..fr15, C, M addr bytes, E.
 expected.txt / runner output: V, RET r0 fr0, RETX (the extra result word), HALT (an endless `bra .`; HALT SPIN: a wait
 loop nothing in it ends, TcSpin), W, CALL (25, 36 or 57 fields), XF, FH, GH,
 QH (fr0..fr15 and the FPSCR mode word), CJ, CS and XR (core/strict_judge), COV, FAULT, CODEREAD, CRASH, E.
@@ -242,9 +241,10 @@ def compare_return(meta, exp, act):
         return []
     out = []
     r0_same = exp["r0"] == act.get("r0") or (ret != "u64" and same_word(exp["r0"], act.get("r0", 0)))
-    if ret in ("u32", "s32", "u64") and not r0_same:
+    if (ret in ("u32", "s32", "u64") or meta.get("r0_result")) and not r0_same:
         out.append(f"return value r0{' (low word)' if ret == 'u64' else ''}: expected 0x{exp['r0']:08x}, "
-                   f"got 0x{act.get('r0', 0):08x}")
+                   f"got 0x{act.get('r0', 0):08x}" + (f"; callers read r0, the signature returns {ret}: needs raw_ret u32"
+                                                      if meta.get("r0_result") else ""))
     if ret == "u64" and exp.get("retx") != act.get("retx"):
         out.append(f"return value r1 (high word): expected 0x{exp.get('retx', 0):08x}, got 0x{act.get('retx', 0):08x}")
     if (ret == "f32" or meta.get("fr0_result")) and not same_f32(exp["fr0"], act.get("fr0", 0)):

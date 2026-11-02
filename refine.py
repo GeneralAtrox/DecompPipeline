@@ -59,11 +59,10 @@
   python refine.py --project DIR varargs                             audit the variadic call convention at every call
                                                                     the harnesses record (core/varargs_audit); exit 1
                                                                     on a call site that does not fit it
-  python refine.py --project DIR strings [ADDR|SYSTEM|@FILE...] [--scope] [--write]
-                                                                    machine names for the read-only strings raw C
-                                                                    passes that have no registry name (core/
-                                                                    rodata_strings); dry run unless --write (adds each
-                                                                    to its owner system's names file; never renames)
+  python refine.py --project DIR strings|globals [ADDR|SYSTEM|@FILE...] [--scope] [--write]
+                                                                    machine names for the unnamed read-only strings
+                                                                    and data globals raw C uses (core/rodata_strings,
+                                                                    core/global_infer); dry run unless --write
   python refine.py --project DIR requests [SYSTEM|ADDR|@FILE...] [--json]
                                                                     the design gaps agents reported for failed, stale
                                                                     and redo-failed functions (missing fields, names,
@@ -82,10 +81,11 @@ Targets (ADDR, SYSTEM, @FILE with CRLF or LF) name each function once; repeats a
 One worker per function (core/fn_claim): run holds the function's claim for its whole cycle, verify, sync-names and a
 manual check while they build or judge it; a rival skips it as busy after function_lock_wait_s (15) and writes nothing.
 An OS refusal of a file the tool wrote is retried once, then `infra_error` (core/infra); `status` lists such rows.
+A session the API failed is not judged and its row keeps what it was or goes back to queued. When the plan's 5-hour or
+weekly limit rejects a session, run starts no more functions and exits 3 (core/fn_claim.run_all); run it again after the reset.
 """
 import argparse
 import collections
-import concurrent.futures
 import os
 import pathlib
 import sys
@@ -110,7 +110,7 @@ def main():
     r = sub.add_parser("run")
     r.add_argument("targets", nargs="+")
     r.add_argument("--workers", type=int, default=2)
-    r.add_argument("--model")
+    r.add_argument("--model", help="model of these attempts (default: config readable_model)")
     r.add_argument("--attempts", type=int, default=3)
     r.add_argument("--redo", action="store_true", help="also functions already readable or failed")
     r.add_argument("--effort", choices=("low", "medium", "high", "xhigh", "max", "default"),
@@ -151,10 +151,11 @@ def main():
     lk.add_argument("--judge", action="store_true", help="judge the rewritten files against headers + proposal")
     lk.add_argument("--adopt", action="store_true", help="judge against the live headers, adopt strict PASSes")
     lk.add_argument("--near", type=int, default=4, help="near-identical: at most N differing words/constants")
-    st = sub.add_parser("strings")
-    st.add_argument("targets", nargs="*")
-    st.add_argument("--scope", action="store_true", help="every in-scope function with matched raw C")
-    st.add_argument("--write", action="store_true", help="add the names to readable/names/strings.json")
+    for name, out in (("strings", "strings"), ("globals", "machine_globals")):
+        st = sub.add_parser(name)
+        st.add_argument("targets", nargs="*")
+        st.add_argument("--scope", action="store_true", help="every in-scope function with matched raw C")
+        st.add_argument("--write", action="store_true", help=f"add the names to readable/names/{out}.json")
     rq = sub.add_parser("requests")
     rq.add_argument("targets", nargs="*")
     rq.add_argument("--json", action="store_true", help="the grouped requests as JSON")
@@ -277,19 +278,19 @@ def command(a, cfg):
         _, sys_list = systems.load()
         groups = design_requests.collect(sys_list, addresses(a, {s["id"]: s["functions"] for s in sys_list}))
         print(__import__("json").dumps(groups, indent=1) if a.json else "\n".join(design_requests.report(groups)))
-    elif a.cmd == "strings":  # core/rodata_strings: machine names for unnamed read-only strings (batch 26)
-        from core import rodata_strings, scope
-        _, sys_list = systems.load()
-        todo = addresses(a, {s["id"]: s["functions"] for s in sys_list}) if a.targets else []
+    elif a.cmd in ("strings", "globals"):  # core/rodata_strings (batch 26), core/global_infer: machine names for unnamed data
+        from core import global_infer, rodata_strings, scope
+        todo = addresses(a, {s["id"]: s["functions"] for s in systems.load()[1]}) if a.targets else []
         if a.scope:
             todo += [x for x in scope.scope_functions(paths.ROOT) if x not in todo]
         if not todo:
-            print("strings: no targets (ADDR|SYSTEM|@FILE, or --scope)")
+            print(f"{a.cmd}: no targets (ADDR|SYSTEM|@FILE, or --scope)")
             sys.exit(2)
         try:
-            rodata_strings.command(cfg, todo, write=a.write, log=lambda m: print(m, flush=True))
+            (rodata_strings if a.cmd == "strings" else global_infer).command(cfg, todo, write=a.write,
+                                                                              log=lambda m: print(m, flush=True))
         except readable.RegistryError as e:
-            print(f"strings: the names registry: {e}")
+            print(f"{a.cmd}: the names registry: {e}")
             sys.exit(2)
     elif a.cmd == "library":  # core/library: the whole program at /W4 /WX, symbols defined twice, conflicting decls
         from core import library
@@ -334,11 +335,9 @@ def command(a, cfg):
               f"{dict(got)}; report: {paths.show(paths.STATE / 'lookalike.json')}")
         sys.exit(2 if res.get("headers_error") else 0)
     elif a.cmd == "run":
-        _, sys_list = systems.load()
-        by_id = {s["id"]: s["functions"] for s in sys_list}
+        by_id = {s["id"]: s["functions"] for s in systems.load()[1]}
         since = refine.now()  # a function another process finishes after this is not redone by this run
-        main_led = paths.read_json(paths.LEDGER)["functions"]
-        done = refine.load_ledger()
+        main_led, done = paths.read_json(paths.LEDGER)["functions"], refine.load_ledger()
         todo, skipped = [], []
         for addr in addresses(a, by_id):  # each function once (core/targets); run_one claims it (core/fn_claim)
             if not (readable.SRC.parent / "names").exists():
@@ -353,6 +352,8 @@ def command(a, cfg):
         print(f"{len(todo)} function(s) to rewrite", flush=True)
         if not todo:
             return
+        from core import global_infer
+        global_infer.name_data(cfg, todo)
         try:  # every sandbox, preflight and check of this run reads only this snapshot
             snap = header_snapshot.acquire(cfg, log=lambda m: print(m, flush=True))
         except header_snapshot.HeaderError as e:
@@ -360,41 +361,9 @@ def command(a, cfg):
             sys.exit(2)
         header_snapshot.use(snap)
         try:
-            run_all(a, cfg, todo, since)
+            fn_claim.run_all(a, cfg, todo, since)
         finally:
             snap.release()
-
-
-def run_all(a, cfg, todo, since=None):
-    """One worker per function: run_one holds the function's claim for its whole cycle (a function another process
-    holds is skipped as busy, its row untouched) and retries an infrastructure error once (core/fn_claim)."""
-    from core import build_prune, fn_claim, refine
-    build_prune.maybe_sweep(cfg, log=lambda m: print(m, flush=True))  # by age and size, when due
-    lock = __import__("threading").Lock()
-
-    def one(addr):
-        def log(msg):
-            with lock:
-                print(f"[{addr}] {msg}", flush=True)
-        try:
-            return addr, fn_claim.run_one(cfg, addr, a.attempts, log, redo=a.redo, since=since, model=a.model,
-                                          effort=a.effort, draft=a.draft or cfg.get("readable_draft", "start"))
-        except Exception as e:  # one bad function must not stop the batch (an old file keeps its verdict)
-            try:  # after a pass wrote readable/src (PassNotRecorded) the status is readable, never error
-                return addr, refine.record_error(addr, str(e), passed=isinstance(e, refine.PassNotRecorded))
-            except Exception as e2:  # the ledger itself cannot be written: the row stays; verify repairs it
-                return addr, (f"error: {e}; the ledger write failed too ({type(e2).__name__}: {e2}); "
-                              f"run `refine.py verify {addr}`")
-
-    from core import busylog
-    n = max(1, min(a.workers, len(todo)))  # the threads the pool will start: each a worker (core/busylog)
-    busylog.start_slots(n)
-    try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=a.workers) as ex:
-            for addr, status in ex.map(one, todo):
-                print(f"== {addr}: {status}", flush=True)
-    finally:
-        busylog.end_slots(n)
 
 
 if __name__ == "__main__":

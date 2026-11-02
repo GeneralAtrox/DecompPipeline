@@ -17,6 +17,9 @@ public class TcHwStub {
                 }
             }
         }
+        TcHw.on.logging = true;  // TcExit reading a stored register back: nothing is served
+        System.out.println("logged " + (TcHw.on.read(TcHw.on.reads.firstKey(), 1) == null));
+        TcHw.on.logging = false;
         System.out.println("meta " + TcHw.on.meta());
         System.out.print("header " + TcHw.header().replace("\n", "|") + "\n");
     }

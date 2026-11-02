@@ -2,33 +2,37 @@
 judged functions a unit compiles, their files, and the tc_call glue the loaded unit answers with (overlay.h
 overlay_glue). Runs inside the worker's process, after gen_port.load_core."""
 import gen_port
+import overlay_slots
 import tx_port
 
 
-def pick(reg, readable, paths, tx_dir, tx_mode, files, inr, prefix):
+def pick(reg, readable, paths, tx_dir, tx_mode, files, inr, prefix, rebase=(), rebase_dir=None):
     """(files, txs, texts, why): tx_port.pick's readable files and translated functions in the unit's ranges (inr),
     the translated texts with the unit's prefix, and why each judged function in range is not used. As
-    gen_port.translator_c for main: the host C runtime's names stay the host's."""
+    gen_port.translator_c for main: the host C runtime's names stay the host's. rebase: the slot units' canonical
+    ranges (tx_port.inbound)."""
     from core import lookalike, readable_abi  # noqa: E402
     ok, why = tx_port.judged(tx_dir)
     ok = {x: f for x, f in ok.items() if inr(x)}
     why = {x: w for x, w in why.items() if inr(x)}
     crt = {x for x, e in reg.functions.items() if readable.parse_proto(e["proto"])[1] in gen_port.CRT}
     texts, glue_why = tx_port.inbound(reg, readable_abi, paths, ok, crt, prefix)
+    overlay_slots.rebased(texts, ok, rebase, rebase_dir)
     why.update(glue_why)
     sq = {a for a in texts if tx_port.store_queues(ok[a].read_text(encoding="utf-8"))}
     files, txs = tx_port.pick(tx_mode, files, lookalike.readable_sources(paths.ROOT), texts, crt, sq)
     return files, txs, texts, why
 
 
-def write(d, reg, prefix, txs, texts, protos, metas, names, why):
-    """Writes <d>/tx/ and <d>/txglue.c; returns (the tx files, the addresses with glue). A function whose glue cannot
-    be made goes into why (tc_call's word call takes it, as for main)."""
+def write(d, reg, prefix, txs, texts, protos, metas, names, why, readable=()):
+    """Writes <d>/tx/ and <d>/txglue.c; returns (the tx files, the addresses with glue). readable: the unit's readable
+    files, which translator C calls too: by argument words a helper's r0..r3 or a float would arrive wrong. A function
+    whose glue cannot be made goes into why (tc_call's word call takes it, as for main)."""
     from core import readable_abi  # noqa: E402
     files = [str(f) for f in tx_port.write(d, {x: texts[x] for x in txs}, gen_port.write_if_changed)]
     glue = []
-    for x in txs:
-        kept = tx_port.KEPT in texts[x].split("\n", 1)[0]
+    for x in sorted({*txs, *readable}):
+        kept = x in texts and x in txs and tx_port.KEPT in texts[x].split("\n", 1)[0]
         try:
             glue.append((x, tx_port.outbound_glue(reg, readable_abi, x, protos[x], metas[x], names[x], None, kept),
                          names[x]))

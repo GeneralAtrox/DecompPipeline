@@ -17,6 +17,7 @@ The own frame is bounded: compare's window [STACK_LO, SP) is 0xe000 bytes, and S
 is a frame address only from frame_lo() (entry r15 less "readable_frame_max", default FRAME_MAX) up, and never when
 the oracle's globals or the registry name it.
 """
+import pathlib
 import re
 
 from . import lint
@@ -220,6 +221,49 @@ def stack_arg_lint(src, raw_text, reg, addr, meta, name):
     return errors
 
 
+STALE_OUT = True  # False: the judge before stale_out_words (the mutation A/B's OLD side)
+
+
+def out_dlines(path):
+    """{vector id: [(call, field, bytes hex or --)]}: the parked bytes readable_outrun.vectors_file wrote beside the
+    readable runner's vectors (vectors_out.parked, S lines); empty when there is none or STALE_OUT is off."""
+    if not STALE_OUT:
+        return {}
+    out = {}
+    try:
+        lines = pathlib.Path(path).with_name("vectors_out.parked").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return out
+    for line in lines:
+        t = line.split()
+        if len(t) == 5 and t[0] == "S":
+            out.setdefault(int(t[1]), []).append((int(t[2]), int(t[3]), t[4]))
+    return out
+
+
+def stale_out_words(exp, act, dlines, frame_lo=FRAME_LO):
+    """Words the original copied out of a callee's out buffer that it had parked there itself. The out-pointer delivery
+    (readable_outptr) gives the readable local the callee's bytes except those the original stored to before the call
+    (a D line's xx): the original stored them for its own use (an argument parked in a local), the mocked callee left
+    them, and a copy of the whole buffer carried them on. The readable local is another variable that never held them,
+    so a word of the output whose value is such a whole parked word (non-zero) reads as the original's. Every other word,
+    byte and call compares as before. dlines: out_dlines' list for this vector."""
+    if not act or not dlines:
+        return
+    ew, aw, held = exp["writes"], act["writes"], set()
+    for _, _, data in dlines:
+        for j in range(0, len(data) // 2 - 3, 4):
+            if "--" not in data[2 * j:2 * j + 8]:
+                held.add(int.from_bytes(bytes.fromhex(data[2 * j:2 * j + 8]), "little"))
+    held.discard(0)
+    for w in sorted({a & ~3 for a in ew if a < frame_lo}):
+        if all(w + i in ew for i in range(4)):
+            g = int.from_bytes(bytes(ew[w + i] for i in range(4)), "little")
+            if g in held:
+                for i in range(4):
+                    aw[w + i] = (g >> (8 * i)) & 0xFF
+
+
 def pair_stores(exp, act, stack, g2h, h2g, initial, frame_lo=FRAME_LO):
     """Memory words outside the guest stack where the original stores a guest stack address and the readable code a
     host stack address: when the two pair one to one with every pointer argument paired so far (map_stack_args'
@@ -241,3 +285,11 @@ def pair_stores(exp, act, stack, g2h, h2g, initial, frame_lo=FRAME_LO):
         g2h[g], h2g[h] = h, g
         for i in range(4):
             aw[w + i] = (g >> (8 * i)) & 0xFF
+
+
+def settle_stores(exp, act, stack, g2h, h2g, initial, frame_lo, out_file, vid):
+    """The readable judge's two word-for-word readings of a vector's output: pair_stores (a stack address the readable
+    code stores as its own) and stale_out_words (a parked word of a callee's out buffer). out_file: the runner's
+    output file, beside which the parked bytes are; vid: the vector."""
+    pair_stores(exp, act, stack, g2h, h2g, initial, frame_lo)
+    stale_out_words(exp, act, out_dlines(out_file).get(vid), frame_lo)

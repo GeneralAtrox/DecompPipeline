@@ -12,7 +12,7 @@ import shutil
 import threading
 import time
 
-from . import filelock, junk_ram, paths, proof, readable_stack, strict_judge, target_hooks, toolcfg
+from . import call_coverage, filelock, junk_ram, paths, proof, readable_stack, strict_judge, target_hooks, toolcfg
 from .compare import (IMAGE_BASE, REG_INDEX, SP, STACK_LO, Memory, _f, compare_vector, is_nan,  # noqa: F401
                       parse_results, parse_vectors, same_f32)
 from .lint import fused_lint, lint
@@ -392,8 +392,7 @@ def _finish(result, sets, summary):
     sites = summary.get("call_sites")  # call sites no valid vector reaches leave a "weak" pass (core/call_coverage)
     if sites is not None:
         unreached = sorted(a for a, n in sites.items() if not n)
-        reach = summary.get("reach")  # the reach pass (TcReach): why each site it could not reach stays unreached
-        why = (reach or {}).get("unreached") or {}
+        why = call_coverage.reasons(summary)  # the reach pass (TcReach): why each site it could not reach stays unreached
         result["coverage"].update({"calls_total": len(sites), "calls_reached": len(sites) - len(unreached),
                                    "calls_unreached": unreached[:20],
                                    "calls_untried": len([a for a in unreached if a not in why]),

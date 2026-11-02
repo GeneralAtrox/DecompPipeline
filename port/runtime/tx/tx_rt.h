@@ -6,6 +6,10 @@
 
 #include <stdint.h>
 
+/* A slot unit's translator C (overlay.h) adds this to the addresses it takes off its own position; tc_call sets it
+ * to the unit's delta (loaded base - the base it was analysed at) for the length of a call into the unit. */
+extern uint32_t tx_ovl_delta;
+
 /* tc_rt.h's TcArgs, the same layout: r[0..3] = r4..r7, fr[0..7] = fr4..fr11, s[0..7] = the stack words at the
  * call's r15, rlo[0..3] = r0..r3 */
 typedef struct {
@@ -55,5 +59,14 @@ int port_tx_fpu_whole(int whole);
 void port_tx_take_rlo(uint32_t *lo);
 /* The caller's stack argument at stack+off (32 and up: past the 8 words a TcArgs block carries). */
 uint32_t port_tx_stack_word(const PortTcArgs *a, uint32_t off);
+
+/* sh4_rt.c's fr0..fr15 and r4..r14 (as bits): tx_rt.c writes a call's arguments there, tc_rt.h's inline sh4_fr and sh4_r
+ * read them; port_tx_spin_on: a spin word is named (tx_rt.c's rd32 then looks it up). */
+extern uint32_t port_sh4_fr[16];
+extern uint32_t port_sh4_gs[7];
+extern uint32_t port_sh4_ro[4];
+extern volatile int port_tx_spin_on;
+uint32_t port_tx_rd32_slow(uint32_t addr);
+uint32_t port_tx_spin_read(uint32_t addr, uint32_t value); /* tx_spin.c: rd32's value through the spin words */
 
 #endif

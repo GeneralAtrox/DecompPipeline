@@ -1,6 +1,8 @@
 """Texture packs for the kit's renderer (pvr/pvr_pack.c): the key it computes for a guest texture, and a pack writer.
 
-A pack is a folder: index.txt ("KEY FILE" per line, '#' comments) and PNG images. KEY is the FNV-1a 64 hash of the
+A pack is a folder: index.txt ("KEY FILE [VARIANT]" per line, '#' comments) and PNG images. VARIANT (xbox or
+playstation) makes the line apply only while that style of controller is in use (base/pad_style.c); a line
+without one applies always, and a variant line wins over it for the same key. KEY is the FNV-1a 64 hash of the
 TCW's format bits, width, height and stride (little-endian u32s), then the texture memory the decoder reads from the
 TCW address (pvr_texture_bytes; a 16-bit twiddled mip chain from its 1x1 level at +6). A game's pack builder takes
 its texture bytes as the game hands them to kmLoadTexture, gets the bytes at the TCW address with kamui_vram() and
@@ -92,35 +94,52 @@ def png(rgba_rows, w, h):
             + chunk(b"IDAT", zlib.compress(bytes(raw), 9)) + chunk(b"IEND", b""))
 
 
+VARIANTS = ("", "xbox", "playstation")
+
+
 class Pack:
-    """Writes a pack: add(key, rgba, w, h) per image (one file per distinct key), then close() writes index.txt."""
+    """Writes a pack: add(key, rgba, w, h) per image (one file per distinct key and variant), then close() writes
+    index.txt. variant: "" for every style of controller, "xbox" or "playstation" (the file is named after it)."""
 
     def __init__(self, folder, title=""):
         self.dir = pathlib.Path(folder)
         self.dir.mkdir(parents=True, exist_ok=True)
         self.rows, self.title = {}, title
 
-    def add(self, k, rgba, w, h, name=None, note=""):
-        if k in self.rows:
+    def add(self, k, rgba, w, h, name=None, note="", variant="", rim=""):
+        if variant not in VARIANTS:
+            raise ValueError(f"variant {variant!r}: one of {VARIANTS[1:]} or empty")
+        if (k, variant) in self.rows:
             return False
-        name = name or f"{k:016x}.png"
+        name = name or f"{k:016x}{'-' + variant if variant else ''}.png"
         (self.dir / name).write_bytes(png(rgba, w, h))
-        self.rows[k] = (name, note)
+        self.rows[(k, variant)] = (name, note, rim)
         return True
 
     def close(self):
-        lines = ["# texture pack (port/pvr/pvr_pack.c): KEY FILE"] + ([f"# {self.title}"] if self.title else [])
-        lines += [f"{k:016x} {n}" + (f"  # {note}" if note else "") for k, (n, note) in sorted(self.rows.items())]
+        lines = ["# texture pack (port/pvr/pvr_pack.c): KEY FILE [xbox|playstation] [rim=RRGGBB]"]
+        lines += [f"# {self.title}"] if self.title else []
+        lines += [f"{k:016x} {n}" + (f" {v}" if v else "") + (f" rim={rim}" if rim else "") + (f"  # {note}" if note else "")
+                  for (k, v), (n, note, rim) in sorted(self.rows.items())]
         (self.dir / "index.txt").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
         return len(self.rows)
 
 
 def read_index(folder):
+    """{(key, variant): file}; variant "" for a line without one. A line the renderer would skip (an unknown variant
+    word) raises ValueError."""
     rows = {}
     for line in (pathlib.Path(folder) / "index.txt").read_text(encoding="utf-8").splitlines():
         parts = line.split("#", 1)[0].split()
         if len(parts) >= 2:
-            rows[int(parts[0], 16)] = parts[1]
+            if parts[-1].startswith("rim=") and len(parts) > 2:
+                if len(parts[-1]) != 10 or parts[-1][4:].strip("0123456789abcdefABCDEF"):
+                    raise ValueError(f"index line {line!r}: rim=RRGGBB")
+                parts.pop()
+            variant = parts[2] if len(parts) > 2 else ""
+            if variant not in VARIANTS or len(parts) > 3:
+                raise ValueError(f"index line {line!r}: the variant is xbox or playstation")
+            rows[(int(parts[0], 16), variant)] = parts[1]
     return rows
 
 

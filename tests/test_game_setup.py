@@ -22,6 +22,7 @@ TOOL = pathlib.Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(TOOL), str(TOOL / "tools"), str(TOOL / "tests")]
 import decode_check  # noqa: E402
 import game_setup  # noqa: E402
+from core import locations  # noqa: E402
 from test_saturn_sh2 import FILES as SAT_FILES, disc_sectors  # noqa: E402
 
 
@@ -103,12 +104,25 @@ class Setup(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.d, ignore_errors=True)
 
+    def test_locations_file(self):
+        game = self.d / "Some Game"
+        for ws in (game / "decomp", game / "decomp" / "main", game / "decomp" / "main" / "x"):
+            self.assertEqual(locations.file_for(ws), game.resolve() / "LOCATIONS.md")
+        self.assertEqual(locations.file_for(self.d / "ws"), (self.d / "ws").resolve() / "LOCATIONS.md")  # a private copy
+        self.assertEqual(locations.write_skeleton(game / "decomp" / "main", "G"), game.resolve() / "LOCATIONS.md")
+        (game / "LOCATIONS.md").write_text("real paths", encoding="utf-8")
+        self.assertIsNone(locations.write_skeleton(game / "decomp", "G"))  # a project's own file is never overwritten
+        self.assertEqual((game / "LOCATIONS.md").read_text(encoding="utf-8"), "real paths")
+
     def test_saturn(self):
         iso = self.d / "game.iso"
         iso.write_bytes(b"".join(disc_sectors()))
         self.assertEqual(game_setup.detect(iso), "saturn_sh2")
         ws = self.d / "ws"
         cfg = game_setup.setup(iso, ws, files=["FIELD.BIN@0x2602c000"])
+        text = (ws / "LOCATIONS.md").read_text(encoding="utf-8")
+        for want in (*locations.MACHINES, *locations.HEADINGS, cfg["name"]):
+            self.assertIn(want, text)
         image = (ws / "binary" / "image.bin").read_bytes()
         first, field = SAT_FILES["/0"], SAT_FILES["/FIELD/FIELD.BIN"]
         self.assertEqual(image[0xA000:0xA000 + len(first)], first)

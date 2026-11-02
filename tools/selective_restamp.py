@@ -43,12 +43,13 @@ stamp input, gains its lines): only callers of a listed callee (meta.json callee
 stamps are taken with the facts file as it was without the list (none listed before). --change regout is TcOut (sp-regout: a callee's r4..r7 outputs; core/regout.py): only a function that calls one that leaves
 r4..r7 changed and reads it after the call, or that leaves them changed with a caller reading them, gets a new record. --change junkout is TcStrict.walk's tail exit (an exported rK read at a jump out too):
 core/junkout_scan; dsflow+junkout is both in one restamp. Changes join with + (--change fret+fargs: either alters the
-harness). --change dsflow (TcTail.slotEntry, TcCont): only a packet whose listing lacks the fall-on of a branch into a
-delay slot can differ (core/dsflow_scan). --change tflag is the T-across-a-call change (TcTflag): only a caller that
+harness); changes waiting together must go in one run (fret+lrep+fslot): refresh gives the rest today's stamp, which covers every change. --change dsflow (TcTail.slotEntry, TcCont): only a packet whose listing lacks the fall-on of a branch into a
+delay slot can differ (core/dsflow_scan). --change fslot (TcLive's tail call): a float delay slot or a caller of one (core/fslot_scan).
+--change tflag is the T-across-a-call change (TcTflag): only a caller that
 reads T after a call before writing it (a scan of the packet asm, core/tflag_scan: as cautious as TcTflag.exportedFn,
 cycles and deep chains included; tflag+outside also lists callees of functions without a packet) and the callees it
-calls there can differ. --change zeroread is the area-5 listing (project.json hw_ops "read area5", TcHw): only the
-functions it lists can differ, and the baselines' stamps are taken without those ops (none listed before).
+calls there can differ. --change zeroread is the area-5 and video memory listing (project.json hw_ops "read area5",
+"read vram"; TcHw): only the functions it lists can differ; the baselines' stamps are taken without those ops.
 Only harnesses current under the scripts before the change (--old-scripts: that commit's ghidra_scripts folder) are
 refreshable; any other is stale for its own reasons and left to tools/reprepare_stale.py --stamps. --old-scripts can
 be given more than once when the harnesses were stamped at different times (TC: the 2026-10-16 full re-stamp, then
@@ -70,7 +71,7 @@ Phases (each resumable; run under tools/bounded.py, servers stopped):
   --phase must    re-prepare the refreshable candidates (at most --max per run) and judge each one's matched raw C
 usage: python tools/selective_restamp.py --project DIR --old-scripts DIR [--old-scripts DIR ...]
        --phase sample|refresh|must [--sample 100] [--seed 14] [--max 100] [--slots N] [--every-harness]
-       [--change r14|fret|fargs|late|spin|dslot|fnrmw|lrep|retfn|reghint|fipr|runflag|runset|mockwrite|sz|regout|sz+regout|tflag|zeroread|fret+fargs|tflag+outside|dsflow|junkout|dsflow+junkout|none] [--list FILE] [--dry]
+       [--change r14|fret|fargs|late|spin|dslot|fnrmw|lrep|retfn|reghint|fipr|runflag|runset|mockwrite|sz|regout|sz+regout|tflag|zeroread|fret+fargs|tflag+outside|dsflow|junkout|dsflow+junkout|fslot|fret+lrep+fslot|none] [--list FILE] [--dry]
 --every-harness: every catalog function with a harness, not only the matched ones (a translator-only workspace such
 as Spawn's fe has no matched function; its translator C is judged against the harness); must then re-prepares a
 candidate with no matched raw C without judging it (its translator C is judged apart: dp_judge).
@@ -90,7 +91,7 @@ TOOL = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL / "tools"))
 sys.path.insert(0, str(TOOL))
 from common import server_state, use_project  # noqa: E402
-from core import callee_drift, dsflow_scan  # noqa: E402  (pure: no core.paths)
+from core import callee_drift, dsflow_scan, fslot_scan, ret_reg  # noqa: E402  (pure: no core.paths)
 from core.tflag_scan import ASM, tflag_candidates, tflag_scan  # noqa: E402,F401  (pure; tflag_scan for the tests)
 
 REGS = ["r%d" % n for n in range(8, 15)]
@@ -191,8 +192,8 @@ def rescued(harness):
 
 
 def fret_candidates(harness):
-    """The functions whose harness TcFret can alter: a callee record whose (Ghidra) prototype returns f32."""
-    out = set()
+    """TcFret's reach: a callee record whose (Ghidra) prototype returns f32, or a line in state/fret_callers.txt."""
+    out = set(ret_reg.fret_callers(pathlib.Path(harness).parent / "state"))
     for d in pathlib.Path(harness).iterdir():
         m = (d / "meta.json").is_file() and json.loads((d / "meta.json").read_text(encoding="utf-8") or "{}")
         if m and any((c.get("ghidra_signature") or c.get("signature") or "").startswith("f32 ")
@@ -423,18 +424,18 @@ def mockwrite_candidates(cfg, harness):
 
 
 def zeroread_candidates(cfg):
-    """The functions whose harness the area-5 listing can alter: those project.json \"hw_ops\" lists with \"read
-    area5\" (core/hw_ops; TcHw serves 0 there for them only). Every other harness stays byte for byte."""
+    """The functions whose harness the area-5 and video memory listing can alter: those project.json \"hw_ops\" lists
+    with \"read area5\" or \"read vram\" (core/hw_ops; TcHw). Every other harness stays byte for byte."""
     from core import hw_ops
-    return {x for x, ops in hw_ops.listed(cfg).items() if "read area5" in ops}
+    return {x for x, ops in hw_ops.listed(cfg).items() if "read area5" in ops or "read vram" in ops}
 
 
 def without_area5(cfg):
-    """cfg with the \"read area5\" ops out of \"hw_ops\" (an entry left with none goes): the baselines' stamps,
-    taken before the listing (--change zeroread)."""
+    """cfg with the \"read area5\" and \"read vram\" ops out of \"hw_ops\" (an entry left with none goes): the
+    baselines' stamps, taken before the listing (--change zeroread)."""
     hw = {}
     for x, e in (cfg.get("hw_ops") or {}).items():
-        ops = [op for op in e.get("ops") or [] if str(op).lower() != "read area5"]
+        ops = [op for op in e.get("ops") or [] if str(op).lower() not in ("read area5", "read vram")]
         if ops:
             hw[x] = dict(e, ops=ops)
     return dict(cfg, hw_ops=hw)
@@ -544,7 +545,7 @@ def main():
     ap.add_argument("--slots", type=int)
     ap.add_argument("--change", choices=("r14", "fret", "fargs", "late", "spin", "dslot", "fnrmw", "lrep", "retfn", "reghint", "junkout",
                                          "fipr", "runflag", "runset", "mockwrite", "runflag+mockwrite", "sz", "regout", "sz+regout",
-                                         "fret+fargs", "none", "tflag", "tflag+outside", "zeroread", "tflag+zeroread", "dsflow", "dsflow+junkout"),
+                                         "fret+fargs", "none", "tflag", "tflag+outside", "zeroread", "tflag+zeroread", "dsflow", "dsflow+junkout", "fslot", "fret+lrep+fslot"),
                     default="r14", help="which oracle change (docstring)")
     ap.add_argument("--list", action="append", default=[], help="a file of more candidate addresses")
     ap.add_argument("--dry", action="store_true")
@@ -584,8 +585,7 @@ def main():
             | (dslot_candidates(paths.HARNESS, paths.PACKETS) if "dslot" in a.change else set())
             | (fnrmw_candidates(paths.HARNESS, paths.PACKETS) if "fnrmw" in a.change else set())
             | (lrep_candidates(paths.HARNESS, paths.PACKETS) if "lrep" in a.change else set())
-            | (retfn_candidates(paths.HINTS) if "retfn" in a.change else set())
-            | (reghint_candidates(paths.HINTS) if "reghint" in a.change else set())
+            | (retfn_candidates(paths.HINTS) if "retfn" in a.change else set()) | (reghint_candidates(paths.HINTS) if "reghint" in a.change else set())
             | (fipr_candidates(paths.PACKETS) if "fipr" in a.change else set())
             | (runflag_candidates(cfg) if "runflag" in a.change or "runset" in a.change else set())
             | (mockwrite_candidates(cfg, paths.HARNESS) if "mockwrite" in a.change else set())
@@ -593,8 +593,8 @@ def main():
             | (sz_candidates(cfg, a.every_harness) if "sz" in a.change else set())
             | (regout_candidates(ws) if "regout" in a.change else set())
             | (tflag_candidates(paths.PACKETS, "outside" in a.change) if "tflag" in a.change else set())
-            | (zeroread_candidates(cfg) if "zeroread" in a.change else set())
-            | (dsflow_scan.dsflow_candidates(paths.PACKETS) if "dsflow" in a.change else set()))
+            | (zeroread_candidates(cfg) if "zeroread" in a.change else set()) | (dsflow_scan.dsflow_candidates(paths.PACKETS) if "dsflow" in a.change else set())
+            | (fslot_scan.fslot_candidates(paths.PACKETS) if "fslot" in a.change else set()))
     for f in a.list:
         cand |= listed(f)
     current, refreshable, other = [], [], []
@@ -655,7 +655,7 @@ def main():
         note = (f"selective refresh, sample {n}, {record['identical']} identical"
                 + (f", {k} callee drift only" if k else "") + f" ({record['date']}, seed {record['seed']})")
         fresh, stale = refresh_split(rest, paths.HARNESS)
-        print(f"refresh: {len(fresh)} harness(es) get today's stamp: {note}" + (" [dry]" if a.dry else ""), flush=True)
+        print(f"refresh: {len(fresh)} harness(es) get today's stamp, for every oracle change since --old-scripts, not only --change {a.change}: {note}" + (" [dry]" if a.dry else ""), flush=True)
         if stale:
             print(f"refresh: {len(stale)} caller(s) with callee records that differ stay stale, for "
                   f"tools/reprepare_stale.py --project {a.project} (state/stamp_refresh_stale.txt): "

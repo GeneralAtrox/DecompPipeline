@@ -69,7 +69,7 @@ class RetReg(unittest.TestCase):
     def test_judge(self):
         with tempfile.TemporaryDirectory() as t:
             st = pathlib.Path(t)
-            self.assertEqual(ret_reg.listed(st), set())  # no list: the judge compares as before
+            self.assertEqual(ret_reg.listed(st), {})  # no list: the judge compares as before
             (st / ret_reg.LIST).write_text("# comment\n8c010100\n", encoding="utf-8")
             addrs = ret_reg.listed(st)
             meta = {"addr": "8c010100", "ret": "u32", "signature": "u32 fn_8c010100(void)"}

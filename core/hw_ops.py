@@ -21,6 +21,16 @@ One entry in "ops" per instruction:
               random input pointers land in area 5 about one time in eight, and serving those would change the
               vectors of every function that reads through one. Stores there stay writes outside RAM (refused).
               Power Stone 2 8c0454a0 indexes a pad table with its own r15 and reads area 5 in every vector
+  read vram   a load from the PVR video memory window the P2 view 0xa5000000..0xa57fffff shows (physical
+              0x05000000, the 64-bit area; 8 MB). The window's contents are a fixed function of the address (the
+              word at a 4-aligned address A is ((A >> 2) & 0x1fffff) * 0x9e3779b1 + 0x7f4a7c15, little endian), the
+              same in the oracle (TcBase.vramWord), the raw runner (tc_rt_internal.h tcrt_vram_word) and the
+              readable runner (rd_veh.c fills a page with it on the first read). Opt-in, never global, as area 5.
+              A console shows whatever was drawn there; a function reading one frame-buffer pixel (Toy
+              Commander 8c0923e0 Lib_ScreenReadPixel: mov.w @r4,r6 with r4 = 0xa5000000 | offset) is judged on how it
+              computes the address and expands the pixel, not on what the frame holds. Stores there stay refused.
+              One entry per window base constant the function loads (0xa5000000 is a hardware-looking pool constant:
+              the catalog counts it as a hw_ref, and the listing covers it; TcHw.check does not name it)
 
 Opt-in per address, as "spin_waits": the catalog (TcCatalog) counts the function's hardware ops, and the queue stops
 excluding it (core/orch.tier) only when the listing covers every one it counts: hw_refs no more than the listed reads
@@ -29,7 +39,7 @@ sys_ops and must be rebuilt). TcPrepare checks the body instruction by instructi
 does not name leaves the function unsupported."""
 import re
 
-KINDS = ("read", "write", "ldc gbr", "stc gbr", "ldc sr.bl", "ocbi", "ocbp", "ocbwb", "read area5")
+KINDS = ("read", "write", "ldc gbr", "stc gbr", "ldc sr.bl", "ocbi", "ocbp", "ocbwb", "read area5", "read vram")
 _READ = re.compile(r"read ([0-9a-f]{8})")
 _WRITE = re.compile(r"write ([0-9a-f]{8})")
 CACHE = ("ocbi", "ocbp", "ocbwb")
@@ -81,7 +91,7 @@ def covered(ops, f):
     """Whether the listed ops cover every hardware op the catalog counts for f (a catalog entry)."""
     if ops is None:
         return False
-    regs = sum(bool(_READ.fullmatch(op) or _WRITE.fullmatch(op)) for op in ops)
+    regs = sum(bool(_READ.fullmatch(op) or _WRITE.fullmatch(op)) or op == "read vram" for op in ops)  # a window constant is one hw_ref
     sys_ops = sum(op in ("ldc gbr", "stc gbr", *CACHE) for op in ops)
     return f.get("hw_refs", 0) <= regs and f.get("sys_ops", 0) == sys_ops
 
@@ -89,7 +99,7 @@ def covered(ops, f):
 def arg(cfg, addr):
     """TcPrepare's script arg 11: "-" for a function hw_ops does not list, else "hw:" and "_"-separated items
     (TcHw.parse): "r" + register + "." + value per register read (2 hex digits per byte of the register's width: 8
-    for the default 4), "w" + register per register stored to, "gbr", "bl", "cache", "z5" (area-5 reads return 0).
+    for the default 4), "w" + register per register stored to, "gbr", "bl", "cache", "z5" (area-5 reads return 0), "zv" (video memory window reads).
     No ",;= ": analyzeHeadless.bat splits arguments at them."""
     ops = listed(cfg).get(addr.lower())
     if ops is None:
@@ -99,5 +109,5 @@ def arg(cfg, addr):
              for r in sorted({m.group(1) for m in map(_READ.fullmatch, ops) if m})]
     items += [f"w{r}" for r in sorted({m.group(1) for m in map(_WRITE.fullmatch, ops) if m})]
     items += ["gbr"] * any(op.endswith("gbr") for op in ops) + ["bl"] * ("ldc sr.bl" in ops)
-    items += ["cache"] * any(op in CACHE for op in ops) + ["z5"] * ("read area5" in ops)
+    items += ["cache"] * any(op in CACHE for op in ops) + ["z5"] * ("read area5" in ops) + ["zv"] * ("read vram" in ops)
     return "hw:" + "_".join(items)

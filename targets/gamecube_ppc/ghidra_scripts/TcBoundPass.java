@@ -75,7 +75,7 @@ final class TcBoundPass {
                 for (int repairs = 0; !r.ok && r.faultAddr >= 0 && repairs < TcVectors.MAX_REPAIRS; repairs++) {
                     List<long[]> loads = new ArrayList<>();
                     for (long[] ld : r.loads) loads.add(ld.clone());
-                    TcInputs.Vec nv = g.repairVec(v, r.faultAddr, r.faultWrite, loads);
+                    TcInputs.Vec nv = g.repair(v, r, loads);
                     if (nv == null) break;
                     v = nv;
                     r = g.runOracle(v);
@@ -104,6 +104,7 @@ final class TcBoundPass {
         c.f = v.f.clone();
         c.rets = v.rets.clone();
         c.frets = v.frets.clone();
+        TcOracle.hwOf.put(c, TcOracle.hwOf.get(v));
         c.patchAddr = new ArrayList<>(v.patchAddr);
         c.patchData = new ArrayList<>();
         for (byte[] d : v.patchData) c.patchData.add(d.clone());

@@ -186,7 +186,7 @@ class VmuLcd(unittest.TestCase):
         (d / "game.h").write_text(GAME_H, encoding="utf-8")
         (d / "driver.c").write_text(DRIVER_C, encoding="utf-8")
         rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
-        cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{rd}" "{d / "driver.c"}" '
+        cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" /I"{rd}" "{d / "driver.c"}" '
               f'"{KIT / "sdk" / "maple_pad.c"}" /Fe"{d / "lcd.exe"}"')
         vc = str(game_config.vcvars32()).replace("/", "\\")
         r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
@@ -246,7 +246,7 @@ class VmuScreen(unittest.TestCase):
              "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}), encoding="utf-8")
         gfx = KIT / "runtime" / "gfx"
         rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
-        cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 /I"{d}" /I"{gfx}" /I"{KIT / "runtime"}" /I"{KIT / "host"}" '
+        cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 /I"{d}" /I"{gfx}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" '
               f'/I"{rd}" "{d / "panel.c"}" /Fe"{d / "panel.exe"}" /link d3d11.lib')
         vc = str(game_config.vcvars32()).replace("/", "\\")
         r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,

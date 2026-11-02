@@ -21,7 +21,7 @@ import time
 DP = pathlib.Path(__file__).resolve().parents[1]
 
 STATE_FILES = ("code_ranges.txt", "msvc_env.json", "msvc_env_x86.json", "function_bodies.txt", "fr0_results.txt",
-               "fsca_table.bin", "catalog.json")
+               "fret_callers.txt", "fsca_table.bin", "catalog.json")
 
 
 def mirror(ws, dst, addrs):
@@ -81,7 +81,8 @@ def main():
     ws, out = pathlib.Path(args.ws), pathlib.Path(args.out).resolve()
     addrs = sorted(p.stem for p in (ws / "matched").glob("*.c") if (ws / "harness" / p.stem / "meta.json").exists())
     if args.only:
-        addrs = [a for a in addrs if a in set(args.only.split(","))]
+        only = pathlib.Path(args.only[1:]).read_text().split() if args.only[0] == "@" else args.only.split(",")
+        addrs = [a for a in addrs if a in set(only)]
     if args.limit:
         addrs = addrs[:args.limit]
     name = wsname(ws)
@@ -89,14 +90,15 @@ def main():
     mirror(ws, mws, [] if args.nojudge else addrs)
     rows = []
     t0 = time.time()
+    res = out / "results"
+    res.mkdir(parents=True, exist_ok=True)
+    tag = "_lift" if args.nojudge else ""
     with cf.ProcessPoolExecutor(max(1, args.jobs), initializer=_init, initargs=(str(mws), vars(args), str(out), name)) as ex:
         for k, row in enumerate(ex.map(_one, addrs, chunksize=8)):
             rows.append(row)
             if (k + 1) % 200 == 0:
                 print(f"{k + 1}/{len(addrs)} {dict(collections.Counter(r['stage'] for r in rows))}", flush=True)
-    res = out / "results"
-    res.mkdir(parents=True, exist_ok=True)
-    tag = "_lift" if args.nojudge else ""
+                (res / f"{name}{tag}.partial.json").write_text(json.dumps(rows, indent=1), encoding="utf-8")
     (res / f"{name}{tag}.json").write_text(json.dumps(rows, indent=1), encoding="utf-8")
     print(name, len(rows), dict(collections.Counter(r["stage"] for r in rows)), f"{time.time() - t0:.0f} s")
 

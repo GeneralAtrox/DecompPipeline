@@ -149,7 +149,7 @@ public abstract class TcVectors extends TcOracle {
                 if (facts.coverageInputs || rescue) TcGuide.guide(v, proto, consts, globals, h, facts.scrLo, rescue);
                 TcFguide.guide(v, proto, listing, body, mem, seed, id, idTry, rescue);
                 idTry++;
-                applyHints(v, hints);
+                applyHints(v, TcLate.regs(v, hints, seed, id, idTry));  // TcLate takes the range gbr line
                 entryFq = proto.fpuState ? fpuValues(seed, id, idTry, v.fr) : null;
                 Vec[] box = {v};
                 int[] nrep = {0};
@@ -263,7 +263,7 @@ public abstract class TcVectors extends TcOracle {
             vout.append("\nQ");
             for (int x : entryFq) vout.append(' ').append(hex(x));
         }
-        vout.append(TcSr.line(sr, v)).append("\nC");  // line I: the entry SR mask (TcSr)
+        vout.append(TcLate.gbrLine(v)).append(TcSr.line(sr, v)).append("\nC");  // lines b (TcLate), I: the entry SR mask (TcSr)
         for (long x : v.rets) vout.append(' ').append(hex(x));
         vout.append(TcLate.tail(entryLate, r.calls.size() - v.rets.length)).append('\n');
         for (int i = 0; i < v.patchAddr.size(); i++) {

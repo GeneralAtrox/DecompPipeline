@@ -350,7 +350,7 @@ class Wiring(unittest.TestCase):
 
     def test_lines(self):
         caps = {("dreamcast_sh4", "TcOracle"): 400, ("dreamcast_sh4", "TcVectors"): 400,
-                ("saturn_sh2", "TcOracle"): 413, ("gamecube_ppc", "TcOracle"): 294}
+                ("saturn_sh2", "TcOracle"): 413, ("gamecube_ppc", "TcOracle"): 325}
         for (t, s), n in caps.items():
             self.assertEqual(len(text(T / t / "ghidra_scripts" / f"{s}.java").splitlines()), n, (t, s))
         for f in (T / "dreamcast_sh4" / "ghidra_scripts").glob("*.java"):

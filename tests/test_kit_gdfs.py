@@ -44,6 +44,7 @@ s32 gdFsInit(s32 maxOpen, void *work, s32 maxDirent, void *dirBuffer);
 GDFS gdFsOpen(const char *fileName, void *dirRec);
 void gdFsClose(GDFS gdfs);
 s32 gdFsReqRd32(GDFS gdfs, s32 sectors, void *buffer);
+s32 gdFsRead(GDFS gdfs, s32 sectors, void *buffer);
 s32 gdFsTell(GDFS gdfs);
 s32 Gd_StreamGetStat(void *stream);
 void Gd_ServerTick(void);
@@ -87,6 +88,7 @@ int main(void)
     r = gdFsReqRd32(h, 4, buf);
     printf("clipped %d tell %d byte %d\n", r, gdFsTell(h), buf[2048]);
     printf("end %d\n", gdFsReqRd32(h, 1, buf));
+    printf("zero %d read1 %d neg %d\n", gdFsRead(h, 0, buf), gdFsRead(h, 1, buf), gdFsRead(h, -1, buf));
     printf("misaligned %d null %d\n", gdFsReqRd32(h, 1, buf + 4), gdFsReqRd32(NULL, 1, buf));
     printf("stat %d null %d\n", Gd_StreamGetStat(h), Gd_StreamGetStat(NULL));
     Gd_ServerTick();
@@ -109,7 +111,7 @@ class Streaming(unittest.TestCase):
         (d / "game.h").write_text(GAME_H, encoding="utf-8")
         (d / "driver.c").write_text(DRIVER_C, encoding="utf-8")
         rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
-        cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{rd}" "{d / "driver.c"}" '
+        cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" /I"{rd}" "{d / "driver.c"}" '
               f'"{KIT / "sdk" / "gdfs.c"}" /Fe"{d / "gdfs.exe"}"')
         vc = str(game_config.vcvars32()).replace("/", "\\")
         r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
@@ -131,6 +133,9 @@ class Streaming(unittest.TestCase):
         self.assertEqual(self.line("first"), "first 3 tell 3 bytes 100 102")  # the sectors taken, then the next
         self.assertEqual(self.line("clipped"), "clipped 2 tell 5 byte 104")   # fewer at the end of the file
         self.assertEqual(self.line("end"), "end 0")
+        # a read of 0 sectors succeeds, even at the end of the file (Spawn's texture streamer asks for one and loops on any
+        # error); one sector past the end is the end-of-file error, a negative count the size error
+        self.assertEqual(self.line("zero"), "zero 0 read1 -22 neg -15")
         self.assertEqual(self.line("misaligned"), "misaligned -14 null -10")
 
     def test_stream_stat(self):

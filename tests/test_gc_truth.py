@@ -234,6 +234,7 @@ class Rel(Base):
         self.assertEqual(gc_truth_dp.match_module("orig/GXXE01/files/rels/stage.rel", rec)["module_id"], 1)
         self.assertEqual(gc_truth_dp.match_module("files/other/x.rel", rec)["module_id"], 2)
         self.assertIsNone(gc_truth_dp.match_module("files/y.rel", rec))
+        self.assertEqual(gc_truth_dp.match_module("files/rels/stage.rel.szs", rec)["module_id"], 1)  # Yaz0 on the disc
         sp = self.tmp / "splits.txt"
         sp.write_text("Sections:\n\t.init type:code align:4\n\t.data type:data\n\t.text type:code\n\nu.cpp:\n",
                       encoding="utf-8")

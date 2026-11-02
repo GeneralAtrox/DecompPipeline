@@ -91,7 +91,7 @@ class DiagSkipCover(unittest.TestCase):
             (d / "diag_main.c").write_text(DRIVER_C, encoding="utf-8")
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
             srcs = " ".join(f'"{p}"' for p in [KIT / "runtime" / "diag.c", d / "diag_main.c"])
-            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
+            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" '
                   f'/I"{KIT / "pvr"}" /I"{KIT / "sdk"}" /I"{rd}" {srcs} /Fe:diag.exe')
             vc = str(game_config.vcvars32()).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,

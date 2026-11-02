@@ -85,6 +85,7 @@ def rows(ws, since=None):
             r.update(output=att.get("tokens_out") or r["output"], thinking=att.get("thinking_tokens") or 0,
                      turns=att.get("turns") or 0)
         r.update(addr=addr, n=n, verdict=att.get("verdict") or "?", effort=att.get("effort"),
+                 model=att.get("model_actual") or att.get("model") or "?", cost=att.get("cost_usd") or 0.0,
                  killed=att.get("killed"), when=t.stat().st_mtime)
         out.append(r)
     return out
@@ -101,10 +102,10 @@ def report(ws, since=None, per_attempt=True):
     if not rs:
         return rs
     if per_attempt:
-        print(f"{'addr':9} {'n':>2} {'verdict':8} {'effort':7} {'turns':>5} {'first':>6} {'cache_w':>8} {'cache_r':>8} "
+        print(f"{'addr':9} {'n':>2} {'verdict':8} {'model':18} {'usd':>7} {'effort':7} {'turns':>5} {'first':>6} {'cache_w':>8} {'cache_r':>8} "
               f"{'output':>7} {'think':>7} {'reads':>5} {'refused':>7}  files read")
         for r in sorted(rs, key=lambda r: r["when"]):
-            print(f"{r['addr']:9} {r['n']:2} {r['verdict']:8} {str(r['effort']):7} {r['turns']:5} {r['first']:6} "
+            print(f"{r['addr']:9} {r['n']:2} {r['verdict']:8} {r['model']:18} {r['cost']:7.3f} {str(r['effort']):7} {r['turns']:5} {r['first']:6} "
                   f"{r['cache_w']:8} {r['cache_r']:8} {r['output']:7} {r['thinking']:7} {len(r['reads']):5} "
                   f"{len(r['refused']):7}  {' '.join(sorted(set(r['reads'])))[:80]}")
     print(f"\n{'verdict':10} {'n':>4}  medians: {'first':>6} {'cache_w':>8} {'cache_r':>8} {'output':>7} {'think':>7} "
@@ -126,6 +127,12 @@ def report(ws, since=None, per_attempt=True):
     print("\nby effort (attempts PASS / all): " + ", ".join(
         f"{e}: {by_effort[(e, True)]}/{by_effort[(e, True)] + by_effort[(e, False)]}"
         for e in sorted({e for e, _ in by_effort})))
+    models = collections.defaultdict(list)
+    for r in rs:
+        models[r["model"]].append(r)
+    for m, xs in sorted(models.items()):
+        print(f"model {m}: {len({r['addr'] for r in xs})} functions, {len(xs)} attempts, "
+              f"{sum(r['verdict'] == 'PASS' for r in xs)} PASS, ${sum(r['cost'] for r in xs):.2f}")
     fns = collections.defaultdict(list)
     for r in rs:
         fns[r["addr"]].append(r)

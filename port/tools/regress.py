@@ -2,7 +2,10 @@
 presenting, so each run repeats exactly. A script fails on
 - an exit other than the watchdog's (a crash, a halt (tc_halt), a run-time check, the entry function returning);
 - a log class missing from its baseline: a TODO line, a stub reached (STUB), or a new TA polygon class (ta: list);
-- a frame it asks for that was not reached, or that differs from its golden (frames.py);
+- a frame it asks for that was not reached, that differs from its golden (frames.py), or that has no golden (nothing
+  compared it: use `filled` for a frame that is not approved);
+- a frame listed under `filled` with an empty edge band (frames.py filled(): a full-screen picture that drew only part of
+  itself, as a movie clipped to its top strip), whether or not it has a golden;
 - a pass that overflowed the renderer's autosort pool (pvr/pvr_oit.c): which translucent fragments it dropped
   depends on the GPU's order, so its frames do not repeat.
 Log classes in the baseline that a run no longer reaches are reported, not failed.
@@ -13,12 +16,16 @@ Log classes in the baseline that a run no longer reaches are reported, not faile
 A script is one "key value" per line; '#' starts a comment:
     seconds 40                   the watchdog: the run ends after this many seconds
     frames 900,1500              frames (0 is the first presented) dumped and compared
+    filled 10000,10500           frames (dumped too) that must have no empty edge band, with no golden needed
     input START@900,A@1500       scripted presses (several input lines are joined)
     args --vmu none              more port.exe arguments
 Files, under <game>: tests/goldens/<script>/frame_NNNNNN.png (approved by the user), tests/baseline/<script>.txt
 (the log classes), and per run build/regress/<script>/ (port.log, frames, a sheet for each mismatch).
 --accept-log rewrites the baselines from this run. --accept-frames copies this run's frames over the goldens: only
 for frames the user has approved.
+Each folder's provenance.json (provenance.py) says where its files came from. A golden with no record, or not the file
+its record names, fails. Accepting labels a file a native baseline, and over original evidence it fails. The last line
+counts the frames compared against each: a native baseline catches a change and supports no fidelity claim.
 """
 import argparse
 import pathlib
@@ -30,15 +37,17 @@ TOOLS = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(TOOLS))
 import frames  # noqa: E402
 import game_config  # noqa: E402
+import provenance  # noqa: E402
 from build import run  # noqa: E402
 
 WATCHDOG_EXIT = 2
+COMPARED = {"original": 0, "native": 0}
 CLASS = re.compile(r"^(TODO .*|STUB #\d+ .*|ta: list \d+: (?:polygon|sprite) vertex type \d+)")
 UNSTABLE = re.compile(r"^pvr: a pass drew \d+ translucent fragments, past the autosort pool .*$", re.M)
 
 
 def parse_script(path):
-    s = {"seconds": 60, "frames": [], "input": [], "args": []}
+    s = {"seconds": 60, "frames": [], "filled": [], "input": [], "args": []}
     for n, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
         line = line.split("#", 1)[0].strip()
         if not line:
@@ -49,6 +58,8 @@ def parse_script(path):
             s["seconds"] = int(value)
         elif key == "frames":
             s["frames"] += [int(v) for v in value.split(",") if v.strip()]
+        elif key == "filled":
+            s["filled"] += [int(v) for v in value.split(",") if v.strip()]
         elif key == "input":
             s["input"] += [v for v in value.split(",") if v.strip()]
         elif key == "args":
@@ -91,8 +102,9 @@ def run_script(cfg, script, a):
            "--dump-dir", str(out / "frames")]
     if cfg["fsca_table"]:
         cmd += ["--check-fsca", str(cfg["fsca_table"])]
-    if s["frames"]:
-        cmd += ["--dump-frames", ",".join(str(f) for f in s["frames"])]
+    dumped = sorted(set(s["frames"]) | set(s["filled"]))
+    if dumped:
+        cmd += ["--dump-frames", ",".join(str(f) for f in dumped)]
     if s["input"]:
         cmd += ["--input", ",".join(s["input"])]
     cmd += s["args"]
@@ -104,31 +116,57 @@ def run_script(cfg, script, a):
     classes = log_classes(log)
     fails += [f"frames do not repeat: {line}" for line in unstable(log)]
     base_file = game / "tests" / "baseline" / f"{name}.txt"
+    logs = provenance.Ledger(base_file.parent)
     if a.accept_log:
-        base_file.parent.mkdir(parents=True, exist_ok=True)
-        base_file.write_text("".join(c + "\n" for c in sorted(classes)), encoding="utf-8")
+        try:
+            logs.native(base_file.name, "regress.py --accept-log: this port's own log")
+            base_file.parent.mkdir(parents=True, exist_ok=True)
+            base_file.write_text("".join(c + "\n" for c in sorted(classes)), encoding="utf-8")
+            logs.save()
+        except provenance.Refused as e:
+            fails.append(str(e))
+    if base_file.exists() and logs.problem(base_file.name):
+        fails.append(f"log baseline: {logs.problem(base_file.name)}")
     base = set(base_file.read_text(encoding="utf-8").splitlines()) if base_file.exists() else set()
     fails += [f"new log class: {c}" for c in sorted(classes - base)]
     notes += [f"no longer reached: {c}" for c in sorted(base - classes)]
     gdir = game / "tests" / "goldens" / name
+    golds = provenance.Ledger(gdir.parent)
     for f in s["frames"]:
         png = out / "frames" / f"frame_{f:06d}.png"
         gold = gdir / png.name
         if not png.exists():
             fails.append(f"frame {f} not reached")
             continue
+        key = f"{name}/{png.name}"
         if a.accept_frames:
-            gdir.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(png, gold)
+            try:
+                golds.native(key, "regress.py --accept-frames: this port's own frame, approved by the user")
+                gdir.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(png, gold)
+                golds.save()
+            except provenance.Refused as e:
+                fails.append(f"frame {f}: {e}")
         if not gold.exists():
-            notes.append(f"frame {f}: no golden yet")
+            fails.append(f"frame {f}: no golden")
             continue
+        if golds.problem(key):
+            fails.append(f"frame {f}: {golds.problem(key)}")
+        COMPARED["original" if golds.fidelity(key) else "native"] += 1
         r = frames.compare(gold, png)
         if not r["identical"]:
             (fails if not r["pass"] else notes).append(f"frame {f}: {frames.describe(r)}")
         if not r["pass"]:
             frames.sheet(gold, png, out / f"mismatch_{f:06d}.png")
-    print(f"{'FAIL' if fails else 'pass'} {name}: {len(s['frames'])} frame(s), {len(classes)} log class(es)")
+    for f in s["filled"]:
+        png = out / "frames" / f"frame_{f:06d}.png"
+        if not png.exists():
+            fails.append(f"frame {f} not reached")
+            continue
+        empty = frames.filled(png)
+        if empty:
+            fails.append(f"frame {f}: empty edge band(s) {', '.join(empty)}")
+    print(f"{'FAIL' if fails else 'pass'} {name}: {len(s['frames']) + len(s['filled'])} frame(s), {len(classes)} log class(es)")
     for line in fails + notes:
         print("    " + line)
     return not fails
@@ -153,7 +191,8 @@ def main(argv=None):
     if not scripts:
         raise SystemExit(f"no scripts in {cfg['dir'] / 'tests'}")
     ok = sum(run_script(cfg, p, a) for p in scripts)
-    print(f"regress: {ok} of {len(scripts)} script(s) pass")
+    print(f"regress: {ok} of {len(scripts)} script(s) pass; frames compared against original evidence {COMPARED['original']}, "
+          f"against native baselines {COMPARED['native']} (no fidelity claim)")
     return 0 if ok == len(scripts) else 1
 
 

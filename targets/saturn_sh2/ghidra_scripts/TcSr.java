@@ -3,7 +3,7 @@
 // saved SR back. Not a script itself; TcPrepare finds the fact (of), TcOracle sets SR at entry and checks each step,
 // TcExit reads the mask at exit, TcVectors writes the lines.
 //
-// At entry SR is MD=1 (privileged, as the game runs), RB=0, BL=0, IMASK from the vector, the rest as before (T 0). The
+// At entry SR is BL=0 (the SH-2 has no MD, RB or BL bits: they read 0, the user's decision D1, 2026-10-30), IMASK from the vector, the rest as before (T 0). The
 // mask is the vector's own (imask: a hash of r4..r7 and fr4, so a repair or a reach re-run keeps it with its inputs):
 // vectors.txt line "I mask", which the C runners load into their SR word. An `ldc` that sets RB (the other register
 // bank) or BL (exceptions blocked) refuses the run: the C has no banks and no exceptions (BL is allowed where the
@@ -56,7 +56,7 @@ final class TcSr {
     }
 
     void enter(EmulatorHelper emu, TcInputs.Vec v) {
-        long sr = reg(emu, "SR") & ~(0xfL << 4 | 1L << 28 | 1L << 29) | 1L << 30 | (long) imask(v) << 4;
+        long sr = reg(emu, "SR") & ~(0xfL << 4 | 1L << 28 | 1L << 29 | 1L << 30) | (long) imask(v) << 4;
         emu.writeRegister("SR", BigInteger.valueOf(sr));
         split(emu, sr & ~1L | reg(emu, "T") & 1);  // T stays as it was
     }

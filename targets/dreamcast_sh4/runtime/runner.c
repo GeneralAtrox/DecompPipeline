@@ -96,6 +96,8 @@ int main(int argc, char **argv)
             tcrt_set_t_export();
         } else if (line[0] == 'y') { /* area-5 reads return 0, before the first vector (TcHw "read area5") */
             tcrt_set_area5();
+        } else if (line[0] == 'v') { /* video memory window reads serve their fixed content (TcHw "read vram") */
+            tcrt_set_vram();
         } else if (line[0] == 'O') { /* the r4..r7 compared at exit, before the first vector (TcOut) */
             tcrt_set_ro_mask((u32)strtoul(line + 1, NULL, 10));
         } else if (line[0] == 'K') { /* a callee changing r8..r14 or r4..r7, before the first vector (TcLive) */

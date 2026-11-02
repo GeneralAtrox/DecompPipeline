@@ -85,15 +85,29 @@ def ensure(path):
         return line
 
 
-def table_c(name="port_fsca_sin"):
+def sines_of_file(path):
+    """{rz: the 65,536 sines} read from a table file when it is the pinned file() (a hash, not a rebuild), else None."""
+    try:
+        data = pathlib.Path(path).read_bytes()
+    except OSError:
+        return None
+    if hashlib.sha256(data).hexdigest() != FILE_SHA256:
+        return None
+    words = struct.unpack("<%dI" % (4 * N), data)
+    return {False: words[0:2 * N:2], True: words[2 * N::2]}
+
+
+def table_c(name="port_fsca_sin", table_file=None):
     """C source defining both tables' sines as `const unsigned int NAME[2][65536]` (the port kit's table): [0] round to
-    nearest, [1] round toward zero."""
+    nearest, [1] round toward zero. With table_file (a project's state/fsca file) that is the pinned file(), its sines
+    are read instead of rebuilt (5 s); any other file is ignored."""
+    cached = sines_of_file(table_file) if table_file else None
     lines = ["/* Generated from DecompPipeline tools/fsca_rom.py (core/fsca.py): FSCA's sine for each of the 65,536",
              " * angles as float32 bits, [0] round to nearest and [1] toward zero (FPSCR.RM); the cosine is the sine a",
              " * quarter turn on. Do not edit. */",
              "const unsigned int %s[2][%d] = {" % (name, N)]
     for rz in (False, True):
-        s = sines(rz)
+        s = cached[rz] if cached else sines(rz)
         lines += ["    {"] + ["        " + ", ".join("0x%08xu" % v for v in s[i:i + 8]) + "," for i in range(0, N, 8)]
         lines += ["    },"]
     return "\n".join(lines + ["};", ""])

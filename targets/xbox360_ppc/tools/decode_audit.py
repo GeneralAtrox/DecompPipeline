@@ -3,7 +3,8 @@
 Reads the TcDecodeAudit output ("addr<TAB>word<TAB>mnemonic" per instruction word) and checks:
 - every word is the image's word at that address (Ghidra loaded image.bin at the right base);
 - Ghidra decoded every word ("??" is a gap: an instruction Ghidra cannot read, e.g. a VMX128 encoding);
-- no word is a vector instruction, by either reading (phase 1 refuses VMX; the proof functions have none);
+- no vector word is left as Ghidra decodes it: TcSetup replaces each by a stand-in the audit lists as "tcvmx:<mnemonic>"
+  (TcVmx's reading, which the scanner must agree is a vector word); VRSAVE moves are decoded natively and fine;
 - Ghidra's mnemonic and ppcscan.classify agree on the classes both can tell: vmx, fpu, fma, trap, atomic.
 Prints the disagreements; exit 0 when there are none (the gate passes), 1 otherwise.
 
@@ -26,8 +27,18 @@ GHIDRA = {
 }
 
 
-def ghidra_classes(m):
+def ghidra_classes(m, word=None):
+    # Ghidra 12.1.2's ppc_instructions.sinc names ldx (opcode 31, XO 21) "ldarx", with a plain load's semantics;
+    # the real ldarx is XO 84. Go by the word, not that name.
+    if m == "ldarx" and word is not None and word >> 26 == 31 and (word >> 1) & 0x3FF == 21:
+        m = "ldx"
     return {c for c, rx in GHIDRA.items() if re.fullmatch(rx, m)}
+
+
+def is_vrsave(word):
+    """mfspr / mtspr with SPR 256 (VRSAVE), the one vector-class word that is no vector instruction to decode."""
+    spr = ((word >> 11) & 0x1F) << 5 | (word >> 16) & 0x1F
+    return word >> 26 == 31 and (word >> 1) & 0x3FF in (339, 467) and spr == 256
 
 
 def audit(rows, image, base):
@@ -42,7 +53,13 @@ def audit(rows, image, base):
             bad.append(f"{addr:08x} {word:08x}: Ghidra decoded no instruction")
             continue
         scan = set(ppcscan.classify(word)) & set(GHIDRA)
-        got = ghidra_classes(m)
+        if m.startswith("tcvmx:"):  # TcSetup's stand-in: TcVmx reads the word, the scanner must call it a vector word
+            if "vmx" not in scan:
+                bad.append(f"{addr:08x} {word:08x} {m}: TcVmx decoded a word the scanner calls {sorted(scan)}")
+            continue
+        got = ghidra_classes(m, word)
+        if is_vrsave(word) and "vmx" in scan and "vmx" in got:
+            continue  # mfspr/mtspr VRSAVE: Ghidra decodes it, the oracle runs it as it is
         if "vmx" in scan or "vmx" in got:
             bad.append(f"{addr:08x} {word:08x} {m}: a vector instruction (scanner {sorted(scan)})")
         elif got != scan:

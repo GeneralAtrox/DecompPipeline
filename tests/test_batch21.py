@@ -179,7 +179,7 @@ class Cycle(unittest.TestCase):
                         mock.patch.object(refine.rcheck, "check_readable", pass_check)]
         for p in self.patches:
             p.start()
-        self.cfg = {"model": "m", "effort": None, "readable_effort": None, "function_lock_wait_s": 0.2}
+        self.cfg = {"readable_model": "m", "effort": None, "readable_effort": None, "function_lock_wait_s": 0.2}
         self.fail_first = 1
 
     def tearDown(self):

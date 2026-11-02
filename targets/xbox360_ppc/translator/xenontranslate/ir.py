@@ -57,11 +57,12 @@ class CallS:
     """A call to another original function: TcArgs fields from args [(field, index, expr)], then the callee's
     result in r3 (tc_call) or f1 (tc_callf). kind: 'r' / 'f', or None until passes.choose_calls decides from what
     is read after the call. auto: the argument registers are chosen by passes.fill_auto_args."""
-    __slots__ = ("target", "args", "kind", "auto", "addr", "note")
+    __slots__ = ("target", "args", "kind", "auto", "addr", "note", "keep_other")
 
     def __init__(self, target: Expr, args, addr, auto=False, kind=None):
         self.target, self.args, self.addr, self.auto, self.kind = target, list(args), addr, auto, kind
         self.note = None
+        self.keep_other = False   # port form: the callee never writes the other result register
 
     def reads(self):
         out = self.target.vars()
@@ -74,6 +75,8 @@ class CallS:
             return {"r3"}
         if self.kind == "f":
             return {"f1"}
+        if self.kind == "v":        # port form: the callee is void, so r3 and f1 stay as they were (a constructor returning `this`)
+            return set()
         return {"r3", "f1"}
 
     def exprs(self):

@@ -1,0 +1,11 @@
+data/export_names.json lists the names of the xboxkrnl and xam exports by ordinal. It is derived from the export tables of
+Xenia : Xbox 360 Emulator Research Project (xboxkrnl_table.inc, xam_table.inc), whose files say:
+
+  Copyright 2021 Ben Vanik. All rights reserved.
+  Released under the BSD license - see LICENSE in the root for more details.
+
+as carried in hedge-dev/XenonRecomp (MIT licence, Copyright (c) 2025 hedge-dev and contributors) at
+XenonUtils/xbox/. Only names and ordinals are used; no Xenia code is part of the kit.
+
+The BSD conditions apply to the names data: the copyright notice and these conditions are kept with it, and the name of the
+copyright holder is not used to endorse anything derived from it. The data is provided "as is", without warranty.

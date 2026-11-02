@@ -52,10 +52,10 @@ public abstract class TcOracle extends TcInputs {
 
     static final int LOAD_LOG = 64;
     // A vector making more calls is rejected like one hitting STEP_LIMIT: its loop waits on a callee result the
-    // mocks never give, and logging every call ran Ghidra out of heap. tc_rt.c's MAX_CALLS must equal it.
-    static final int CALL_LIMIT = 4096;
+    // mocks never give, and logging every call ran Ghidra out of heap. tc_rt.c's MAX_CALLS is the most core/oracle_limits allows.
+    static int CALL_LIMIT = 4096;
     // Scripted call results per vector (line C: Vec.rets, then entryLate); a later call returns 0.
-    static final int RETS = 64;  // tc_rt_internal.h's TCRT_RETS must equal it
+    static int RETS = 256;  // tc_rt_internal.h's TCRT_RETS is the most core/oracle_limits allows
 
     TreeMap<Long, Integer> blockIndex = new TreeMap<>(); TcDirs dirs;  // null unless branch_coverage (TcDirs)
     // Entry values the next runOracle sets beyond TcInputs' Vec (TcVectors decides them; null: left as the emulator

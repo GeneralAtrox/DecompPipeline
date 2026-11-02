@@ -45,9 +45,9 @@ class GlueError(Exception):
 
 def judged(tx_dir):
     """({addr: path} of the judged files a port may compile, {addr: why not} of the others). A later results file
-    (by time) replaces an earlier one's row for the same function."""
+    (by time; of equal times, as a tar gives, _all last) replaces an earlier one's row for the same function."""
     rows = {}
-    for f in sorted(tx_dir.glob("results_translated_sp_*.json"), key=lambda p: p.stat().st_mtime_ns):
+    for f in sorted(tx_dir.glob("results_translated_sp_*.json"), key=lambda p: (p.stat().st_mtime_ns, "_all" in p.name)):
         m = RESULTS.fullmatch(f.name)
         for r in json.loads(f.read_text(encoding="utf-8")):
             rows[r["addr"]] = (r, m.group(1))
@@ -218,12 +218,12 @@ def inbound_c(reg, readable_abi, addr, proto, meta, src, text, prefix=""):
             top = max(top, off + 4)
             stores.append(f"    port_tx_wr32(sp + {off}u, {convert(n, c, 'u32')});")
     # an unlisted float register: as the FPU state holds it; r0..r3: as the caller's translator C had them at its
-    # tc_call (port_tx_take_rlo; 0 from readable C); an r4..r7 handed over (r_exports, a callee's r_out): sh4_r
+    # tc_call (port_tx_take_rlo; 0 from readable C); r4..r7: sh4_r, which tc_call loads with the caller's (a
+    # caller's param_1 in r5, the object it hands on in r4; 0 there made the callee write through null)
     lo = [s for _, s, _ in extra if s in ("r0", "r1", "r2", "r3")]
-    held = set(meta.get("r_exports") or ()) | {r for v in (meta.get("r_out") or {}).values() for r in v.split(",")}
     for bt, s, _ in extra:
-        c, n = have.get(s, (bt, f"sh4_fr({s[2:]})" if s.startswith("fr") else
-                            f"lo[{s[1:]}]" if s in lo else f"sh4_r({s[1:]})" if s in held else "0"))
+        c, n = have.get(s, (bt, f"sh4_fr({s[2:]})" if s.startswith("fr") else f"lo[{s[1:]}]" if s in lo else
+                            f"sh4_r({s[1:]})" if s in ("r4", "r5", "r6", "r7") else "0"))
         args.append(convert(n, c, bt))
     for s, (c, n) in sorted(have.items()):  # a stack argument the raw signature leaves out: still where it is read
         if s.startswith("stack+") and s not in mst:

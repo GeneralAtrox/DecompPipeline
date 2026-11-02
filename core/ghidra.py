@@ -5,8 +5,8 @@ import shutil
 import contextlib
 import threading
 
-from . import (callee_drift, compare, fsca, ghidra_broker, ghidra_server, hw_ops, oracle_stamp, paths, prepare_timing,
-               sig_override, stack_uninit, strict_judge, sz_entry, target_hooks, toolcfg)
+from . import (callee_drift, compare, fsca, ghidra_broker, ghidra_server, hw_ops, oracle_limits, oracle_stamp, paths,
+               prepare_timing, ret_reg, sig_override, stack_uninit, strict_judge, sz_entry, target_hooks, toolcfg)
 from .packet_split import MAX_LINES, packet_files, split_packet, strip_status  # noqa: F401 (re-exported)
 
 # Ghidra locks a project while any process has it open, even with -readOnly. So parallel preparation uses
@@ -505,8 +505,7 @@ def _prepare(cfg, addr, on_line, stop_flag, slot_index, staging, clock):
     hints = paths.HINTS / f"{addr}.txt" if not staging else staging.get("hints")
     was = callee_drift.own_signature(paths.read_json(harness / "meta.json"))
     # Ghidra writes a new packet and harness under state/prepare_new/, and they take the old ones' place only once it
-    # succeeded: a prepare that fails, times out or is killed keeps the function's old harness and packet (a timed-out
-    # TC prepare once left 14 harnesses holding only meta.json). A staging trial writes in place.
+    # succeeded: a failed, timed-out or killed prepare keeps the old ones. A staging trial writes in place.
     new = None if staging else paths.STATE / "prepare_new" / f"{addr}.slot{slot_index}"
     out_packet, out_harness = (new / "packet", new / "harness") if new else (packet, harness)
     for d in [new] if new else [packet, harness]:
@@ -519,27 +518,28 @@ def _prepare(cfg, addr, on_line, stop_flag, slot_index, staging, clock):
                     dst.write(paths.MARKS.read_text(encoding="utf-8"))
                 paths.MARKS.unlink()
     marks = str(inflight) if slot_index == 0 and not staging and inflight.exists() else "-"
-    seed = int(addr, 16) & 0x7FFFFFFF
+    seed, run_cfg = int(addr, 16) & 0x7FFFFFFF, oracle_limits.run_cfg(cfg, addr)  # run_cfg: its own time budget
     project = paths.GHIDRA_PROJECT if slot_index == 0 else paths.GHIDRA_SLOTS / f"slot{slot_index}"
     scripts = staging["scripts"] if staging else paths.sync_scripts()
     facts, ndev, hints = write_facts(cfg), dev_vectors(cfg, addr), hints if hints and hints.exists() else None
     if cfg.get("fsca_table"):  # TcPrepare refuses any other table; a stale one failed every prepare (c346302)
         paths.fsca_table()  # (the PowerPC targets' TcPrepare never reads it: a 1 MB read and hash a prepare saved)
     tc_args = [addr, str(out_packet), str(out_harness), str(ndev), str(cfg["vectors_hidden"]), str(seed),
-               str(paths.FSCA_TABLE), marks, str(hints) if hints else "-", facts, compare.spin_arg(cfg, addr)]
+               str(paths.FSCA_TABLE), marks, str(hints) if hints else "-", write_facts(run_cfg), compare.spin_arg(cfg, addr)]
     tc_args.append(hw_ops.arg(cfg, addr))  # script arg 11: the hardware ops project.json "hw_ops" lists (TcHw)
     if compare.run_flag(cfg, addr):  # script arg 12: the run flag project.json "run_flags" lists (TcCalls)
         tc_args.append(compare.run_flag_arg(cfg, addr))
-    if sz_entry.arg(cfg, paths, addr) != "-":  # script arg 13: FPSCR.SZ at entry and after its calls (TcFpscr.Sz)
-        tc_args += ["-"] * (13 - len(tc_args)) + [sz_entry.arg(cfg, paths, addr)]
+    for k, arg in ((13, sz_entry.arg(cfg, paths, addr)), (14, oracle_limits.arg(cfg, addr)),  # FPSCR.SZ (TcFpscr.Sz), limits
+                   (15, ret_reg.fret_arg(paths.STATE, addr))):  # callees to draw float results for (TcFret)
+        tc_args += [] if arg == "-" else ["-"] * (k - len(tc_args)) + [arg]  # script args 13, 14 (TcCalls.limits), 15
     log_name = f"ghidra_prepare{'_staging' if staging else ''}_slot{slot_index}.log"
     try:
         if ghidra_server.serves(cfg, slot_index, staging):  # the slot's long-lived Ghidra (core/ghidra_server)
-            out = ghidra_server.run(cfg, slot_index, project, scripts, _stamp(), tc_args, _env(cfg), on_line, stop_flag)
+            out = ghidra_server.run(run_cfg, slot_index, project, scripts, _stamp(), tc_args, _env(cfg), on_line, stop_flag)
             clock.mark("exit")
             (paths.STATE / log_name).write_text(out, encoding="utf-8")
         else:
-            out = _headless(cfg, [
+            out = _headless(run_cfg, [
                 "-process", paths.config()["binary_path"].name, "-noanalysis", "-scriptPath", str(scripts),
                 *([] if slot_index == 0 and not staging else ["-readOnly"]), "-postScript", "TcPrepare.java", *tc_args,
             ], log_name, on_line=on_line, stop_flag=stop_flag, project=project, clock=clock)

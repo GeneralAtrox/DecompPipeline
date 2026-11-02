@@ -166,18 +166,6 @@ static const RdProto *find_proto(u32 addr)
     return NULL;
 }
 
-/* Unknown target: does the caller take an f32 from the x87 stack after the call? (MSVC: fstp/fld right after,
- * possibly behind the caller's stack cleanup.) A wrong guess can only make results differ, never match. */
-static char guess_ret(const u8 *p)
-{
-    for (int k = 0; k < 3; k++) {
-        if (p[0] == 0x83 && p[1] == 0xc4) p += 3;
-        else if (p[0] == 0x81 && p[1] == 0xc4) p += 6;
-        else if (p[0] == 0x59) p += 1;
-    }
-    return (p[0] == 0xd9 || p[0] == 0xdd) ? 'f' : 'i';
-}
-
 /* Out-pointers into the caller's stack (vectors lines O and D, from core/readable_outptr.py). The oracle mocks a
  * callee: it writes nothing, and the original reads back from its own guest stack what is there at the call (the
  * vector's bytes, and what the original itself wrote before the call): that is the callee's "output". A readable
@@ -292,7 +280,7 @@ static LONG call_trap(CONTEXT *c)
     if (sp[0] < g_mod_lo || sp[0] >= g_mod_hi) return EXCEPTION_CONTINUE_SEARCH;
     u32 target = tcrt_fold(c->Eip), r[4] = {0}, fr[8] = {0}, st[8] = {0}, lo[4] = {0}; /* 0x0c... form too */
     const RdProto *p = find_proto(target);
-    char ret = p && p->ret != '?' ? p->ret : guess_ret((const u8 *)(uintptr_t)sp[0]);
+    char ret = p && p->ret != '?' ? p->ret : rd_guess_ret(sp, c->Ebp, g_mod_lo, g_mod_hi);
     int ni = 0, nf = 0, ns = 0;
     for (int k = 0; p && p->params[k]; k++) {
         if (p->params[k] == '*') { /* variadic: the caller's remaining cdecl words follow the named stack words */
@@ -362,6 +350,20 @@ static LONG CALLBACK handler(EXCEPTION_POINTERS *ep)
     if (rd_area5 && er->ExceptionInformation[0] == 0 && tcrt_area5(addr, 1)
         && VirtualAlloc((void *)(uintptr_t)(addr & ~(RD_PAGE - 1u)), RD_PAGE, MEM_RESERVE | MEM_COMMIT, PAGE_READONLY))
         return EXCEPTION_CONTINUE_EXECUTION;
+    /* a video memory window read with line v: a page of the fixed content (tcrt_vram_word), read-only, and the load runs again */
+    if (rd_vram && er->ExceptionInformation[0] == 0 && tcrt_vram(addr, 1)) {
+        static int reserved; /* the window is reserved whole once (reserving rounds down to 64 KB); its pages commit as read */
+        u32 base = addr & ~(RD_PAGE - 1u);
+        u32 *pg = NULL;
+        DWORD old;
+        if (!reserved) reserved = VirtualAlloc((void *)(uintptr_t)0xa5000000u, 0x800000u, MEM_RESERVE, PAGE_NOACCESS) != NULL;
+        if (reserved) pg = (u32 *)VirtualAlloc((void *)(uintptr_t)base, RD_PAGE, MEM_COMMIT, PAGE_READWRITE);
+        if (pg) {
+            for (u32 i = 0; i < RD_PAGE / 4; i++) pg[i] = tcrt_vram_word(base + 4 * i);
+            VirtualProtect(pg, RD_PAGE, PAGE_READONLY, &old);
+            return EXCEPTION_CONTINUE_EXECUTION;
+        }
+    }
     if (!rd_page_guarded(addr) || g_nrearm >= 4) return EXCEPTION_CONTINUE_SEARCH;
     if (er->ExceptionInformation[0] == 0 && rd_is_code(addr) && !g_code_read) g_code_read = tcrt_fold(addr);
     rd_page_open(addr);

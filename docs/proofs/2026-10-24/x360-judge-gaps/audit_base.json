@@ -1,0 +1,612 @@
+{
+ "th0": {
+  "8233b4a0": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "8aa37e030556ece8b31f49f8cfdb6ef898232b8b5d7de52d59e5a0d9fd7300db"
+  },
+  "8239c808": {
+   "outcomes": "KKSKKKKKKK",
+   "sha": "1157d09bd8ef0f71db642d9f43f55137ed236135a278e93e00b953d1861b9a9f"
+  },
+  "823eab08": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "f2235774d4b49fd2e3b5199b0ac65a4de781d35f079655e5594b302a7fabdecd"
+  },
+  "824e7a88": {
+   "outcomes": "KKKKKKKKSK",
+   "sha": "4a9abff46ef56fc149184a56b6a06dcf606278ce38456de19409de0ca5ca590b"
+  },
+  "82589250": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "1d49160130e98a14d5beb6bf12c33f4079898f88e243c3ca1f9b839f60560100"
+  },
+  "826d2490": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "937d397c2d610e532d313298fc76d6e5ae7572358d534d9ecfc63eb2031b1918"
+  },
+  "82761d90": {
+   "outcomes": "SKKKKKKSKK",
+   "sha": "380504359e785c908fa652c5cc4fa2d215c991056de4fcc5c9c4227942064a34"
+  },
+  "82816cf8": {
+   "outcomes": "KKKSKKKKKK",
+   "sha": "dc205d7b0a3a04ceb0e16f9bac939bd335c8c2cdbb1ccb53a6e753e1c32acb3b"
+  },
+  "828c09e8": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "05f026b44123c88a6fed2f00ad1691ad8e93d35a8f1c7eb133fbac7c7a38f4a0"
+  },
+  "829ab198": {
+   "outcomes": "KKSKKKKKKK",
+   "sha": "a8f161273044c98631d21f549ea781d870bebcbe5c329d6c739b514b9b70ce16"
+  },
+  "82b27ee0": {
+   "outcomes": "KKKKBKKKBK",
+   "sha": "65612c635dfc06d905a531a650dc36345d3f470a1c9e8ca40e35dd31a7335ab2"
+  },
+  "82bc5158": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "edb24122d44e1810be2e2096c3d7240b9c3df515b64368bb247173fb16f12141"
+  },
+  "82c8be78": {
+   "outcomes": "KSSSKSKSSS",
+   "sha": "571a18ca285bbeb3a7d16ab0c8b6c96f73ab4e75b248bff8db7865c288cf2c0c"
+  },
+  "82d4ebf8": {
+   "outcomes": "KKSKKKKKKK",
+   "sha": "b26720c939fbee59014fda67c7e0f85e4f3b29b0a7d27b600e988993bf83680e"
+  },
+  "82eb84f0": {
+   "outcomes": "KKSKKKKKKK",
+   "sha": "bb07467c16466c0bc508a434386a7fad735889f59a459683a7fffb32da6f17be"
+  },
+  "82f1b520": {
+   "outcomes": "KKSSKKSSSS",
+   "sha": "38f0aeccb242969a0400c2ec1a5f83876df034fa6b4a2a0b82b27966ad70af92"
+  },
+  "82f33c58": {
+   "outcomes": "KKKSKKKSSS",
+   "sha": "c05125390e945d47dea0fd1a787fb4cc2ccb36a7da558d3eca8a777a38b8c3f9"
+  },
+  "82f41800": {
+   "outcomes": "KKKSKSSSKS",
+   "sha": "53d366b47c42555ec08e99a2789b1624681c158aef49e46b5285d6b31745d049"
+  },
+  "82f64de0": {
+   "outcomes": "SKSKKKKKSK",
+   "sha": "0fbc3cb848c6f99531b9ad9191c61df489b8cd63c052e194064c2c2afee7d0ba"
+  },
+  "82f83850": {
+   "outcomes": "KKKSKSSSKK",
+   "sha": "12fea173eca462504721c378f8c2a68b5b1b05b3850b676390809856ddaee1c1"
+  },
+  "82f90bd8": {
+   "outcomes": "KKSSKSKKKK",
+   "sha": "3b43672328fb7fa1c50513ab0425c3b2cead7127c8239c6ba57f358732b96257"
+  },
+  "82fc69f0": {
+   "outcomes": "SSKSKSKSKK",
+   "sha": "0cec5896159b5174f453199760c2911269deb07a5d444fee312276a179a86b93"
+  },
+  "82fdcdc0": {
+   "outcomes": "SKKKKSKSKS",
+   "sha": "94de1d17fe1533a9764d7e5e8ca7e983cf735f3c1c1e2c119c840d659fdecca7"
+  },
+  "82ff73e8": {
+   "outcomes": "KKKSKSSSSK",
+   "sha": "53a4c2e467b68a028c9b421dd098c9b5cbde2137fc537ef253042651e1f8345c"
+  },
+  "83014f80": {
+   "outcomes": "SKKSSSSKKS",
+   "sha": "4ef723cc0babac5c6af3703e2b0ca9157783c6a6695bcc67db2688c0ea579e5a"
+  },
+  "8303bc08": {
+   "outcomes": "SKKKSKSKSK",
+   "sha": "91546094f9000707ef50213604b4c95b09346aff419d01b279888a16b2a9b501"
+  },
+  "83059350": {
+   "outcomes": "SKKSKSKSSK",
+   "sha": "d73609631cf987c3d2a09c8aa84b459571fc86db29ab50657e95b1e1f3c5c9dd"
+  },
+  "83085848": {
+   "outcomes": "KSKSSKKKKK",
+   "sha": "08a7c76e8dddc2b4caa9e9e49897ee743d89a1685ffd69b4c54a7d067f982acd"
+  },
+  "830af770": {
+   "outcomes": "SSKSKKKKKS",
+   "sha": "fc6b9366b5e5e911a86ef73397f20ba5920b7153d538c83da37474c1ebcf439a"
+  },
+  "830fc388": {
+   "outcomes": "KSKKKKKKKK",
+   "sha": "59cfa912da65147066a63f3e6462e8b12f29115337a1cbf9260e248710d55a3d"
+  }
+ },
+ "th1": {
+  "82341278": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "43d4965b510095e80153261e8000ed1e6c04e3e7542e50ca8ce966b1e6e9be30"
+  },
+  "8239f0b8": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "3b3a9eb4b2a0eb42b73852494186f9eb4430c34b36db13690beeef878e28f19c"
+  },
+  "823fe818": {
+   "outcomes": "KKKSKKKKKK",
+   "sha": "ef375cd89a83107543dda961ef5cdb2119dbd18957294fc8d2c07bc4ae6052a1"
+  },
+  "825005e0": {
+   "outcomes": "SKKSKSSSKK",
+   "sha": "611bff98b6838039ec0014df9026fce563a2902e5886695b9c4cb4b3148f0863"
+  },
+  "8266c298": {
+   "outcomes": "KKKKKKKKKS",
+   "sha": "16ea17973d789e562cfa1191da17a35e333a9d23b2f23b03cc59b4cb2c0b0b2a"
+  },
+  "826e0dd0": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "3c436ad34a8d5e23b9c41b273b1946050f012c07e783f89d1a0fa461b181ba2b"
+  },
+  "82792bc8": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "14dc4b74efe894b27541d8c9c97e6617383d3907b7f37afeb87e64f4bf19d36e"
+  },
+  "82821030": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "1c59c3c2aedb43aff563ffbe815e86ba6829544f56e0f19e7d40f6aee9a379f7"
+  },
+  "82925ea0": {
+   "outcomes": "SSSSSKSKKS",
+   "sha": "ec77a6956b668a485614f8bd72c1ccdd7db1e211bd7becbee994cd8e89595db1"
+  },
+  "829e7530": {
+   "outcomes": "KSKKSSKKSK",
+   "sha": "71d658e9d83a913518577da0e7028dc11c30a1139af96d97d56590806c3acdc0"
+  },
+  "82b30b20": {
+   "outcomes": "KSKSSKSKKS",
+   "sha": "793fffaa54f18928a2602a28c07d73dbfad5c53bba1606476248af29fe564f03"
+  },
+  "82bf1188": {
+   "outcomes": "KSKKKKKKKK",
+   "sha": "6b3b21abce40daa581e541313291c4630b845d4aafb5ccf837557e79c711ff54"
+  },
+  "82d20228": {
+   "outcomes": "SSKKSSKKKK",
+   "sha": "93adfc6e3c082ce64e37730611edea5a2ef8d2140b0e67b990699c14c4034a47"
+  },
+  "82d88f90": {
+   "outcomes": "KKKKKKKKKS",
+   "sha": "169ab501bca92b4a09bdd4d039aa27f0bfd3a39500157cca3f2ff093b40da2cb"
+  },
+  "82ec7600": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "39b99ef3e3755db7f99625b76185f7389c03ab6985e3ceb455254df9de15f760"
+  },
+  "82f25d58": {
+   "outcomes": "KKBKKKKKKK",
+   "sha": "5e0fdfd2db3897bafb982e99988b4c3bbcea484b47b5a0120b09a3b08c4316bd"
+  },
+  "82f34d30": {
+   "outcomes": "KKSSKKKKSK",
+   "sha": "7611acafd85b22600740966b9e632a19926825b881ea442c70c69c688846abb1"
+  },
+  "82f42f68": {
+   "outcomes": "SKKKKSSKSS",
+   "sha": "a525d439f2f5cda559aeb5e120cf518a5d637588878eab46690765c5ab0ce3ee"
+  },
+  "82f6ab48": {
+   "outcomes": "KSKKKSSSKS",
+   "sha": "4937886c1dc20bd098c68d8a377365362fdc4ed9e93b772cfe78709b194bed91"
+  },
+  "82f83f50": {
+   "outcomes": "SKKSKSSKSS",
+   "sha": "c8c6437b9b2cbe214ea2d0610019efd3eb173e99d692d89fbfaee8c176262b46"
+  },
+  "82fa1760": {
+   "outcomes": "KKKSKSSKSK",
+   "sha": "cb9b552755617a8ea01822f8ba130fcd1e13a80bfce410eefb516031af606afd"
+  },
+  "82fc8760": {
+   "outcomes": "KKSSSKKKSS",
+   "sha": "7377b71b33465859a85c34ce15a4832394dcb52a210e6193ff19596fae1e6bb3"
+  },
+  "82fe0198": {
+   "outcomes": "SKSKKKKKSS",
+   "sha": "1184090b9f7667371ece115c784532de5d307ddef60480f1feacce49cb092503"
+  },
+  "82ffe128": {
+   "outcomes": "SSKSKSKSSS",
+   "sha": "573c524f88b42f61b5a8a940d66c4c89e0f3bcc9f7d520b8ad20996ce23c6e9b"
+  },
+  "8301a310": {
+   "outcomes": "KKKKKSSSSS",
+   "sha": "9c6406eddcaae6544ab028795a074b51896d7a864b471abbc656d13a970cc35b"
+  },
+  "8303db18": {
+   "outcomes": "KKSSKKSKKK",
+   "sha": "f5c6a8c3ef973f714862c855e7e070475e1fe8741a7e83661c1982f55a3d49fa"
+  },
+  "83060900": {
+   "outcomes": "SKSSKKKKSS",
+   "sha": "32d202ad3b4f0c3871bd316dd81103138d8726a4a78ba1785dadc92e123a3497"
+  },
+  "83091d20": {
+   "outcomes": "KKKKSKKSKS",
+   "sha": "3a4f424a8debdf181b7ad49937904a87ad29c369591424344b7c66ef18390f5d"
+  },
+  "830b4bd8": {
+   "outcomes": "KKKKSKSSKS",
+   "sha": "c32f7025f79f8fc3766490e9063ed4d25644d1c72654da95e50cd16451ccff33"
+  },
+  "830fe078": {
+   "outcomes": "KSKSKKKKKK",
+   "sha": "375ee60cb986e401c539b07d8084aaebc8fa4fc9cd7b1586a4c245652e24da85"
+  }
+ },
+ "th2": {
+  "8234f108": {
+   "outcomes": "KKSKKKKKKK",
+   "sha": "2ff149cb85e12773e3629eacf77548be2124aefaafb13d450eb418cfbd093c90"
+  },
+  "823a0cf0": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "92e23d117bc18fa0f5cb129b2132c9a9743ca9b1552f811304a94d8da8939a8b"
+  },
+  "82481cb0": {
+   "outcomes": "KKKKKKKKKS",
+   "sha": "38cf2e0f55bd95e4173a22b56642f8109f1dcdd84232083fe7ba210ab56a9936"
+  },
+  "82529348": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "91603e1ff6ce2fd2da03585637ea19cdc9ceef801e616d9d8c4b063df783c3d5"
+  },
+  "82688450": {
+   "outcomes": "KSKKKKKKKK",
+   "sha": "80293662947c576d6347597637c496e39df0b58e3e0b899eb9f40e0df08ace0e"
+  },
+  "82725618": {
+   "outcomes": "KKKKKKKSKS",
+   "sha": "87b807d73d2c9e80d008feb282f9442e4cf93951ceeec75d8dd6f2edee99d8cf"
+  },
+  "827c0028": {
+   "outcomes": "KKKKKSKSKK",
+   "sha": "c9dfc82698fddde4cea4ea4535888df71aaa92137d2687c04bb7db487459b959"
+  },
+  "82858c68": {
+   "outcomes": "KKKKKKKKBK",
+   "sha": "1b90cb85e7c8ce13bafcfb673af85551de377a6982230a1aeac8049144059446"
+  },
+  "82941578": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "c130dc52576461ca2a0ef119e735f027de0e1eaf708652b9e81ac01a06ca7331"
+  },
+  "82a468a8": {
+   "outcomes": "KKKKKKKBKK",
+   "sha": "91f675f193a3b92ab16ea7d5eb6df284e1736cac4da72c8176f02511d658e495"
+  },
+  "82b46b90": {
+   "outcomes": "SKKKKKSSKK",
+   "sha": "2c81e1db85542e5cae7cd07863ae765472e81ab1837bcc5a00fa3f826d1e2a24"
+  },
+  "82c14ed8": {
+   "outcomes": "KBKKKBKKKK",
+   "sha": "16a741e5b881e64d71697300a68e1a7066d35fb0e92f5ca84ee271a6fee8156f"
+  },
+  "82d24cf0": {
+   "outcomes": "SKSSKKKSKS",
+   "sha": "6105bad0e79519d664be4b26410ec688511173bbc0469d1782e87538394e4f0a"
+  },
+  "82db8a38": {
+   "outcomes": "KKSKSSKKKK",
+   "sha": "aa37d2043becd758cdd995653d33656083b4ab70421098bab9398b8ee9d829eb"
+  },
+  "82ef4d48": {
+   "outcomes": "KKKKKK",
+   "sha": "bee9926fe7f22252cd75492806dcafc2ab5359acdb49e27647afc5e6ebff4a7d"
+  },
+  "82f2aec8": {
+   "outcomes": "KKKKKBKKKK",
+   "sha": "2f4969aa6f1db1086cc893f6bfb0ed755c19c44d24654698c9456ab6f7cc9243"
+  },
+  "82f36fc0": {
+   "outcomes": "KKKKSSSKSK",
+   "sha": "2f6ca26d22fdee48318ece2888aad8c1c149bbc5236d5ca755b83d996bbc99c9"
+  },
+  "82f4b6d0": {
+   "outcomes": "SSSKKKKKKS",
+   "sha": "c4dd21a838b5a38f0a0c60ae9dc2a086f4fb114027a1d9bfd6f678d582d49155"
+  },
+  "82f6b910": {
+   "outcomes": "SKKKKSKSSK",
+   "sha": "c192816cd19f326c15ec84cf7038340c8ea6579c6762fdcddeadf276b18e9295"
+  },
+  "82f8d020": {
+   "outcomes": "KKSKKSSKKK",
+   "sha": "635e41cdff1342184897b0d68f1e4a4b521bf6e32f75ead2e4de530059d9cce0"
+  },
+  "82fa7a78": {
+   "outcomes": "SKSSKSSKKK",
+   "sha": "73fbf940a5b55d582bcec7fefeb65c774ad89903ff57aee5591c4191d72fa877"
+  },
+  "82fcbeb8": {
+   "outcomes": "SSKSKSSKSS",
+   "sha": "a3a1ee659f1a1fc63c4570a6a68883871dd1c9fb802f4715906eb82007a05bda"
+  },
+  "82fe38b8": {
+   "outcomes": "SSSSKKKKSS",
+   "sha": "062a443926c6f88f42a1ce8928c1d13ab8a51beeb85a503c6061ba5fcb7233e3"
+  },
+  "830078b8": {
+   "outcomes": "KKSSKKSKKK",
+   "sha": "1aecd8d6adaf7d4b7b63e88bb42f9cbe55c7894dbc5678f9f2eaddcead7fb17b"
+  },
+  "83025ef0": {
+   "outcomes": "KKKKKSKKK",
+   "sha": "25b13b9ce6ad9843c563c82baa15109839e8a0c856e275a06ed32c1f23d8aebd"
+  },
+  "83042308": {
+   "outcomes": "SSKKSSSKKK",
+   "sha": "a056ead5cf43d7dd12ab575514807ee8f0a1fc5a9c07f13be785590ecbd222af"
+  },
+  "830621b8": {
+   "outcomes": "SSSSKSSKKK",
+   "sha": "9734e7786884e96e0ef79f810be09244690cc91e9c2fc470c1225bd239d5ef73"
+  },
+  "8309a470": {
+   "outcomes": "KSKKSKKKKK",
+   "sha": "4668faf9fe839c6f79da96dcd32897d0e8b4d676fec236e0b1d4cfe859e4c3a8"
+  },
+  "830c84b8": {
+   "outcomes": "KSKKSKKKKS",
+   "sha": "72af3a7cc7f4fbe649d1a04fda29a76d71a2ce22b8b45e57cf6f112fa19552f4"
+  },
+  "8310c438": {
+   "outcomes": "SSKSSKKSKS",
+   "sha": "4f648e43704e2e256e227714be03f59b729dda18f28556392ce36b7f10bc43d1"
+  }
+ },
+ "th3": {
+  "82362318": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "41a6fce87f1787675fa50a6ce21fabd41ab5b510c4805b5f9911cf9152f85b37"
+  },
+  "823a91d8": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "bf80acc59bc3bca08d568870037c1780904ac053beeb9fb08782b685ae187c4f"
+  },
+  "8248fd90": {
+   "outcomes": "KSKKSSSKSS",
+   "sha": "7e8ade9a01aebd2ffee045cc7148b1c0898b45e5189c3c83833a82d25ed77c5f"
+  },
+  "82535b08": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "98e8c70072efe638840cb3dd78c77ba0baaeb348e8e3403c72c9a8bdfbb01f0f"
+  },
+  "8268e750": {
+   "outcomes": "KKKKKKKSKK",
+   "sha": "9ffaa55ce7357be583c01b2927302af4a648b6a8f24b9519dddb15c4feeda3f0"
+  },
+  "8273c6f0": {
+   "outcomes": "KKKKSKSSSS",
+   "sha": "2d760cd0d5e3fb5d4cfaa720ae71f107ad5521354a948bd20c8743f8c0dd2f39"
+  },
+  "827eb498": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "cd036bd7c82c668be42fcca9da78793dad8ad3df450a7c06e1409f6517b1378e"
+  },
+  "828768d0": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "fc089a7de4af97de88f83fce41b116201480f43db4e7b260c69cef95c6f86033"
+  },
+  "8296bf58": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "aea7c4afb5239edb21a8e1a45aa995bfaa45205bbad74cb58bb03b194c30ead3"
+  },
+  "82a63354": {
+   "outcomes": "SKSSBSS",
+   "sha": "7de8945676d50db714e683771a5c4a3fdc02c55739d3af8a39e581ee5cde0ccd"
+  },
+  "82b63db8": {
+   "outcomes": "KSKKSKKSKK",
+   "sha": "f80db23207c2e12a9f93b676759b9a458a9a8910a69ee1f89d616bbcbaea8a6c"
+  },
+  "82c35e90": {
+   "outcomes": "KKKBK",
+   "sha": "25969ca656e16b48333e74ac2009ca7ba59ede0237c6d00a7edaa76a6b447dfd"
+  },
+  "82d36de8": {
+   "outcomes": "KKSKSKKKSK",
+   "sha": "be45fa5e12af703d99617e000c62f3242bd9a04c6d8cdf5fcdcf93d931407b47"
+  },
+  "82deef28": {
+   "outcomes": "KKKKKKKKSK",
+   "sha": "a4321c3a9962cfb93fc1e490bd320fc086f1dd12aebe972ce0741b2cfc98b098"
+  },
+  "82ef93d0": {
+   "outcomes": "KSKKKKSKKK",
+   "sha": "e293c84d6078fc7c18cd49a39bc8cf4b7642b4c39d8df82f6b304dd304ffa3f1"
+  },
+  "82f2f740": {
+   "outcomes": "KKKKKKKKBS",
+   "sha": "2db093fceadc58e3d60c7cad43056dd21816aef59035912a3ca26e778bdf101b"
+  },
+  "82f3b320": {
+   "outcomes": "KSKSSSSKKS",
+   "sha": "a9b394ee1520b8873ba653ce339d328142d9bd67dd2517da82af4a1a33030399"
+  },
+  "82f5d6a0": {
+   "outcomes": "KSKSSSKKKK",
+   "sha": "7e2b6b4782f56b4f4a017359094a02f55cacbebee442a60b633efeb78665078d"
+  },
+  "82f72588": {
+   "outcomes": "SKKKKSSSKK",
+   "sha": "06532151582c53f3719d19faa8b52d29dd58757e384db1c7b2b5d274f8cf04fd"
+  },
+  "82f8dd40": {
+   "outcomes": "KSKKKSKKSS",
+   "sha": "cba161702d90ea63091fb52c59be63347c18baf79910c00330440b3d579316d9"
+  },
+  "82fb6610": {
+   "outcomes": "SKSKKKSSKS",
+   "sha": "7ba20808a07e3dad2a7acfc6f712a725053541647b913cf2477200c2db21e0cf"
+  },
+  "82fd6cd8": {
+   "outcomes": "SKSSSKKSKK",
+   "sha": "4d74bb2a6bc4d4387e3040cb65f2d6fbf287aacf17d448fa6d67e231814c3474"
+  },
+  "82fe48b0": {
+   "outcomes": "KKSKKKKSSK",
+   "sha": "a727594a3cf50fa8bf7ba334fe666602167f235ecf7f446f5ae8304e02ed1a07"
+  },
+  "830121c8": {
+   "outcomes": "KKSSKKSSKK",
+   "sha": "bf7368adf84fd18da899539067aefe9058bdf7123dfc251205851bbe6b072f4d"
+  },
+  "83038488": {
+   "outcomes": "SKKKKKKKK",
+   "sha": "eab005bbae654d354dc1736fe0f88cd32e2499f7a27ac2ab07307f57b114f8d2"
+  },
+  "83048db8": {
+   "outcomes": "SKKSKSKSSK",
+   "sha": "3ba611a5c0be438f9252acba021c7fe885bf178680fa682a45bdeaae586d34ec"
+  },
+  "830694b0": {
+   "outcomes": "SSKKSKSKKK",
+   "sha": "b61666844351c87c6755bdb7ff4008a79fdec69466da109092e5be8665ef99fd"
+  },
+  "8309eb78": {
+   "outcomes": "KSKSSKSKKS",
+   "sha": "0243389ced573da288727c8f48836ffce187269a7a19d357f7d532ea727a3f54"
+  },
+  "830cf0f0": {
+   "outcomes": "SSKKKKKSKS",
+   "sha": "8bdd42308896ee7a55e3f646c0d3707285bdef2375d75c9d505ce2d4d124f690"
+  },
+  "8310fb30": {
+   "outcomes": "KSKKKKKSKS",
+   "sha": "d2eec72618aca197ca2932dd45d89a21bf64f9a204b983140d496587d098362f"
+  }
+ },
+ "th4": {
+  "82395e40": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "3a742f83d0ee1463c8b9a871de49c50335494a755e7049e7f93a67048b4ae7ce"
+  },
+  "823c2f48": {
+   "outcomes": "KKKKSKKKSK",
+   "sha": "66cf10d0defd4964ca4f03045b57cb3262b2d9b9080f80d9763a3bcad350d94a"
+  },
+  "824c3530": {
+   "outcomes": "KKKSKKKKKK",
+   "sha": "f1afecb9dfa8327a55c222f2204ea3ef36a78023999aea01ed08fd37ba199787"
+  },
+  "82574de8": {
+   "outcomes": "KKKKKKKKKS",
+   "sha": "058fc1593d37c0d3e106794d25a4724d8003d711519cb335bc258c0886b0619d"
+  },
+  "82692918": {
+   "outcomes": "KKKSKKKKKK",
+   "sha": "330577fa1a58b8accf87fc26cbd1862ccf81f62300889ae82b64b5b351e4ada0"
+  },
+  "8273dd38": {
+   "outcomes": "KSKKKKKKBK",
+   "sha": "de4cf109582b8797a2522915f0ec74415d4d0e8642f5020e07698a60c1553107"
+  },
+  "82802e40": {
+   "outcomes": "SKKSSKSSSK",
+   "sha": "1e968e881d11cd4b5bca94043ec91dc3c9351afc8180c49830f84a708e8ba723"
+  },
+  "828beb28": {
+   "outcomes": "KKKKKKKKSS",
+   "sha": "869eb966b595f2b39f29e53d19efd4881fd17e987631d414b59f6c1f22cd35f6"
+  },
+  "8298b570": {
+   "outcomes": "KSKSSKSSKK",
+   "sha": "951dea9c3116c5d0ac241cfac2464a516b78356c0feeefb9966dfc0c8c25ce6b"
+  },
+  "82a800d8": {
+   "outcomes": "KKKKKBKSKK",
+   "sha": "17666c6016bb7b8dc529b6229c50f1bcaa5755f22eaf78cb917b461cfe7cacf3"
+  },
+  "82b96ed8": {
+   "outcomes": "SSSSSKSSKS",
+   "sha": "081f8db3a756c2533f06505f9ab0e77abf453b65ffa27a87f3e79583781a33a2"
+  },
+  "82c6b680": {
+   "outcomes": "SSSSSSSBBK",
+   "sha": "8e795829fa3f7ca66af6b6ef176974a0bb5fdb0936d50f2e6863ea607997718e"
+  },
+  "82d41630": {
+   "outcomes": "KKKKKKSKKK",
+   "sha": "39245a28dcb4c287fc810af2ed484540498a4292ba5be62388e0d7b655d864d1"
+  },
+  "82e4d7b0": {
+   "outcomes": "KKKKKSSKKK",
+   "sha": "dc84dde70ce16dea298883b09796f4c8273244e7b179c9de8647210d44abbd9d"
+  },
+  "82f198b0": {
+   "outcomes": "SKSSKKKKSK",
+   "sha": "b572a0c1e756d4ecc1cfa71dce0ae6c1d9d966a89697940a841b00696a376df2"
+  },
+  "82f31f08": {
+   "outcomes": "KSKSKSKKKK",
+   "sha": "c9a8212ea13e83367dbd18953166eb1d9bb1d5cf0463c87e43597dbe52543b20"
+  },
+  "82f3e540": {
+   "outcomes": "KSSSSSKKKS",
+   "sha": "0a97732b718a550399be13669dfeab5e72bfbcd2bb8a8d6ebb4dc03988ac0a4d"
+  },
+  "82f60c08": {
+   "outcomes": "KKSSKKKKSK",
+   "sha": "987ab1adfb26fa4aa501074401b56afdc922d112d35eea5cc7b5e537f18c42a7"
+  },
+  "82f7a240": {
+   "outcomes": "SKKKKKKKSK",
+   "sha": "22d176407f5fc7af6d42b1a114b60fa303bd6e0ea1958cc297c1c1bc856598a4"
+  },
+  "82f8fba8": {
+   "outcomes": "KKKSKSKKKK",
+   "sha": "7734de0d0cb7036816ddfa385cc50ce7023f824ab1d059198bba175519cea654"
+  },
+  "82fc05f8": {
+   "outcomes": "KKSKKKKKKK",
+   "sha": "7eebd6448acc18a80130209d60a32f43f95338faf128e254e38a8d398d3e3de6"
+  },
+  "82fda1c8": {
+   "outcomes": "SSKKKSSSSK",
+   "sha": "545af9619361f0bf39716509e49cc300d30267ec6423663b7b3a260f6e8450cc"
+  },
+  "82fed580": {
+   "outcomes": "SKSKKKKSSK",
+   "sha": "c6953f0a3de657670c83a10615270f212e7d994d6d358cb2d2eb66367f1e9702"
+  },
+  "83014ab0": {
+   "outcomes": "SSKKKKKKSK",
+   "sha": "0ad45f549fe9f827825aa8efb0b320401a6eff31de1e53ce34bb89a9bb27ae01"
+  },
+  "830392b0": {
+   "outcomes": "KKKSKKKKK",
+   "sha": "3831e966db551cb520efeb1082403433bd08ae00efe311b368138002518acc72"
+  },
+  "83054068": {
+   "outcomes": "KSSSSKSKSS",
+   "sha": "ab29c7b1222b3a4e45c121c37d8a7dcbc9e2803763a3073d081392160aec02e2"
+  },
+  "83070498": {
+   "outcomes": "KSKKSKKSSS",
+   "sha": "d442bfeeaf35292353937604a630ff4e854b87feb39a715f53723ea6ad15bafd"
+  },
+  "830a8790": {
+   "outcomes": "KKKKKKSKKK",
+   "sha": "74f81fcb33626be84effb15e9922d15cb648c070d6552d0573769a442fc32685"
+  },
+  "830d7e50": {
+   "outcomes": "SKKKKKKSKK",
+   "sha": "8d567f31943c6ecf013e15842529727ef166cc23106e7aa1433e5bfabb6dc803"
+  },
+  "83116d40": {
+   "outcomes": "KKKKKKKKKK",
+   "sha": "88827049c7c7911f3fdc875b4443c627363159a6ecfa1c7200d97baac6d3a7d7"
+  }
+ }
+}

@@ -48,6 +48,9 @@ def apply_meta(meta, kind):
     if kind not in KINDS:
         raise ValueError(f"raw_ret {kind!r}: not one of {', '.join(KINDS)}")
     orig = (meta.get("ret_override") or {}).get("from", meta.get("ret"))
+    if meta.get("ret_reg") and orig == kind:  # the same type in the ABI register (a re-prepare restores it if removed)
+        meta["ret_override"] = {"from": orig, "to": kind, "ret_reg": meta.pop("ret_reg")}
+        return True
     if meta.get("ret") == kind and (meta.get("ret_override") or orig == kind):
         return False
     if orig == kind:  # the override was removed back to the raw one

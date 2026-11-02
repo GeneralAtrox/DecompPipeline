@@ -62,6 +62,8 @@ struct GdfsHandle {
     u32 size;
     s32 sectors;
     s32 pos; /* in sectors */
+    s32 logged; /* this open's first read is in the log */
+    char name[GD_NAME];
 };
 
 static struct GdfsHandle g_handles[GD_MAX_OPEN];
@@ -236,6 +238,7 @@ static s32 find_file(const char *fileName, GDFS_DIRREC dirRec, u32 *lba, u32 *si
 GDFS gdFsOpen(const char *fileName, GDFS_DIRREC dirRec)
 {
     u32 lba, size;
+    int n;
     if (!fileName || !mount()) return NULL;
     if (find_file(fileName, dirRec, &lba, &size) != FS_ERR_OK) return NULL;
     for (int i = 0; i < GD_MAX_OPEN; i++) {
@@ -246,6 +249,9 @@ GDFS gdFsOpen(const char *fileName, GDFS_DIRREC dirRec)
         h->size = size;
         h->sectors = (s32)((size + GD_SECTOR - 1) / GD_SECTOR);
         h->pos = 0;
+        h->logged = 0;
+        for (n = 0; n < GD_NAME - 1 && fileName[n]; n++) h->name[n] = fileName[n];
+        h->name[n] = 0;
         return h;
     }
     port_log("gdfs: no free handle for %s\n", fileName);
@@ -284,7 +290,11 @@ s32 gdFsRead(GDFS gdfs, s32 sectors, void *buffer)
     s32 count;
     u8 *out = (u8 *)buffer;
     if (!valid(gdfs)) return FS_ERR_ILLHNDL;
-    if (sectors <= 0) return FS_ERR_SIZE;
+    if (sectors < 0) return FS_ERR_SIZE;
+    /* Reading no sectors is a read that succeeds: a game's streamer asks for 0 when the last chunk has already come in
+     * (769 of 769), and its file reader treats any error as a bad disc and reopens and retries for ever (a hang at the
+     * end of a texture bank). */
+    if (sectors == 0) return FS_ERR_OK;
     if (gdfs->pos >= gdfs->sectors) return FS_ERR_EOF;
     count = gdfs->sectors - gdfs->pos < sectors ? gdfs->sectors - gdfs->pos : sectors;
     if (!host_disc_read(gdfs->lba + (u32)gdfs->pos, (u32)count, out)) {
@@ -292,6 +302,11 @@ s32 gdFsRead(GDFS gdfs, s32 sectors, void *buffer)
         return FS_ERR_READ;
     }
     for (u32 i = (u32)count * GD_SECTOR; i < (u32)sectors * GD_SECTOR; i++) out[i] = 0;
+    if (!gdfs->logged) {
+        gdfs->logged = 1; /* one line per open: which file lands where (a game's overlay slots show here) */
+        port_log("gdfs: read %s: %d of %d sectors at pos %d -> %08x\n", gdfs->name, count, gdfs->sectors, gdfs->pos,
+                 (u32)(uintptr_t)buffer);
+    }
     gdfs->pos += count;
     return FS_ERR_OK;
 }

@@ -35,6 +35,37 @@
     "mmio": [["0x10000000", "0x14000000"], ["0xa0000000", "0xa4000000"], ["0xe0000000", "0xe4000000"],
              ["0xff000000", "0x100000000"]]
   },
+  "stamp_scopes": [
+    {
+      "scope": "listed_limits_or_rw",
+      "scripts": {
+        "TcBase.java": [
+          "f2ae11f1ce661b3d1e2953d8cb6c98af5d9a9d7aa28c6ab277ffd7a82933ba40",
+          "6bd91d8dc1ed5f3189c4f3874df2ea1a60c25fd160d0e5c0fa59a0ea21244b9e"
+        ],
+        "TcCalls.java": [
+          "e7155a6056c2d27cef74b8b6c2850581c106b5933fb7aafd0c418bcaa1b9ea84",
+          "625096d1eed62c7cac17a43c95884969335f98891b20f3616a37612e23e9098f"
+        ],
+        "TcExit.java": [
+          "aa8201f2d782e0375182cb6c81d33f121c8fe4e93fc5a5197b86acc66eddc797",
+          "547ac9bdd460edf22bf285a964131c312c3fdaf299d7dcea35bda94ce7ed6aa2"
+        ],
+        "TcHw.java": [
+          "f2841a75e4cf9860f18a807d95eb7a792819610d2756c87553959328982dab18",
+          "66c78695a6a51d0caa6ad232b66ffa79ae8ca6995138617213bdf601dcda026b"
+        ],
+        "TcOracle.java": [
+          "80b36d800c39ebde842d492abb8324ff00eb192e59a4539c1f82ef903ae76f70",
+          "a6e1b1a429981d5af05fb4ff75f6f0ac5b803b358c4442e5331c35ae208ab9bd"
+        ],
+        "TcPrepare.java": [
+          "b9b5ce3e57bd55514473af98563279fed367f6182fa0d6fe003238c664994f77",
+          "3374a707616b02854851f7a6ef4b99270cc1af3539fc753b86df00f607914a99"
+        ]
+      }
+    }
+  ],
   "locked_scripts": [
     "TcAlign.java",
     "TcBalance.java",

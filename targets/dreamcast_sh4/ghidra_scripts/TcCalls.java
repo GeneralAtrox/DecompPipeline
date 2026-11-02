@@ -35,6 +35,15 @@ final class TcCalls {
         return v;
     }
 
+    // Script arg 14, set by every prepare: "lim:CALLS_RETS_STEPS" for a function project.json "oracle_limits" lists
+    // (core/oracle_limits), else the defaults.
+    static void limits(String a) {
+        String[] p = a.startsWith("lim:") ? a.substring(4).split("_") : new String[] {"4096", "256", "500000"};
+        TcOracle.CALL_LIMIT = Integer.parseInt(p[0]);
+        TcOracle.RETS = Integer.parseInt(p[1]);
+        TcBase.STEP_LIMIT = Integer.parseInt(p[2]);
+    }
+
     static long[] parseFlag(String a) {
         if (a != null && a.startsWith("rs:")) {
             String[] p = a.substring(3).split("_");

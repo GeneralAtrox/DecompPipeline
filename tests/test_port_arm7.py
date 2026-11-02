@@ -1,8 +1,7 @@
 """The kit's AICA ARM7 (port/runtime/arm7.c, arm7_ls.c) and the chip around it (aica_arm.c, aica_chan.c): single
 instructions against results worked out from the ARM Architecture Reference Manual (ARMv4, ARM state), a small
 program with timer A's interrupt on the FIQ, and a voice the program keys on through the registers. The instructions
-are encoded here from the manual's formats (enc_* below). The C part only where Visual Studio's 32-bit tools are
-found (as tests/test_port_kit.py).
+are encoded here from the manual's formats (enc_*). The C part only where Visual Studio's 32-bit tools are found.
 Run: python -W error tests/test_port_arm7.py
 """
 import pathlib
@@ -138,7 +137,8 @@ void cdda_read(s16 *stereo, u32 frames) { for (u32 i = 0; i < 2u * frames; i++) 
 void audio_start(void) {}
 static int g_waits;
 void port_wait_vblank(void) { g_waits++; }
-u32 port_vblank_phase(int look) { (void)look; return 0; }
+u32 port_vblank_count(void) { return 0; }  u32 port_vblank_phase(int look) { (void)look; return 0; }
+int g_prof_on; u64 prof_enter(int id) { (void)id; return 0; } void prof_leave(u64 token) { (void)token; }
 
 int main(int argc, char **argv)
 {
@@ -180,7 +180,7 @@ def build(d, main_c, sources, aica_arm=False):
     (d / "main.c").write_text(main_c, encoding="utf-8")
     rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
     srcs = " ".join(f'"{KIT / "runtime" / s}"' for s in sources) + f' "{d / "main.c"}"'
-    cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
+    cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" '
           f'/I"{rd}" {srcs} /Fe:t.exe')
     vc = str(game_config.vcvars32()).replace("/", "\\")
     r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
@@ -195,7 +195,7 @@ class Arm7Core(unittest.TestCase):
     def setUpClass(cls):
         if HAVE_VC:
             cls.dir = work_dir()
-            r, cls.exe = build(cls.dir, ARM_MAIN_C, ["arm7.c", "arm7_ls.c"])
+            r, cls.exe = build(cls.dir, ARM_MAIN_C, ["arm7.c", "arm7_ls.c", "arm7_scan.c", "arm7_native.c"])
             assert r.returncode == 0, r.stdout + r.stderr
 
     def run_words(self, words, data=()):
@@ -393,7 +393,7 @@ class AicaChip(unittest.TestCase):
         self.assertLess(0x40 + 4 * len(code), 0x100)
         d = work_dir()
         (d / "chip.bin").write_bytes(bytes(img))
-        r, exe = build(d, CHIP_MAIN_C, ["arm7.c", "arm7_ls.c", "aica.c", "aica_arm.c", "aica_chan.c"], True)
+        r, exe = build(d, CHIP_MAIN_C, ["arm7.c", "arm7_ls.c", "arm7_scan.c", "arm7_native.c", "aica.c", "aica_arm.c", "aica_arm_probe.c", "aica_chan.c"], True)
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         out = subprocess.run([str(exe), str(d / "chip.bin")], capture_output=True, text=True, timeout=60)
         ahead, total, playing, left, right, waits, sgc, tima, first = (int(x) for x in out.stdout.split())

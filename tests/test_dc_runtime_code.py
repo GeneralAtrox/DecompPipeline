@@ -66,6 +66,16 @@ class WrittenCode(unittest.TestCase):
                          {0x8C09F320, 0x8C09F321, 0x8C000010, 0x8C000011, 0x8C000012, 0x8C000013})
 
 
+class BitsThroughFloatRegisters(unittest.TestCase):
+    """32-bit x86 returns an f32 from a real call through x87, which sets a signalling NaN's quiet bit. A double-width
+    fmov copies any bits through FR and XF, so translated C must reach both banks inline (a movie's YUV words were hit)."""
+
+    def test_both_banks_are_inline_for_translated_c(self):
+        h = (ROOT / "port/runtime/tx/tc_rt_inline.h").read_text(encoding="utf-8")
+        for fn in ("sh4_fr", "sh4_set_fr", "sh4_xf", "sh4_set_xf"):
+            self.assertIn(f"#define {fn} tcx_decl_{fn}", h)     # the judged header's declaration is out of the way
+            self.assertRegex(h, rf"static __forceinline \w+ {fn}\(int i")
+
 class SzFromCaller(unittest.TestCase):
     def test_a_body_for_each_mode(self):
         for sp in (False, True):

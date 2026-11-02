@@ -128,6 +128,8 @@ int main(int argc, char **argv)
             u32 dr[16];
             for (int i = 0; i < 16; i++) dr[i] = (u32)strtoul(p, &p, 16);
             tcrt_set_draws(dr);
+        } else if (line[0] == 'b') { /* after V's reset: GBR at entry (a range gbr hint, TcLate.regs) */
+            sh4_ldc_gbr((u32)strtoul(line + 1, NULL, 16));
         } else if (line[0] == 'I') { /* after V's reset: the entry SR mask (TcSr) */
             tcrt_set_sr((u32)strtoul(line + 2, NULL, 16));
         } else if (line[0] == 'Q') {

@@ -7,7 +7,7 @@ import shutil
 import stat
 
 from . import asm_pool, check, ghidra, paths, run_flag_set, target_hooks, warm_check
-from .agent_cli import SYSTEM_PROMPT, OutputCap, SpendMeter, agent_env, claude_command, readable_effort  # noqa: F401
+from .agent_cli import SYSTEM_PROMPT, OutputCap, SpendMeter, agent_env, claude_command, readable_effort, readable_model  # noqa: F401
 
 SANDBOX_FILES = ("TASK.md", "context.md", "tc_rt.h", "check.py")  # plus the packet files (asm*.txt, ghidra*.c)
 
@@ -310,6 +310,9 @@ def hw_notes(hw):
     lines += ["Area 5 (listed: 0x14000000..0x17ffffff in each P0..P3 view, external devices): a load from there"
               " returns 0, as on a retail Dreamcast; read it with rd8/rd16/rd32 as any load (the test run serves 0),"
               " never skip the load or assume another value."] if hw.get("area5") else []
+    lines += ["Video memory (listed: 0xa5000000..0xa57fffff, the PVR memory the P2 view shows): a load from there reads"
+              " a fixed function of the address (the test run serves it); read it with rd8/rd16/rd32 as any load,"
+              " never skip the load or assume a pixel value."] if hw.get("vram") else []
     return lines
 
 
@@ -471,7 +474,7 @@ def describe_event(ev):
     return None
 
 
-RATE_RE = re.compile(r"rate.?limit|\b429\b|\b529\b|overloaded|usage limit", re.I)
+RATE_RE = re.compile(r"rate.?limit|\b429\b|\b529\b|overloaded|usage limit|session limit", re.I)
 AUTH_RE = re.compile(r"oauth|authenticat|\b401\b|\b403\b|/login|not logged in|invalid api key", re.I)
 
 
@@ -516,8 +519,9 @@ def run_attempt(cfg, box, task, transcript_path, log, stop_flag, on_usage=None, 
                 final.update(ev)
             elif ev.get("type") == "system" and ev.get("subtype") == "init":
                 final["_model"] = ev.get("model")
-            elif ev.get("type") == "rate_limit_event" and on_usage:
-                on_usage(ev.get("rate_limit_info"))
+            elif ev.get("type") == "rate_limit_event":
+                final["_limit"] = ev.get("rate_limit_info")
+                on_usage and on_usage(final["_limit"])
             msg = describe_event(ev)
             if msg:
                 log(msg)
@@ -535,7 +539,7 @@ def run_attempt(cfg, box, task, transcript_path, log, stop_flag, on_usage=None, 
         cost = meter.cost(cfg.get("model"))
         estimated = cost is not None or None
     return {
-        "api_error": api_error(final, _out),
+        "api_error": api_error(final, _out), "rate_limit_info": final.get("_limit"),
         "model_actual": final.get("_model"), "effort": cfg.get("effort") or "CLI default",
         "thinking_tokens": sum((m or {}).get("thinkingTokens") or 0 for m in (final.get("modelUsage") or {}).values()),
         "exit_code": rc, "killed": reason, "cost_usd": cost,

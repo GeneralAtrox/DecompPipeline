@@ -24,6 +24,13 @@ from collections import Counter
 DP = pathlib.Path(__file__).resolve().parents[4]  # the DecompPipeline checkout this translator is part of
 HERE = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(HERE))
+THIN_BELOW = 70  # % of the original's blocks: under this the mutation proof kills far fewer (docs/proofs/2026-11-02/gc-tx-review)
+
+
+def thin(verdict, cov):
+    """A PASS whose vectors reached under THIN_BELOW% of the original's blocks. A label in the report: the verdict stays."""
+    hit, total = (cov or {}).get("blocks_hit_all"), (cov or {}).get("blocks_total")
+    return verdict == "PASS" and bool(total) and hit is not None and hit * 100 < THIN_BELOW * total
 
 
 def mirror(ws, dst, addrs):
@@ -114,7 +121,8 @@ def main():
             shutil.rmtree(bd, ignore_errors=True)
         d = res.get("first_diffs") or []
         return {"addr": a, "verdict": res["verdict"], "stage": res["stage"], "failing": res["failing"],
-                "total": res["total"], "lint": res.get("lint", [])[:3], "build": res.get("build", [])[:4],
+                "total": res["total"], "coverage": res.get("coverage"), "thin": thin(res["verdict"], res.get("coverage")),
+                "lint": res.get("lint", [])[:3], "build": res.get("build", [])[:4],
                 "run_error": res.get("run_error"), "diff": d[0]["diffs"][:4] if d else [], "notes": notes,
                 "c_sha256": hashlib.sha256(wf.read_bytes()).hexdigest()[:16],
                 "translate_s": round(tt, 3), "judge_s": round(time.time() - t0 - tt, 2)}
@@ -131,7 +139,8 @@ def main():
     res = out / f"results_{kind}_{ws.name}{'_all' if args.all else ''}.json"
     res.write_text(json.dumps(rows, indent=1), encoding="utf-8")
     c = Counter(r["verdict"] for r in rows)
-    print(f"{ws.name} {kind}: {len(rows)} functions {dict(c)}  {time.time() - t0:.0f}s  -> {res}")
+    n_thin = sum(1 for r in rows if r.get("thin"))
+    print(f"{ws.name} {kind}: {len(rows)} functions {dict(c)}, thin {n_thin} of PASS  {time.time() - t0:.0f}s  -> {res}")
     for r in rows:
         if r["verdict"] != "PASS":
             print(" ", r["addr"], r["verdict"], r.get("stage", ""), r.get("why", ""), r.get("lint") or "",

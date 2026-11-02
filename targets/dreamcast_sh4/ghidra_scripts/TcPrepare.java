@@ -14,6 +14,8 @@
 //  12 "rf:WORD_CALLEE_N" when project.json "run_flags" lists the function: the word its Nth call to CALLEE clears
 //     (TcCalls, core/compare.run_flag_arg), else "-" or absent
 //  13 "sz:MODES[:CALLEE.XY_...]": FPSCR.SZ at entry and after its calls (TcFpscr.Sz, core/sz_entry.arg), else absent
+//  14 "lim:CALLS_RETS_STEPS" when project.json "oracle_limits" lists the function (TcOracle.limits), else "-" or absent
+//  15 callees "w_x" whose mocks draw float results for this caller (TcFret, core/ret_reg.fret_arg), else absent
 //
 // LOCKED: the watcher agent may not change this file (it may only change the project's TcInputs.java and hints).
 //
@@ -59,6 +61,9 @@ public class TcPrepare extends TcVectors {
         TcHw.on = TcHw.parse(a.length > 11 ? a[11] : "-");  // listed hardware ops (TcHw), null: none (every prepare)
         TcCalls.flag = TcCalls.parseFlag(a.length > 12 ? a[12] : "-");  // a listed run flag (TcCalls), null: none
         TcFpscr.Sz.on = TcFpscr.Sz.parse(a.length > 13 ? a[13] : "-");  // FPSCR.SZ at entry and after calls (TcFpscr.Sz), null: none
+        TcCalls.limits(a.length > 14 ? a[14] : "-");  // a listed function's call, result and step limits (core/oracle_limits)
+        stepLimit = TcBase.STEP_LIMIT;
+        TcFret.parse(a.length > 15 ? a[15] : "-");  // callees listed to draw float results (state/fret_callers.txt)
         List<String> hints = hintsFile.equals("-") ? new ArrayList<>() : Files.readAllLines(Paths.get(hintsFile));
         Files.createDirectories(packet);
         Files.createDirectories(harness);
@@ -175,6 +180,7 @@ public class TcPrepare extends TcVectors {
         for (Function c : calledBy(fn, body)) {
             Proto cp = prototypeOf(di, c, PASS_DEPTH - 1);  // what fn's pass-through analysis assumed
             if (cp.ret.equals("f32")) floatRet.add(c.getEntryPoint().getOffset());  // TcFret
+            if (TcFret.listed.contains(c.getEntryPoint().getOffset())) floatRet.add(c.getEntryPoint().getOffset());
             StringBuilder regs = new StringBuilder();
             List<String> cr = calleeRegs(cp, c);
             regsOf.put(c.getEntryPoint().getOffset(), cr);

@@ -145,7 +145,7 @@ class BackupFileImage(unittest.TestCase):
         (d / "game.h").write_text(GAME_H, encoding="utf-8")
         (d / "driver.c").write_text(DRIVER_C, encoding="utf-8")
         rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
-        cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 /D_CRT_SECURE_NO_WARNINGS /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "sdk"}" /I"{rd}" '
+        cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 /D_CRT_SECURE_NO_WARNINGS /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" /I"{KIT / "sdk"}" /I"{rd}" '
               f'"{d / "driver.c"}" "{KIT / "sdk" / "bu_vmu.c"}" "{KIT / "sdk" / "vmu_flash.c"}" /Fe"{d / "bu.exe"}"')
         vc = str(game_config.vcvars32()).replace("/", "\\")
         r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,

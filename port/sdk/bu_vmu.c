@@ -2,7 +2,7 @@
  * (sdk/vmu_flash.c), kept in memory and written back whole to <save dir>/vmu_save_<socket>.bin after each change: the
  * file an emulator keeps, so saves move between them. A missing file is a freshly formatted card.
  *
- * Timing follows the library's. A TYPE_B call (save, load, delete, set attribute) only accepts the request; the
+ * Timing follows the library's. A TYPE_B call (save, load, delete, set attribute, the game file's save and rewrite) only accepts the request; the
  * work is done at once on the image, and the progress callback (once per block moved) and the completion callback
  * reach the game at the next vertical blank, or at its next buStat on that drive, which games spin on. Until then
  * the drive is busy. buInit calls the game's init callback before it returns; each card's mount (BUD_OP_MOUNT)
@@ -32,9 +32,13 @@
 #define ERR_EXECFILE_EXIST ((s32)0xffffff09u)
 #define OP_MOUNT 1
 #define OP_DELETEFILE 7
+#define OP_DEFRAGDISK 9
 #define OP_SETFILEATTR 0x0a
 #define OP_LOADFILE 0x0b
 #define OP_SAVEFILE 0x0c
+#define OP_SAVEEXECFILE 0x0d
+#define OP_LOADFILEEX 0x0e
+#define OP_REWRITEEXECFILE 0x14
 #define FLAG_COPY_MASK 0xffu /* buSaveFile's flag: the copy flag (BUD_FLAG_COPY) */
 
 typedef s32 (*CompleteFn)(s32 drive, s32 op, s32 status, u32 param);
@@ -70,7 +74,8 @@ static s32 request(s32 drive, s32 op, const char *file, s32 status, u32 moved, i
     char name[16];
     if (file)
         port_log("vmu: %c%d: %s %.12s: %s%08x, %u blocks\n", 'A' + drive / 2, 1 + drive % 2,
-                 op == OP_SAVEFILE ? "save" : op == OP_LOADFILE ? "load" : op == OP_DELETEFILE ? "delete" : "attribute",
+                 op == OP_SAVEFILE ? "save" : op == OP_SAVEEXECFILE ? "save game" : op == OP_REWRITEEXECFILE ? "rewrite game"
+                 : op == OP_LOADFILE || op == OP_LOADFILEEX ? "load" : op == OP_DELETEFILE ? "delete" : "attribute",
                  file, status == ERR_OK ? "ok " : "error ", (u32)status, moved);
     c->pending = 1;
     c->op = op;
@@ -193,6 +198,58 @@ s32 buLoadFile(s32 drive, const char *fileName, void *buffer, u32 blocks)
     return request(drive, OP_LOADFILE, fileName, status, moved, 0);
 }
 
+s32 buSaveExecFile(s32 drive, const char *fileName, const void *buffer, u32 blocks, const BUS_TIME *time, u32 flag)
+{
+    s32 status;
+    Card *c = take(drive, &status);
+    if (!c) return ERR_BUSY;
+    if (status == ERR_OK) {
+        int r = vmfs_save_game(c->image, fileName, (const u8 *)buffer, blocks, (const u8 *)time, (u8)(flag & FLAG_COPY_MASK));
+        status = r == VMFS_OK ? ERR_OK : r == VMFS_GAME ? ERR_EXECFILE_EXIST : ERR_DISK_FULL;
+    }
+    return request(drive, OP_SAVEEXECFILE, fileName, status, status == ERR_OK ? blocks : 0, 1);
+}
+
+s32 buRewriteExecFile(s32 drive, const char *fileName, const void *buffer, u32 start, u32 blocks)
+{
+    s32 status;
+    Card *c = take(drive, &status);
+    u32 moved = 0;
+    int i;
+    if (!c) return ERR_BUSY;
+    if (status == ERR_OK) {
+        i = vmfs_find(c->image, fileName);
+        status = i < 0 ? ERR_FILE_NOT_FOUND : ERR_OK;
+        if (i >= 0) moved = vmfs_rewrite(c->image, (u32)i, (const u8 *)buffer, start, blocks);
+    }
+    return request(drive, OP_REWRITEEXECFILE, fileName, status, moved, 1);
+}
+
+s32 buLoadFileEx(s32 drive, const char *fileName, void *buffer, u32 start, u32 blocks)
+{
+    s32 status;
+    Card *c = take(drive, &status);
+    u32 moved = 0;
+    int i;
+    if (!c) return ERR_BUSY;
+    if (status == ERR_OK) {
+        i = vmfs_find(c->image, fileName);
+        status = i < 0 ? ERR_FILE_NOT_FOUND : ERR_OK;
+        if (i >= 0) moved = vmfs_load_from(c->image, (u32)i, (u8 *)buffer, start, blocks);
+    }
+    return request(drive, OP_LOADFILEEX, fileName, status, moved, 0);
+}
+
+/* Data files fill the card from its top, so block 0 up is already as free as a defrag would leave it. */
+s32 buDefragDisk(s32 drive, void *work)
+{
+    s32 status;
+    Card *c = take(drive, &status);
+    (void)work;
+    if (!c) return ERR_BUSY;
+    return request(drive, OP_DEFRAGDISK, NULL, status, 0, 0);
+}
+
 s32 buDeleteFile(s32 drive, const char *fileName)
 {
     s32 status;
@@ -306,79 +363,8 @@ s32 buFindNextFile(s32 drive, char *fileName) { return find_from(drive, fileName
 
 /* The file images (sg_bup.h), for a game whose headers name BUS_BACKUPFILEHEADER (gen_port: PORT_BU_FILE_IMAGE). */
 #ifdef PORT_BU_FILE_IMAGE
-#define IMAGE_HEADER 0x80u
-#define IMAGE_PALETTE 0x60u
-#define IMAGE_ICON 512u
-#define IMAGE_BLOCK 512u
-#define ERR_BAD_IMAGE (-1) /* the CRC does not match (nonzero: the game only tests for 0) */
+#include "bu_vmu_image.h"
 
-static void wr32(u8 *p, u32 v)
-{
-    vmfs_wr16(p, v & 0xffffu);
-    vmfs_wr16(p + 2, v >> 16);
-}
-
-static u32 rd32(const u8 *p) { return vmfs_rd16(p) | vmfs_rd16(p + 2) << 16; }
-
-static u32 eyecatch_size(u32 type) { return type == 1u ? 8064u : type == 2u ? 4544u : type == 3u ? 2048u : 0u; }
-
-static u16 image_crc(const u8 *p, u32 n)
-{
-    u32 crc = 0;
-    for (u32 i = 0; i < n; i++) {
-        crc ^= (u32)p[i] << 8;
-        for (int b = 0; b < 8; b++) crc = crc & 0x8000u ? (crc << 1) ^ 0x1021u : crc << 1;
-    }
-    return (u16)crc;
-}
-
-/* The file image of header's data in buf; returns its size in blocks. */
-s32 buMakeBackupFileImage(void *buf, const BUS_BACKUPFILEHEADER *header)
-{
-    u8 *b = (u8 *)buf;
-    u32 icons = header->iconCount * IMAGE_ICON, eye = eyecatch_size(header->visualType);
-    u32 size = IMAGE_HEADER + icons + eye + header->saveSize;
-    u32 total = (size + IMAGE_BLOCK - 1u) / IMAGE_BLOCK * IMAGE_BLOCK;
-    memset(b, 0, total);
-    memcpy(b, header->vmsComment, 16);
-    memcpy(b + 0x10, header->btrComment, 32);
-    memcpy(b + 0x30, header->gameName, 16);
-    vmfs_wr16(b + 0x40, header->iconCount);
-    vmfs_wr16(b + 0x42, header->iconSpeed);
-    vmfs_wr16(b + 0x44, header->visualType);
-    wr32(b + 0x48, header->saveSize);
-    if (header->iconPalette) memcpy(b + IMAGE_PALETTE, header->iconPalette, 32);
-    if (icons && header->iconData) memcpy(b + IMAGE_HEADER, header->iconData, icons);
-    if (eye && header->visualData) memcpy(b + IMAGE_HEADER + icons, header->visualData, eye);
-    if (header->saveSize) memcpy(b + IMAGE_HEADER + icons + eye, header->saveData, header->saveSize);
-    vmfs_wr16(b + 0x46, image_crc(b, size));
-    return (s32)(total / IMAGE_BLOCK);
-}
-
-/* The header of the file image in buf, its pointers into buf; ERR_BAD_IMAGE if the CRC does not match. */
-s32 buAnalyzeBackupFileImage(BUS_BACKUPFILEHEADER *header, void *buf)
-{
-    u8 *b = (u8 *)buf;
-    u16 crc = (u16)vmfs_rd16(b + 0x46);
-    u32 icons, eye, size;
-    memset(header, 0, sizeof *header);
-    memcpy(header->vmsComment, b, 16);
-    memcpy(header->btrComment, b + 0x10, 32);
-    memcpy(header->gameName, b + 0x30, 16);
-    header->iconCount = (u16)vmfs_rd16(b + 0x40);
-    header->iconSpeed = (u16)vmfs_rd16(b + 0x42);
-    header->visualType = (u16)vmfs_rd16(b + 0x44);
-    header->saveSize = rd32(b + 0x48);
-    icons = header->iconCount * IMAGE_ICON;
-    eye = eyecatch_size(header->visualType);
-    size = IMAGE_HEADER + icons + eye + header->saveSize;
-    header->iconPalette = b + IMAGE_PALETTE;
-    header->iconData = b + IMAGE_HEADER;
-    header->visualData = eye ? b + IMAGE_HEADER + icons : NULL;
-    header->saveData = b + IMAGE_HEADER + icons + eye;
-    vmfs_wr16(b + 0x46, 0);
-    u16 got = image_crc(b, size);
-    vmfs_wr16(b + 0x46, crc);
-    return got == crc ? ERR_OK : ERR_BAD_IMAGE;
-}
+s32 buMakeBackupFileImage(void *buf, const BUS_BACKUPFILEHEADER *header) { return image_make(buf, header); }
+s32 buAnalyzeBackupFileImage(BUS_BACKUPFILEHEADER *header, void *buf) { return image_analyze(header, buf); }
 #endif

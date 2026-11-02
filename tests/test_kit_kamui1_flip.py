@@ -10,6 +10,9 @@ synthetic game.h and recording stand-ins for pvr/ and the runtime's vertical bla
    list direct (flags 0x10, buffer_model 0x20), the opaque list gets the translucent list's room, all scaled to fit
    the buffer (Spawn's models overran the translucent list from an empty opaque list); a direct list that has a
    share keeps it, and the model's bits without the flag change nothing.
+   A game.json kamui1.direct_list gives the direct list its own room at the given address: the other lists then keep
+   their shares unscaled (Spawn's stage 1 wrote 392 KB into the opaque list, over the 177 KB the scaling left it,
+   and its models ran into the translucent and modifier lists' rooms: black triangles over the picture).
 5. kmSetUserClipping writes the TA's user tile clip parameter with the rectangle as given, in tiles (Spawn's
    View_Setup passes 0, 0, 19, 14 for the whole screen; dividing by 32 again left only the top-left tile).
 Only where Visual Studio's 32-bit tools are found (tests/test_lockstep.py NO_VC says how), skipped elsewhere.
@@ -55,6 +58,8 @@ void port_log(const char *fmt, ...) { (void)fmt; }
 void port_wait_vblank(void) { g_vblank++; }
 u32 port_vblank_count(void) { return g_vblank; }
 void gfx_present(void) { g_presents++; }
+int port_extra_flip(u32 vblanks) { (void)vblanks; return 0; } /* no in-between frames: the flip presents */
+void port_extra_land(void) {}
 u32 guest_fold(u32 addr) { return addr & 0x1fffffffu; } /* the lists' P2 pointers, to this process's buffer */
 int pvr_render(const PvrPass *passes, u32 count) { (void)passes; (void)count; return 0; }
 void hw_check_scene(const PvrPass *passes, u32 count) { (void)passes; (void)count; }
@@ -91,6 +96,7 @@ static int layout(u32 flags, u32 model, f32 opaque_share)
         printf("clip %08x %u %u %u %u\n", clip[0], clip[4], clip[5], clip[6], clip[7]);
     }
     end = (((u32)(uintptr_t)buf & 0x1fffffffu) | 0xa0000000u) + (u32)sizeof buf;
+    printf("start0 %08x\n", k1_list_start(0));
     printf("sizes");
     for (u32 i = 0; i < K1_LISTS; i++) printf(" %u", (i + 1 < K1_LISTS ? k1_list_start(i + 1) : end) - k1_list_start(i));
     printf("\n");
@@ -118,24 +124,51 @@ int main(int argc, char **argv)
 
 @unittest.skipUnless(HAVE_VC, NO_VC)
 class Kamui1Flip(unittest.TestCase):
+    def build(self, d, kamui1=None):
+        cfg = {"name": "Fixture", "entry": {"name": "Fx_Main", "addr": "8c011000"}, "image_base": "8c010000",
+               "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}
+        if kamui1:
+            cfg["kamui1"] = kamui1
+        (d / "port_config.h").write_text(game_config.port_config_h(cfg), encoding="utf-8")
+        (d / "game.h").write_text(GAME_H, encoding="utf-8")
+        (d / "k1_main.c").write_text(DRIVER_C, encoding="utf-8")
+        rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
+        srcs = " ".join(f'"{p}"' for p in [KIT / "sdk" / "kamui1_scene.c", d / "k1_main.c"])
+        cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" '
+              f'/I"{KIT / "pvr"}" /I"{KIT / "sdk"}" /I"{rd}" {srcs} /Fe:k1.exe')
+        vc = str(game_config.vcvars32()).replace("/", "\\")
+        r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
+                           errors="replace", timeout=300)
+        self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-1000:])
+        self.assertNotIn("warning", r.stdout.lower())
+
+    def test_direct_list_has_its_own_room(self):
+        work = TOOL / "tests" / ".work"
+        d = pathlib.Path(tempfile.mkdtemp(dir=work if work.is_dir() else None))
+        try:
+            def layout(flags, model):
+                run = subprocess.run([str(d / "k1.exe"), flags, model, "0"], capture_output=True, text=True, timeout=60)
+                self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+                return (int(run.stdout.split("start0")[1].split()[0], 16),
+                        [int(x) for x in run.stdout.split("sizes")[1].split()])
+            self.build(d)
+            _, plain = layout("0", "0")                    # the others' shares, unscaled
+            _, shared = layout("10", "20")                 # without the key: the direct list shares, all scaled
+            self.assertLess(shared[2], plain[2])
+            self.build(d, {"direct_list": {"at": "0c800000", "bytes": 65536}})
+            start, own = layout("10", "20")
+            self.assertEqual(start, 0xac800000)            # the given address, as an uncached pointer
+            self.assertEqual(own[1:4], plain[1:4])         # the other lists keep their shares
+            start, off = layout("0", "0")                  # no direct list in the configuration: as before
+            self.assertEqual(off[1:], plain[1:])
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
     def test_flip_pacing(self):
         work = TOOL / "tests" / ".work"
         d = pathlib.Path(tempfile.mkdtemp(dir=work if work.is_dir() else None))
         try:
-            (d / "port_config.h").write_text(game_config.port_config_h(
-                {"name": "Fixture", "entry": {"name": "Fx_Main", "addr": "8c011000"}, "image_base": "8c010000",
-                 "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}), encoding="utf-8")
-            (d / "game.h").write_text(GAME_H, encoding="utf-8")
-            (d / "k1_main.c").write_text(DRIVER_C, encoding="utf-8")
-            rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
-            srcs = " ".join(f'"{p}"' for p in [KIT / "sdk" / "kamui1_scene.c", d / "k1_main.c"])
-            cl = (f'cl /nologo /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
-                  f'/I"{KIT / "pvr"}" /I"{KIT / "sdk"}" /I"{rd}" {srcs} /Fe:k1.exe')
-            vc = str(game_config.vcvars32()).replace("/", "\\")
-            r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
-                               errors="replace", timeout=300)
-            self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-1000:])
-            self.assertNotIn("warning", r.stdout.lower())
+            self.build(d)
             run = subprocess.run([str(d / "k1.exe")], capture_output=True, text=True, timeout=60)
             self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
             out = dict((ln.split(" ", 1) + [""])[:2] for ln in run.stdout.splitlines())

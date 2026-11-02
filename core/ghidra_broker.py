@@ -16,7 +16,9 @@ takes a machine-wide token, so several games can run at once without more Ghidra
                stop_line (95: the stop) and RAM is under stop_at, as before. No JVM starts that would take the
                machine past the stop line. The peak is measured (each JVM with the processes under it, Ghidra's
                decompile.exe: of each its working set or private bytes, the larger; read at the queue's head, kept in
-               the folder's jvm_peak.json), peak_mb (1024) until the first sample.
+               the folder's jvm_peak.json; it expires after peak_ttl_s, 3600, unless a JVM near it still runs: core/
+               ghidra_peak.py), peak_mb (1024) until the first sample. When by_ram allows at most half of the JVMs
+               configured, ram_log's line carries a "note" and the waiter says it once on stderr.
 RAM log: at most once a minute while a ticket waits at the queue's head, a line in the folder's ram_log.jsonl (RAM in
 use, each Ghidra JVM's MB and, at fill_below or more, the machine's five largest processes), so a RAM spike can be
 traced afterwards; written on a thread of its own, kept to about the last 1 MB (log_soon, ram_log).
@@ -56,13 +58,13 @@ import tempfile
 import threading
 import time
 
-from . import filelock
+from . import filelock, ghidra_peak
+from .ghidra_peak import peak  # noqa: F401  (moved to core/ghidra_peak.py: it expires)
 
 PRIO = {"worker": 0, "prefetch": 1, "tool": 2, "idle": 3}
 YIELDS = PRIO["idle"]  # holders of this priority give their token to any higher priority that waits
 DEFAULTS = {"slots": 0, "third_below": 82, "stop_at": 88, "age_s": 120, "burst": 0, "burst_below": 75,
             "by_ram": False, "fill_below": 85, "stop_line": 95, "max_jvms": 0, "peak_mb": 1024}
-PEAK = "jvm_peak.json"
 LOG, LOG_S, LOG_BYTES = "ram_log.jsonl", 60, 1 << 20  # ram_log(): its file, a line per LOG_S, about LOG_BYTES kept
 HOLD = "HOLD"
 DIR_ENV = "DP_BROKER_DIR"
@@ -128,9 +130,7 @@ def by_ram(b, ram, total, jvm_mb, pending, peak_mb, cores=None):
     one = 100.0 * peak_mb / total
     committed = ram + sum(100.0 * max(0.0, peak_mb - m) / total for m in jvm_mb) + pending * one
     slots = int(b["slots"])
-    ceiling = max(slots, int(b["max_jvms"]) or (cores or os.cpu_count() or 4) // 4)
-    if ram < b["burst_below"]:
-        ceiling = max(ceiling, int(b["burst"]))
+    ceiling = ghidra_peak.ceiling(b, ram, cores)
     n = len(jvm_mb) + pending
     while n < ceiling and committed + one < (b["fill_below"] if n >= slots else b["stop_line"]):
         n += 1
@@ -189,7 +189,7 @@ def top_processes(n):
 _logging = threading.Lock()  # one log_soon() thread at a time in a process
 
 
-def log_soon(d, ram, mem, top_at):
+def log_soon(d, ram, mem, top_at, note=""):
     """ram_log() on a thread of its own, so no grant waits on it; the five largest processes only at top_at percent
     of RAM or more, where a spike is worth tracing. Nothing when the log's last line is under LOG_S old."""
     try:
@@ -202,13 +202,13 @@ def log_soon(d, ram, mem, top_at):
 
     def run():
         try:
-            ram_log(d, ram, mem, top=ram is not None and ram >= top_at)
+            ram_log(d, ram, mem, top=ram is not None and ram >= top_at, note=note)
         finally:
             _logging.release()
     threading.Thread(target=run, daemon=True).start()
 
 
-def ram_log(d, ram, mem, now=None, top=True):
+def ram_log(d, ram, mem, now=None, top=True, note=""):
     """A line in folder d's ram_log.jsonl, unless the last is under LOG_S old: the time, RAM in use, each Ghidra JVM's
     MB (jvm_mem) and, with top, the machine's five largest processes. Past LOG_BYTES the older half goes. Waiters in
     other processes may write at the same minute; the folder's lock is not taken (a lost or doubled line is all
@@ -225,25 +225,9 @@ def ram_log(d, ram, mem, now=None, top=True):
     except OSError:
         pass
     line = {"at": round(now, 1), "ram": ram, "jvm_mb": {str(p): round(m) for p, m in mem.items()},
-            "top": top_processes(5) if top else []}
+            "top": top_processes(5) if top else [], **({"note": note} if note else {})}
     with contextlib.suppress(OSError), open(f, "a", encoding="utf-8", newline="\n") as out:
         out.write(json.dumps(line) + "\n")
-
-
-def peak(b, d, mem):
-    """One JVM's peak MB: the largest seen in folder d's jvm_peak.json, raised by mem ({pid: MB}); b's peak_mb until
-    the first sample. Called under the folder's lock."""
-    f = d / PEAK
-    try:
-        rec = json.loads(f.read_text(encoding="utf-8"))
-        seen = float(rec["mb"])
-    except (OSError, ValueError, KeyError, TypeError):
-        rec, seen = None, 0.0
-    top = max(mem.items(), key=lambda kv: kv[1], default=(0, 0.0))
-    if top[1] > seen:
-        seen = top[1]
-        f.write_text(json.dumps({"mb": round(seen, 1), "pid": top[0], "at": round(time.time(), 1)}), encoding="utf-8")
-    return seen if seen > 0 else float(b["peak_mb"])
 
 
 def cap(b, d, holds, found, procs=()):
@@ -251,11 +235,15 @@ def cap(b, d, holds, found, procs=()):
     procs: processes(). Writes the RAM log (log_soon)."""
     ram = ram_pct()
     mem = jvm_mem(found, procs)
-    log_soon(d, ram, mem, float(b["fill_below"]))
     if not b.get("by_ram"):
+        log_soon(d, ram, mem, float(b["fill_below"]))
         return allowed(b, ram)
-    return by_ram(b, ram, total_mb(), [mem.get(p, 0.0) for p in found], in_use(holds, found) - len(found),
-                  peak(b, d, mem))
+    pk, total = peak(b, d, mem), total_mb()
+    n = by_ram(b, ram, total, [mem.get(p, 0.0) for p in found], in_use(holds, found) - len(found), pk)
+    note = ghidra_peak.throttle_note(b, n, ghidra_peak.ceiling(b, ram), pk, total, ram) if ram and ram < b["stop_at"] else ""
+    ghidra_peak.say(note)
+    log_soon(d, ram, mem, float(b["fill_below"]), note)
+    return n
 
 
 def _parents():

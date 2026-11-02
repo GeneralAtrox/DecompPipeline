@@ -1,4 +1,4 @@
-"""The kit's controllers (port/sdk/maple_pad.c) and scripted presses (port/runtime/gfx/gfx_input.c) in behaviour:
+"""The kit's controllers (port/sdk/maple_pad.c) and scripted presses (port/base/input_script.c) in behaviour:
 compiled at /W4 /WX with a synthetic game.h and stub host calls, then run.
 1. A game that starts the peripheral system through an SDK entry the port does not bind (Power Stone 2 calls a
    newer library's five-argument variant of pdInitPeripheral, which its registry leaves unnamed) still finds a
@@ -7,8 +7,6 @@ compiled at /W4 /WX with a synthetic game.h and stub host calls, then run.
    unplugged. A game that calls pdInitPeripheral gets the same record and no extra log line.
 2. --input keeps far more than 64 presses (Power Stone 2's input sweeps were cut short without a word): a press past
    the 64th is held at its vertical blank; past MAX_SCRIPT the rest are dropped with one log line naming the first.
-   gfx_input.c compiles against a minimal SDL3 stand-in (SDL_WasInit says no video: scripted input only), as no
-   kit test pulls in a game build's vcpkg SDL headers.
 Only where Visual Studio's 32-bit tools are found (tests/test_lockstep.py NO_VC says how), skipped elsewhere.
 
 usage: python -W error tests/test_kit_pad.py
@@ -85,74 +83,16 @@ int main(int argc, char **argv)
 }
 """
 
-SDL_H = r"""/* A minimal SDL3 stand-in for tests/test_kit_pad.py: no video, so gfx_input.c reads its script only. */
-#include <stdbool.h>
-#include <stdint.h>
-#include <stdio.h>
-typedef uint8_t Uint8;
-typedef uint16_t Uint16;
-typedef int16_t Sint16;
-typedef uint32_t SDL_JoystickID;
-typedef struct SDL_Gamepad SDL_Gamepad;
-typedef struct SDL_Joystick SDL_Joystick;
-typedef enum { SDL_GAMEPAD_BUTTON_SOUTH, SDL_GAMEPAD_BUTTON_EAST, SDL_GAMEPAD_BUTTON_WEST, SDL_GAMEPAD_BUTTON_NORTH,
-               SDL_GAMEPAD_BUTTON_START, SDL_GAMEPAD_BUTTON_DPAD_UP, SDL_GAMEPAD_BUTTON_DPAD_DOWN,
-               SDL_GAMEPAD_BUTTON_DPAD_LEFT, SDL_GAMEPAD_BUTTON_DPAD_RIGHT } SDL_GamepadButton;
-typedef enum { SDL_GAMEPAD_AXIS_LEFTX, SDL_GAMEPAD_AXIS_LEFTY, SDL_GAMEPAD_AXIS_LEFT_TRIGGER,
-               SDL_GAMEPAD_AXIS_RIGHT_TRIGGER } SDL_GamepadAxis;
-typedef enum { SDL_SCANCODE_A = 4, SDL_SCANCODE_I = 12, SDL_SCANCODE_J, SDL_SCANCODE_K, SDL_SCANCODE_L,
-               SDL_SCANCODE_Q = 20, SDL_SCANCODE_S = 22, SDL_SCANCODE_W = 26, SDL_SCANCODE_X, SDL_SCANCODE_Z = 29,
-               SDL_SCANCODE_RETURN = 40, SDL_SCANCODE_SPACE = 44, SDL_SCANCODE_RIGHT = 79, SDL_SCANCODE_LEFT,
-               SDL_SCANCODE_DOWN, SDL_SCANCODE_UP, SDL_SCANCODE_KP_ENTER = 88, SDL_SCANCODE_LSHIFT = 225 } SDL_Scancode;
-#define SDL_INIT_VIDEO 0x20u
-#define SDL_INIT_GAMEPAD 0x2000u
-#define SDL_KMOD_ALT 0x0300u
-#define SDL_HAT_UP 1u
-#define SDL_HAT_RIGHT 2u
-#define SDL_HAT_DOWN 4u
-#define SDL_HAT_LEFT 8u
-static inline uint32_t SDL_WasInit(uint32_t f) { (void)f; return 0; }
-static inline bool SDL_InitSubSystem(uint32_t f) { (void)f; return false; }
-static inline bool SDL_GamepadConnected(SDL_Gamepad *g) { (void)g; return false; }
-static inline bool SDL_JoystickConnected(SDL_Joystick *j) { (void)j; return false; }
-static inline const char *SDL_GetJoystickNameForID(SDL_JoystickID i) { (void)i; return ""; }
-static inline bool SDL_IsGamepad(SDL_JoystickID i) { (void)i; return false; }
-static inline SDL_Gamepad *SDL_OpenGamepad(SDL_JoystickID i) { (void)i; return NULL; }
-static inline SDL_Joystick *SDL_OpenJoystick(SDL_JoystickID i) { (void)i; return NULL; }
-static inline const char *SDL_GetError(void) { return ""; }
-static inline Uint16 SDL_GetJoystickVendorForID(SDL_JoystickID i) { (void)i; return 0; }
-static inline Uint16 SDL_GetJoystickProductForID(SDL_JoystickID i) { (void)i; return 0; }
-static inline bool SDL_IsJoystickVirtual(SDL_JoystickID i) { (void)i; return false; }
-static inline void SDL_CloseGamepad(SDL_Gamepad *g) { (void)g; }
-static inline void SDL_CloseJoystick(SDL_Joystick *j) { (void)j; }
-static inline SDL_JoystickID *SDL_GetJoysticks(int *n) { *n = 0; return NULL; }
-static inline void SDL_free(void *p) { (void)p; }
-static inline bool SDL_GetGamepadButton(SDL_Gamepad *g, SDL_GamepadButton b) { (void)g, (void)b; return false; }
-static inline Sint16 SDL_GetGamepadAxis(SDL_Gamepad *g, SDL_GamepadAxis a) { (void)g, (void)a; return 0; }
-static inline int SDL_GetNumJoystickButtons(SDL_Joystick *j) { (void)j; return 0; }
-static inline int SDL_GetNumJoystickAxes(SDL_Joystick *j) { (void)j; return 0; }
-static inline int SDL_GetNumJoystickHats(SDL_Joystick *j) { (void)j; return 0; }
-static inline Uint8 SDL_GetJoystickHat(SDL_Joystick *j, int h) { (void)j, (void)h; return 0; }
-static inline bool SDL_GetJoystickButton(SDL_Joystick *j, int b) { (void)j, (void)b; return false; }
-static inline Sint16 SDL_GetJoystickAxis(SDL_Joystick *j, int a) { (void)j, (void)a; return 0; }
-static inline const bool *SDL_GetKeyboardState(int *n) { static bool k[512]; (void)n; return k; }
-static inline uint32_t SDL_GetModState(void) { return 0; }
-static inline bool SDL_RumbleGamepad(SDL_Gamepad *g, Uint16 a, Uint16 b, uint32_t ms)
-{ (void)g, (void)a, (void)b, (void)ms; return true; }
-static inline bool SDL_RumbleJoystick(SDL_Joystick *j, Uint16 a, Uint16 b, uint32_t ms)
-{ (void)j, (void)a, (void)b, (void)ms; return true; }
-"""
-
-INPUT_C = r"""#include "port.h"
-#include "platform.h"
+INPUT_C = r"""#include "base.h"
+#include "console.h"
+#include "host.h"
 #include <stdarg.h>
+#include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-int input_option(const char *arg, const char *value);
 
 static u32 g_now;
 u32 port_vblank_count(void) { return g_now; }
-void session_pad(HostPad *pad) { (void)pad; }
+const PortAction *console_actions(unsigned *n) { *n = 0; return NULL; }
 void port_log(const char *fmt, ...)
 {
     va_list ap;
@@ -165,10 +105,9 @@ void port_log(const char *fmt, ...)
 /* START at 10 * k for k = 0 .. n - 1, each held 2 blanks; the held word at blank `at`. */
 static u32 held_at(u32 at)
 {
-    HostPad pad[HOST_PADS];
+    u32 trig[2];
     g_now = at;
-    host_pads_read(pad);
-    return pad[0].buttons;
+    return input_script_buttons(0, trig);
 }
 
 int main(int argc, char **argv)
@@ -177,10 +116,70 @@ int main(int argc, char **argv)
     char *s = malloc(n * 16u + 1u), *p = s;
     (void)argc;
     for (u32 k = 0; k < n; k++) p += snprintf(p, 32, "%sSTART@%u+2", k ? "," : "", 10u * k);
-    input_option("--input", s);
+    input_script_option("--input", s);
     printf("held 100 %x 101 %x 102 %x last %x past %x\n", held_at(1000), held_at(1001), held_at(1002),
            held_at(10u * (n - 1u)), held_at(10u * n));
     free(s);
+    return 0;
+}
+"""
+
+
+# The player's assignments, as input_binds_apply leaves the pad a recording then sees.
+BIND_C = r"""#define _CRT_SECURE_NO_WARNINGS
+#include "base.h"
+#include "console.h"
+#include "host.h"
+#include <stdarg.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+u32 port_vblank_count(void) { return 0; }
+static const PortAction k_actions[] = {{"A", "A"}, {"B", "B"}, {"RT", "RT"}, {"UP", "UP"}};
+const PortAction *console_actions(unsigned *count) { *count = 4; return k_actions; }
+void port_log(const char *fmt, ...) { (void)fmt; }
+
+/* What the pad reads as with the named host buttons held; "RT" is the trigger, "RSUP" the right stick. */
+static void show(const char *what, const char *held)
+{
+    HostPad pad[HOST_PADS];
+    char names[64], *one;
+    memset(pad, 0, sizeof pad);
+    strcpy(names, held);
+    for (one = strtok(names, ","); one; one = strtok(NULL, ",")) {
+        if (!strcmp(one, "RT")) pad[0].r = 255;
+        else pad[0].buttons |= input_name_bit(one);
+    }
+    input_binds_apply(pad);
+    printf("%s A%d B%d UP%d LB%d rt%d stick%d\n", what, (pad[0].buttons & input_name_bit("A")) != 0,
+           (pad[0].buttons & input_name_bit("B")) != 0, (pad[0].buttons & input_name_bit("UP")) != 0,
+           (pad[0].buttons & input_name_bit("LB")) != 0, pad[0].r >= 128, pad[0].y);
+}
+
+int main(int argc, char **argv)
+{
+    char text[64];
+    (void)argc;
+    show("untouched", "LB");
+    input_bind_option("--bind-A", "A+LB");          /* a second button for A */
+    show("added-lb", "LB");
+    show("added-a", "A");
+    input_bind_option("--bind-A", "B");             /* A and B change places */
+    input_bind_option("--bind-B", "A");
+    show("swap-a", "A");
+    show("swap-b", "B");
+    input_bind_option("--bind-RT", "LB");           /* a trigger taken by a button; the trigger itself no longer counts */
+    show("trigger-lb", "LB");
+    show("trigger-rt", "RT");
+    input_bind_option("--bind-UP", "none");         /* unassigned: the button does nothing */
+    show("none", "UP");
+    printf("text %s\n", input_bind_text(2, text, sizeof text));
+    if (!strcmp(argv[1], "script")) {
+        input_script_option("--input", "START@1000+2");    /* a scripted run ignores all of it */
+        show("scripted-a", "A");
+        show("scripted-lb", "LB");
+    }
     return 0;
 }
 """
@@ -205,17 +204,19 @@ class Pads(unittest.TestCase):
             {"name": "Fixture", "entry": {"name": "Fx_Main", "addr": "8c011000"}, "image_base": "8c010000",
              "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}), encoding="utf-8")
         (d / "game.h").write_text(GAME_H, encoding="utf-8")
-        (d / "SDL3").mkdir()
-        (d / "SDL3" / "SDL.h").write_text(SDL_H, encoding="utf-8")
         (d / "maple.c").write_text(MAPLE_C, encoding="utf-8")
         (d / "input.c").write_text(INPUT_C, encoding="utf-8")
         rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
-        inc = f'/I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "host"}" /I"{rd}"'
+        inc = f'/I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" /I"{rd}"'
         cls.maple_build, (cls.no_init, cls.init) = compile_run(
             d, "maple", f'{inc} "{d / "maple.c"}" "{KIT / "sdk" / "maple_pad.c"}"', [[], ["init"]])
         cls.input_build, (cls.few, cls.many) = compile_run(
-            d, "input", f'{inc} "{d / "input.c"}" "{KIT / "runtime" / "gfx" / "gfx_input.c"}"',
+            d, "input", f'{inc} "{d / "input.c"}" "{KIT / "base" / "input_script.c"}"',
             [["200"], ["4100"]])
+        (d / "drv_bind.c").write_text(BIND_C, encoding="utf-8")
+        cls.bind_build, (cls.bind, cls.bind_script) = compile_run(
+            d, "bind", f'{inc} "{d / "drv_bind.c"}" "{KIT / "base" / "input_script.c"}" "{KIT / "base" / "input_bind.c"}"',
+            [["plain"], ["script"]])
 
     @classmethod
     def tearDownClass(cls):
@@ -251,6 +252,24 @@ class Pads(unittest.TestCase):
                                 'are dropped'])
         held = re.search(r"last (\w+) past (\w+)", next(x for x in self.many if x.startswith("held "))).groups()
         self.assertEqual(held, ("0", "0"))  # 4100 asked: the 4097th and later never press
+
+    def test_assignments_press_the_default_button(self):
+        self.assertEqual(self.bind_build, "")
+        for line in ("untouched A0 B0 UP0 LB1 rt0 stick0",  # nothing assigned: the new button reaches no action
+                     "added-lb A1 B0 UP0 LB1 rt0 stick0", "added-a A1 B0 UP0 LB0 rt0 stick0",
+                     "swap-a A0 B1 UP0 LB0 rt0 stick0", "swap-b A1 B0 UP0 LB0 rt0 stick0",
+                     "trigger-lb A0 B0 UP0 LB1 rt1 stick0", "trigger-rt A0 B0 UP0 LB0 rt0 stick0",
+                     "none A0 B0 UP0 LB0 rt0 stick0", "text LB"):
+            self.assertIn(line, self.bind)
+
+    def test_a_scripted_run_ignores_assignments(self):
+        self.assertEqual(self.bind_build, "")
+        self.assertIn("scripted-a A1 B0 UP0 LB0 rt0 stick0", self.bind_script)
+        self.assertIn("scripted-lb A0 B0 UP0 LB1 rt0 stick0", self.bind_script)
+
+    def test_assignments_are_applied_before_the_recording(self):
+        text = (KIT / "base" / "input.c").read_text(encoding="utf-8")
+        self.assertLess(text.index("input_binds_apply(pad);"), text.index("session_pad(&pad[0]);"))
 
 
 if __name__ == "__main__":

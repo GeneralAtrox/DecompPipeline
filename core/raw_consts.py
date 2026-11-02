@@ -29,6 +29,12 @@ def fold(v, mirror):
     return int(c, 16) << 24 | v & 0xFFFFFF if c else v
 
 
+def words(text, mirror):
+    """The 8-digit hex words written in raw C text (0x8c9099b8), as lower-case canonical-address strings (a mirror form
+    such as 0x0c9099b8, PS2 and the Spawn overlays, folded to its canonical address)."""
+    return {f"{fold(int(m, 16), mirror):08x}" for m in re.findall(r"0x([0-9a-fA-F]{8})", text)}
+
+
 def uses(text, image_size, mirror=None):
     """{address (int): set of uses ("access", "call", "value")} of the image addresses written in raw C text (mirror:
     target.json address_mirrors, a mirror-form word counted at its canonical address)."""

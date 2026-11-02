@@ -9,7 +9,7 @@
 #include "tc_rt_internal.h"
 
 #define MAX_WRITES (1u << 22)
-#define MAX_CALLS 4096 /* TcOracle.CALL_LIMIT: the oracle rejects vectors making more calls */
+#define MAX_CALLS 8192 /* core/oracle_limits.CALLS[1]: the oracle rejects vectors making more calls than TcOracle.CALL_LIMIT */
 #define MAX_FAULTS 4
 /* TcOracle.callRecord: target, r4..r7, fr4..fr11, s0..s7, fr12..fr15, r0..r3, r8..r14 (36 fields), and with line Q
  * fr0..fr3, xf0..xf15 and the FPSCR mode word (57 fields: tc_fpu.c) */
@@ -27,6 +27,7 @@ static u32 g_ro[4]; /* r4..r7 as the last call left them (TcOut): its arguments,
 static u32 g_ro_mask; /* header line O: the r4..r7 compared at exit (bit k: r(4+k)), reported as RO */
 static u32 g_t; /* T as the C handed it over (sh4_set_t), or as a K line for register 16 left it after a call */
 static int g_t_export; /* header line t: T compared at exit, reported as RT (TcTflag) */
+static int g_vram; /* header line v: reads of the video memory window serve tcrt_vram_word (TcHw "read vram") */
 static int g_area5; /* header line y: a read in area 5 returns 0 (tcrt_area5, TcHw "read area5") */
 static u32 g_low[4]; /* r0..r3 at entry (vectors.txt line L) */
 static u32 g_retx;   /* the extra result word (a nonstandard result register, a u64's high word) */
@@ -88,12 +89,14 @@ static void mark(u32 addr, u32 size)
 u8 rd8(u32 a)
 {
     a = tcrt_fold(a);
+    if (g_vram && tcrt_vram(a, 1)) return (u8)(tcrt_vram_word(a) >> (8 * (a & 3u)));
     return check(a, 1, 0) ? g_ram[a - TCRT_RAM_BASE] : 0;
 }
 
 u16 rd16(u32 a)
 {
     a = tcrt_fold(a);
+    if (g_vram && tcrt_vram(a, 2) && aligned(a, 2, 0)) return (u16)(tcrt_vram_word(a) >> (8 * (a & 2u)));
     if (!aligned(a, 2, 0) || !check(a, 2, 0)) return 0;
     const u8 *p = g_ram + (a - TCRT_RAM_BASE);
     return (u16)(p[0] | (p[1] << 8));
@@ -102,6 +105,7 @@ u16 rd16(u32 a)
 u32 rd32(u32 a)
 {
     a = tcrt_fold(a);
+    if (g_vram && tcrt_vram(a, 4) && aligned(a, 4, 0)) return tcrt_vram_word(a);
     if (!aligned(a, 4, 0) || !check(a, 4, 0)) return 0;
     const u8 *p = g_ram + (a - TCRT_RAM_BASE);
     return (u32)p[0] | ((u32)p[1] << 8) | ((u32)p[2] << 16) | ((u32)p[3] << 24);
@@ -515,6 +519,8 @@ void tcrt_report_t(FILE *out)
 }
 
 void tcrt_set_area5(void) { g_area5 = 1; }
+
+void tcrt_set_vram(void) { g_vram = 1; }
 
 void tcrt_report_ro(FILE *out)
 {

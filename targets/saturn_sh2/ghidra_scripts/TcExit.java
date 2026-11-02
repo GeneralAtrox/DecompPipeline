@@ -48,7 +48,7 @@ public class TcExit {
             long lo = rg.getMinAddress().getOffset(), hi = rg.getMaxAddress().getOffset() + 1;
             if (rg.getMinAddress().getAddressSpace() != space) continue;
             if (p4(lo, hi)) { // cache address array and QACR stores: logged (tc_p4.c)
-                res.writes.add(TcBase.hex(lo) + " " + TcBase.bytesHex(emu.readMemory(o.toAddr(lo), (int) (hi - lo))));
+                res.writes.add(TcBase.hex(lo) + " " + TcBase.bytesHex(TcHw.stored(emu, o.toAddr(lo), (int) (hi - lo))));
                 continue;
             }
             if (!TcBase.inRam(lo, hi - lo)) {

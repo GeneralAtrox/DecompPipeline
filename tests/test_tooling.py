@@ -16,8 +16,7 @@ from tests/test_batch22.py, raw.c's guest stack addresses (notes, context.md, RR
 and callee buffer sizes; from tests/test_batch23.py, look-alikes across projects, machine drafts, re-adopting
 earlier attempts and the header parser's multi-line /* comment after a #define; from tests/test_batch24.py, the
 drafts' adoption gate; from tests/test_batch24_lean.py, complete lean sandbox headers (what the readable file
-uses, values only one constant has, the closure, a declaration's multi-line /* comment).
-From tests/test_batch25_lean.py, the smaller lean sandbox (struct projections and their static-assert proof).
+uses, values only one constant has, the closure, a declaration's multi-line /* comment). From tests/test_batch25_lean.py, the smaller one.
 From tests/test_batch25a.py, the SDK Function ID tooling (library formats, skip-if-done stamps, the InstallShield 5
 reader, FID merge, SDK/engine). From tests/test_scope*.py, the scope list (project.json extra_functions).
 From tests/test_batch26.py, machine-named read-only strings, large functions' effort and TASK note, and the
@@ -99,6 +98,7 @@ sys.path[:0] = [str(TOOL), str(TOOL / "tools")]
 from core import agent_cli, oracle_stamp, paths, readable_headers, readable_lean  # noqa: E402
 import regress, regress_project, usage_readable  # noqa: E401,E402
 from test_retire import Doctor, RedoStatus, Retire  # noqa: E402,F401  (retire, consistency check, redo status)
+from test_readable_model import Config as ReadableModelConfig, Others as ReadableModelOthers, Refine as ReadableModelRefine  # noqa: E402,F401,E501
 from test_locks_systems import Assign, Locks  # noqa: E402,F401  (file locks, system assignment)
 from test_headers import Compile, Lint, MidRunEdit, Snapshots  # noqa: E402,F401  (header lint, header snapshots)
 from test_sync import SyncAudit, SyncCompile, SyncNames, SyncText  # noqa: E402,F401  (sync-names, raw-name audit)
@@ -113,6 +113,7 @@ from test_batch24 import Gate  # noqa: E402,F401  (the drafts' adoption gate)
 from test_batch24_lean import LeanUses, Reaped  # noqa: E402,F401  (complete lean sandbox headers)
 from test_batch25_lean import LeanViews  # noqa: E402,F401  (struct projections, their proof)
 from test_batch25a import Cabinet, Classify, Formats, Merge, Stamps  # noqa: E402,F401  (SDK Function ID tooling)
+from test_global_infer import Accesses, DataFunctions, Evidence, Extents, Names  # noqa: E402,F401  (machine names for data globals)
 from test_batch26 import Hidden, Large, Strings  # noqa: E402,F401  (strings, large functions, hidden constants)
 from test_batch26b import Config as LocalConfig, NoMachinePaths, Patterns  # noqa: E402,F401  (machine paths)
 from test_batch27 import Candidates, DataFuncs, Override, Rewrite, StackUninit  # noqa: E402,F401  (raw ret, data, stack)
@@ -193,11 +194,11 @@ from test_branch_cov import Grade as BcGrade, Rule as BcRule, Wiring as BcWire  
 from test_targeted_vectors import Draws as TvDraws, Harvest as TvHarvest, Wiring as TvWire  # noqa: E402,F401
 from test_saturn_sh2 import (OverlayImage as SatOverlay, Runtime as SatRuntime, SatDisc,  # noqa: E402,F401
                              Scripts as SatScripts, Target as SatTarget)  # (the Saturn SH-2 target)
-from test_xbox360_ppc import (Aes as XAes, TooHuman as XTooHuman, Xex as XXex,  # noqa: E402,F401
-                              Xiso as XXiso)  # (the Xbox 360 Xenon target, offline)
-from test_xbox360_glue import Glue as XGlue, Runtime as XRuntime, Scan as XScan  # noqa: E402,F401
+from test_xbox360_ppc import Aes as XAes, TooHuman as XTooHuman, Xex as XXex, Xiso as XXiso  # noqa: E402,F401  (Xbox 360, offline)
+from test_xbox360_glue import Glue as XGlue, Runtime as XRuntime, Scan as XScan, ScopedStamp as XScopedStamp, Setup as XSetup  # noqa: E402,F401
 from test_xbox360_helpers import Helpers as XHelpers  # noqa: E402,F401
 from test_xbox360_scripts import Scripts as XScripts, Target as XTarget  # noqa: E402,F401  (its Ghidra scripts)
+from test_x360_judge_gaps import Judge as XJgJudge, Runtime as XJgRuntime, Track as XJgTrack, Translator as XJgTx, Wiring as XJgWiring  # noqa: E402,F401
 from test_scorecard import Gates as ScGates, Readers as ScReaders, Records as ScRecords  # noqa: E402,F401  (scorecard)
 from test_records import (BusyLog, Hooks as RecHooks, OpLog, RawJudge as RecRawJudge,  # noqa: E402,F401
                           Readable as RecReadable)  # (the scorecard's records: busy/idle, operator steps, duration_s)
@@ -206,15 +207,14 @@ from test_own_translators import (Dreamcast as OwnTxDc, Regress as OwnTxRegress,
 from test_game_setup import Check as GsCheck, Names as GsNames, Setup as GsSetup  # noqa: E402,F401  (game_setup.py)
 from test_warm_check import Warm as WarmCheck  # noqa: E402,F401  (the warm agent check, core/warm_check)
 from test_ghidra_identity import Identity as GhidraIdentity  # noqa: E402,F401  (the oracle stamp's Ghidra line)
-from test_compiler_identity import (Pin as VcPin, PortBuild as VcPortBuild,  # noqa: E402,F401
-                                    Stamp as VcStamp, Cache as VcCache,
-                                    Fails as VcFails, SdkFiles as VcSdkFiles)  # (vcvars_args, the stamp's compiler)
+from test_compiler_identity import (Pin as VcPin, PortBuild as VcPortBuild, Stamp as VcStamp,  # noqa: E402,F401
+                                    Cache as VcCache, Fails as VcFails, SdkFiles as VcSdkFiles)  # (vcvars_args, the stamp's compiler)
 from test_requirements import Requirements  # noqa: E402,F401  (requirements.txt)
-from test_readable_tx import Adoption as MachineAdoption, Constants as MachineConstants  # noqa: E402,F401
-from test_readable_tx import Lift as MachineLift, Specs as MachineSpecs  # noqa: E402,F401
+from test_readable_tx import Adoption as MachineAdoption, Constants as MachineConstants, Lift as MachineLift, PointerCalls, Specs as MachineSpecs  # noqa: E402,F401
 from test_strict_judge import (Facts as SjFacts, Judge as SjJudge, Stream as SjStream,  # noqa: E402,F401
                                Wiring as SjWire)  # (item 2: the stricter judge)
 from test_strict_runtime import Readable as SjReadable, Runtimes as SjRuntimes  # noqa: E402,F401  (item 2)
+from test_test_rules import DpGoldens, FailsBefore, Landing, Outcome, Provenance  # noqa: E402,F401  (AGENTS.md "Test rules")
 
 atexit.register(_TMP.cleanup)  # not tearDownModule: unittest also calls that when it switches to the test_retire
 # classes and back, which would remove the folder mid-run

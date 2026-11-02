@@ -7,13 +7,21 @@
 // drawn: plain numbers, 0, the denormal 1 and scratch pointers (tiny negatives), so the paths for a tiny result
 // stay tested (fixtures tc-fpscr-dn-8c033f22: fsqrt of a denormal; tc-fr-through-call-8c03a2f6: |result| under a
 // threshold). The vector keeps the new value (TcOracle writes v.rets back), so vectors.txt and the C runner use the
-// same bits, and reruns (rescue, reach) see a kept value again. A callee returning u32 is unchanged.
+// same bits, and reruns (rescue, reach) see a kept value again. A callee returning u32 is unchanged, unless this
+// caller's script arg 14 lists it (state/fret_callers.txt): its callers read fr0 though the prototype doesn't say f32.
 
 final class TcFret {
     static final float[] PLAIN = {0f, 1f, 0.5f, -1f, 2f, 1e-3f, 1e-7f, -0.5f, 10f, 100f, 0.25f, -2f, 1e-5f, 0.9f,
         1.5f, 1000f};
 
+    static final java.util.Set<Long> listed = new java.util.HashSet<>();
+
     private TcFret() {
+    }
+
+    static void parse(String arg) {
+        listed.clear();
+        if (!arg.equals("-")) for (String w : arg.split("_")) listed.add(Long.parseLong(w, 16));
     }
 
     // rv as it is (+-0, a finite magnitude between about 1e-30 and 1e30, the denormal 1, a scratch pointer), else
@@ -27,6 +35,7 @@ final class TcFret {
 
     // The result of the mocked call to callee: of(rv) when the callee returns f32, else rv.
     static long at(java.util.Set<Long> floatRet, long callee, long rv) {
+        if (listed.contains(callee) && ((rv & 0xffffffffL) >>> 20) == 0x8ccL) rv = 2 + (rv >>> 2 & 0x3fffL);  // a real number
         return floatRet.contains(callee) ? of(rv) : rv;
     }
 }

@@ -8,7 +8,42 @@ import pathlib
 import threading
 
 from . import check, paths, readable_stack
-from .readable_outptr import FLIPS, deliver, lines_for, parse_ob, parse_ot, trace_lines, type_sizes, with_lines
+from .readable_outptr import FLIPS, deliver, lines_for, parked_bytes, parse_ob, parse_ot, trace_lines, type_sizes, with_lines
+
+
+SALVAGE = True  # a run that times out keeps its finished vectors (RawRuns.run); False: the judge as it was (A/B proofs)
+SKIP_MAX = 12   # vectors one run may leave out (each costs a timeout)
+
+
+def keep_lines(text):
+    return "".join(ln for ln in text.splitlines(keepends=True) if ln.startswith(("V ", "OB ", "OT ")))
+
+
+def split_vectors(path):
+    """(head lines, [(vector id, set, its lines from the V line)]) of a vectors file."""
+    head, blocks = [], []
+    for ln in path.read_text(encoding="utf-8").splitlines(keepends=True):
+        if ln.startswith("V "):
+            t = ln.split()
+            blocks.append((int(t[1]), t[2] if len(t) > 2 else "", []))
+        (blocks[-1][2] if blocks else head).append(ln)
+    return head, blocks
+
+
+def finished(text):
+    """(ids of the vectors a runner output holds whole, their V/OB/OT lines): a vector counts from its V line to its E
+    line, which the runner flushes after each one."""
+    done, lines, cur = set(), [], []
+    for ln in text.splitlines(keepends=True):
+        if ln.startswith("V "):
+            cur = [ln]
+        elif ln.startswith(("OB ", "OT ")) and cur:
+            cur.append(ln)
+        elif ln.strip() == "E" and cur:
+            done.add(int(cur[0].split()[1]))
+            lines += cur
+            cur = []
+    return done, "".join(lines)
 
 
 class RawRuns:
@@ -51,24 +86,25 @@ class RawRuns:
         return self.raw.exists()
 
     def run(self, vec):
-        """The run's V/OB/OT text, or None (no raw C, or it does not build or run)."""
-        from . import readable_check as rcheck
+        """The run's V/OB/OT text, or None (no raw C, or it does not build or run). A run that times out (the raw C
+        loops on the bytes a B line painted: TC 8c038c2c hangs in 4 of 99 vectors) keeps the vectors it finished: the
+        runner flushes after each vector's E line, so the output holds them whole, and the vector it hung in is the
+        next one in the file. That vector is left out and the rest run again (up to SKIP_MAX times); a left-out
+        vector has no OB lines, so its out-pointer lines stay O lines (vectors_file) while every other vector gets
+        the original's bytes. The text is cached under the whole file's key. A run that finishes no vector, or fails
+        any other way, is None, as before."""
         if not self.raw.exists():
             return None
-        key = hashlib.sha1(b"ob6\0" + self.raw.read_bytes() + b"\0" + vec.read_bytes() + b"\0"
-                           + ",".join(self.sets).encode() + self.inputs().encode()).hexdigest()
+        key = hashlib.sha1(b"ob7" + (b"s" if SALVAGE else b"") + b"\0" + self.raw.read_bytes() + b"\0"
+                           + vec.read_bytes() + b"\0" + ",".join(self.sets).encode() + self.inputs().encode()).hexdigest()
         cache = paths.read_json(self.cache_file, {}) if self.cache_file.exists() else {}
         if key in cache:
             return cache[key]
-        if self.built is None:
-            self.built, _ = rcheck.build(self.cfg, [self.raw], check.gen_thunk(self.meta), {}, self.build_dir)
-        if not self.built:
+        text, err, out = self._run_once(vec)
+        if text is None and SALVAGE and err == "runner timeout":
+            text = self._salvage(vec, out)
+        if text is None:
             return None
-        out, err = rcheck.run(self.cfg, self.harness, self.build_dir, self.sets, vec)
-        if err or not out.exists():
-            return None
-        text = "".join(ln for ln in out.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
-                       if ln.startswith(("V ", "OB ", "OT ")))
         cache = paths.read_json(self.cache_file, {}) if self.cache_file.exists() else {}  # another folder's runs too
         cache = {k: v for k, v in cache.items() if k != key}
         cache[key] = text
@@ -81,6 +117,43 @@ class RawRuns:
         except OSError:  # Windows refused (a reader has it open): this run is not cached
             tmp.unlink(missing_ok=True)
         return text
+
+    def _run_once(self, vec):
+        """(text, None, out file) of one runner run, or (None, why, out file or None)."""
+        from . import readable_check as rcheck
+        if self.built is None:
+            self.built, _ = rcheck.build(self.cfg, [self.raw], check.gen_thunk(self.meta), {}, self.build_dir)
+        if not self.built:
+            return None, "build", None
+        out, err = rcheck.run(self.cfg, self.harness, self.build_dir, self.sets, vec)
+        if err or not out.exists():
+            return None, err or "no output", out
+        return keep_lines(out.read_text(encoding="utf-8", errors="replace")), None, out
+
+    def _salvage(self, vec, out):
+        """The text of the vectors a timed-out run finished, and of the rest run again without the vector it hung in."""
+        head, todo = split_vectors(vec)
+        which = self.sets[0] if len(self.sets) == 1 else None  # the runner takes the vectors of these sets only
+        texts = []
+        for _ in range(SKIP_MAX):
+            done, text = finished(out.read_text(encoding="utf-8", errors="replace") if out and out.exists() else "")
+            texts.append(text)
+            todo = [x for x in todo if x[0] not in done]
+            hung = next((i for i, x in enumerate(todo) if which is None or x[1] == which), None)
+            if hung is None:
+                break
+            del todo[hung]  # the vector the run hung in: left out
+            if not todo:
+                break
+            part = self.build_dir / "vectors_rest.txt"
+            part.write_text("".join(head + [ln for x in todo for ln in x[2]]), encoding="utf-8")
+            text, err, out = self._run_once(part)
+            if err is None:
+                texts.append(text)
+                break
+            if err != "runner timeout":
+                return None
+        return "".join(texts) or None
 
 
 def raw_runs(cfg, addr, meta, harness, build_dir, sets):
@@ -118,7 +191,9 @@ def vectors_file(cfg, meta, harness, specs, build_dir, include_dirs, addr=None, 
     lo = readable_stack.frame_lo()  # a guest stack address is the own frame's (a global below it is memory)
     need = {s[2] for s in specs if s[2] != "void"}
     sizes = {}
-    if lines_for(exp, specs, lambda b: 1, frame_lo=lo):  # a call passes a guest stack address there: size the pointees
+    # a call passes a guest stack address there: size the pointees. A "trace" spec with no sizeof (void *) only gets its
+    # size from the trace run below, so it counts here too: without it the local never got the mocked callee's bytes
+    if lines_for(exp, specs, lambda b: 1, frame_lo=lo) or trace_lines(exp, specs, lo):
         if need:
             sizes = type_sizes(cfg, need, build_dir.parent / (build_dir.name + "_outsz"), include_dirs)
     else:
@@ -135,6 +210,7 @@ def vectors_file(cfg, meta, harness, specs, build_dir, include_dirs, addr=None, 
         return src, 0
     dst = build_dir / "vectors_out.txt"
     runs = original_bytes(runner, src, extra, build_dir) if runner and runner.available() else None
+    parked = []  # S lines: the bytes the original stored itself before each call (stale_out_words)
     if runs:
         from .check import parse_vectors
         from .compare import Memory
@@ -145,5 +221,7 @@ def vectors_file(cfg, meta, harness, specs, build_dir, include_dirs, addr=None, 
                 got = [(r.get(vid, {}).get((int(n), target, int(field))), flip) for r, flip in zip(runs, FLIPS)]
                 if all(h is not None for h, _ in got):
                     lines[i] = f"D {n} {target} {field} {deliver(got, int(guest, 16), Memory(image, vecs[vid]))}"
+                    parked.append(f"S {vid} {n} {field} {parked_bytes(got, int(guest, 16), Memory(image, vecs[vid]))}")
     with_lines(src, extra, dst)
+    dst.with_suffix(".parked").write_text(chr(10).join(parked) + chr(10), encoding="utf-8")
     return dst, sum(len(v) for v in extra.values())

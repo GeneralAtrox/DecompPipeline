@@ -115,7 +115,8 @@ public class TcAsm {
                 }
             }
             if (in.getFlowType().isJump() && in.getFlowType().isComputed()) note.append("   ; computed jump (switch)");
-            asm.append(String.format("  %s  %-34s%s\n", TcBase.hex(ia), in.toString(), note));
+            TcVmx.Op vop = TcBase.vmxOpAt(b.prog(), in.getAddress());  // TcSetup's stand-in stands for this word
+            asm.append(String.format("  %s  %-34s%s\n", TcBase.hex(ia), vop != null ? vop.disasm : in.toString(), note));
         }
         return asm.toString();
     }

@@ -1,0 +1,2484 @@
+{
+ "old": {
+  "tc": {
+   "8c05034c": {
+    "sha": "3c0464b69657a862c36cce5eb238e8ebc1a7556082bf0a9509b7140696cb1d15",
+    "outcomes": "KSBSSSBSSS"
+   },
+   "8c056a0a": {
+    "sha": "f299922e4fc78227e4dd4b21e9bcb48143606ce434cce10ebe7663b9114415d8",
+    "outcomes": "K"
+   },
+   "8c071c18": {
+    "sha": "ae127012f4d1efbdc66ced84e4c438970b144812fe701a776f4ab7d2a9a09c91",
+    "outcomes": "KKKKKKKKBK"
+   },
+   "8c038c2c": {
+    "error": "base FAIL 1"
+   }
+  }
+ },
+ "new": {
+  "tc": {
+   "8c05034c": {
+    "sha": "3c0464b69657a862c36cce5eb238e8ebc1a7556082bf0a9509b7140696cb1d15",
+    "outcomes": "KSBSSSBSSS"
+   },
+   "8c056a0a": {
+    "sha": "f299922e4fc78227e4dd4b21e9bcb48143606ce434cce10ebe7663b9114415d8",
+    "outcomes": "K"
+   },
+   "8c071c18": {
+    "sha": "ae127012f4d1efbdc66ced84e4c438970b144812fe701a776f4ab7d2a9a09c91",
+    "outcomes": "KKKKKKKKBK"
+   },
+   "8c038c2c": {
+    "sha": "e3aa0d549076c3586d9b182c9f45a9a0b2da4354b2287ed656ab57d553ab8a98",
+    "outcomes": "KKSKBBBKSS"
+   }
+  }
+ },
+ "detail": {
+  "8c05034c": {
+   "src": "<dpwork>\\recheck\\ws\\tc\\decomp\\readable\\src\\8c05034c.c",
+   "sha": "3c0464b69657a862c36cce5eb238e8ebc1a7556082bf0a9509b7140696cb1d15",
+   "base": {
+    "old": {
+     "verdict": "PASS",
+     "stage": "compare",
+     "failing": 0,
+     "ids": {
+      "dev": [],
+      "hidden": []
+     },
+     "diff": []
+    },
+    "new": {
+     "verdict": "PASS",
+     "stage": "compare",
+     "failing": 0,
+     "ids": {
+      "dev": [],
+      "hidden": []
+     },
+     "diff": []
+    }
+   },
+   "mutants": [
+    {
+     "id": 1,
+     "op": "relop",
+     "line": 50,
+     "what": "== -> !=",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 96,
+      "ids": {
+       "dev": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47
+       ],
+       "hidden": [
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95
+       ]
+      },
+      "diff": [
+       "call #1: missing; the original calls 0x8c04ff54 here (you made 0 call(s))"
+      ]
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 96,
+      "ids": {
+       "dev": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47
+       ],
+       "hidden": [
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95
+       ]
+      },
+      "diff": [
+       "call #1: missing; the original calls 0x8c04ff54 here (you made 0 call(s))"
+      ]
+     },
+     "old_substantive_kill": true,
+     "lost": false
+    },
+    {
+     "id": 2,
+     "op": "arith",
+     "line": 35,
+     "what": "+ -> -",
+     "old": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "new": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "old_substantive_kill": false,
+     "lost": false
+    },
+    {
+     "id": 3,
+     "op": "bitwise",
+     "line": 10,
+     "what": "& -> |",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "build",
+      "failing": null,
+      "ids": {},
+      "diff": []
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "build",
+      "failing": null,
+      "ids": {},
+      "diff": []
+     },
+     "old_substantive_kill": false,
+     "lost": false
+    },
+    {
+     "id": 4,
+     "op": "const",
+     "line": 35,
+     "what": "4 -> 3",
+     "old": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "new": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "old_substantive_kill": false,
+     "lost": false
+    },
+    {
+     "id": 5,
+     "op": "negate",
+     "line": 62,
+     "what": "if (c) -> if (!(c))",
+     "old": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "new": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "old_substantive_kill": false,
+     "lost": false
+    },
+    {
+     "id": 6,
+     "op": "delete",
+     "line": 71,
+     "what": "deleted: remaining -= record_size;",
+     "old": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "new": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "old_substantive_kill": false,
+     "lost": false
+    },
+    {
+     "id": 7,
+     "op": "swap_args",
+     "line": 56,
+     "what": "Anim_GetBlockData(.. (AnimFile *)(uintptr_t)param_r4, index ..) -> Anim_GetBlockData(.. index, (AnimFile *)(uintptr_t)param_r4 ..)",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "build",
+      "failing": null,
+      "ids": {},
+      "diff": []
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "build",
+      "failing": null,
+      "ids": {},
+      "diff": []
+     },
+     "old_substantive_kill": false,
+     "lost": false
+    },
+    {
+     "id": 8,
+     "op": "return0",
+     "line": 17,
+     "what": "return 0x40u -> return 0",
+     "old": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "new": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "old_substantive_kill": false,
+     "lost": false
+    },
+    {
+     "id": 9,
+     "op": "relop",
+     "line": 66,
+     "what": "== -> !=",
+     "old": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "new": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "old_substantive_kill": false,
+     "lost": false
+    },
+    {
+     "id": 10,
+     "op": "arith",
+     "line": 35,
+     "what": "+ -> -",
+     "old": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "new": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "old_substantive_kill": false,
+     "lost": false
+    }
+   ]
+  },
+  "8c056a0a": {
+   "src": "<dpwork>\\recheck\\ws\\tc\\decomp\\readable\\src\\8c056a0a.c",
+   "sha": "f299922e4fc78227e4dd4b21e9bcb48143606ce434cce10ebe7663b9114415d8",
+   "base": {
+    "old": {
+     "verdict": "PASS",
+     "stage": "compare",
+     "failing": 0,
+     "ids": {
+      "dev": [],
+      "hidden": []
+     },
+     "diff": []
+    },
+    "new": {
+     "verdict": "PASS",
+     "stage": "compare",
+     "failing": 0,
+     "ids": {
+      "dev": [],
+      "hidden": []
+     },
+     "diff": []
+    }
+   },
+   "mutants": [
+    {
+     "id": 1,
+     "op": "swap_args",
+     "line": 11,
+     "what": "Km_ReadSurface(.. dst, (KMSURFACEDESC *)surface ..) -> Km_ReadSurface(.. (KMSURFACEDESC *)surface, dst ..)",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 96,
+      "ids": {
+       "dev": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47
+       ],
+       "hidden": [
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95
+       ]
+      },
+      "diff": [
+       "call #4 to 0x8c06d028: argument r4 expected 0x00000000, got 0x0019fc78",
+       "call #4 to 0x8c06d028: argument r5 expected 0x8cffdfdc, got 0x00000000"
+      ]
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 96,
+      "ids": {
+       "dev": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47
+       ],
+       "hidden": [
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95
+       ]
+      },
+      "diff": [
+       "call #4 to 0x8c06d028: argument r4 expected 0x00000000, got 0x0019fc78",
+       "call #4 to 0x8c06d028: argument r5 expected 0x8cffdfdc, got 0x00000000"
+      ]
+     },
+     "old_substantive_kill": true,
+     "lost": false
+    }
+   ]
+  },
+  "8c071c18": {
+   "src": "<dpwork>\\recheck\\ws\\tc\\decomp\\readable\\src\\8c071c18.c",
+   "sha": "ae127012f4d1efbdc66ced84e4c438970b144812fe701a776f4ab7d2a9a09c91",
+   "base": {
+    "old": {
+     "verdict": "PASS",
+     "stage": "compare",
+     "failing": 0,
+     "ids": {
+      "dev": [],
+      "hidden": []
+     },
+     "diff": []
+    },
+    "new": {
+     "verdict": "PASS",
+     "stage": "compare",
+     "failing": 0,
+     "ids": {
+      "dev": [],
+      "hidden": []
+     },
+     "diff": []
+    }
+   },
+   "mutants": [
+    {
+     "id": 1,
+     "op": "relop",
+     "line": 61,
+     "what": "< -> <=",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 23,
+      "ids": {
+       "dev": [
+        4,
+        8,
+        9,
+        16,
+        21,
+        27,
+        32,
+        43,
+        44,
+        96,
+        97
+       ],
+       "hidden": [
+        56,
+        59,
+        61,
+        63,
+        64,
+        65,
+        75,
+        83,
+        91,
+        95,
+        98,
+        99
+       ]
+      },
+      "diff": [
+       "call #1: expected target 0x8cc01500, got 0x0000000f"
+      ]
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 23,
+      "ids": {
+       "dev": [
+        4,
+        8,
+        9,
+        16,
+        21,
+        27,
+        32,
+        43,
+        44,
+        96,
+        97
+       ],
+       "hidden": [
+        56,
+        59,
+        61,
+        63,
+        64,
+        65,
+        75,
+        83,
+        91,
+        95,
+        98,
+        99
+       ]
+      },
+      "diff": [
+       "call #1: expected target 0x8cc01500, got 0x0000000f"
+      ]
+     },
+     "old_substantive_kill": true,
+     "lost": false
+    },
+    {
+     "id": 2,
+     "op": "arith",
+     "line": 266,
+     "what": "+= -> -=",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 8,
+      "ids": {
+       "dev": [
+        8,
+        9,
+        47,
+        96
+       ],
+       "hidden": [
+        56,
+        75,
+        91,
+        98
+       ]
+      },
+      "diff": [
+       "memory 0x8cc00180: expected 00000000, got 000000f0 (the original does not write here)",
+       "memory 0x8cc001c0: expected 000000f0, got 3401c08c (your code did not write here)"
+      ]
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 8,
+      "ids": {
+       "dev": [
+        8,
+        9,
+        47,
+        96
+       ],
+       "hidden": [
+        56,
+        75,
+        91,
+        98
+       ]
+      },
+      "diff": [
+       "memory 0x8cc00180: expected 00000000, got 000000f0 (the original does not write here)",
+       "memory 0x8cc001c0: expected 000000f0, got 3401c08c (your code did not write here)"
+      ]
+     },
+     "old_substantive_kill": true,
+     "lost": false
+    },
+    {
+     "id": 3,
+     "op": "bitwise",
+     "line": 146,
+     "what": "| -> &",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 8,
+      "ids": {
+       "dev": [
+        28,
+        43,
+        47,
+        96
+       ],
+       "hidden": [
+        91,
+        95,
+        98,
+        100
+       ]
+      },
+      "diff": [
+       "call #1: expected target 0x00000000, got 0x8cc00e90"
+      ]
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 8,
+      "ids": {
+       "dev": [
+        28,
+        43,
+        47,
+        96
+       ],
+       "hidden": [
+        91,
+        95,
+        98,
+        100
+       ]
+      },
+      "diff": [
+       "call #1: expected target 0x00000000, got 0x8cc00e90"
+      ]
+     },
+     "old_substantive_kill": true,
+     "lost": false
+    },
+    {
+     "id": 4,
+     "op": "shift",
+     "line": 67,
+     "what": ">> -> <<",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 11,
+      "ids": {
+       "dev": [
+        43,
+        44,
+        47,
+        96,
+        97
+       ],
+       "hidden": [
+        75,
+        91,
+        95,
+        98,
+        99,
+        100
+       ]
+      },
+      "diff": [
+       "memory 0x8cc00934: expected 000000f0, got 07000000 (your code did not write here)",
+       "memory 0x8cc009f4: expected 000000f0, got c80ec08c (your code did not write here)"
+      ]
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 11,
+      "ids": {
+       "dev": [
+        43,
+        44,
+        47,
+        96,
+        97
+       ],
+       "hidden": [
+        75,
+        91,
+        95,
+        98,
+        99,
+        100
+       ]
+      },
+      "diff": [
+       "memory 0x8cc00934: expected 000000f0, got 07000000 (your code did not write here)",
+       "memory 0x8cc009f4: expected 000000f0, got c80ec08c (your code did not write here)"
+      ]
+     },
+     "old_substantive_kill": true,
+     "lost": false
+    },
+    {
+     "id": 5,
+     "op": "const",
+     "line": 70,
+     "what": "4u -> 5u",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 7,
+      "ids": {
+       "dev": [
+        8,
+        32,
+        43,
+        97
+       ],
+       "hidden": [
+        59,
+        64,
+        99
+       ]
+      },
+      "diff": [
+       "call #20: argument r7 points at a different stack slot than in earlier calls",
+       "memory 0x8cc00180: expected 00000000, got 000000f0 (the original does not write here)"
+      ]
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 7,
+      "ids": {
+       "dev": [
+        8,
+        32,
+        43,
+        97
+       ],
+       "hidden": [
+        59,
+        64,
+        99
+       ]
+      },
+      "diff": [
+       "call #20: argument r7 points at a different stack slot than in earlier calls",
+       "memory 0x8cc00180: expected 00000000, got 000000f0 (the original does not write here)"
+      ]
+     },
+     "old_substantive_kill": true,
+     "lost": false
+    },
+    {
+     "id": 6,
+     "op": "negate",
+     "line": 403,
+     "what": "if (c) -> if (!(c))",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 5,
+      "ids": {
+       "dev": [
+        44,
+        96,
+        97
+       ],
+       "hidden": [
+        98,
+        99
+       ]
+      },
+      "diff": [
+       "call #18: argument r4 points at a different stack slot than in earlier calls",
+       "call #19: argument r5 points at a different stack slot than in earlier calls"
+      ]
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 5,
+      "ids": {
+       "dev": [
+        44,
+        96,
+        97
+       ],
+       "hidden": [
+        98,
+        99
+       ]
+      },
+      "diff": [
+       "call #18: argument r4 points at a different stack slot than in earlier calls",
+       "call #19: argument r5 points at a different stack slot than in earlier calls"
+      ]
+     },
+     "old_substantive_kill": true,
+     "lost": false
+    },
+    {
+     "id": 7,
+     "op": "delete",
+     "line": 203,
+     "what": "deleted: stage = STAGE_SELECT;",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 93,
+      "ids": {
+       "dev": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        96,
+        97
+       ],
+       "hidden": [
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        98,
+        99
+       ]
+      },
+      "diff": [
+       "no result for this vector (the C code crashed, hung or timed out)"
+      ]
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 93,
+      "ids": {
+       "dev": [
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        96,
+        97
+       ],
+       "hidden": [
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        98,
+        99
+       ]
+      },
+      "diff": [
+       "no result for this vector (the C code crashed, hung or timed out)"
+      ]
+     },
+     "old_substantive_kill": true,
+     "lost": false
+    },
+    {
+     "id": 8,
+     "op": "swap_args",
+     "line": 226,
+     "what": "fn_8c0757c8(.. (s32)guest_addr(point_b), guest_addr(buf_b) ..) -> fn_8c0757c8(.. guest_addr(buf_b), (s32)guest_addr(point_b) ..)",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 12,
+      "ids": {
+       "dev": [
+        8,
+        9,
+        47,
+        97
+       ],
+       "hidden": [
+        56,
+        59,
+        64,
+        75,
+        82,
+        83,
+        91,
+        99
+       ]
+      },
+      "diff": [
+       "call #11 to 0x8c0757c8: argument r4 expected 0x8cc003ec, got 0x0019fbfc",
+       "call #11 to 0x8c0757c8: argument r5 expected 0x8cffdf84, got 0x8cc003ec"
+      ]
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 12,
+      "ids": {
+       "dev": [
+        8,
+        9,
+        47,
+        97
+       ],
+       "hidden": [
+        56,
+        59,
+        64,
+        75,
+        82,
+        83,
+        91,
+        99
+       ]
+      },
+      "diff": [
+       "call #11 to 0x8c0757c8: argument r4 expected 0x8cc003ec, got 0x0019fbfc",
+       "call #11 to 0x8c0757c8: argument r5 expected 0x8cffdf84, got 0x8cc003ec"
+      ]
+     },
+     "old_substantive_kill": true,
+     "lost": false
+    },
+    {
+     "id": 9,
+     "op": "return0",
+     "line": 51,
+     "what": "return g_meshScreenPoints + index -> return 0",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "build",
+      "failing": null,
+      "ids": {},
+      "diff": []
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "build",
+      "failing": null,
+      "ids": {},
+      "diff": []
+     },
+     "old_substantive_kill": false,
+     "lost": false
+    },
+    {
+     "id": 10,
+     "op": "relop",
+     "line": 279,
+     "what": "== -> !=",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 3,
+      "ids": {
+       "dev": [
+        9
+       ],
+       "hidden": [
+        56,
+        91
+       ]
+      },
+      "diff": [
+       "memory 0x8cc00a20: expected 62627869, got 000000f0 (the original does not write here)",
+       "memory 0x8cc00a60: expected 000000f0, got 61733757 (your code did not write here)"
+      ]
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 3,
+      "ids": {
+       "dev": [
+        9
+       ],
+       "hidden": [
+        56,
+        91
+       ]
+      },
+      "diff": [
+       "memory 0x8cc00a20: expected 62627869, got 000000f0 (the original does not write here)",
+       "memory 0x8cc00a60: expected 000000f0, got 61733757 (your code did not write here)"
+      ]
+     },
+     "old_substantive_kill": true,
+     "lost": false
+    }
+   ]
+  },
+  "8c038c2c": {
+   "src": "<dpwork>\\recheck\\ws\\tc\\decomp\\readable\\src\\8c038c2c.c",
+   "sha": "e3aa0d549076c3586d9b182c9f45a9a0b2da4354b2287ed656ab57d553ab8a98",
+   "base": {
+    "old": {
+     "verdict": "FAIL",
+     "stage": "compare",
+     "failing": 1,
+     "ids": {
+      "dev": [],
+      "hidden": [
+       98
+      ]
+     },
+     "diff": [
+      "C code raised exception c0000005 (crash)",
+      "memory 0x8c0a72c0: expected 0a000000, got 00000000"
+     ]
+    },
+    "new": {
+     "verdict": "PASS",
+     "stage": "compare",
+     "failing": 0,
+     "ids": {
+      "dev": [],
+      "hidden": []
+     },
+     "diff": []
+    }
+   },
+   "mutants": [
+    {
+     "id": 1,
+     "op": "relop",
+     "line": 17,
+     "what": ">= -> >",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 84,
+      "ids": {
+       "dev": [
+        1,
+        10,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        96
+       ],
+       "hidden": [
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        97,
+        98
+       ]
+      },
+      "diff": [
+       "memory 0x8c0a72c0: expected 00000000, got 04000000",
+       "memory 0x8c0d58a4: expected 00000000, got 08000000 (the original does not write here)"
+      ]
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 84,
+      "ids": {
+       "dev": [
+        1,
+        10,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        96
+       ],
+       "hidden": [
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        97,
+        98
+       ]
+      },
+      "diff": [
+       "memory 0x8c0a72c0: expected 00000000, got 04000000",
+       "memory 0x8c0d58a4: expected 00000000, got 08000000 (the original does not write here)"
+      ]
+     },
+     "old_substantive_kill": true,
+     "lost": false
+    },
+    {
+     "id": 2,
+     "op": "arith",
+     "line": 61,
+     "what": "+ -> -",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 39,
+      "ids": {
+       "dev": [
+        0,
+        2,
+        3,
+        4,
+        5,
+        7,
+        8,
+        9,
+        13,
+        23,
+        24,
+        26,
+        28,
+        29,
+        31,
+        32,
+        35,
+        37,
+        38,
+        43,
+        44,
+        47
+       ],
+       "hidden": [
+        53,
+        60,
+        61,
+        62,
+        63,
+        67,
+        68,
+        69,
+        71,
+        73,
+        74,
+        81,
+        82,
+        84,
+        92,
+        95,
+        98
+       ]
+      },
+      "diff": [
+       "memory 0x8c0d58a8: expected 740180bf, got 8cfe7fbf",
+       "memory 0x8c0d58ac: expected e80280bf, got 18fd7fbf"
+      ]
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 39,
+      "ids": {
+       "dev": [
+        0,
+        2,
+        3,
+        4,
+        5,
+        7,
+        8,
+        9,
+        13,
+        23,
+        24,
+        26,
+        28,
+        29,
+        31,
+        32,
+        35,
+        37,
+        38,
+        43,
+        44,
+        47
+       ],
+       "hidden": [
+        53,
+        60,
+        61,
+        62,
+        63,
+        67,
+        68,
+        69,
+        71,
+        73,
+        74,
+        81,
+        82,
+        84,
+        92,
+        95,
+        98
+       ]
+      },
+      "diff": [
+       "memory 0x8c0d58a8: expected 740180bf, got 8cfe7fbf",
+       "memory 0x8c0d58ac: expected e80280bf, got 18fd7fbf"
+      ]
+     },
+     "old_substantive_kill": true,
+     "lost": false
+    },
+    {
+     "id": 3,
+     "op": "const",
+     "line": 16,
+     "what": "1 -> 0",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 1,
+      "ids": {
+       "dev": [],
+       "hidden": [
+        98
+       ]
+      },
+      "diff": [
+       "C code raised exception c0000005 (crash)",
+       "memory 0x8c0a72c0: expected 0a000000, got 00000000"
+      ]
+     },
+     "new": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "old_substantive_kill": false,
+     "lost": false
+    },
+    {
+     "id": 4,
+     "op": "negate",
+     "line": 38,
+     "what": "if (c) -> if (!(c))",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 99,
+      "ids": {
+       "dev": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        96
+       ],
+       "hidden": [
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        97,
+        98
+       ]
+      },
+      "diff": [
+       "memory 0x8c0a72c0: expected 07000000, got 00000000",
+       "memory 0x8c0d58a4: expected 000080bf, got a4980000 (your code did not write here)"
+      ]
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 99,
+      "ids": {
+       "dev": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        96
+       ],
+       "hidden": [
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        97,
+        98
+       ]
+      },
+      "diff": [
+       "memory 0x8c0a72c0: expected 07000000, got 00000000",
+       "memory 0x8c0d58a4: expected 000080bf, got a4980000 (your code did not write here)"
+      ]
+     },
+     "old_substantive_kill": true,
+     "lost": false
+    },
+    {
+     "id": 5,
+     "op": "delete",
+     "line": 59,
+     "what": "deleted: occluder_count = g_world->mem.occluder_block->occluder_count;",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "build",
+      "failing": null,
+      "ids": {},
+      "diff": []
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "build",
+      "failing": null,
+      "ids": {},
+      "diff": []
+     },
+     "old_substantive_kill": false,
+     "lost": false
+    },
+    {
+     "id": 6,
+     "op": "swap_args",
+     "line": 43,
+     "what": "Occluders_CellInGrid(.. g_world->mem.grid, cell ..) -> Occluders_CellInGrid(.. cell, g_world->mem.grid ..)",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "build",
+      "failing": null,
+      "ids": {},
+      "diff": []
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "build",
+      "failing": null,
+      "ids": {},
+      "diff": []
+     },
+     "old_substantive_kill": false,
+     "lost": false
+    },
+    {
+     "id": 7,
+     "op": "return0",
+     "line": 15,
+     "what": "return cell[0] >= 0 && cell[0] < grid->dim_x\n        && cell[1] >= 0 && cell[1] < grid->dim_y\n        && cell[2] >= 0 && cell[2] < grid->dim_z -> return 0",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "build",
+      "failing": null,
+      "ids": {},
+      "diff": []
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "build",
+      "failing": null,
+      "ids": {},
+      "diff": []
+     },
+     "old_substantive_kill": false,
+     "lost": false
+    },
+    {
+     "id": 8,
+     "op": "relop",
+     "line": 15,
+     "what": ">= -> >",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 84,
+      "ids": {
+       "dev": [
+        1,
+        10,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        96
+       ],
+       "hidden": [
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        97,
+        98
+       ]
+      },
+      "diff": [
+       "memory 0x8c0a72c0: expected 00000000, got 04000000",
+       "memory 0x8c0d58a4: expected 00000000, got 08000000 (the original does not write here)"
+      ]
+     },
+     "new": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 84,
+      "ids": {
+       "dev": [
+        1,
+        10,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        96
+       ],
+       "hidden": [
+        48,
+        49,
+        50,
+        51,
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        97,
+        98
+       ]
+      },
+      "diff": [
+       "memory 0x8c0a72c0: expected 00000000, got 04000000",
+       "memory 0x8c0d58a4: expected 00000000, got 08000000 (the original does not write here)"
+      ]
+     },
+     "old_substantive_kill": true,
+     "lost": false
+    },
+    {
+     "id": 9,
+     "op": "arith",
+     "line": 44,
+     "what": "+ -> -",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 1,
+      "ids": {
+       "dev": [],
+       "hidden": [
+        98
+       ]
+      },
+      "diff": [
+       "C code raised exception c0000005 (crash)",
+       "memory 0x8c0a72c0: expected 0a000000, got 00000000"
+      ]
+     },
+     "new": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "old_substantive_kill": false,
+     "lost": false
+    },
+    {
+     "id": 10,
+     "op": "const",
+     "line": 15,
+     "what": "0 -> 1",
+     "old": {
+      "verdict": "FAIL",
+      "stage": "compare",
+      "failing": 1,
+      "ids": {
+       "dev": [],
+       "hidden": [
+        98
+       ]
+      },
+      "diff": [
+       "C code raised exception c0000005 (crash)",
+       "memory 0x8c0a72c0: expected 0a000000, got 00000000"
+      ]
+     },
+     "new": {
+      "verdict": "PASS",
+      "stage": "compare",
+      "failing": 0,
+      "ids": {
+       "dev": [],
+       "hidden": []
+      },
+      "diff": []
+     },
+     "old_substantive_kill": false,
+     "lost": false
+    }
+   ]
+  }
+ },
+ "substantive_lost": []
+}

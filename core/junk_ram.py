@@ -23,6 +23,7 @@ Nearest existing: tools/junk_ram.py (the report-only proof tool of the junk roun
 and tools/xemu_check.py (xemu against expected.txt, a stamp-time cross-check) - neither is part of the judge; this
 module holds their shared parts (the junk image, the xemu runner's build and function config) once, for both.
 """
+import functools
 import hashlib
 import os
 import pathlib
@@ -36,9 +37,12 @@ IMAGE_LO = 0x10000      # tc_rt.c tcrt_init: the image goes to RAM offset 0x1000
 RAM_SIZE = 0x01000000   # TCRT_RAM_SIZE: the runner refuses a bigger image than RAM_SIZE - IMAGE_LO
 TARGET = "dreamcast_sh4"
 MODES = ("enforce", "report")
-XEMU_SRCS = ["xe_main.c", "xe_int.c", "xe_mac.c", "xe_fpu.c", "xe_ghmem.c"]
+XEMU_SRCS = ["xe_main.c", "xe_int.c", "xe_mac.c", "xe_fpu.c", "xe_ghmem.c", "xe_sq.c"]
 RUNTIME_SRCS = ["runner.c", "tc_rt.c", "tc_fpu.c", "tc_p4.c"]
 XEMU_FLAGS = ("/nologo", "/O1", "/fp:strict", "/W4", "/WX", "/TC")
+OUTPUT_CAP = 64 << 20   # the C's junk run: right C can write to the end of RAM where junk sends it, on several vectors the
+                        # original faults on (V8 8c070cc0: 8 MB each). Over the cap it stays a failure of every vector
+RERUNS = 4              # the C hung on a vector the junk oracle cannot judge: at most this many runs of the vectors after it
 _LOCK, _KEY_LOCKS, _ORACLES, _BODIES = threading.Lock(), {}, {}, {}
 
 
@@ -259,13 +263,23 @@ def oracle(cfg, addr, harness, meta, image, vecs, expected, frame_lo, strict):
         return res
 
 
-def verdicts(meta, image, vecs, ids, ojunk, cjunk, unfit_, frame_lo, strict):
+@functools.lru_cache(maxsize=2)
+def _padded(image):
+    return junk_image(image)
+
+
+def verdicts(meta, image, vecs, ids, ojunk, cjunk, unfit_, frame_lo, strict, hung=()):
     """The junk pass over ids: ({vid: diffs} of the judged vectors that differ, judged count, {why: count} not
     judged). The C's junk run runs every vector in one process, in vectors.txt order: from the first vector it has
-    no result for on (a hang or a crash), nothing more is judged, and that vector fails only if it is fit."""
+    no result for on (a hang or a crash), nothing more is judged, and that vector fails only if it is fit. hung:
+    unfit vectors the C hung on with the vectors after them run again (c_run), so they stop nothing.
+    The memory a vector starts from is the junk image (the plain image would start every unset byte at 0): a byte
+    neither run wrote ends as it began, so the original's write of the junk a byte already held (a store-queue send
+    sends the block's own bytes back) is no difference from a C that writes nothing there."""
     from .compare import compare_vector
+    image = _padded(bytes(image))
     order = list(vecs)
-    stop = next((k for k, v in enumerate(order) if not (cjunk.get(v) or {}).get("done")), len(order))
+    stop = next((k for k, v in enumerate(order) if v not in hung and not (cjunk.get(v) or {}).get("done")), len(order))
     pos = {v: k for k, v in enumerate(order)}
     fails, judged, skipped = {}, 0, {"xemu": 0, "fault": 0, "after_stop": 0}
     for vid in ids:
@@ -282,24 +296,54 @@ def verdicts(meta, image, vecs, ids, ojunk, cjunk, unfit_, frame_lo, strict):
     return fails, judged, skipped
 
 
+def vectors_after(text, vid):
+    """vectors.txt with only the vectors after vid, its lines before the first V (run-wide flags) kept."""
+    lines = text.splitlines(keepends=True)
+    starts = [k for k, ln in enumerate(lines) if ln.startswith("V ")]
+    after = next((k for k in starts if int(lines[k].split()[1]) > vid), len(lines))
+    return "".join(lines[:starts[0]] + lines[after:])
+
+
+def c_run(cfg, jcmd, jout, harness, order, unfit_):
+    """The C's junk run: (results, hung, run error or None). A hang on a vector the oracle cannot judge (the original
+    ran away there too, V8 8c070cc0) would leave every vector after it unjudged, so those run again. A hang on a fit
+    vector ends it: that vector fails (verdicts). The last run allowed stays the stop: the vectors after it never ran,
+    so they are left unjudged, not failed for having no result."""
+    from . import check
+    from .compare import parse_results
+    vectors = harness / "vectors.txt"
+    cjunk, hung, cmd, error = {}, set(), list(jcmd), None
+    for n in range(RERUNS + 1):
+        rc, log, reason = check.run_runner(cmd, cfg["check_timeout_s"], jout, max(OUTPUT_CAP, check.output_cap(harness)))
+        cjunk.update({v: r for v, r in parse_results(jout).items() if r.get("done")})
+        if reason or rc:
+            error = reason or f"exit {rc}: {log.strip()[-200:]}"
+        stop = next((v for v in order if v not in hung and v not in cjunk), None)
+        if stop is None or stop not in unfit_ or stop == order[-1] or n == RERUNS:
+            break
+        hung.add(stop)
+        rest = jout.with_name("vectors_rest.txt")
+        rest.write_text(vectors_after(vectors.read_text(encoding="utf-8"), stop), encoding="utf-8")
+        cmd = [str(rest) if c == str(vectors) else c for c in jcmd]
+    return cjunk, hung, error
+
+
 def judge(cfg, jmode, addr, meta, harness, cmd, out, vecs, exp, image, sets, frame_lo, strict, result):
     """The second pass of check.run_check (the module's doc), into result: "junk_ram" {mode, vectors judged,
     failing, failing ids, skipped}; enforce: the failures count in "failing" and "first_diffs"; report: they go to
     "strict_report"."""
     from . import check, strict_judge
-    from .compare import parse_results
     t0 = time.monotonic()
     ojunk, unfit_ = oracle(cfg, addr, harness, meta, image, vecs, exp, frame_lo, strict)
     jout = out.with_name("actual_junk.txt")
     jcmd = [cmd[0], str(image_file(cfg)), *cmd[2:-1], str(jout)]
-    rc, log, reason = check.run_runner(jcmd, cfg["check_timeout_s"], jout, check.output_cap(harness))
-    cjunk = parse_results(jout)
+    cjunk, hung, error = c_run(cfg, jcmd, jout, harness, list(vecs), unfit_)
     jr = {"mode": jmode, "vectors": 0, "failing": 0, "failing_ids": [], "skipped": {}}
-    if reason or rc:
-        jr["run_error"] = reason or f"exit {rc}: {log.strip()[-200:]}"
+    if error:
+        jr["run_error"] = error
     for s in sets:
         ids = [i for i, v in vecs.items() if v["set"] == s]
-        fails, judged, skipped = verdicts(meta, image, vecs, ids, ojunk, cjunk, unfit_, frame_lo, strict)
+        fails, judged, skipped = verdicts(meta, image, vecs, ids, ojunk, cjunk, unfit_, frame_lo, strict, hung)
         jr["vectors"] += judged
         for k, n in skipped.items():
             jr["skipped"][k] = jr["skipped"].get(k, 0) + n

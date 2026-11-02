@@ -29,9 +29,11 @@ RAW_API = ("rd8", "rd16", "rd32", "rdf32", "wr8", "wr16", "wr32", "wrf32", "tc_c
            "RdProto", "rd_protos", "rd_nprotos")
 
 
-def readable_lint(src, name, proto, named=None, mirror=None):
+def readable_lint(src, name, proto, named=None, mirror=None, strict_mirror=False):
     """named(v): the core/raw_consts.resolve answer for a canonical address (int), else None; mirror: target.json
-    address_mirrors. Both given: RR3 also refuses a mirror-form number that names a symbol."""
+    address_mirrors. Both given: RR3 also refuses a mirror-form number that names a symbol. strict_mirror (config
+    readable_strict_mirror): and one whose canonical address is guest RAM even when nothing is named there (a port
+    cannot dereference it; the function needs a registry global first)."""
     code = lint.strip_comments(src)
     errors = []
     includes = [ln.strip() for ln in code.splitlines() if ln.strip().startswith("#")]
@@ -53,6 +55,10 @@ def readable_lint(src, name, proto, named=None, mirror=None):
             res = named(fold(v, mirror))
             if res:
                 errors.append(f"RR3: 0x{v:08x} is the mirror form of 0x{fold(v, mirror):08x}, {describe(res)}")
+            elif strict_mirror and RAM[0] <= fold(v, mirror) < RAM[1]:
+                errors.append(f"RR3: 0x{v:08x} is the mirror form of guest address 0x{fold(v, mirror):08x}, which has "
+                              f"no registry name; name it first (a number there is not host memory in the port). "
+                              f"A function the project has prepared is `fn_{fold(v, mirror):08x}` as a pointer")
     return sorted(set(errors))
 
 

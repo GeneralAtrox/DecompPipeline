@@ -21,6 +21,7 @@ from __future__ import annotations
 import re
 from collections import Counter
 
+from . import expr as X
 LABEL = re.compile(r"^(L_\w+):;$")
 GOTO = re.compile(r"^goto (L_\w+);$")
 IFGOTO = re.compile(r"^if \((.+)\) goto (L_\w+);$")
@@ -78,8 +79,9 @@ def wrapped(c):
 
 
 def neg(c):
-    """The negation of condition c (an integer comparison turns around: they never involve NaN here)."""
+    """The negation of condition c (an integer comparison turns around; a float one does not: it is false for a NaN)."""
     c = c.strip()
+    if c in X.FLOAT_CMP: return f"!({c})"  # noqa: E701
     if IDENT.match(c):
         return c[1:] if c.startswith("!") else "!" + c
     if c.startswith("!") and wrapped(c[1:]):

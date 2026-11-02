@@ -1,0 +1,54 @@
+words compared: 3683202   reference '??': 484
+ours illegal where reference decodes: 0  {}
+
+reference ids mapping to more than one of our ops (minority = suspect):
+  [id=575: {'addic.': 7510, 'addic': 9}
+      addic: 82A750EC 314AFFFF ref: 82A750EC  314AFFFF  addic      r10,r10,-1   [id=575 ops=A,A,FFFFFFFF,0,0,]   ours: addic r10,r10,-0x1
+
+our ops shown under more than one reference mnemonic (aliases; review):
+  add: {'add': 48370, 'add.': 1087}
+  addi: {'addi': 406941, 'li': 212823}
+  addis: {'lis': 193434, 'addis': 614}
+  addze: {'addze': 960, 'addze.': 30}
+  and: {'and': 2703, 'and.': 454}
+  andc: {'andc': 895, 'andc.': 15}
+  b: {'bl': 230541, 'b': 83796}
+  bc: {'beq': 104897, 'bne': 69119, 'blt': 23658, 'ble': 16625, 'bge': 13578, 'bgt': 5931, 'bdnz': 1266, 'bso': 14, 'bdnzf': 6, 'bdnz+': 5, 'beq-': 4, 'bne-': 3, 'bdz-': 2, 'bns': 2, 'beq+': 1, 'bge+': 1, 'bge-': 1}
+  bcctr: {'bctrl': 27278, 'bctr': 1454, 'bnectr': 1}
+  bclr: {'blr': 67391, 'beqlr': 794, 'bnelr': 361, 'blelr': 170, 'bgelr': 93, 'bltlr': 76, 'bgtlr': 42, 'beqlr+': 3, 'bdzlr-': 2, 'beqlr-': 1, 'blrl': 1, 'bsolr': 1}
+  cmp: {'cmpw': 12983, 'cmpd': 134}
+  cmpi: {'cmpwi': 65300, 'cmpdi': 141}
+  cmpl: {'cmplw': 32828, 'cmpld': 521}
+  cmpli: {'cmplwi': 73293, 'cmpldi': 464}
+  divw: {'divw': 873, 'divw.': 33}
+  divwu: {'divwu': 529, 'divwu.': 36}
+  extsb: {'extsb': 1628, 'extsb.': 151}
+  extsh: {'extsh': 3737, 'extsh.': 57}
+  extsw: {'extsw': 2314, 'extsw.': 3}
+  mtspr: {'mtlr': 58127, 'mtctr': 30023, 'mtxer': 1}
+  mullw: {'mullw': 3896, 'mullw.': 41}
+  neg: {'neg': 750, 'neg.': 3}
+  nor: {'not': 546, 'nor': 68, 'not.': 1}
+  or: {'mr': 298518, 'mr.': 7420, 'or': 4585, 'db16cyc': 12, 'or.': 8}
+  ori: {'ori': 16303, 'nop': 258}
+  rldicl: {'clrldi': 3558, 'rldicl': 651, 'rotldi': 25}
+  rlwinm: {'rlwinm': 50181, 'clrlwi.': 13008, 'clrlwi': 10514, 'rlwinm.': 8089, 'rotlwi': 6796, 'rotlwi.': 19}
+  slw: {'slw': 2818, 'slw.': 8}
+  sraw: {'sraw': 172, 'sraw.': 19}
+  srawi: {'srawi': 6916, 'srawi.': 206}
+  srw: {'srw': 1110, 'srw.': 15}
+  subf: {'subf': 17118, 'subf.': 2012}
+  subfc: {'subfc': 122, 'subfc.': 2}
+  tdi: {'tdllei': 29, 'tdlgei': 20}
+  twi: {'twi': 1964, 'twllei': 617, 'twlgei': 214}
+  vcmpeqfp: {'vcmpeqfp': 45, 'vcmpeqfp.': 5}
+  vcmpeqfp128: {'vcmpeqfp128': 18, 'vcmpeqfp128.': 2}
+  vcmpequh: {'vcmpequh': 16, 'vcmpequh.': 8}
+  vcmpgefp: {'vcmpgefp': 33, 'vcmpgefp.': 1}
+  vcmpgtfp: {'vcmpgtfp': 84, 'vcmpgtfp.': 33}
+  vcmpgtfp128: {'vcmpgtfp128.': 20, 'vcmpgtfp128': 5}
+  vcmpgtsh: {'vcmpgtsh': 62, 'vcmpgtsh.': 24}
+  vcmpgtuh: {'vcmpgtuh': 100, 'vcmpgtuh.': 39}
+  xor: {'xor': 1319, 'xor.': 7}
+
+operand disagreements (reference operand value not among ours):

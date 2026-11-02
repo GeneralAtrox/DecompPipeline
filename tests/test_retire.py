@@ -4,12 +4,16 @@ redo status (core/refine.py). Synthetic workspaces in a temp folder; no Ghidra, 
 usage: python tests/test_retire.py   (python tests/test_tooling.py runs these too)
 """
 import atexit
+import contextlib
+import io
 import json
 import os
 import pathlib
 import sys
 import tempfile
+import time
 import unittest
+from types import SimpleNamespace
 from unittest import mock
 
 TOOL = pathlib.Path(__file__).resolve().parents[1]
@@ -24,7 +28,7 @@ for p in (str(TOOL / "tools"), str(TOOL)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from core import doctor, paths, refine  # noqa: E402
+from core import doctor, fn_claim, paths, refine, usage  # noqa: E402
 from core import retire as core_retire  # noqa: E402
 import retire as retire_tool  # noqa: E402  (tools/retire.py)
 
@@ -163,6 +167,9 @@ class Doctor(unittest.TestCase):
         self.assertTrue(ok, lines)
         self.assertEqual((facts["readable_files"], facts["matched"]), (1, 2))
         self.assertTrue(any("denominator: 2 matched functions" in x for x in lines))
+        self.assertTrue(any("note: no " in x and "LOCATIONS.md" in x for x in lines), lines)  # a warning: ok stays True
+        (ws / "LOCATIONS.md").write_text("x", encoding="utf-8")
+        self.assertFalse(any("LOCATIONS.md" in x for x in doctor.check(ws)[1]))
 
     def test_matched_without_c_or_meta(self):
         ws = make_ws("doc2")
@@ -210,7 +217,7 @@ class RedoStatus(unittest.TestCase):
                         mock.patch.object(refine.rcheck, "check_readable", fail_check)]
         for p in self.patches:
             p.start()
-        self.cfg = {"model": "m", "effort": None, "readable_effort": None}
+        self.cfg = {"readable_model": "m", "effort": None, "readable_effort": None}
 
     def tearDown(self):
         for p in reversed(self.patches):
@@ -243,6 +250,64 @@ class RedoStatus(unittest.TestCase):
         with mock.patch.object(refine.agent, "run_attempt", lambda *a: {"api_error": "overloaded"}):
             _, row = self.run_redo("stale")
         self.assertEqual((row["status"], row["redo_failed"]["outcome"]), ("stale", "api_error"))
+
+    def test_api_error_never_counts_as_the_agents_pass(self):
+        """V8: a plan-limited session left the machine draft in work.c, the draft passed, and the row said agent."""
+        failed = {"api_error": "rate_limit", "cost_usd": 0}
+        judged = []
+        def passes(*a, **k):
+            judged.append(a)
+            return {"verdict": "PASS", "stage": "compare"}
+        with mock.patch.object(refine.agent, "run_attempt", lambda *a: dict(failed)), \
+                mock.patch.object(refine.rcheck, "check_readable", passes):
+            out, row = self.run_redo("queued", with_file=False)
+            self.assertEqual((out, row["status"]), ("queued", "queued"))
+            self.assertNotIn("readable_by", row)
+            self.assertFalse((self.d / "src" / f"{A}.c").exists())
+            self.assertEqual(row["attempts"][-1]["verdict"], "NOT_JUDGED")
+            refine.update(A, readable_by="machine")
+            out, row = self.run_redo("readable")  # a redo keeps the row and the file it had
+            self.assertEqual((row["status"], row["readable_by"]), ("readable", "machine"), out)
+            self.assertEqual(row["redo_failed"]["outcome"], "api_error")
+            self.assertEqual((self.d / "src" / f"{A}.c").read_text(), "/* old pass */")
+        self.assertEqual(judged, [])
+
+    def run_batch(self, attempt, todo=(A, B, SDK)):
+        """refine.py run's batch, one worker, on these functions; (sessions started, exit code, the run's output)."""
+        sessions = []
+        def run_attempt(*a):
+            sessions.append(a)
+            return attempt()
+        def run_one(cfg, addr, attempts, log, **k):
+            return refine.refine(self.cfg, addr, max_attempts=attempts, log=log)
+        args = SimpleNamespace(attempts=1, redo=False, since=None, model=None, effort=None, draft="off", workers=1)
+        code, out = 0, io.StringIO()
+        with mock.patch.object(refine.agent, "run_attempt", run_attempt), mock.patch.object(fn_claim, "run_one", run_one), \
+                mock.patch.object(fn_claim.build_prune, "maybe_sweep", lambda *a, **k: None), \
+                mock.patch.object(usage, "USAGE", self.d / "usage.json"), contextlib.redirect_stdout(out):
+            try:
+                fn_claim.run_all(args, self.cfg, list(todo))
+            except SystemExit as e:
+                code = e.code
+        return len(sessions), code, out.getvalue()
+
+    def test_plan_limit_stops_the_batch(self):
+        info = {"status": "rejected", "resetsAt": time.time() + 3600, "rateLimitType": "five_hour"}
+        n, code, out = self.run_batch(lambda: {"api_error": "rate_limit", "rate_limit_info": info})
+        self.assertEqual((n, code), (1, fn_claim.LIMIT_EXIT), out)  # 268 sessions on V8
+        self.assertIn("2 function(s) not started", out)
+        led = refine.load_ledger()
+        self.assertEqual(led[A]["status"], "queued")
+        self.assertEqual([x for x in (B, SDK) if x in led], [])  # rows untouched
+        n, code, _ = self.run_batch(lambda: self.fail("no session while the limit holds"))  # a later run, same limit
+        self.assertEqual((n, code), (0, fn_claim.LIMIT_EXIT))
+
+    def test_other_api_errors_and_a_past_reset_do_not_stop_it(self):
+        n, code, _ = self.run_batch(lambda: {"api_error": "rate_limit"})  # a passing 429 or 529
+        self.assertEqual((n, code), (3, 0))
+        info = {"status": "rejected", "resetsAt": time.time() - 60}
+        n, code, _ = self.run_batch(lambda: {"api_error": "rate_limit", "rate_limit_info": info}, todo=(A, B))
+        self.assertEqual((n, code), (2, 0))
 
     def test_pass_replaces(self):
         with mock.patch.object(refine.rcheck, "check_readable", lambda *a, **k: {"verdict": "PASS", "stage": "compare"}):

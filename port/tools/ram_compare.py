@@ -87,6 +87,9 @@ def compare(ref_ram, port_ram, at=None, ignore=None, names=(), drive=None, span=
         before = words
     print(f"{paired} port frames paired with the reference{' (stopped there)' if first else ''}; "
           f"{len(noise or ())} words left out as always different in the first {ignore or 0}")
+    if paired <= (ignore or 0):  # nothing was compared: no verdict, not a pass
+        print(f"NOTHING COMPARED: {paired} paired frames, the first {ignore or 0} only set the words left out")
+        return 2
     if first is None:
         print("no RAM difference" if at is None else f"port frame {at} not paired")
         return 0

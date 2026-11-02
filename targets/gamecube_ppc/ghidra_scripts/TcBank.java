@@ -6,6 +6,12 @@
 //  - the step's last store {address, size} (TcFixups: stfs), all its stores (TcTrack: float stores), and every byte
 //    stored once `track` is set (after the vector's patches are in): the run's writes, compared by the checker.
 // The emulator's instruction fetches go through the bank too; reads starting in [pc, pc + 16) are taken as fetches.
+// A store into a hardware register (facts mmio: the GX FIFO at 0xcc008000, the video and DMA registers) is not
+// memory: it is logged in order (io: {address, size, value, 0}) and goes no further, so nothing reads it back. A read
+// of one takes the vector's next scripted word (hw, vectors.txt H: a device's answer is an input) and is logged in the
+// same list ({address, size, value, 1}): the order of reads and writes is part of the result. Without hw it faults, as
+// it always did. The same step storing the same address and size again replaces that entry (TcFixups: stfs rewrites
+// the stored word).
 import ghidra.pcode.memstate.MemoryBank;
 import ghidra.pcode.memstate.MemoryPage;
 import ghidra.program.model.address.AddressSet;
@@ -20,6 +26,12 @@ public class TcBank extends MemoryBank {
     final List<long[]> stores = new ArrayList<>(); // this step's stores {address, size}
     long codeRead = -1;                            // the first data read of an instruction byte (R8), or -1
     boolean track;                                 // record stores in written
+    static final int IO_LIMIT = 4096;              // tc_rt.c's MAX_IO must equal it
+    final List<long[]> io = new ArrayList<>();     // stores into hardware registers, in order {address, size, value}
+    boolean ioOverflow;                            // more than IO_LIMIT of them
+    int ioStep = -1;                               // the io index of this step's last entry, or -1
+    long[] hw;                                     // the vector's scripted hardware words (16, then round again), or null
+    int hwNext;                                    // reads of them so far
     final AddressSet written = new AddressSet();
 
     TcBank(MemoryBank in, TcFacts facts) {
@@ -33,6 +45,7 @@ public class TcBank extends MemoryBank {
         reads.clear();
         stored = null;
         stores.clear();
+        ioStep = -1;
     }
 
     @Override
@@ -40,6 +53,16 @@ public class TcBank extends MemoryBank {
         long f = TcBase.fold(offset);
         stored = new long[] {f, size};
         stores.add(stored);
+        if (track && size > 0 && size <= 8 && facts.isMmio(f)) {
+            long v = 0;
+            for (int i = 0; i < size; i++) v = v << 8 | (val[i] & 0xffL);
+            if (ioStep >= 0 && io.get(ioStep)[0] == f && io.get(ioStep)[1] == size) io.get(ioStep)[2] = v;
+            else if (io.size() < IO_LIMIT) {
+                io.add(new long[] {f, size, v, 0});
+                ioStep = io.size() - 1;
+            } else ioOverflow = true;
+            return;
+        }
         if (track && size > 0) written.add(getSpace().getAddress(f), getSpace().getAddress(f + size - 1));
         in.setChunk(f, size, val);
     }
@@ -52,6 +75,15 @@ public class TcBank extends MemoryBank {
     @Override
     public int getChunk(long offset, int size, byte[] res, boolean stopOnUninitialized) {
         long f = TcBase.fold(offset);
+        if (track && hw != null && pc >= 0 && size > 0 && size <= 8 && facts.isMmio(f)) {
+            long w = hw[hwNext++ & 15] & 0xffffffffL;
+            long v = size == 8 ? w << 32 | w : size == 4 ? w : w & ((1L << (8 * size)) - 1);
+            for (int i = 0; i < size; i++) res[i] = (byte) (v >>> (8 * (size - 1 - i)));
+            if (io.size() < IO_LIMIT) io.add(new long[] {f, size, v, 1});
+            else ioOverflow = true;
+            reads.add(new long[] {pc, f, size, v});
+            return size;
+        }
         int got = in.getChunk(f, size, res, stopOnUninitialized);
         boolean fetch = pc < 0 || (f >= pc && f < pc + 16);
         if (!fetch) {

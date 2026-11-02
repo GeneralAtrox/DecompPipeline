@@ -1,7 +1,7 @@
 # tools/sizes.py: the files over the 400-line cap and their line counts. A file may only leave this list or
 # shrink (tests/test_sizes.py); after a split run  python tools/sizes.py --ratchet
  3171  targets/dreamcast_sh4/translator/sh4translate/translate.py
- 1522  targets/saturn_sh2/translator/sh2translate/translate.py
+ 1496  targets/saturn_sh2/translator/sh2translate/translate.py
  1498  targets/gamecube_ppc/translator/ppctranslate/translate.py
  1363  targets/xbox360_ppc/translator/xenontranslate/translate.py
  1244  targets/dreamcast_sh4/translator/sh4translate/cfgstruct.py
@@ -25,7 +25,7 @@
   649  targets/gamecube_ppc/tools/rvz.py
   635  tests/test_lockstep.py
   621  docs/PROOF_GATES.md
-  621  targets/xbox360_ppc/translator/xenontranslate/expr.py
+  624  targets/xbox360_ppc/translator/xenontranslate/expr.py
   614  tests/test_batch32.py
   606  tools/wave.py
   599  core/rtx/fields.py
@@ -34,7 +34,7 @@
   582  targets/xbox360_ppc/translator/xenontranslate/decode.py
   580  core/ghidra.py
   578  core/readable_check.py
-  567  core/ghidra_broker.py
+  555  core/ghidra_broker.py
   553  core/agent.py
   539  targets/saturn_sh2/runtime/tc_rt.c
   531  docs/WASTE_AUDIT_2026-10-22.md
@@ -44,7 +44,7 @@
   511  targets/dreamcast_sh4/translator/sh4translate/structure.py
   507  targets/dreamcast_sh4/translator/sh4translate/simplify.py
   506  targets/saturn_sh2/translator/sh2translate/structure.py
-  506  targets/xbox360_ppc/translator/xenontranslate/structure.py
+  508  targets/xbox360_ppc/translator/xenontranslate/structure.py
   501  targets/saturn_sh2/translator/sh2translate/simplify.py
   492  core/sz_entry.py
   474  core/compare.py
@@ -53,7 +53,7 @@
   457  core/job.py
   438  core/check.py
   436  targets/dreamcast_sh4/runtime_rd/rd_veh.c
-  430  tools/scorecard.py
+  409  tools/scorecard.py
   428  targets/dreamcast_sh4/runtime_rd/rd_sh4.c
   422  tests/test_track.py
   418  tests/test_overlays.py

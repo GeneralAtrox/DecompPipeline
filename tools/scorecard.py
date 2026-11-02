@@ -1,4 +1,4 @@
-"""How far each console is from DecompPipeline's definition of done (docs/DEFINITION_OF_DONE.md): five gates per
+"""How far each console is from DecompPipeline's definition of done (docs/DEFINITION_OF_DONE.md): six gates per
 console, each green, amber or red, with every check's number, its target and its source, and the missing pieces named.
 
 usage: python tools/bounded.py 600 python tools/scorecard.py [--console KEY ...] [--projects-dir DIR]
@@ -18,39 +18,17 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))  # also under python -I
 import scorecard_data as sd  # noqa: E402
+import scorecard_runtime as sr  # noqa: E402
+from scorecard_data import at_least, at_most, check, unmeasured  # noqa: E402,F401  (the checks every gate builds)
 
 TOOL = sd.TOOL
 SPEC = TOOL / "tools" / "scorecard" / "spec.json"
-GATES = ["1 Full toolset", "2 Disc to working game, hands-off", "3 No waste", "4 Trust", "5 Scale (Too Human)"]
-
-
-def check(name, status, value=None, target=None, source=None, missing=None):
-    return {"name": name, "status": status, "value": value, "target": target, "source": source, "missing": missing}
-
-
-def unmeasured(name, missing, target=None):
-    return check(name, "unmeasured", target=target, missing=missing)
-
-
-def at_most(name, value, target, source, unit=""):
-    """A cost-like number: pass at or under target, partial up to twice it, fail beyond."""
-    if value is None:
-        return unmeasured(name, source, f"<= {target}{unit}")
-    st = "pass" if value <= target else "partial" if value <= 2 * target else "fail"
-    return check(name, st, round(value, 4), f"<= {target}{unit}", source)
-
-
-def at_least(name, value, target, source, unit="%"):
-    """A share-like number: pass at or over target, partial from 90% of it, fail below."""
-    if value is None:
-        return unmeasured(name, source, f">= {target}{unit}")
-    st = "pass" if value >= target else "partial" if value >= 0.9 * target else "fail"
-    return check(name, st, round(value, 1), f">= {target}{unit}", source)
+GATES = ["1 Full toolset", "2 Disc to working game, hands-off", "3 No waste", "4 Trust", "5 Scale (Too Human)", "6 Runtime (144 fps)"]
 
 
 def gate_status(checks):
     sts = {c["status"] for c in checks} - {"info"}
-    return "red" if "fail" in sts else "green" if sts <= {"pass"} else "amber"
+    return "red" if "fail" in sts else "green" if sts == {"pass"} else "amber"  # nothing measured is never green
 
 
 def probe(src, item, fmt):
@@ -355,7 +333,8 @@ def scorecard(spec, src, projects_dir, keys=None, waste=None, scope=True):
         gates = [gate_toolset(src, spec, con, projects_dir), gate_handsoff(games, spec["thresholds"]),
                  gate_waste(r, spec["thresholds"], audits[0] if audits else None),
                  gate_trust(src, spec, con, key, games, mut),
-                 gate_scale(spec, r, n_src, par, ref if ref[1]["matched"] else None)]
+                 gate_scale(spec, r, n_src, par, ref if ref[1]["matched"] else None),
+                 sr.gate_runtime(spec, con, projects_dir, TOOL)]
         out[key] = {"name": con["name"], "target": con["target"], "workspaces": len(wss), "notes": notes,
                     "games": [{k: g[k] for k in ("name", "root", "scope", "matched", "verified", "pct")}
                               for g in games],

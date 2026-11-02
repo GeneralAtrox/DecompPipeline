@@ -18,11 +18,14 @@ TIMEOUT = 600  # a setup copies the whole image
 
 
 def run(exe, *args, timeout=TIMEOUT):
+    p = subprocess.Popen([str(exe), *map(str, args)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
-        p = subprocess.run([str(exe), *map(str, args)], capture_output=True, text=True, timeout=timeout)
-        return p.returncode, p.stdout, p.stderr
+        out, err = p.communicate(timeout=timeout)
+        return p.returncode, out, err
     except subprocess.TimeoutExpired:
-        subprocess.run(["taskkill", "/IM", pathlib.Path(exe).name, "/T", "/F"], capture_output=True)
+        # only this run's process and its children: never by image name, which would also kill a port.exe the user has open
+        subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"], capture_output=True, timeout=60)
+        p.communicate()
         return None, "", "timed out"
 
 

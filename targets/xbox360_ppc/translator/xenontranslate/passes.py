@@ -591,31 +591,6 @@ def children(e):
     return []
 
 
-# ------------------------------------------------------------------------------------------------------ calls
-def choose_calls(fn, notes, returns=None):
-    """tc_call (r3) or tc_callf (f1) for each call: the callee's known result register (DP's meta, or the
-    executable-wide returns.analyse), else whichever is read after it, r3 when both are."""
-    live_in = liveness(fn)
-    for b in fn.blocks:
-        live = live_out(fn, live_in, b)
-        for s in reversed(b.stmts):
-            if isinstance(s, CallS) and s.kind is None:
-                r, f = "r3" in live, "f1" in live
-                known = (returns or {}).get(s.target.v & 0xFFFFFFFF) if isinstance(s.target, Const) else None
-                if known in ("r", "f"):
-                    s.kind = known
-                    s.note = None if (r if known == "r" else f) else "dead"
-                    live -= s.writes()
-                    live |= s.reads()
-                    continue
-                if r and f:
-                    notes.append(f"call at {s.addr:08x}: both r3 and f1 are read after it; only r3 is the result")
-                s.kind = "f" if f and not r else "r"
-                s.note = "dead" if not (r or f) else None
-            live -= s.writes()
-            live |= s.reads()
-
-
 # ------------------------------------------------------------------------------------------------ substitution
 def count_uses(fn):
     n = defaultdict(int)
@@ -720,7 +695,7 @@ def substitute(fn, max_size=40):
 
 
 # ---------------------------------------------------------------------------------------------------- driver
-def optimise(fn, entry_vals, notes, returns=None, rounds=30):
+def optimise(fn, entry_vals, notes, returns=None, rounds=30, port=False):
     for _ in range(rounds):
         changed = False
         track = not stack_escapes(fn)
@@ -732,7 +707,7 @@ def optimise(fn, entry_vals, notes, returns=None, rounds=30):
         changed |= stack_dce(fn)
         if not changed:
             break
-    choose_calls(fn, notes, returns)
+    from .other_result import choose_calls; choose_calls(fn, notes, returns, port)  # noqa: E702  (in its own file: the 400-line cap)
     dce(fn)
     for _ in range(rounds):
         if not substitute(fn):

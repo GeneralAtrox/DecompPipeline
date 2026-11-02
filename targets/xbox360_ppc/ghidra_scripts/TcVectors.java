@@ -4,8 +4,9 @@
 //
 // vectors.txt, per vector: V id set, R r3..r10, F f1..f13, C the 16 scripted r3 results, D the 16 scripted f1
 // results (all 64-bit hex), M addr bytes (patches, big endian), E.
-// expected.txt: V, RET r3 f1 (64-bit), W writes (outside the stack region), CALL records (TcOracle.callRecord),
-// COV blocks, E.
+// expected.txt: V, RET r3 f1 (64-bit), W writes (outside the stack region), CALL records (TcOracle.callRecord; a CA
+// line after one through a function pointer: TcTrack), FN (the words a float store left a NaN in: TcTrack), COV
+// blocks, E.
 // Deadline (TcFacts.oracleDeadlineS): generation stops before Ghidra's timeout; TcPrepare then refuses the function.
 //
 // Two checks on the finished set, both from more oracle runs of the valid vectors (the vectors stay as they are):
@@ -23,6 +24,11 @@ import java.util.*;
 public abstract class TcVectors extends TcOracle {
     static final int MAX_REPAIRS = 12;
     static final int PROBE_VECTORS = 6;
+    static final int RESCUE_AFTER = 64;    // tries of a set without a valid vector before the inputs change (genRescue)
+    static final int GIVE_UP_AFTER = 160;  // and before the set is given up: no vector is valid for inputs of either kind
+    static final int VMX_TRIES = 3;        // a function with vector words may try this many times the usual tries (8 per vector
+    //                                        wanted) while the first half of the oracle deadline lasts: few of its inputs are valid
+    static final int PATCH_LINE = 0x2000;  // bytes per M line (runner.c: 64 KB lines, 32 KB patch buffer)
 
     StringBuilder vout = new StringBuilder(), eout = new StringBuilder();
     Map<String, Integer> invalid = new TreeMap<>();
@@ -45,19 +51,26 @@ public abstract class TcVectors extends TcOracle {
         for (long site : callSites()) siteHits.put(site, 0);
         for (Instruction in : listing.getInstructions(body, true)) {
             if (TcClass.classify(TcFixups.word(in)).contains("fma")) hasFma = true;
+            if (TcBase.vmxOpAt(prog(), in.getAddress()) != null) genVmx = true;
         }
-        long deadline = facts.oracleDeadlineS <= 0 ? 0
-            : ManagementFactory.getRuntimeMXBean().getStartTime() + facts.oracleDeadlineS * 1000;
+        long start = ManagementFactory.getRuntimeMXBean().getStartTime();
+        long deadline = facts.oracleDeadlineS <= 0 ? 0 : start + facts.oracleDeadlineS * 1000;
+        long half = facts.oracleDeadlineS <= 0 ? 0 : start + facts.oracleDeadlineS * 500;
         vectors:
         for (int s = 0; s < 2; s++) {
             rnd = new Random(seed * 31 + s * 0x5bd1e995L);
-            while (valid[s] < want[s] && tried[s] < want[s] * 8) {
+            if (s == 1 && valid[0] == 0) break;  // no dev vector was valid: the function gets no harness, no hidden pass
+            int usual = want[s] * 8;
+            while (valid[s] < want[s] && tried[s] < (genVmx ? usual * VMX_TRIES : usual)) {
                 if (deadline > 0 && System.currentTimeMillis() > deadline) {
                     outOfTime = true;
                     break vectors;
                 }
+                if (tried[s] >= usual && half > 0 && System.currentTimeMillis() > half) break;  // the extra tries are for the first half
                 tried[s]++;
+                if (valid[s] == 0 && tried[s] > GIVE_UP_AFTER) break;
                 Vec v = makeVec(id % 4, proto, new ArrayList<>(globals));
+                if (valid[s] == 0 && tried[s] > RESCUE_AFTER) genRescue(v, proto, tried[s]);
                 applyHints(v, hints);
                 int repairs = 0;
                 Result r = runOracle(v);
@@ -74,6 +87,7 @@ public abstract class TcVectors extends TcOracle {
                     r.ok = false;
                     r.reason = "input patches memory outside RAM";
                 }
+                budget.note(r.ok, r.stepLimited, r.steps);
                 if (!r.ok) {
                     invalid.merge(r.reason.replaceAll("[0-9a-f]{8}", "X").replaceAll("ram:\\w+", "X"), 1, Integer::sum);
                     if (examples.size() < 6) examples.add(describeFailure(r, repairs));
@@ -97,6 +111,7 @@ public abstract class TcVectors extends TcOracle {
                 id++;
             }
         }
+        budget = new TcRun.StepBudget(STEP_LIMIT);  // the checks on the finished set (probeWidths) run in full
     }
 
     // The vector run in the other multiply-add mode: do the results differ?
@@ -159,21 +174,26 @@ public abstract class TcVectors extends TcOracle {
         vout.append("\nD");
         for (long x : v.frets) vout.append(' ').append(hex64(x));
         vout.append('\n');
-        for (int i = 0; i < v.patchAddr.size(); i++) {
-            vout.append("M ").append(hex(v.patchAddr.get(i))).append(' ').append(bytesHex(v.patchData.get(i))).append('\n');
+        for (int i = 0; i < v.patchAddr.size(); i++) {  // runner.c reads lines of 64 KB: at most PATCH_LINE bytes each
+            byte[] d = v.patchData.get(i);
+            for (int o = 0; o < d.length; o += PATCH_LINE) {
+                vout.append("M ").append(hex(v.patchAddr.get(i) + o)).append(' ')
+                    .append(bytesHex(Arrays.copyOfRange(d, o, Math.min(d.length, o + PATCH_LINE)))).append('\n');
+            }
         }
         vout.append("E\n");
         eout.append("V ").append(id).append(' ').append(set).append('\n');
         eout.append("RET ").append(hex64(r.r3)).append(' ').append(hex64(r.f1)).append('\n');
         for (String w : r.writes) eout.append("W ").append(w).append('\n');
         for (String c : r.calls) eout.append("CALL ").append(c).append('\n');
+        eout.append(TcTrack.exit(r.tr));
         eout.append("COV");
         for (int c : r.cov) eout.append(' ').append(c);
         eout.append("\nE\n");
     }
 
     // The call sites: call instructions to code outside the body (helper families excepted), and branches to another
-    // function's entry (tail calls).
+    // function's entry or the other tail calls (TcRun.tailJump).
     List<Long> callSites() {
         List<Long> out = new ArrayList<>();
         for (Instruction in : listing.getInstructions(body, true)) {
@@ -181,10 +201,11 @@ public abstract class TcVectors extends TcOracle {
             for (Reference r : in.getReferencesFrom()) {
                 if (!r.getReferenceType().isFlow()) continue;
                 Address to = r.getToAddress();
-                if (body.contains(to) || inline.contains(to)) continue;
-                if (r.getReferenceType().isCall() || fm.getFunctionAt(to) != null) site = true;
+                if (body.contains(to) && !selfCall(r) || inline.contains(to)) continue;
+                if (r.getReferenceType().isCall() || fm.getFunctionAt(to) != null || tailJump(in, to)) site = true;
             }
             if (in.getFlowType().isCall() && in.getFlowType().isComputed()) site = true;
+            if (in.getFlowType().isComputed() && tailJump(in, null)) site = true;
             if (site) out.add(in.getAddress().getOffset());
         }
         return out;

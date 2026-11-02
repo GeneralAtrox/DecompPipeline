@@ -4,10 +4,18 @@
 //
 // Entry state: r3..r10 and f1..f13 from the vector (64 bits each), r1 = SP, LR = SENTINEL, the project's fixed
 // registers (r13: TcFacts.fixed). The run ends when the PC reaches SENTINEL. Leaving the body is a call when a call
-// instruction (bl, bctrl, blrl) did it or the PC is another function's entry (a tail branch): the callee is not run;
+// instruction (bl, bctrl, blrl) did it, the PC is another function's entry (a tail branch) or the jump is a tail call
+// by TcRun.tailJump, and so is a call instruction's jump to the function's own entry (a self-call, TcBase.selfCall):
+// the callee is not run;
 // its record (target, r3..r10, f1..f13, the doublewords at r1+0x50+8N; x360_compare.py) is logged, r3 and f1 get the
-// vector's scripted results, and execution continues at LR. The register save/restore helper families
-// (TcBase.isHelper) run inline: they only move registers to and from the frame, and the C code never calls them.
+// vector's scripted results, the other volatile registers the callee may write are zeroed (clobber), and execution
+// continues at LR. The register save/restore helper families (TcBase.isHelper) run inline: they only move registers
+// to and from the frame, and the C code never calls them.
+//
+// Vector instructions (VMX, VMX128): TcSetup replaced each by a stand-in Ghidra decodes (TcBase.VMX_MAP keeps the
+// original word); the oracle runs the original in TcVmx instead of stepping the stand-in: the vector registers start
+// at zero, a compare with Rc sets cr6, loads and stores go through the same memory bank (faults, R8, the written
+// bytes). Mocked calls leave the vector registers alone (the C does too).
 //
 // Memory: the four regions (TcBase.mapped). Reads of the heap, stack and kernel regions start as zero; any access
 // outside the regions faults, and so does a data read of an instruction byte (rule R8), as in the C runner.
@@ -34,6 +42,8 @@ public abstract class TcOracle extends TcInputs {
         List<long[]> loads = new ArrayList<>(); // the last LOAD_LOG data reads {pc, address, size, value}
         long outside = -1;
         boolean stepLimited;
+        int steps;                        // of a run that reached the sentinel
+        TcTrack.Run tr;                   // pointer-call arguments, float NaN words (TcTrack)
 
         // What the checker compares: equal results give equal expected.txt lines.
         String observable() {
@@ -49,6 +59,7 @@ public abstract class TcOracle extends TcInputs {
     AddressSet inline = new AddressSet();  // the save/restore helpers' bodies (run inline)
     TcFixups fix = new TcFixups();
     String refused = null;                 // TcFixups.refuse of an instruction a run executed
+    TcRun.StepBudget budget = new TcRun.StepBudget(STEP_LIMIT);
 
     BigInteger u64(long v) {
         return new BigInteger(Long.toUnsignedString(v));
@@ -77,10 +88,53 @@ public abstract class TcOracle extends TcInputs {
         }
     }
 
-    // A non-inline exit from the body is a call when a call instruction did it, or a branch reached a function entry.
+    // A non-inline exit from the body is a call when a call instruction did it, a branch reached a function entry, or
+    // the jump is a tail call by TcRun.tailJump.
     boolean entersCallee(long prev, Address pca) {
+        if (callAt(prev) || fm.getFunctionAt(pca) != null) return true;
         Instruction last = prev < 0 ? null : listing.getInstructionAt(toAddr(prev));
-        return (last != null && last.getFlowType().isCall()) || fm.getFunctionAt(pca) != null;
+        return last != null && tailJump(last, pca);
+    }
+
+    boolean tailJump(Instruction in, Address to) {
+        boolean into = false;
+        for (Address a : in.getFlows()) into |= body.contains(a);
+        return TcRun.tailJump(in.getFlowType(), into, to != null && fm.getFunctionContaining(to) != null);
+    }
+
+    // Did the instruction at prev (-1: none, the entry) transfer by a call?
+    boolean callAt(long prev) {
+        Instruction last = prev < 0 ? null : listing.getInstructionAt(toAddr(prev));
+        return last != null && last.getFlowType().isCall();
+    }
+
+    // One vector instruction through TcVmx (the memory it touches goes through the emulator's bank, so faults, R8 and
+    // the written bytes work as for any access). False when it could not run (vecError says why).
+    String vecError = null;
+
+    boolean stepVector(EmulatorHelper emu, TcVmx vm, TcVmx.Op op, long pc) {
+        try {
+            long[] gpr = new long[32];
+            for (int g : op.gRead) gpr[g] = reg64(emu, "r" + g);
+            TcVmx.Mem m = new TcVmx.Mem() {
+                @Override
+                public byte[] read(long ea, int n) {
+                    return emu.readMemory(toAddr(ea & 0xffffffffL), n);
+                }
+
+                @Override
+                public void write(long ea, byte[] data) {
+                    emu.writeMemory(toAddr(ea & 0xffffffffL), data);
+                }
+            };
+            int cr = vm.exec(op, gpr, m);
+            if (cr >= 0) emu.writeRegister("cr6", BigInteger.valueOf(cr));
+            emu.writeRegister(emu.getPCRegister(), u64(pc + 4));
+            return true;
+        } catch (RuntimeException e) {
+            vecError = op + ": " + e;
+            return false;
+        }
     }
 
     // target, r3..r10, f1..f13, s0..s7 (the doublewords at r1+0x50+8N): tc_rt.c logs the same 30 fields.
@@ -100,14 +154,29 @@ public abstract class TcOracle extends TcInputs {
         return c.toString();
     }
 
-    // A mocked callee leaves 0 in every volatile register but its results (r3, f1), as TcFlow assumes it may clobber
-    // them: a value the caller passes on after a call is then the C's 0, never the caller's own entry value.
-    void clobber(EmulatorHelper emu) {
-        emu.writeRegister("r0", u64(0));
-        for (int i = 4; i <= 12; i++) emu.writeRegister("r" + i, u64(0));
-        emu.writeRegister("f0", u64(0));
-        for (int i = 2; i <= 13; i++) emu.writeRegister("f" + i, u64(0));
-        emu.writeRegister("CTR", u64(0));
+    // A mocked callee leaves 0 in the volatile registers but its results (r3, f1) that the real callee may write
+    // (TcFlow.clobbers, as TcFlow assumes): a value the caller passes on after a call is then the C's 0, never the
+    // caller's own entry value. The ones the callee never writes keep their values, as on the Xenon (LTCG relies on
+    // it). A call through a register or a tail branch zeroes them all. Both taken once per call site and target: a
+    // loop of mocked calls (up to CALL_LIMIT a run) spent 3% of a prepare here (Too Human 82e97a88).
+    final Map<Long, Boolean> directAt = new HashMap<>();
+    final Map<Long, Set<String>> zeroedFor = new HashMap<>();  // by target; key -1: a call through a register
+    Set<String> clobbered(long prev, Address pca) {
+        boolean direct = prev >= 0 && directAt.computeIfAbsent(prev, p -> {
+            Instruction last = listing.getInstructionAt(toAddr(p));
+            return last != null && last.getFlowType().isCall() && !last.getFlowType().isComputed();
+        });
+        return zeroedFor.computeIfAbsent(direct ? pca.getOffset() : -1L, k -> {
+            if (flow == null) flow = new TcFlow(currentProgram, monitor);
+            Set<String> z = new HashSet<>(direct ? flow.clobbers(pca) : TcFlow.VOLATILE);
+            z.remove("r3");
+            z.remove("f1");
+            return Collections.unmodifiableSet(z);
+        });
+    }
+
+    void clobber(EmulatorHelper emu, Set<String> zeroed) {
+        for (String r : zeroed) emu.writeRegister(r.equals("ctr") ? "CTR" : r, u64(0));
     }
 
     void setEntry(EmulatorHelper emu, Vec v) {
@@ -122,6 +191,7 @@ public abstract class TcOracle extends TcInputs {
 
     Result runOracle(Vec v) {
         Result res = new Result();
+        res.tr = TcTrack.start();
         EmulatorHelper emu = new EmulatorHelper(currentProgram);
         fix.install(emu);
         fix.trapped = false;
@@ -132,6 +202,7 @@ public abstract class TcOracle extends TcInputs {
             emu.setMemoryFaultHandler(new MemoryFaultHandler() {
                 @Override
                 public boolean uninitializedRead(Address address, int size, byte[] buf, int bufOffset) {
+                    if (TcBank.probing) return false;
                     long off = fold(address.getOffset());
                     if (address.isMemoryAddress() && !mapped(off, size) && fault[0] == null) {
                         fault[0] = "read " + address + where(off);
@@ -157,14 +228,27 @@ public abstract class TcOracle extends TcInputs {
             dms.setMemoryBank(bank);
             setEntry(emu, v);
             bank.track = true;
+            TcVmx vm = new TcVmx();
+            vecError = null;
             int steps = 0, calls = 0;
             long prev = -1;
             while (true) {
                 long pc = emu.getExecutionAddress().getOffset() & 0xffffffffL;
                 if (pc == SENTINEL) break;
                 Address pca = toAddr(pc);
-                if (!body.contains(pca) && !inline.contains(pca)) {
-                    if (!entersCallee(prev, pca)) {
+                boolean self = pca.equals(fn.getEntryPoint()) && callAt(prev);
+                if (self || !body.contains(pca) && !inline.contains(pca)) {
+                    // The body's last instruction is a call that returned here: on the Xenon it never returns (82096680,
+                    // main, ends in the call of the game's fatal exit). The C goes on past the body's end by a tail call
+                    // of the next address (translate.py, fall), so the run ends with the same call.
+                    boolean past = !self && TcRun.pastEnd(prev, calls, body.contains(toAddr(pc - 4)));
+                    if (!self && !past && !entersCallee(prev, pca)) {
+                        if (prev < 0 && calls > 0) {  // a mocked call "returned" to an address the code put in LR, outside the
+                            // body: this input is invalid, but the body is not incomplete (res.outside stays unset: it
+                            // would refuse the whole function)
+                            res.reason = "returns from a call into code outside its body at " + hex(pc);
+                            return res;
+                        }
                         res.reason = "executes code outside its body at " + hex(pc);
                         res.outside = pc;
                         return res;
@@ -173,19 +257,21 @@ public abstract class TcOracle extends TcInputs {
                         res.reason = "more than " + CALL_LIMIT + " calls (a loop the mocked callees never end)";
                         return res;
                     }
-                    res.calls.add(callRecord(emu, pc));
+                    Set<String> zeroed = clobbered(prev, pca);
+                    res.calls.add(callRecord(emu, pc) + TcTrack.call(pc, zeroed));
                     if (prev >= 0) res.sites.add(prev);
                     emu.writeRegister("r3", u64(calls < 16 ? v.rets[calls] : 0));
                     emu.writeRegister("f1", u64(calls < 16 ? v.frets[calls] : 0));
-                    clobber(emu);
+                    clobber(emu, zeroed);
                     calls++;
+                    if (past) break;
                     emu.writeRegister(emu.getPCRegister(), u64(reg(emu, "LR")));
                     prev = -1;
                     continue;
                 }
                 Map.Entry<Long, Integer> b = blockIndex.floorEntry(pc);
                 if (b != null && body.contains(pca)) res.cov.add(b.getValue());
-                if (++steps > STEP_LIMIT) {
+                if (++steps > budget.limit) {
                     res.reason = "step limit (possible infinite loop)";
                     res.stepLimited = true;
                     return res;
@@ -197,11 +283,26 @@ public abstract class TcOracle extends TcInputs {
                     res.reason = "unsupported: " + why;
                     return res;
                 }
-                fix.before(emu, in);
-                bank.beginStep(pc);
-                prev = pc;
-                boolean stepped = emu.step(monitor);
-                if (stepped && fault[0] == null) fix.after(emu, ram, bank.stored);
+                TcVmx.Op vop = vmxOp(pc);
+                boolean stepped;
+                if (vop != null) {
+                    bank.beginStep(pc);
+                    prev = pc;
+                    stepped = stepVector(emu, vm, vop, pc);
+                } else {
+                    fix.before(emu, in);
+                    bank.beginStep(pc);
+                    prev = pc;
+                    stepped = emu.step(monitor);
+                    if (stepped && fault[0] == null) {
+                        fix.after(emu, ram, bank.stored, bank.reads);
+                        TcTrack.step(emu, in, bank);
+                    }
+                }
+                // The load log is for pointer repair, and a frame helper's restores are no input's pointer: a write fault
+                // known only at exit (collect) spent all its repairs on them, each zero value being "near" address 0
+                // (821ca768: 71 of 161 tries).
+                if (!TcRun.logsLoads(inline.contains(pca))) bank.reads.clear();
                 for (long[] ld : bank.reads) {
                     res.loads.add(ld);
                     if (res.loads.size() > LOAD_LOG) res.loads.remove(0);
@@ -216,13 +317,15 @@ public abstract class TcOracle extends TcInputs {
                     return res;
                 }
                 if (!stepped || fault[0] != null) {
-                    res.reason = fault[0] != null ? "fault: " + fault[0] : "emulation error: " + emu.getLastError();
+                    res.reason = fault[0] != null ? "fault: " + fault[0]
+                        : vecError != null ? "emulation error: " + vecError : "emulation error: " + emu.getLastError();
                     res.faultAddr = faultAt[0];
                     res.faultWrite = faultW[0];
                     return res;
                 }
             }
             bank.pc = -1;
+            res.steps = steps;
             collect(emu, res, bank.written);
             return res;
         } catch (Exception e) {
@@ -236,6 +339,7 @@ public abstract class TcOracle extends TcInputs {
     // The observable results of a run that reached the sentinel; res.ok unless it wrote outside the regions. Writes
     // to the stack region are not compared (the frame is the C compiler's own), as in the runner.
     void collect(EmulatorHelper emu, Result res, AddressSet ws) {
+        TcTrack.exit(emu);  // the float NaN words (TcTrack)
         res.r3 = reg64(emu, "r3");
         res.f1 = reg64(emu, "f1");
         for (AddressRange rg : ws) {

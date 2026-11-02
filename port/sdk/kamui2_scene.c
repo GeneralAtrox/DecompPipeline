@@ -27,11 +27,16 @@
 
 K2SysConfig *g_k2_config;
 static u32 g_bank, g_list_ptrs[K2_LISTS], g_last_flip;
+static u32 g_list_room[K2_LISTS], g_list_over[K2_LISTS]; /* where each list's room ends; the most it has run past */
 static s32 g_render_id;
 static PvrPass g_passes[PVRX_MAX_PASSES];
 static u32 g_pass_count;
 
 static u32 cached(u32 addr) { return RAM_CACHED | (addr & RAM_MASK); }
+
+/* Kamui starts the lists on a 32-byte line whatever address the game gave: a store queue sends whole lines, so a list
+ * inside its line is a state the console never has (a game may hand in an allocation + 4). */
+static u32 lists_base(const K2SysConfig *c) { return (cached(c->vertex_buffer) + LIST_ALIGN - 1u) & ~(LIST_ALIGN - 1u); }
 
 s32 kmSetSystemConfiguration(void *config)
 {
@@ -71,17 +76,32 @@ s32 kmBeginPass(KMVERTEXBUFFDESC *vertexBuffer)
     K2SysConfig *c = g_k2_config;
     if (!c || g_pass_count >= PVRX_MAX_PASSES) return K2_ERROR;
     u32 banks = c->vertex_banks ? c->vertex_banks : 1u;
-    u32 bank_size = k2_vertex_buffer_size(c->vertex_buffer, c->vertex_buffer_size) / banks;
-    u32 at = cached(c->vertex_buffer) + g_bank * bank_size;
+    u32 base = lists_base(c);
+    u32 bank_size = ((k2_vertex_buffer_size(c->vertex_buffer, c->vertex_buffer_size) - (base - cached(c->vertex_buffer))) / banks)
+                    & ~(LIST_ALIGN - 1u);
+    u32 at = base + g_bank * bank_size;
     const K2PassInfo *info = d->pass;
     PvrPass *p = &g_passes[g_pass_count];
+    /* A list the pass sends directly (the real TA takes it without buffering) is sized 0 by games, and the game's
+     * shares of the other lists fill the bank. The kit still parses that list from memory after the scene, so it
+     * takes the other bank: rendering finishes inside kmRender, so nothing reads that bank meanwhile. With one bank it
+     * takes half, and the other lists share the rest. */
+    u32 dl = info->direct_transfer_list;
+    int direct = dl < K2_LISTS && info->buffer_percent[dl] <= 0.0f;
+    u32 direct_bytes = direct && banks == 1u ? (bank_size / 2u) & ~(LIST_ALIGN - 1u) : 0;
     for (u32 i = 0; i < K2_LISTS; i++) {
         /* the list's share, rounded to whole bytes (the game sized it in bytes, then turned it into a percent) */
-        u32 bytes = (u32)((double)bank_size * (double)info->buffer_percent[i] / 100.0 + 0.5) & ~(LIST_ALIGN - 1u);
+        u32 bytes = (u32)((double)(bank_size - direct_bytes) * (double)info->buffer_percent[i] / 100.0 + 0.5)
+                    & ~(LIST_ALIGN - 1u);
         u32 start = at;
+        if (direct && i == dl) {
+            bytes = direct_bytes;
+            if (banks > 1u) start = base + ((g_bank + 1u) % banks) * bank_size;
+        }
         if (g_pass_count > 0) start = (g_passes[g_pass_count - 1].end[i] + LIST_ALIGN - 1u) & ~(LIST_ALIGN - 1u);
         p->start[i] = p->end[i] = start;
         g_list_ptrs[i] = RAM_UNCACHED | (start & RAM_MASK);
+        if (!g_pass_count) g_list_room[i] = start + (direct && i == dl ? bank_size - direct_bytes : bytes);
         at += bytes;
     }
     p->autosort = !(info->region_array_flag & 1u); /* KM_PASSINFO_PRESORT */
@@ -98,6 +118,12 @@ s32 kmEndPass(KMVERTEXBUFFDESC *vertexBuffer)
     for (u32 i = 0; i < K2_LISTS; i++) {
         u32 end = cached(d->current[i]);
         p->end[i] = end > p->start[i] ? end : p->start[i];
+        /* a list past its room has run over the next list, which then parses as this one's parameters */
+        if (p->end[i] > g_list_room[i] && p->end[i] - g_list_room[i] > g_list_over[i]) {
+            g_list_over[i] = p->end[i] - g_list_room[i];
+            port_log("kamui2: list %u ran %u bytes past its room at vertical blank %u\n", i, g_list_over[i],
+                     port_vblank_count());
+        }
     }
     g_pass_count++;
     d->pass++;

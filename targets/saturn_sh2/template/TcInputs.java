@@ -160,6 +160,8 @@ public abstract class TcInputs extends TcBase {
     //                    value; at least one word before the last gets B, and the last word never does
     //   genret N VAL     call N (0-based) returns VAL in r0/fr0, e.g. a callee that really preserves an r0
     //                    holding the caller's saved PR (VAL "sentinel" is the oracle's return address)
+    //   range gbr LO HI  GBR at entry is uniform in [LO, HI] (a function reading globals through the GBR the game's
+    //                    boot code sets once); the locked TcLate.regs takes this line, so applyHints never sees it
     // LOC is rN or 0xADDR (a global), optionally followed by +0xOFF steps; each step dereferences the
     // pointer before it: "r4+0x10c" is the word at r4+0x10c, "0x060a78a0+0x1c8" the word at *(0x060a78a0)+0x1c8.
     void applyHints(Vec v, List<String> hints) {
