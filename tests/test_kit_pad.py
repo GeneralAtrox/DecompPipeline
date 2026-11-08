@@ -215,7 +215,7 @@ class Pads(unittest.TestCase):
             [["200"], ["4100"]])
         (d / "drv_bind.c").write_text(BIND_C, encoding="utf-8")
         cls.bind_build, (cls.bind, cls.bind_script) = compile_run(
-            d, "bind", f'{inc} "{d / "drv_bind.c"}" "{KIT / "base" / "input_script.c"}" "{KIT / "base" / "input_bind.c"}"',
+            d, "bind", f'{inc} "{d / "drv_bind.c"}" "{KIT / "base" / "input_script.c"}" "{KIT / "base" / "input_bind.c"}" "{KIT / "base" / "pad_twin.c"}"',
             [["plain"], ["script"]])
 
     @classmethod

@@ -21,7 +21,8 @@ share:
 A mutant the judge refuses before running (lint or build: e.g. /WX on a variable left unused) is dropped and
 counted; one whose run times out or fails a vector is killed; one that PASSes survived. "outcomes" keeps each
 generated mutant's, in id order: K killed, S survived, L / B dropped by lint / build, - not tried (time cap); the
-mutation audit (tools/mutation_audit.py) compares them mutant by mutant.
+mutation audit (tools/mutation_audit.py) compares them mutant by mutant. "classes" keeps each mutant's class the same
+way (l logic, a arg_slot, s stack), so a kill rate can leave out the survivors that are equivalent by design.
 Each survivor gets a class (core/mutation_ops.class_of): arg_slot (a TcArgs slot no callee's signature reads: the
 judge compares declared arguments only), stack (a store to the guest stack, which the judge never compares) or logic.
 The first two are equivalent by the judge's design; only logic survivors flag the harness weak_harness.
@@ -126,6 +127,7 @@ def check_function(addr, src, judge, mset, log=None, clock=time.monotonic):
         if log:
             log(f"  {addr} m{m['id']:02d} {m['op']:9s} {o:13s} line {m['line']}: {m['what']}")
     rec["generated"] = len(muts)
+    rec["classes"] = "".join(m["cls"][0] for m in muts)  # l logic, a arg_slot, s stack: per mutant, in id order
     rec["score_raw"] = score(rec["killed"], rec["survived"])
     rec["score"] = score(rec["killed"], rec["survived_by_class"]["logic"])  # equivalent-by-design ones left out
     rec["seconds"] = round(clock() - t0, 1)

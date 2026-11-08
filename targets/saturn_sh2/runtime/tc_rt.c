@@ -97,6 +97,7 @@ f32 rdf32(u32 a) { return u2f(rd32(a)); }
 void wr8(u32 a, u8 v)
 {
     a = tcrt_fold(a);
+    if (tcrt_p4_store(a, v, 1)) return;
     u8 *p = check(a, 1, 1);
     if (!p) return;
     p[0] = v;
@@ -106,6 +107,7 @@ void wr8(u32 a, u8 v)
 void wr16(u32 a, u16 v) /* big endian */
 {
     a = tcrt_fold(a);
+    if (tcrt_p4_store(a, v, 2)) return;
     u8 *p = check(a, 2, 1);
     if (!p) return;
     p[0] = (u8)(v >> 8);
@@ -116,6 +118,7 @@ void wr16(u32 a, u16 v) /* big endian */
 void wr32(u32 a, u32 v)
 {
     a = tcrt_fold(a);
+    if (tcrt_p4_store(a, v, 4)) return;
     u8 *p = check(a, 4, 1);
     if (!p) return;
     p[0] = (u8)(v >> 24);

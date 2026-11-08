@@ -1,7 +1,7 @@
 /* Frame cost, for the runtime target (docs/RUNTIME_TARGET.md): each vertical blank records what the game's thread spent
  * since the last one, apart from the time it waited for the real clock, and how much of that was the software picture
  * (sat_compose) and showing it. The game log ends with the median, 99th percentile and worst of each, and how many
- * frames cost more than the 144 fps budget of 6.94 ms.
+ * frames cost more than the 6.67 ms make budget (150 fps of headroom under the 144 cap).
  *
  * Nearest existing: sat_where.c (--profile samples where the master is, not how long a frame took). */
 #include <windows.h>
@@ -102,7 +102,7 @@ void sat_perf_report(void)
 {
     u32 over = 0;
     if (g_n < 10) return;
-    for (u32 i = 0; i < g_n; i++) over += g_work[i] > 6.94f;
+    for (u32 i = 0; i < g_n; i++) over += g_work[i] > (float)PS_MAKE_BAR_MS;
     {
         FILETIME c, e, k, u;
         GetProcessTimes(GetCurrentProcess(), &c, &e, &k, &u);
@@ -112,7 +112,7 @@ void sat_perf_report(void)
                  (double)g_n / sat_sys_hz(), sat_sys_hz());
     }
     sections();
-    port_log("perf: %u frames, %u over the 6.94 ms budget (144 fps); the thread's work per frame, without the wait for the clock\n", g_n, over);
+    port_log("perf: %u frames, %u over the 6.67 ms make budget (150 fps headroom); the thread's work per frame, without the wait for the clock\n", g_n, over);
     line("frame (all work)", g_work, g_n);
     line("game tick", g_tick, g_n);
     line("VDP2 + compose", g_draw, g_n);

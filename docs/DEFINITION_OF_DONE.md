@@ -97,8 +97,9 @@ agent-on-every-function rates they fail by design, and that is the point of the 
 | pre-wave item 1, targeted vectors | landed | `targets/<target>/ghidra_scripts/TcBound.java` |
 | pre-wave item 2, stricter judge | landed | `core/strict_judge.py`, `targets/<target>/runtime/tc_strict.h` |
 | pre-wave item 3, coverage in verdicts and mutation audit | landed | `TcDirs.java`, `tools/mutation_audit.py`, `tools/mutation_audit/baseline.json` |
-| mutation-audit kill rate, lowest sampled workspace of the console | 85% or more | `tools/mutation_audit/baseline.json`, counted as `tools/mutation_audit.py` counts it (lint and build drops left out) |
+| mutation-audit kill rate, lowest sampled workspace of the console | 85% or more | `tools/mutation_audit/baseline.json`: killed / (killed + logic survivors), core/mutation's own score (2026-11-06: arg_slot and stack survivors are equivalent by the judge's design and were counted as misses; the raw rate is shown beside it; lint and build drops left out) |
 | zero divergence on every port | 0 not clean | every game's `state/divergence.json` |
+| readable C proven in the running game | 100% of the readable functions a divergence scenario enters | each workspace's `state/in_game.json` (written by `decomp.py divergence`, core/in_game.py) against its `state/coverage.json`: a readable function counts once a clean scenario entered it in a build that compiled its current file (same sha256, file no newer than port.exe), and loses that when the file changes or a diverged scenario names it as the writer. The source also gives proven / all readable. Unmeasured without both files. Added 2026-11-06: PS2's and Spawn's readable C passed the per-function judge but broke the running game (PS2 hung at boot on a spin wait, fixed in 31dcb0d2, and still differs from frame 0; Spawn differs in 68 of 2,866 frames), so a readable ledger entry is done only after this in-game proof |
 
 The 85% minimum sits above today's baseline (74.8–85.1%, 2026-10-22) on purpose: the targeted vectors and the
 stricter judge exist to raise it, and the audit's own rule (a baseline only moves up) keeps it there.
@@ -124,16 +125,21 @@ A port runs at the target with no emulated hardware in its default play path. Th
 
 | Check | Target | Source |
 |---|---|---|
-| shown frames, heaviest section | 144 a second at 2560x1600 | the game log's session summary from a launcher run on the user's laptop |
-| shown frame time, 99th percentile | 6.94 ms or less | the same summary |
+| frame making time (game tick plus draw, until ready to show), 99th percentile | 6.67 ms or less at 2560x1600 (150 fps of headroom under the 144 cap) | the game log's `play verdict:` line from a launcher run on the user's laptop, loading screens left out |
+| late frames: 144 slots missed | at most 1 per 1,000 shown frames | the same line |
 | emulated layers in the default play path | 0 | the table in `docs/RUNTIME_TARGET.md` and the game's `game.json` |
 | any aspect ratio, on by default | yes, at 4:3, 16:10, 16:9, 21:9, 32:9 and one narrower than 4:3 | the proof per game in `docs/RUNTIME_TARGET.md`, "Any aspect ratio"; the scorecard reads the "Aspect-ratio proof per game" table there, and the check stays unmeasured until the reference game has a row (all six shapes, default on, gameplay identical, evidence that exists) |
 
 Each number is unmeasured until its source exists, and an unmeasured number can never make the gate green.
 
-Read by `tools/scorecard_runtime.py` (spec: `consoles.KEY.runtime`, `thresholds.runtime`). The session summary is one log line,
-`play summary: shown_fps F output WxH frames N tick_ms M/P/X draw_ms M/P/X frame_ms M/P/X` (median, 99th percentile, worst, in
-milliseconds), read from the launcher's data folder for the console's reference game. Only sessions at 2560x1600 with 600 or
+Read by `tools/scorecard_runtime.py` (spec: `consoles.KEY.runtime`, `thresholds.runtime`). The session's figures are two log
+lines, `play summary: shown_fps F output WxH frames N tick_ms M/P/X draw_ms M/P/X frame_ms M/P/X make_ms M/P/X` (median, 99th
+percentile, worst, in milliseconds) and `play verdict: pass|fail|none make_ms p99 P (bar 6.67) late L of N shown (R per 1000,
+bar 1) loading S shown K late machine M`, read from the launcher's data folder for the console's reference game. Shown-frame spacing
+(`frame_ms`) is not a check: under the 144 cap it can't go below 6.94 ms. A log from before the bar has no figures and
+reads unmeasured. Only sessions from the user's laptop (`target_laptop`, spec `thresholds.runtime.machine`, named on
+the verdict line) pass or fail the gate. Build box A and build box B sessions compare builds side by side and leave the checks
+unmeasured, never failed: "Build box A might not be able to do it and that is OK" (the user, 2026-11-05). Only sessions at 2560x1600 with 600 or
 more frames count, and the worst session of the logs kept is the number. A layer in the `RUNTIME_TARGET.md` table is open unless
 its status starts "Replaced", "Switched" or "Native"; a console with no port kit reads unmeasured.
 

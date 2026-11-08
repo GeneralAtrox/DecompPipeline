@@ -1,7 +1,8 @@
 // The argument registers of calls through function pointers. Not a script itself; TcPrepare sets `on` for every
 // prepare (null: the body has no computed call or jump, and nothing changes).
 // A call to a target the body's references do not name (not in meta callees, whose argument registers come from the
-// callee's prototype) is a call through a function pointer. The argument registers the run set itself since its
+// callee's prototype) is a call through a function pointer, or a direct call or branch to code no listed callee starts,
+// or a run on past the body's end (unlisted). The argument registers the run set itself since its
 // entry or its last call (its own parameters count as set at entry; a callee leaves them undefined), r4..r7 in order
 // up to the first it did not set, are that call's arguments: expected.txt "CA reg..." after its CALL line (call).
 // The judge compares them as a listed callee's (core/compare.py). Stack words are not compared: without a prototype
@@ -36,18 +37,31 @@ final class TcTrack {
 
     // `on` for the body (null when it has no computed call or jump).
     static TcTrack of(Listing listing, AddressSetView body, List<Function> callees, TcBase.Proto proto) {
+        Set<Long> c = new HashSet<>();
+        for (Function g : callees) c.add(g.getEntryPoint().getOffset());
         boolean calls = false;
         for (Instruction in : listing.getInstructions(body, true)) {
             FlowType f = in.getFlowType();
-            calls |= f.isComputed() && (f.isCall() || f.isJump());
+            calls |= f.isComputed() && (f.isCall() || f.isJump()) || unlisted(in, f, body, c);
         }
         if (!calls) return null;
-        Set<Long> c = new HashSet<>();
-        for (Function g : callees) c.add(g.getEntryPoint().getOffset());
         Set<String> p = new HashSet<>();
         for (TcBase.Param q : proto.params) p.add(q.storage.toLowerCase());
         p.retainAll(ARGS);
         return new TcTrack(c, p);
+    }
+
+    // A flow out of the body to an address no listed callee starts. The oracle mocks it as a call (TcOracle) whose target
+    // has no record, so the CA line holds its arguments (call): a direct call or branch to code no prepared function
+    // starts, or a run on past the body's end. Before 2026-11-07 only a computed call or jump turned the lines on, and
+    // such a call had no argument compared (core/unchecked_args.py; target.json stamp scope unlisted_call_args).
+    static boolean unlisted(Instruction in, FlowType f, AddressSetView body, Set<Long> c) {
+        boolean out = false;
+        if ((f.isJump() || f.isCall()) && !f.isComputed()) {
+            for (Address to : in.getFlows()) out |= !body.contains(to) && !c.contains(to.getOffset());
+        }
+        Address next = in.isInDelaySlot() ? null : in.getFallThrough();
+        return out || next != null && !body.contains(next) && !c.contains(next.getOffset());
     }
 
     // TcOracle.runOracle: a new run's record, or null.

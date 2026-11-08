@@ -154,3 +154,41 @@ nothing the run compiles against. When the live headers fail, `run` waits up to 
 then uses the last good snapshot; `verify` and `check` stop with exit 2. Attempts and passing rows record the
 snapshot hash (`headers`). A STALE line in `verify` says whether the file last passed against older headers or
 against the same ones.
+
+## Every store reached, no admitted gap (2026-11-06)
+
+Power Stone 2's fn_8c0e9b5e passed the readable judge 110/110 with the store of its object's update callback missing.
+No vector reached the block after Obj_Create's NULL test, so the store was never compared, and the game later called
+address 0 (frame ~8,580). Its Haiku agent had said so: "PASS (dev only; the obj->update store ... is missing)".
+
+A readable PASS is recorded through `refine.pass_status` (core/proof.readable_state) wherever it happens: `run`,
+`verify`, drafts, re-adoption, look-alikes and sync-names. The judge's verdict is unchanged; the row's status is:
+
+- `unproven` when a store instruction of the original's listing runs in no valid vector. A store sits in one basic
+  block and SH-4/PowerPC stores are never predicated (an SH-4 delay slot runs with its branch), so every block reached
+  implies every store reached, and every branch direction taken (TcDirs, "fully proven") implies every block reached.
+  The coverage gate's allowance of unreached blocks (one, or 10 %) does not, so this is its own rule:
+  `proof.store_coverage` takes the summary's `blocks_unhit` and lists the stores of those blocks in asm.txt (a block
+  runs to a label or past a branch and its slot; a call does not end it). The row's `unproven` lists them (`stores`,
+  `n`, `blocks`) and says whether the oracle's targeted passes (TcBound, the reach pass) already ran on the harness
+  (`oracle`: tried or untried). A summary without block data is counted apart and stays readable, as the gate does.
+- `needs_review` when the passing agent's final message admits a gap (`proof.ADMITS`, conservative: "dev only", a
+  store or write that "is missing", "omitted" or "dropped", "missing stores", "I dropped/skipped/did not write ...
+  store", "PASS (unverified"). A reviewer who checked the file sets the row's `reviewed` (who, why); `verify` then
+  records it again.
+
+Both keep the file on disk (refine.FILE_KEPT, the doctor's FILE_STATUSES) and out of `readable`, so the port's mix
+mode builds the raw C there, and `run` skips them without `--redo` (an agent cannot add vectors).
+`tools/proof_backlog.py queue` writes `stores.txt`, the untried ones first, for `tools/call_coverage.py reach @FILE` (a
+re-prepare with the current flags); the tried ones need the watcher's hints or a waive. After a re-prepare,
+`refine.py verify` records each again.
+`tools/proof_backlog.py restatus --project DIR --apply` records the statuses again from what the workspace already
+holds (harness summaries, listings, the attempts' messages; no rejudge, no Ghidra, no compiler): how an existing
+workspace takes this rule. A gap judged by hand goes in the workspace's project.json, `coverage_gate.store_waive`
+{addr: reason} (a store no input can reach, or stores only to the function's own frame, which the judge treats as
+scratch); `restatus` then records the row `readable`. The raw coverage gate is not changed by it.
+
+Measured read-only on 2026-11-06 over the rows then `readable`: TC 2730 -> 227 unproven and 13 needs_review; PS2 3964
+-> 430 unproven and 4 needs_review; Spawn 470 -> 20 unproven. Of the store gaps, 63 (TC), 153 (PS2) and 5 (Spawn) sat
+within the coverage gate's allowance; the rest were already matched_low_coverage. In 27, 41 and 2 of them the only
+unreached stores are frame stores (r15). The targeted passes had run on all but 2 harnesses (PS2).

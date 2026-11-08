@@ -43,6 +43,7 @@ public class TcFold extends MemoryBank {
         }
         long f = TcBase.fold(offset);
         if (p4Read < 0 && f < TcBase.P4_OCA_HI && f + size > TcBase.P4_OCA_LO) p4Read = Math.max(f, TcBase.P4_OCA_LO);
+        if (p4Read < 0 && TcBase.hwWindow(f, f + size)) p4Read = f;  // never the bytes stored: the runner faults too
         return in.getChunk(f, size, res, stopOnUninitialized);
     }
 

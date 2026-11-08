@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "sat_disc.h"
+#include "work_count.h"
 
 enum { MAXFILES = 99, PREGAP = 150 };
 typedef struct {
@@ -82,6 +83,7 @@ u32 sat_disc_leadout(void) { return g_end; }
 
 int sat_disc_read(u32 fad, u8 *raw)
 {
+    work_add(WC_DISC_BYTES, SAT_SECTOR);
     u32 lba;
     if (fad < PREGAP) return 0;
     lba = fad - PREGAP;

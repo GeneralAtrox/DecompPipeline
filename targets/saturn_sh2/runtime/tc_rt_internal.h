@@ -75,11 +75,15 @@ static inline u32 tcrt_fold(u32 a)
     return a;
 }
 #define TCRT_STACK_LO 0x060f0000u
-/* The SH-2 has no P4 area: no store is logged outside RAM (tc_p4.c keeps listed hardware writes, TcHw). */
+/* The SH-2 has no P4 area. A store to Saturn hardware is logged as the oracle logs it (TcBase.HW_WINDOWS has the
+ * evidence; tc_p4.c also keeps listed hardware writes, TcHw). The on-chip window ends at the top of the address space. */
 static inline int tcrt_p4_logged(u32 a, u32 size)
 {
-    (void)a;
-    (void)size;
+    static const u32 windows[][2] = {{0x20100000u, 0x20180000u}, {0x25800000u, 0x25900000u}, {0x25a00000u, 0x25d80000u},
+                                     {0x25e00000u, 0x25fc0000u}, {0x25fe0000u, 0x25ff0000u}};
+    if (a >= 0xfffffe00u && size <= 0u - a) return 1;
+    for (u32 i = 0; i < sizeof windows / sizeof windows[0]; i++)
+        if (a >= windows[i][0] && a < windows[i][1] && size <= windows[i][1] - a) return 1;
     return 0;
 }
 #define TCRT_SP 0x060fe000u

@@ -78,13 +78,15 @@ def host_stacks(path):
     return res
 
 
-def map_stack_args(meta, exp, act, stack, frame_lo=cmp.SP - FRAME_MAX):
+def map_stack_args(meta, exp, act, stack, frame_lo=cmp.SP - FRAME_MAX, reg_index=None, stack_hi=STACK_HI):
     """Replace host-stack pointer arguments by the original's guest-stack pointers when they pair one to one
     (core/readable_check.map_stack_args, for the PowerPC record: r3..r10 and the stack words s0..s7). Returns the
-    problems (a guest slot paired with two host slots or the reverse)."""
+    problems (a guest slot paired with two host slots or the reverse). reg_index and stack_hi: another PowerPC
+    record's (targets/xbox360_ppc: its 64-bit record and stack), default this target's."""
     if not act or not stack:
         return []
     lo, hi = stack
+    reg_index = cmp.REG_INDEX if reg_index is None else reg_index
     callee_regs = {int(c["addr"], 16): c["regs"] for c in meta["callees"]}
     g2h, h2g, bad = {}, {}, []
     for k, (ec, ac) in enumerate(zip(exp["calls"], act["calls"])):
@@ -93,9 +95,9 @@ def map_stack_args(meta, exp, act, stack, frame_lo=cmp.SP - FRAME_MAX):
         for reg in callee_regs.get(ec[0], []):
             if reg[0] == "f":
                 continue
-            i = cmp.REG_INDEX[reg]
+            i = reg_index[reg]
             g, h = ec[i], ac[i]
-            if not (frame_lo <= g < STACK_HI and lo <= h < hi):
+            if not (frame_lo <= g < stack_hi and lo <= h < hi):
                 continue
             if g2h.setdefault(g, h) != h or h2g.setdefault(h, g) != g:
                 bad.append(f"call #{k + 1}: argument {reg} points at a different stack slot than in earlier calls")
@@ -154,36 +156,38 @@ def image_range(dol):
     return min(a for a, _ in secs), max([a + len(d) for a, d in secs] + [bss + bss_size])
 
 
-def lint_ppc(src, reg, name, proto, image, mirror):
+def lint_ppc(src, reg, name, proto, image, mirror, raw_api=RAW_API_PPC, fn_pat=r"8[01][0-9a-f]{6}"):
     """The readable rules for this target (core/readable_lint's RR1, RR2, RR7 and the raw rules, then RR3 and RR4
-    for GameCube addresses, and core/readable_be's BE2)."""
+    for GameCube addresses, and core/readable_be's BE2). Another PowerPC target (targets/xbox360_ppc) passes its own
+    raw API names, its function addresses (fn_pat) and, as image, a list of (lo, hi) guest ranges."""
     from core.readable_lint import readable_lint, void_result_lint
     from core.lint import strip_comments
     code = strip_comments(src)
     errors = [e for e in readable_lint(src, name, proto) if not e.startswith("RR3:")] + void_result_lint(src, reg)
     errors += [f"RR2: '{i}' is the raw runtime API; use pointers, structs and calls by name"
-               for i in sorted(set(re.findall(r"[A-Za-z_]\w*", code)) & set(RAW_API_PPC))]
-    lo, hi = image
+               for i in sorted(set(re.findall(r"[A-Za-z_]\w*", code)) & set(raw_api))]
+    ranges = [image] if isinstance(image[0], int) else image
     for lit in re.findall(r"\b0[xX]([0-9a-fA-F]+)", code):
         v = int(lit, 16)
         c = int(mirror.get(f"{v >> 24:02x}", f"{v >> 24:02x}"), 16) << 24 | v & 0xFFFFFF
-        if lo <= c < hi:
+        if any(lo <= c < hi for lo, hi in ranges):
             errors.append(f"RR3: guest address 0x{v:08x} written as a number; name it in the registry")
-    for raw in sorted(set(re.findall(r"\bfn_(8[01][0-9a-f]{6})\b", code))):
+    for raw in sorted(set(re.findall(rf"\bfn_({fn_pat})\b", code))):
         e = reg.functions.get(raw)
         if e and readable.parse_proto(e["proto"])[1] != f"fn_{raw}":
             errors.append(f"RR4: fn_{raw} is named now; call it by its name with its prototype: `{e['proto']}`")
     return sorted(set(errors + readable_be.source_lint(src, reg.typedefs)))
 
 
-def data_functions(addr, meta):
+def data_functions(addr, meta, pat=r"8[01][0-9a-fA-F]{6}"):
     """Original functions the matched raw C uses as data (a function pointer it stores or passes), other than its
-    callees: game.h declares them (core/readable_check.data_functions, for GameCube addresses)."""
+    callees: game.h declares them (core/readable_check.data_functions, for GameCube addresses, or pat's)."""
     f = paths.MATCHED / f"{addr}.c"
     if not f.exists():
         return []
     known = {c["addr"] for c in meta["callees"]} | {addr}
-    found = {m.lower() for m in re.findall(r"0x(8[01][0-9a-fA-F]{6})", f.read_text(encoding="utf-8", errors="replace"))}
+    text = f.read_text(encoding="utf-8", errors="replace")  # a sign-extended 64-bit form too (Xbox 360)
+    found = {m.lower() for m in re.findall(rf"0x(?:[fF]{{8}})?({pat})", text)}
     return sorted(a for a in found - known if (paths.HARNESS / a / "meta.json").exists())
 
 

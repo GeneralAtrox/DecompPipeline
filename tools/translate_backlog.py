@@ -37,7 +37,7 @@ class O:
 
     def __init__(self, paths, filelock, cfg):
         self.paths, self.filelock, self.cfg = paths, filelock, cfg
-        self.ledger = paths.read_json(paths.LEDGER, {"loop": False, "functions": {}})
+        self.ledger, self.base = filelock.load_rows(paths.LEDGER, {"loop": False, "functions": {}})
         self.lock, self.proof_states = threading.RLock(), {}
 
     def rec(self, addr):
@@ -45,8 +45,8 @@ class O:
             return self.ledger["functions"].setdefault(addr, {"addr": addr, "status": "queued", "attempts": []})
 
     def save(self):
-        with self.lock, self.filelock.locked(self.paths.LEDGER):
-            self.filelock.write_atomic(self.paths.LEDGER, self.filelock.dumps_rows(self.ledger))
+        with self.lock:  # merged with what other processes saved since (filelock.save_rows)
+            self.base = self.filelock.save_rows(self.paths.LEDGER, self.ledger, self.base)
 
     def log(self, msg):
         print(msg, flush=True)

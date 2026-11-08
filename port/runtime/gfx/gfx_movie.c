@@ -78,7 +78,7 @@ static int make(u32 w, u32 h)
     return 1;
 }
 
-void gfx_movie_show(const u8 *y, const u8 *cb, const u8 *cr, u32 y_stride, u32 c_stride, u32 w, u32 h)
+static void movie_show_locked(const u8 *y, const u8 *cb, const u8 *cr, u32 y_stride, u32 c_stride, u32 w, u32 h)
 {
     const u8 *planes[3] = {y, cb, cr};
     if (!g_gfx.dev || g_broken || w < 2u || h < 2u) return;
@@ -133,4 +133,11 @@ void gfx_movie_draw(void)
     ID3D11DeviceContext_PSSetConstantBuffers(cx, 0, 1, &g_rect);
     ID3D11DeviceContext_Draw(cx, 3, 0);
     ID3D11DeviceContext_PSSetShaderResources(cx, 0, 3, none);
+}
+
+void gfx_movie_show(const u8 *y, const u8 *cb, const u8 *cr, u32 y_stride, u32 c_stride, u32 w, u32 h)
+{
+    gfx_lock();
+    movie_show_locked(y, cb, cr, y_stride, c_stride, w, h);
+    gfx_unlock();
 }

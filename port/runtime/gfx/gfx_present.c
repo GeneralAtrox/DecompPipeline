@@ -13,8 +13,11 @@ void gfx_frame_done(void)
     u64 pt;
     if (!g_gfx.dev) return;
     pt = prof_begin(PROF_DONE);
+    gfx_lock();
     gfx_movie_draw();
     gfx_capture_frame(g_gfx.frames);
+    gfx_unlock();
+    port_extra_thread_counted(); /* the game's thread is done with the device for this frame */
     game_log_poll(g_gfx.frames);
     scene_dump_poll(g_gfx.frames);
     g_gfx.frames++;
@@ -31,14 +34,21 @@ void gfx_present(void)
         gfx_pump();
         return;
     }
+    gfx_lock();
+    port_extra_thread_hold(); /* the frame target holds this frame until it is shown */
     gfx_frame_done();
-    gfx_show();
+    if (port_extra_thread_shows()) port_extra_thread_go(); /* that thread shows it: a slow Present costs the tick nothing */
+    else gfx_show();
+    port_extra_shown();
+    gfx_unlock();
 }
 
 void gfx_show(void)
 {
     u64 pt = prof_begin(PROF_PRESENT);
+    gfx_lock();
     present_show();
+    gfx_unlock();
     prof_end(pt);
     play_stats_shown();
 }

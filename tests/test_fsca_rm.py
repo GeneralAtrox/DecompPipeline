@@ -215,7 +215,7 @@ class PrepareHeals(Prepare):
                          "java.io.IOException: disk full")
         self.assertTrue(ghidra._cause("INFO  nothing\n").startswith("no script error"))
         src = text(ROOT / "core" / "ghidra.py")
-        ensure = src.index("    paths.fsca_table()  # TcPrepare refuses")
+        ensure = src.index("    if cfg.get(\"fsca_table\"):  # TcPrepare refuses")
         self.assertLess(ensure, src.index("    if ghidra_server.serves(cfg, slot_index, staging):"))  # served too
 
 

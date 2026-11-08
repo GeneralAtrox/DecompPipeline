@@ -21,6 +21,7 @@ Run: python -W error tests/test_saturn_hw.py.
 import json
 import os
 import pathlib
+import re
 import shutil
 import subprocess
 import sys
@@ -32,7 +33,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / "tests"), str(ROOT / "port" / "tools")]
 import game_config  # noqa: E402
 from test_sync import TMP  # noqa: E402,F401  (sets DECOMP_PROJECT when run alone)
 from test_tail import CP, jdk  # noqa: E402
-from core import agent, hw_ops, oracle_stamp  # noqa: E402
+from core import agent, compare, hw_ops, oracle_stamp  # noqa: E402
 
 SAT = ROOT / "targets" / "saturn_sh2"
 SIZES = {"hw_read_sizes": [1, 2, 4]}
@@ -42,6 +43,53 @@ POLL = {"060398cc": {"ops": ["read fffffe11"], "evidence": "mov.b @r5,r0 polls F
 
 def text(p):
     return p.read_bytes().decode("utf-8").replace("\r\n", "\n")
+
+
+class HardwareWindows(unittest.TestCase):
+    def test_a_window_store_is_judged_in_every_function(self):
+        """A store to a hardware window is compared whatever the meta says, so C code inventing one fails even where
+        the original stores to no hardware (meta "hw_windows" only records that the oracle stored there)."""
+        d = pathlib.Path(tempfile.mkdtemp(prefix="satwin_"))
+        try:
+            (d / "project.json").write_text(json.dumps({"target": "saturn_sh2"}), encoding="utf-8")
+            (d / "exp.txt").write_text("V 0 dev\nRET 0 0\nE\n", encoding="utf-8")
+            for w in ("25e00010", "06010000"):
+                (d / f"{w}.txt").write_text(f"V 0 dev\nRET 0 0\nW {w} deadbeef\nE\n", encoding="utf-8")
+            code = ("import sys, pathlib\n"
+                    "import core.compare as c\n"
+                    "d = pathlib.Path(sys.argv[1])\n"
+                    "j = lambda a: c.judged(a, 0x060fd000)\n"
+                    "print(j(0x25e00010), j(0xfffffe92), j(0x25fc0000), j(0x25900000))\n"
+                    "exp = c.parse_results(str(d / 'exp.txt'))[0]\n"
+                    "for w in ('25e00010', '06010000'):\n"
+                    "    act = c.parse_results(str(d / (w + '.txt')))[0]\n"
+                    "    for meta in ({'ret': 'void', 'callees': []},\n"
+                    "                 {'ret': 'void', 'callees': [], 'hw_windows': [['25e00000', '25fbffff']]}):\n"
+                    "        diffs = c.compare_vector(meta, b'', {'patches': []}, exp, act, 0x060fd000)\n"
+                    "        print(any('deadbeef' in x for x in diffs))\n")
+            r = subprocess.run([sys.executable, "-c", code, str(d)], cwd=ROOT, capture_output=True, text=True,
+                               timeout=60, env=dict(os.environ, DECOMP_PROJECT=str(d)))
+            self.assertEqual(r.stdout.split(), ["True", "True", "False", "False"] + ["True"] * 4, r.stderr)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+    def test_the_judge_has_the_oracles_windows(self):
+        jm = json.loads((SAT / "target.json").read_text(encoding="utf-8"))["judge_memory"]["hw_windows"]
+        java = (SAT / "ghidra_scripts" / "TcBase.java").read_text(encoding="utf-8")
+        table = java[java.index("HW_WINDOWS = {"):java.index("};", java.index("HW_WINDOWS = {"))]
+        pairs = [(int(a, 16), int(b, 16)) for a, b in re.findall(r"\{0x([0-9a-f]+)L, 0x([0-9a-f]+)L\}", table)]
+        self.assertEqual([(int(lo, 16), int(hi, 16) + 1) for lo, hi in jm], pairs)
+
+    def test_the_oracle_and_the_runner_have_the_same_windows(self):
+        sat = pathlib.Path(__file__).resolve().parent.parent / "targets" / "saturn_sh2"
+        java = (sat / "ghidra_scripts" / "TcBase.java").read_text(encoding="utf-8")
+        c = (sat / "runtime" / "tc_rt_internal.h").read_text(encoding="utf-8")
+        table = java[java.index("HW_WINDOWS = {"):java.index("};", java.index("HW_WINDOWS = {"))]
+        pairs = [(int(a, 16), int(b, 16)) for a, b in re.findall(r"\{0x([0-9a-f]+)L, 0x([0-9a-f]+)L\}", table)]
+        cpairs = [(int(a, 16), int(b, 16)) for a, b in re.findall(r"\{0x([0-9a-f]+)u, 0x([0-9a-f]+)u\}", c)]
+        self.assertEqual(pairs[:-1], cpairs)
+        self.assertEqual(pairs[-1], (0xfffffe00, 0x100000000))
+        self.assertIn("a >= 0xfffffe00u", c)
 
 
 class Listing(unittest.TestCase):
@@ -187,6 +235,34 @@ class Agent(unittest.TestCase):
         self.assertIn("tc_hw_read32(0xa05f689cu)", lines[2])
         self.assertTrue(lines[2].endswith("(0x0000000b)."))  # a 4-byte register's line as before
         self.assertIn('    elif meta.get("hw_ops"):', text(ROOT / "core" / "agent.py"))
+
+
+class BodyHoles(unittest.TestCase):
+    """Ghidra's blocks can stop short of code the function runs through (a branch into a delay slot): the rest of the
+    range they start in fills it. A far range with no block, bytes before the first block and another function's ranges
+    do not."""
+
+    def test_body_of(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("sat_translate", ROOT / "targets" / "saturn_sh2" / "translate.py")
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        with tempfile.TemporaryDirectory() as d:
+            f = pathlib.Path(d) / "function_bodies.txt"
+            f.write_text("06000000 06000000 06000010\n06000000 06000040 06000050\n06000000 05fffff0 06000000\n"
+                         "06000020 06000020 06000030\n", encoding="utf-8")
+            r = m.body_ranges(str(f))
+            meta = {"blocks": [["06000000", "06000003"], ["0600000c", "0600000d"]]}
+            body = m.body_of(meta, 0x06000000, r)
+            inside = lambda a: any(lo <= a <= hi for lo, hi in body)
+            self.assertTrue(inside(0x06000008) and inside(0x0600000f))
+            self.assertFalse(inside(0x06000044) or inside(0x05fffff0) or inside(0x06000020))
+            meta["callees"] = [{"addr": "06000008"}]
+            body = m.body_of(meta, 0x06000000, r)
+            self.assertTrue(inside(0x06000007))
+            self.assertFalse(inside(0x06000008))
+            # with no blocks the translator has no body at all, as before: the file adds nothing
+            self.assertEqual(m.body_of({}, 0x06000000, r), [])
 
 
 if __name__ == "__main__":

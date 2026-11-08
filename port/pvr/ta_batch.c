@@ -5,7 +5,9 @@
  * sign of their screen-space area (y down: positive is clockwise on screen): mode 2 culls counter-clockwise, mode 3
  * clockwise. Flat-shaded polygons (no Gouraud bit) take the colours of each triangle's last vertex.
  * A wider or taller frame (port_widescreen, port_tallscreen): an untextured triangle that covers exactly the 640x480 screen (a fade, a dimmed
- * backdrop) is widened to the frame; everything else keeps its screen place, so 2D art stays 4:3. */
+ * backdrop) is widened to the frame; everything else keeps its screen place, so 2D art stays 4:3. A scene with no
+ * triangle past the screen (a menu: 2D art only) is noted, so the frame around its screen is the border colour rather
+ * than the background plane's, which the art hid on the console. */
 #include <stdlib.h>
 #include <string.h>
 #include "pvr_int.h"
@@ -23,6 +25,7 @@ void tb_reset(PvrScene *s)
     s->nbatch = 0;
     s->passes = 0;
     s->max_z = 0.0f;
+    s->beyond = 0;
     s->strip_n = 0;
     s->open = 0;
     memset(s->range, 0, sizeof s->range);
@@ -63,10 +66,12 @@ void tb_poly(PvrScene *s, u32 list, u32 isp, u32 tsp, u32 tcw, u32 flags, const 
 
 static int finite_depth(f32 z) { return z > 0.0f && z < 3.0e38f; }
 
-static void widen_full_screen(PvrVtx *o, u32 flags)
+/* A full-screen triangle that is a fill, not art, covers a wider or taller frame: untextured (a fade), or textured
+ * with the smallest texture, 8x8, which holds no picture at 640x480 (Power Stone 2's white EIDOS screen). */
+static void widen_full_screen(PvrVtx *o, u32 flags, u32 tsp)
 {
     f32 k = port_widescreen(), ky = port_tallscreen(), x0 = o[0].x, x1 = o[0].x, y0 = o[0].y, y1 = o[0].y;
-    if ((k <= 1.0f && ky <= 1.0f) || (flags & PVR_BF_TEXTURE)) return;
+    if ((k <= 1.0f && ky <= 1.0f) || ((flags & PVR_BF_TEXTURE) && (tsp & 0x3fu))) return;
     for (u32 i = 1; i < 3u; i++) {
         x0 = o[i].x < x0 ? o[i].x : x0;
         x1 = o[i].x > x1 ? o[i].x : x1;
@@ -78,6 +83,16 @@ static void widen_full_screen(PvrVtx *o, u32 flags)
         o[i].x = 320.0f + (o[i].x - 320.0f) * k;
         o[i].y = 240.0f + (o[i].y - 240.0f) * ky;
     }
+}
+
+/* A triangle past the screen's edge by more than the overscan a menu's art may reach into (Power Stone 2's reach 4
+ * pixels; its 3D scenes 17 and more). */
+#define OVERSCAN 8.0f
+static int past_screen(const PvrVtx *o)
+{
+    for (u32 i = 0; i < 3u; i++)
+        if (o[i].x < -OVERSCAN || o[i].x > 640.0f + OVERSCAN || o[i].y < -OVERSCAN || o[i].y > 480.0f + OVERSCAN) return 1;
+    return 0;
 }
 
 static void emit(PvrScene *s, const PvrVtx *a, const PvrVtx *b, const PvrVtx *c)
@@ -97,11 +112,16 @@ static void emit(PvrScene *s, const PvrVtx *a, const PvrVtx *b, const PvrVtx *c)
     o[0] = *a;
     o[1] = *b;
     o[2] = *c;
+    if (g_parts_blend) { /* --interp-parts: the polygon vertex each came from (ta_parse.c vertex), 0 for sprites */
+        s->seq = grow(s->seq, &s->seq_cap, s->nvtx + 3u, sizeof *s->seq);
+        for (u32 i = 0; i < 3u; i++) s->seq[s->nvtx + i] = o[i].batch;
+    }
     if (!(bt->isp & ISP_GOURAUD)) {
         o[0].base = o[1].base = c->base;
         o[0].offset = o[1].offset = c->offset;
     }
-    widen_full_screen(o, bt->flags);
+    if (!s->beyond && past_screen(o)) s->beyond = 1;
+    widen_full_screen(o, bt->flags, bt->tsp);
     for (u32 i = 0; i < 3u; i++) {
         o[i].batch = s->nbatch - 1u;
         if (o[i].u < -UV_SLOP || o[i].u > 1.0f + UV_SLOP) bt->uv_out |= PVR_UVO_U;

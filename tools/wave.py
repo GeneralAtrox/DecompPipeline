@@ -3,6 +3,7 @@ matched harness of every workspace through the served Ghidra slots, until each w
 
 usage: python tools/wave.py dry  [--ws KEY ...]                     counts and a time estimate; no Ghidra, no HOLD
        python tools/wave.py run  --head SHA --live-test CMD [--release-at-end] [--requeue]
+       python tools/wave.py run  --game WS [...]   one workspace from its catalog to readable C (tools/wave_game.py)
        python tools/wave.py stop | release | status
 PLAN (STATE_DIR/plan.json, or env WAVE_PLAN; machine paths stay out of the repo): {"dp": the live checkout the wave
 prepares with, "land_script": land_dp.sh, "tc": workspace, "spawn": the folder of main, ovl, gend and sst*, "ps2": ws,
@@ -20,8 +21,7 @@ Steps of `run`, each recorded in STATE (state.json) when done, so a run after a 
               CHUNK_S (tools/bounded.py), slots 3 when RAM is under 82% at the chunk's start, else 2 (the broker
               still decides each JVM), and --brake 85: inside a chunk, at 85% or more a prepare starts only while no
               other runs, so the chunk slows before the guard below kills it; until a chunk exits 0 and a --dry
-              check finds 0 stale. A chunk with nothing
-              re-prepared twice running ends the workspace as stuck (listed in the summary).
+              check finds 0 stale. A chunk with nothing re-prepared twice running ends the workspace as stuck.
   5 fmac      right after a workspace's re-stamp, if the fmac list names it: exactly its listed matched functions
               rejudged on their new harnesses (core/oracle_fresh.recount, the raw judge); every FAIL is a flip, written
               to STATE_DIR/fmac-flips-KEY.txt for requeueing (details in fmac-flips-KEY.json).
@@ -154,8 +154,7 @@ def wait_ram(after_kill):
             sys.exit(3)
         r = ram()
         ok = ok + 1 if r < (RESUME_UNDER if after_kill else KILL_AT) else 0
-        if ok < need:
-            time.sleep(10)
+        time.sleep(10 if ok < need else 0)
     return ram()
 
 
@@ -320,8 +319,7 @@ def restamp(st, key, ws, keys, fmac=None):
         if fmac:
             cmd += ["--verdicts", str(verdicts(key)), "--verdicts-for", str(fmac_in(key, fmac))]
         log(f"{key}: chunk {w['chunks'] + 1}, {slots} slots, RAM {r:.1f}%")
-        t0 = time.monotonic()
-        rc, out = guarded(cmd, CHUNK_S + 120, st)
+        t0, (rc, out) = time.monotonic(), guarded(cmd, CHUNK_S + 120, st)
         c = parse(out)
         w["chunks"] += 1
         w["seconds"] += time.monotonic() - t0
@@ -572,7 +570,11 @@ def main():
     ap.add_argument("--live-test")
     ap.add_argument("--release-at-end", action="store_true")
     ap.add_argument("--requeue", action="store_true", help="step 6: requeue the fmac flips at the end")
-    a = ap.parse_args()
+    ap.add_argument("--game", help="run: the game route (tools/wave_game.py), its own options after it")
+    a, rest = ap.parse_known_args()
+    if a.game or rest:  # one workspace from its catalog to readable C: no plan, no HOLD; it checks its own options
+        import wave_game
+        return wave_game.main(a.cmd, a.game, rest)
     if a.cmd != "status":
         load_plan()
     from core import oplog  # the manual operator steps record (docs/DEFINITION_OF_DONE.md gate 2)
@@ -594,10 +596,8 @@ def main():
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         STOP_FILE.write_text("", encoding="utf-8")
         print(f"{STOP_FILE} written: the driver kills its child tree and exits 3 within {GUARD_POLL_S:g} s")
-    elif a.cmd == "release":
-        release()
     else:
-        print(json.dumps(load(), indent=1))
+        release() if a.cmd == "release" else print(json.dumps(load(), indent=1))
     return 0
 
 

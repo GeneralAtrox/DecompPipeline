@@ -30,9 +30,14 @@ class Scope(unittest.TestCase):
                           "fmuls": False, "lwz": False, "blr": False, "or": False})
 
     def test_entry_names_the_current_script(self):
-        # a scoped change names today's file; none is in force after the oracle changes that reach every function
+        # a scoped change names today's file; none is in force after the oracle changes that reach every function.
+        # Today's entry is a42a6551's "prewave_flags" (x360_scope.FLAG_SCOPES), which took over from "vmx"
         for e in json.loads((X360 / "target.json").read_text(encoding="utf-8"))["stamp_scopes"]:
-            self.assertEqual(e["scope"], "vmx")
+            # boundary_vectors: TcBound.java only (tests/test_targeted_vectors.py StampScope); unlisted_call_args:
+            # TcTrack.java only (8f72a3fa, core/unchecked_args)
+            if e["scope"] in ("boundary_vectors", "unlisted_call_args"):
+                continue
+            self.assertEqual(e["scope"], "prewave_flags")
             before, after = e["scripts"]["TcVectors.java"]
             self.assertEqual(after, hashlib.sha256((X360 / "ghidra_scripts" / "TcVectors.java").read_bytes()).hexdigest())
             self.assertNotEqual(before, after)

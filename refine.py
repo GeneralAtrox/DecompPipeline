@@ -88,6 +88,7 @@ import argparse
 import collections
 import os
 import pathlib
+import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -302,7 +303,8 @@ def command(a, cfg):
         from core import readable_verify, sync_run
         _, sys_list = systems.load()
         by_id = {s["id"]: s["functions"] for s in sys_list}
-        files = sorted(p.stem for p in readable.SRC.glob("8c*.c"))
+        files = sorted(p.stem for p in readable.SRC.glob("*.c") if re.fullmatch(r"[0-9a-f]{8}", p.stem))  # was 8c*.c:
+        # the Dreamcast's addresses only, so on any other console verify judged nothing (Too Human: 0 of 226 verified)
         if a.targets:
             want = set(addresses(a, by_id))
             files = [f for f in files if f in want]
@@ -339,9 +341,8 @@ def command(a, cfg):
         since = refine.now()  # a function another process finishes after this is not redone by this run
         main_led, done = paths.read_json(paths.LEDGER)["functions"], refine.load_ledger()
         todo, skipped = [], []
+        refine.fresh_registry(log=lambda m: print(m, flush=True))  # a fresh workspace (was: 0 to do, silently)
         for addr in addresses(a, by_id):  # each function once (core/targets); run_one claims it (core/fn_claim)
-            if not (readable.SRC.parent / "names").exists():
-                continue
             if main_led.get(addr, {}).get("status") != "matched" or refine.raw_missing(addr):
                 skipped.append(addr)
                 continue

@@ -423,6 +423,10 @@ def facts_body(cfg):
         lines.append("branch_coverage 1")
     if cfg.get("targeted_vectors"):  # boundary-value vectors for branch directions no vector took (TcBound)
         lines.append("targeted_vectors 1")
+    if cfg.get("boundary_vectors"):  # vectors at the compares' edges, operands equal or one apart (TcBound.Edges)
+        lines.append("boundary_vectors 1")
+    if cfg.get("tcout_tail_exports"):  # a tail jump passes on its jumper's callers' reads (TcOut.readAfter; Dreamcast)
+        lines.append("tcout_tail_exports 1")
     if cfg.get("coverage_inputs"):  # constant-guided inputs in about a third of the vectors (TcGuide)
         lines.append("coverage_inputs 1")
     if cfg.get("ghidra_timeout_s"):  # vector generation stops (the function is refused) before Ghidra's timeout

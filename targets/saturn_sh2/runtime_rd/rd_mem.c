@@ -74,6 +74,27 @@ void rd_page_close(u32 addr)
     if (ram_off(addr, 1, &off)) protect(off & ~(RD_PAGE - 1), RD_PAGE, PAGE_NOACCESS);
 }
 
+/* The stricter judge's guest access (tc_strict.h through rd_veh.c), as tc_rt.c's tcs_read and tcs_write: [p, p + n) in
+ * one bank of work RAM (TcBase.inRam), through a code page's guard (opened for the copy, closed again). A write (in)
+ * only where no byte is an instruction's (TcStrict.writable): the write report then finds it as it finds the C's own.
+ * 0: not in work RAM, or not written. */
+int rd_guest_copy(u32 p, u32 n, u8 *out, const u8 *in)
+{
+    u32 off;
+    if (!n || !ram_off(p, n, &off)) return 0;
+    for (u32 k = 0; in && k < n; k++)
+        if ((g_code[(off + k) >> 3] >> ((off + k) & 7)) & 1) return 0;
+    u32 first = off / RD_PAGE, last = (off + n - 1) / RD_PAGE;
+    int g0 = g_armed && g_page[first] == PAGE_CODE, g1 = last != first && g_armed && g_page[last] == PAGE_CODE;
+    if (g0) protect(first * RD_PAGE, RD_PAGE, PAGE_READWRITE);
+    if (g1) protect(last * RD_PAGE, RD_PAGE, PAGE_READWRITE);
+    if (in) memcpy(host(off), in, n);
+    else memcpy(out, host(off), n);
+    if (g0) protect(first * RD_PAGE, RD_PAGE, PAGE_NOACCESS);
+    if (g1) protect(last * RD_PAGE, RD_PAGE, PAGE_NOACCESS);
+    return 1;
+}
+
 static FILE *open_file(const char *path, const char *mode)
 {
     FILE *f = NULL;
@@ -289,12 +310,14 @@ f32 rdf32(u32 a)
 void wr8(u32 a, u8 v)
 {
     if (rd_tracing || rd_writes) rd_trace_write(a, 1);
+    if (tcrt_p4_store(a, v, 1)) return;
     volatile u8 *p = at(a, 1, 1);
     if (p) p[0] = v;
 }
 void wr16(u32 a, u16 v)
 {
     if (rd_tracing || rd_writes) rd_trace_write(a, 2);
+    if (tcrt_p4_store(a, v, 2)) return;
     volatile u8 *p = at(a, 2, 1);
     if (!p) return;
     p[0] = (u8)(v >> 8);
@@ -303,6 +326,7 @@ void wr16(u32 a, u16 v)
 void wr32(u32 a, u32 v)
 {
     if (rd_tracing || rd_writes) rd_trace_write(a, 4);
+    if (tcrt_p4_store(a, v, 4)) return;
     volatile u8 *p = at(a, 4, 1);
     if (!p) return;
     p[0] = (u8)(v >> 24);

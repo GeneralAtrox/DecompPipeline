@@ -166,4 +166,103 @@ final class TcBound {
         return String.format("\"bound\":{\"open\":%d,\"runs\":%d,\"added\":[%d,%d],\"hit\":%d%s}", open, runs,
             added[0], added[1], hit, note.isEmpty() ? "" : ",\"note\":\"" + note + "\"");
     }
+
+    // Compare edges (target.json "boundary_vectors"; TcBoundPass.edges). A relational mutant (`<` for `<=`, a compared
+    // constant one off) differs from the original only where the compare's operands are equal or one apart, which
+    // random inputs taking both directions of a branch rarely make (the mutation audit's relop and const survivors). A
+    // site is an integer or float compare in the p-code of a compare instruction of the body (mnemonic cmp* or fcmp*)
+    // whose operands are registers the instruction has not written before it, or constants (directly, or through
+    // COPY or an extension inside the instruction), at least one a register. An integer site i has three edges, its
+    // operands' difference -1, 0 and +1 at the compare's width (3i, 3i+1, 3i+2); a float site one, equal operands
+    // (3i+1). TcOracle records the edges a run makes (Result.edges) from the registers before the step at the site:
+    // reading them changes no run. A compare in a delay slot runs in its branch's step and is not seen.
+    static final class Edges {
+        interface Regs {  // a register's value before the step (TcOracle: its MemoryState)
+            long read(Varnode v);
+        }
+
+        static final class Site {
+            final int index, size;
+            final boolean flt;
+            final Varnode a, b;  // a register operand, or null: the constant ca / cb
+            final long ca, cb;
+
+            Site(int index, int size, boolean flt, Varnode a, long ca, Varnode b, long cb) {
+                this.index = index; this.size = size; this.flt = flt; this.a = a; this.ca = ca; this.b = b; this.cb = cb;
+            }
+        }
+
+        final Map<Long, List<Site>> at = new HashMap<>();
+        final Set<Integer> goals = new TreeSet<>();  // every edge a run can make
+        int sites;
+
+        static Edges of(Listing listing, AddressSetView body) {
+            Edges e = new Edges();
+            for (Instruction in : listing.getInstructions(body, true))
+                e.add(in.getAddress().getOffset(), in.getMnemonicString(), in.getPcode());
+            return e;
+        }
+
+        // One instruction's sites, in p-code order.
+        void add(long pc, String mnemonic, PcodeOp[] ops) {
+            String m = mnemonic.toLowerCase(Locale.ROOT);
+            if (!m.startsWith("cmp") && !m.startsWith("fcmp")) return;
+            Map<Varnode, Long> known = new HashMap<>();
+            Set<Varnode> written = new HashSet<>();
+            for (PcodeOp op : ops) {
+                int code = op.getOpcode();
+                boolean icmp = code >= PcodeOp.INT_EQUAL && code <= PcodeOp.INT_LESSEQUAL;
+                boolean fc = code >= PcodeOp.FLOAT_EQUAL && code <= PcodeOp.FLOAT_LESSEQUAL;
+                if ((icmp || fc) && op.getNumInputs() == 2) {
+                    Varnode a = op.getInput(0), b = op.getInput(1);
+                    Long ca = constant(a, known), cb = constant(b, known);
+                    int size = a.getSize();
+                    boolean ra = ca == null && a.isRegister() && !written.contains(a);
+                    boolean rb = cb == null && b.isRegister() && !written.contains(b);
+                    if ((ra || ca != null) && (rb || cb != null) && (ra || rb) && size <= 8
+                        && (!fc || size == 4 || size == 8)) {
+                        Site s = new Site(sites++, size, fc, ra ? a : null, ra ? 0 : ca, rb ? b : null, rb ? 0 : cb);
+                        at.computeIfAbsent(pc, k -> new ArrayList<>()).add(s);
+                        goals.add(3 * s.index + 1);
+                        if (!fc) {
+                            goals.add(3 * s.index);
+                            goals.add(3 * s.index + 2);
+                        }
+                    }
+                }
+                Varnode out = op.getOutput();
+                if (out == null) continue;
+                Long x = op.getNumInputs() > 0 ? constant(op.getInput(0), known) : null;
+                known.remove(out);
+                if (out.isRegister()) written.add(out);
+                if (x == null || out.getSize() > 8) continue;
+                if (code == PcodeOp.COPY || code == PcodeOp.INT_ZEXT) known.put(out, x & mask(out.getSize()));
+                int n = 64 - 8 * op.getInput(0).getSize();
+                if (code == PcodeOp.INT_SEXT) known.put(out, (x << n >> n) & mask(out.getSize()));
+            }
+        }
+
+        static Long constant(Varnode v, Map<Varnode, Long> known) {
+            return v.isConstant() ? (Long) (v.getOffset() & mask(v.getSize())) : known.get(v);
+        }
+
+        // Before the step at pc: the edges its sites make, into got.
+        void hit(Set<Integer> got, long pc, Regs rd) {
+            List<Site> s = at.get(pc);
+            if (s == null) return;
+            for (Site x : s) {
+                long m = mask(x.size);
+                long a = (x.a != null ? rd.read(x.a) : x.ca) & m, b = (x.b != null ? rd.read(x.b) : x.cb) & m;
+                if (x.flt) {
+                    if (x.size == 4 ? Float.intBitsToFloat((int) a) == Float.intBitsToFloat((int) b)
+                        : Double.longBitsToDouble(a) == Double.longBitsToDouble(b)) got.add(3 * x.index + 1);
+                    continue;
+                }
+                long d = (a - b) & m;
+                if (d == 0) got.add(3 * x.index + 1);
+                else if (d == 1) got.add(3 * x.index + 2);
+                else if (d == m) got.add(3 * x.index);
+            }
+        }
+    }
 }

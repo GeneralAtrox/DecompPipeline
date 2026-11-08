@@ -4,7 +4,8 @@
 // The kit parses it in order and a later option wins, so the command line overrides the settings, which override the
 // defaults. A scripted run (--fixed-clock other than 0, or --headless) reads no settings and gets no defaults, so
 // its result depends on its command line alone; --settings none leaves out the saved settings of a play run. A play
-// run's defaults: in-between frames (--present interp: the game's 30 Hz tick, drawn at the display's rate).
+// run's defaults: in-between frames (--present auto: the game's own tick, drawn at the display's rate when the frame cap allows more),
+// a frame-rate cap of 144 (--fps 144; the menu's None, saved as fps 0, is uncapped) and above-normal process priority.
 //
 // The launcher contract (Lodoss's, port/README.md) is handled here, before the kit starts:
 //   --version                       prints the build's identity and exits
@@ -16,6 +17,7 @@
 #include <cstring>
 #include <string>
 #include <vector>
+#include <windows.h>
 #include "host.h"
 #include "host_internal.hpp"
 
@@ -78,6 +80,7 @@ int main(int argc, char **argv)
     bool scripted = (fixed && std::strcmp(fixed, "0") != 0) || has_flag(argc, argv, "--headless") || installing;
     // --no-window is a play run (settings, defaults, game log, log rotation) that opens nothing: not scripted
     std::vector<std::string> args{argc > 0 ? argv[0] : "port.exe"};
+    host::resume_wait(); // Help > Resume before the last crash started this run: the one that did ends first
     if (data) host::set_data_dir(data);
     host::crash_install(!scripted && !has_flag(argc, argv, "--no-dialog") && !has_flag(argc, argv, "--no-window"));
     if (installing) return install(argc, argv, data);
@@ -90,7 +93,21 @@ int main(int argc, char **argv)
     if (data) args.insert(args.end(), {"--save-dir", (host::data_dir() / "saves").string(), "--dump-dir",
                                        (host::data_dir() / "dumps").string()});
     if (!scripted) {
-        args.insert(args.end(), {"--present", "interp", "--game-log", "on"});
+        // A play run gets above-normal priority. At normal priority a background job using every core (a compiler,
+        // measured on build box A) held the game's thread for up to 600 ms at a time: the sound ran dry and the picture
+        // stalled. Scripted runs stay at normal priority, so a test never crowds the machine's other work.
+        SetPriorityClass(GetCurrentProcess(), ABOVE_NORMAL_PRIORITY_CLASS);
+        // Nor is it power throttled. Windows 11 may move a process with no visible window, whose game thread sleeps
+        // between polls, onto slow cores and coarse timers (EcoQoS): on a hybrid laptop the movie wait's naps then
+        // stretched one blank in twelve to 33-55 ms. --power-throttle leaves it to Windows, for comparing.
+        if (!has_flag(argc, argv, "--power-throttle")) {
+            PROCESS_POWER_THROTTLING_STATE pt{};
+            pt.Version = PROCESS_POWER_THROTTLING_CURRENT_VERSION;
+            pt.ControlMask = PROCESS_POWER_THROTTLING_EXECUTION_SPEED | 0x4u; // 0x4: ..._IGNORE_TIMER_RESOLUTION
+            pt.StateMask = 0;                                                  // 0: throttle neither
+            SetProcessInformation(GetCurrentProcess(), ProcessPowerThrottling, &pt, sizeof pt);
+        }
+        args.insert(args.end(), {"--present", "auto", "--fps", "144", "--game-log", "on"});
         if (!settings || std::strcmp(settings, "none") != 0) {
             std::filesystem::path file = settings ? std::filesystem::path(settings) : host::data_dir() / "settings.txt";
             std::vector<std::string> saved = host::settings_args(file);

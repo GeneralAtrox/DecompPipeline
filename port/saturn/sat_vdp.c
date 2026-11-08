@@ -7,10 +7,13 @@
 #include "sat.h"
 #include "sat_sys.h"
 #include "sat_vdp.h"
+#include "sat_part.h"
 
 u8 sat_v1_vram[0x80000], sat_v1_fb[2][0x40000], sat_v2_vram[0x80000], sat_v2_cram[0x1000];
 u8 sat_v1_reg[0x20], sat_v2_reg[0x200];
-static int g_vblank_flag, g_v1_draw_end, g_fb_swapped, g_manual_erase, g_manual_change, g_auto_draw;
+static int g_vblank_flag, g_v1_draw_end, g_fb_swapped, g_manual_pending, g_erase_armed, g_auto_draw;
+
+enum { FBCR_FCT = 1u, FBCR_FCM = 2u, TVMR_VBE = 8u }; /* FCM set: manual, and FCT says change (1) or erase (0) */
 
 static u32 get(const u8 *m, u32 o, u32 size)
 {
@@ -26,7 +29,11 @@ static void put(u8 *m, u32 o, u32 size, u32 value)
 static u32 v1vram_r(u32 p, u32 s) { return get(sat_v1_vram, p - 0x05c00000u, s); }
 static void v1vram_w(u32 p, u32 s, u32 v) { put(sat_v1_vram, p - 0x05c00000u, s, v); }
 static u32 v1fb_r(u32 p, u32 s) { return get(sat_v1_fb[1 - g_fb_swapped], (p - 0x05c80000u) & 0x3ffffu, s); }
-static void v1fb_w(u32 p, u32 s, u32 v) { put(sat_v1_fb[1 - g_fb_swapped], (p - 0x05c80000u) & 0x3ffffu, s, v); }
+static void v1fb_w(u32 p, u32 s, u32 v)
+{
+    put(sat_v1_fb[1 - g_fb_swapped], (p - 0x05c80000u) & 0x3ffffu, s, v);
+    sat_wide_cpu(sat_v1_fb[1 - g_fb_swapped], (p - 0x05c80000u) & 0x3ffffu, s, v); /* and its wide twin (sat_wide.c) */
+}
 static u32 v2vram_r(u32 p, u32 s) { return get(sat_v2_vram, p - 0x05e00000u, s); }
 u32 sat_vwatch_lo, sat_vwatch_hi, sat_vwatch_vb; /* --vwatch LO,HI[,VB]: from vertical blank VB, log guest writes that change VDP2 VRAM [LO,HI), with the call chain (a test aid) */
 static u32 vw_last_vb, vw_n, vw_lo, vw_hi, vw_nvb;
@@ -63,36 +70,41 @@ static void cram_w(u32 p, u32 s, u32 v)
 u8 *sat_v1_draw_fb(void) { return sat_v1_fb[1 - g_fb_swapped]; }
 const u8 *sat_v1_display_fb(void) { return sat_v1_fb[g_fb_swapped]; }
 
-/* EWDR over the erase window (EWLR upper left, EWRR lower right) of the drawing framebuffer */
-static void v1_erase(void)
+/* EWDR over the erase window (EWLR upper left, EWRR lower right) of a framebuffer */
+static void v1_erase(u8 *fb)
 {
     u32 data = get(sat_v1_reg, 6, 2), ul = get(sat_v1_reg, 8, 2), lr = get(sat_v1_reg, 10, 2);
     u32 x0 = ((ul >> 9) & 0x3fu) * 8u, y0 = ul & 0x1ffu, x1 = ((lr >> 9) & 0x7fu) * 8u, y1 = lr & 0x1ffu;
-    u8 *fb = sat_v1_draw_fb();
     for (u32 y = y0; y <= y1 && y < 256u; y++)
         for (u32 x = x0; x < x1 && x < 512u; x++) put(fb, (y * 512u + x) * 2u, 2, data);
+    sat_wide_erase(fb, data, x0, y0, x1, y1); /* and its wide twin's (sat_wide.c) */
 }
+
+void sat_v1_fb_flip(void) { g_fb_swapped ^= 1; }
+void sat_v1_erase_draw(void) { v1_erase(sat_v1_draw_fb()); }
 
 static void v1_start_draw(void)
 {
     sat_v1_draw();
+    sat_inb_drawn(sat_v1_draw_fb());
     g_v1_draw_end = 1;
     sat_scu_raise(13u); /* sprite draw end */
 }
 
-/* the frame change, at the start of the display period: 1-cycle mode swaps and erases every frame; manual mode
- * does what FBCR asked since the last one; PTMR 2 then draws the list into the new drawing framebuffer */
+/* the frame change, at the start of the display period. FCM clear: every frame swaps and erases. FCM set: what FBCR
+ * asked since the last one: FCT set swaps (and with VBE erases the shown framebuffer first), FCT clear erases the shown
+ * framebuffer behind the beam, so it is still on the screen for one more picture and is clean when it comes back to be
+ * drawn into (SGL's 2-vertical-blank frame writes 2, then 3). PTMR 2 draws the list at a swap and only at a swap. */
 static void v1_frame_change(void)
 {
-    u32 fbcr = get(sat_v1_reg, 2, 2);
-    if (!(fbcr & 1u)) {
-        g_fb_swapped ^= 1;
-        v1_erase();
-    } else {
-        if (g_manual_erase) v1_erase();
-        if (g_manual_change) g_fb_swapped ^= 1;
-    }
-    g_manual_erase = g_manual_change = 0;
+    u32 fbcr = get(sat_v1_reg, 2, 2), tvmr = get(sat_v1_reg, 0, 2);
+    int change = !(fbcr & FBCR_FCM) || (g_manual_pending && (fbcr & FBCR_FCT));
+    if (g_erase_armed || (change && (fbcr & FBCR_FCM) && (tvmr & TVMR_VBE))) v1_erase(sat_v1_fb[g_fb_swapped]);
+    g_erase_armed = g_manual_pending && (fbcr & FBCR_FCM) && !(fbcr & FBCR_FCT);
+    g_manual_pending = 0;
+    if (!change) return;
+    g_fb_swapped ^= 1;
+    if (!(fbcr & FBCR_FCM)) v1_erase(sat_v1_draw_fb());
     if (g_auto_draw) v1_start_draw();
 }
 
@@ -109,13 +121,7 @@ static void v1reg_w(u32 p, u32 s, u32 v)
 {
     u32 o = (p - 0x05d00000u) & 0x1fu;
     put(sat_v1_reg, o, s, v);
-    if (o == 0x02u || o == 0x03u) { /* FBCR: in manual mode FCT says erase (0) or change (1) at the next frame */
-        u32 fbcr = get(sat_v1_reg, 2, 2);
-        if (fbcr & 1u) {
-            if (fbcr & 2u) g_manual_change = 1;
-            else g_manual_erase = 1;
-        }
-    }
+    if ((o == 0x02u || o == 0x03u) && (get(sat_v1_reg, 2, 2) & FBCR_FCM)) g_manual_pending = 1; /* FBCR: manual, acted on at the next frame */
     if (o == 0x04u || o == 0x05u) { /* PTMR: 1 starts drawing at once, 2 at the frame change */
         u32 ptmr = get(sat_v1_reg, 4, 2) & 3u;
         g_auto_draw = ptmr == 2u;
@@ -145,6 +151,16 @@ static void v2reg_w(u32 p, u32 s, u32 v)
 /* what the video chips are set to, for the log (--shot, and a bug report) */
 u32 sat_peek_addr[16]; /* --peek A,B,...: words of guest memory logged with each shot's register report */
 int sat_peek_n;
+
+/* --vwatch 25f80000,25f80200,VB: at vertical blank VB, log every non-zero VDP2 register (offset:value), to read the priorities, plane enables and colour modes a screen runs with (a test aid) */
+void sat_v2_dump_regs(void)
+{
+    char line[2048];
+    int n = 0;
+    for (u32 o = 0; o < 0x120u && n < 1900; o += 2)
+        if (get(sat_v2_reg, o, 2)) n += snprintf(line + n, sizeof line - (size_t)n, " %x:%04x", o, get(sat_v2_reg, o, 2));
+    port_log("vdp2 registers at vb %u:%s\n", sat_vblank_count(), line);
+}
 
 void sat_vdp_report(void)
 {
@@ -208,9 +224,9 @@ void sat_vblank_in(void)
     sat_vblank_counted();
     sat_frame_limit_check();
     sat_present();
-    g_v1_draw_end = 0;
     v1_frame_change();
     sat_cd_frame();
+    sat_part_frame();
     sat_scsp_frame();
     g_vblank_flag = 0;
     sat_scu_raise(0u); /* VBlank-in */

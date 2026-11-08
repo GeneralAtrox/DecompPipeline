@@ -45,6 +45,8 @@
 #include "lockstep.h"
 #include "prof.h"
 #include "play_stats.h"
+#include "frame_cost.h"
+#include "work_count.h"
 
 #ifdef PORT_CHECKED
 #include <rtcapi.h>
@@ -78,18 +80,34 @@ static void log_stack_strings(const u32 *sp, u32 bytes)
 static void log_game_thread(void)
 {
     CONTEXT c;
+    MEMORY_BASIC_INFORMATION mi;
+    HMODULE in = NULL;
+    char path[MAX_PATH] = "an address outside any module";
     memset(&c, 0, sizeof c);
     c.ContextFlags = CONTEXT_CONTROL | CONTEXT_INTEGER;
     if (SuspendThread(g_game_thread) == (DWORD)-1 || !GetThreadContext(g_game_thread, &c)) return;
     HMODULE m = GetModuleHandleW(NULL);
     const IMAGE_NT_HEADERS *nt = (const IMAGE_NT_HEADERS *)((const u8 *)m + ((const IMAGE_DOS_HEADER *)m)->e_lfanew);
-    uintptr_t lo = (uintptr_t)m, hi = lo + nt->OptionalHeader.SizeOfImage;
-    port_log("game thread: eip port.exe+%08x esp %08lx\n", (u32)(c.Eip - lo), c.Esp);
-    /* Words on the stack that point into the executable: return addresses (and some function pointers). */
+    uintptr_t img = (uintptr_t)m, lo = img + nt->OptionalHeader.BaseOfCode, hi = lo + nt->OptionalHeader.SizeOfCode;
+    /* Which module the thread is in: port.exe, or a system or driver DLL (a wait, a write, the GPU driver), named so
+     * that a hang outside port.exe is not read as one in the last port.exe caller the scan below finds. */
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           (LPCSTR)(uintptr_t)c.Eip, &in) && in)
+        GetModuleFileNameA(in, path, sizeof path);
+    const char *name = strrchr(path, '\\') ? strrchr(path, '\\') + 1 : path;
+    port_log("game thread: eip %s+%08x (port.exe+%08x) esp %08lx\n", name, (u32)(c.Eip - (uintptr_t)in),
+             (u32)(c.Eip - img), c.Esp);
+    /* Words on the stack that point into port.exe's code, to the end of the stack's region: return addresses, and
+     * stale ones that an earlier call left in a frame (a driver's frames can be deep, so the scan goes past 1 KB). */
+    port_log("  port.exe code addresses on the stack (live callers, and stale ones from earlier calls):\n");
     const u32 *sp = (const u32 *)(uintptr_t)c.Esp;
-    for (int i = 0, n = 0; i < 256 && n < 16; i++)
-        if (sp[i] > lo && sp[i] < hi) {
-            port_log("  stack+%03x: port.exe+%08x\n", i * 4, (u32)(sp[i] - lo));
+    u32 words = 0x8000u / 4u, left = 256u; /* the old 1 KB if the region cannot be read */
+    if (VirtualQuery(sp, &mi, sizeof mi))
+        left = (u32)((const u8 *)mi.BaseAddress + mi.RegionSize - (const u8 *)sp) / 4u;
+    if (left < words) words = left;
+    for (u32 i = 0, n = 0; i < words && n < 32; i++)
+        if (sp[i] >= lo && sp[i] < hi) {
+            port_log("  stack+%04x: port.exe+%08x\n", i * 4, (u32)(sp[i] - img));
             n++;
         }
     log_stack_strings(sp, 0x2000);
@@ -111,12 +129,15 @@ void port_exit(const char *why, int code)
     if (InterlockedExchange(&g_exiting, 1)) return;
     port_log("EXIT: %s after %u vertical blanks\n", why, port_vblank_count());
     play_stats_report();
+    work_count_report();
     game_log_end(end_words(why, code), code, code != 0);
     dispatch_report();
     guest_p4_report();
     port_stub_report();
     port_extra_report();
+    xcost_report();
     pvr_oit_report();
+    pvr_tex_report();
     prof_report();
     lockstep_close();
     port_log_flush();
@@ -218,7 +239,7 @@ int port_main(int argc, char **argv)
                  && (used = extra_option(a, v)) == 0 && (used = session_option(a, v)) == 0 &&
                  (used = scene_dump_option(a, v)) == 0 && (used = game_log_option(a, v)) == 0 &&
                  (used = lockstep_option(a, v)) == 0 && (used = diag_option(a, v)) == 0 &&
-                 (used = prof_option(a, v)) == 0 && (used = play_stats_option(a, v)) == 0 &&
+                 (used = prof_option(a, v)) == 0 && (used = xcost_option(a, v)) == 0 && (used = play_stats_option(a, v)) == 0 && (used = work_count_option(a, v)) == 0 &&
                  (used = pace_option(a, v)) == 0)
             used = 1; /* unknown: skipped */
     }

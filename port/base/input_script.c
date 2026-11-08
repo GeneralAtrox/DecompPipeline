@@ -30,6 +30,7 @@ static const struct {
     {"LB", HOST_PAD_LB},     {"RB", HOST_PAD_RB},       {"L3", HOST_PAD_L3}, {"R3", HOST_PAD_R3},
     {"BACK", HOST_PAD_BACK}, {"GUIDE", HOST_PAD_GUIDE}, {"RSUP", HOST_PAD_RS_UP}, {"RSDOWN", HOST_PAD_RS_DOWN},
     {"RSLEFT", HOST_PAD_RS_LEFT}, {"RSRIGHT", HOST_PAD_RS_RIGHT}, {"LT", SCRIPT_L}, {"RT", SCRIPT_R},
+    {"LSUP", SCRIPT_LS_UP},  {"LSDOWN", SCRIPT_LS_DOWN}, {"LSLEFT", SCRIPT_LS_LEFT}, {"LSRIGHT", SCRIPT_LS_RIGHT},
 };
 
 int input_scripted(void) { return g_script_n != 0; } /* a scripted run: the console's actions take their defaults */
@@ -40,6 +41,21 @@ u32 input_name_bit(const char *name) /* a g_names bit */
         if (!_stricmp(name, g_names[i].name)) return g_names[i].bit;
     return 0;
 }
+
+/* A button named as --input takes it: the console's own names first (a Saturn's L is its shoulder, not the trigger),
+ * then the host's. len: the name's length (it may run on into the rest of a script). */
+static u32 button_bit(const char *name, size_t len)
+{
+    unsigned na;
+    const PortAction *act = console_actions(&na);
+    for (unsigned i = 0; i < na; i++)
+        if (strlen(act[i].name) == len && !_strnicmp(name, act[i].name, len)) return input_name_bit(act[i].dflt);
+    for (size_t i = 0; i < sizeof g_names / sizeof g_names[0]; i++)
+        if (strlen(g_names[i].name) == len && !_strnicmp(name, g_names[i].name, len)) return g_names[i].bit;
+    return 0;
+}
+
+u32 input_button_bit(const char *name) { return button_bit(name, strlen(name)); }
 
 
 /* One --input entry's optional player prefix "Pn.": returns the player (0..3) and moves *p past it. */
@@ -61,16 +77,8 @@ int input_script_option(const char *arg, const char *value)
         const char *entry = p;
         u32 player = script_player(&p);
         size_t n = strcspn(p, "@,="), name = n;
-        u32 bit = 0, level = 255;
+        u32 bit = button_bit(p, name), level = 255;
         char *end = (char *)p + n;
-        for (size_t i = 0; i < sizeof g_names / sizeof g_names[0]; i++)
-            if (strlen(g_names[i].name) == name && !_strnicmp(p, g_names[i].name, name)) bit = g_names[i].bit;
-        {
-            unsigned na;
-            const PortAction *act = console_actions(&na); /* the console's own names win: a Saturn's L is its shoulder, not the trigger */
-            for (unsigned i = 0; i < na; i++)
-                if (strlen(act[i].name) == name && !_strnicmp(p, act[i].name, name)) bit = input_name_bit(act[i].dflt);
-        }
         if (*end == '=' && (bit & (SCRIPT_L | SCRIPT_R))) {
             level = (u32)strtoul(end + 1, &end, 10);
             if (!level || level > 255) bit = 0;

@@ -11,6 +11,7 @@ import re
 import subprocess
 import sys
 import time
+import part_draw  # noqa: E402 (beside this file, as every importer of game_config has it on the path)
 
 KIT = pathlib.Path(__file__).resolve().parents[1]  # DecompPipeline/port
 PIPELINE = KIT.parent
@@ -19,8 +20,8 @@ ADDR = re.compile(r"[0-9a-f]{8}")
 NAME = re.compile(r"[A-Za-z_]\w*")
 REQUIRED = ("name", "decomp", "entry", "image_base")
 KNOWN = set(REQUIRED) | {"boot_file", "disc", "fsca_table", "must_work", "sdk", "sources", "hardware", "wrap",
-                         "console", "id", "boot_sha256", "arrows", "widescreen", "interp_scene", "aica_arm", "aica_arm_fast", "aica_arm_native", "kamui1", "lockstep_sample_pcs",
-                         "lockstep_rtc_pcs", "lockstep_scene_pcs", "translator_c", "tx_first", "not_code", "texture_pack", "vram_init", "sq_queue_only", "sq_fast",
+                         "console", "id", "boot_sha256", "arrows", "left_stick", "widescreen", "wide_cull", "part_draw", "interp_scene", "present_thread", "aica_arm", "aica_arm_fast", "aica_arm_native", "kamui1", "lockstep_sample_pcs",
+                         "lockstep_rtc_pcs", "lockstep_scene_pcs", "translator_c", "tx_first", "spin_words", "not_code", "texture_pack", "vram_init", "sq_queue_only", "sq_fast", "game_o2",
                          "contract"}
 CONSOLE = ("country", "language", "broadcast")
 CONTRACT_DOC = KIT / "CONTRACT.md"  # its "Contract version: X.Y.Z" line is the kit's version, the only copy
@@ -163,6 +164,19 @@ def load(game_dir):
     bad = [n for n in wrap.values() if not NAME.fullmatch(str(n))]
     if bad or set(wrap) & set(hardware):
         raise ConfigError(f"game.json wrap: {{addr: C name}} of readable functions (not hardware ones); bad {bad}")
+    # wide_cull: the functions that drop what falls outside the viewport (four floats W, H, X, Y at one guest address);
+    # gen_port wraps each so a full-screen viewport is the frame's rectangle for the call (port_wide_cull_begin)
+    wide_cull = raw.get("wide_cull")
+    if wide_cull is not None:
+        if (not isinstance(wide_cull, dict) or set(wide_cull) != {"viewport", "functions"}
+                or not isinstance(wide_cull["functions"], list) or not wide_cull["functions"]):
+            raise ConfigError('game.json wide_cull: {"viewport": the guest address of its four floats W, H, X, Y, '
+                              '"functions": [the guest addresses of the functions that cull against them]}')
+        wide_cull = {"viewport": _addr(wide_cull["viewport"], "wide_cull.viewport"),
+                     "functions": sorted({_addr(a, "wide_cull.functions") for a in wide_cull["functions"]})}
+        both = sorted(set(wide_cull["functions"]) & (set(wrap) | set(hardware)))
+        if both:
+            raise ConfigError(f"game.json wide_cull: {', '.join(both)} also in wrap or hardware")
     console = raw.get("console")
     if console is not None:
         if set(console) != set(CONSOLE):
@@ -174,6 +188,9 @@ def load(game_dir):
     gid = str(raw.get("id") or game_dir.parent.name)
     if not re.fullmatch(r"[A-Za-z0-9_.-]{1,64}", gid):
         raise ConfigError(f"game.json id: {gid!r} (letters, digits, '_', '.', '-')")
+    left_stick = raw.get("left_stick", "off")
+    if left_stick not in ("off", "choice", "on"):
+        raise ConfigError(f'game.json left_stick: {left_stick!r} ("off": not offered; "choice": the key screen offers the left stick as movement, off until picked; "on": on until changed)')
     arrows = raw.get("arrows", "both")
     if arrows not in ("both", "stick"):
         raise ConfigError(f'game.json arrows: {arrows!r} ("both": the d-pad and the stick; "stick": the stick only)')
@@ -181,6 +198,9 @@ def load(game_dir):
     if not isinstance(widescreen, bool):
         raise ConfigError(f"game.json widescreen: {widescreen!r} "
                           "(true: the game widens its culling by port_widescreen())")
+    present_thread = raw.get("present_thread", False)
+    if not isinstance(present_thread, bool):
+        raise ConfigError(f"game.json present_thread: {present_thread!r} is not true or false")
     interp_scene = raw.get("interp_scene", False)
     if not isinstance(interp_scene, bool):
         raise ConfigError(f"game.json interp_scene: {interp_scene!r} "
@@ -208,6 +228,9 @@ def load(game_dir):
     sq_fast = raw.get("sq_fast", False)
     if not isinstance(sq_fast, bool):
         raise ConfigError(f"game.json sq_fast: {sq_fast!r} (true: the translated store-queue helpers a block at a time, tools/tx_sqfast.py)")
+    game_o2 = raw.get("game_o2", False)
+    if not isinstance(game_o2, bool):
+        raise ConfigError(f"game.json game_o2: {game_o2!r} (true: the game's own C at /O2, not the judge's /O1; build.py)")
     aica_arm = raw.get("aica_arm", False)
     if not isinstance(aica_arm, bool):
         raise ConfigError(f"game.json aica_arm: {aica_arm!r} (true: the game's own sound driver runs on the kit's "
@@ -255,13 +278,13 @@ def load(game_dir):
                            or tc.get("mode", "mix") not in ("mix", "only")):
         raise ConfigError('game.json translator_c: {"dir": the judged translator C folder, "mode": "mix" or "only"}')
     tc = {"dir": str((game_dir / tc["dir"]).resolve()), "mode": tc.get("mode", "mix")} if tc else None
-    # mix mode: functions whose readable C gives way to translator C, the same function's machine code judged; for a
-    # readable file that passes its judge yet loses an argument the raw harness has no slot for (e.g. one passed on
-    # in r5 through a table call, which sync-names turns into `(void)cb;` or keeps out of the callers' raw-name calls)
-    first = raw.get("tx_first", [])
-    if not isinstance(first, list):
-        raise ConfigError("game.json tx_first: the functions (guest addresses) whose readable C yields to translator C")
-    first = [_addr(a, "tx_first") for a in first]
+    # tx_first, mix mode: functions whose readable C gives way to translator C (a readable file that passes its judge
+    # yet loses an argument the raw harness has no slot for, e.g. one passed on in r5 through a table call). spin_words:
+    # words the game spins on until an interrupt changes them, read through tx/tx_spin.c's check (CONTRACT.md)
+    first, spin = raw.get("tx_first", []), raw.get("spin_words", [])
+    if not (isinstance(first, list) and isinstance(spin, list) and len(spin) <= 4 and (tc or not spin)):
+        raise ConfigError("game.json tx_first, spin_words (up to 4, needs translator_c): lists of guest addresses")
+    first, spin = [_addr(a, "tx_first") for a in first], [_addr(a, "spin_words") for a in spin]
     # catalog entries that are data, not code (a disassembler's function start inside a table the game reads): no
     # dispatch row, so no guest code thunk is written over the data. {addr: evidence}
     not_code = raw.get("not_code", {})
@@ -275,10 +298,11 @@ def load(game_dir):
             "entry": {"name": entry["name"], "addr": _addr(entry.get("addr"), "entry.addr")},
             "image_base": _addr(raw["image_base"], "image_base"), "boot_file": boot, "disc": path("disc"),
             "fsca_table": path("fsca_table"), "must_work": path("must_work"),
-            "sdk": [mods[m] for m in sdk], "sources": sources, "hardware": hardware, "wrap": wrap,
-            "sq_fast": sq_fast, "console": console, "arrows": arrows, "widescreen": widescreen, "interp_scene": interp_scene, "texture_pack": path("texture_pack"), "aica_arm": aica_arm, "aica_arm_fast": aica_arm_fast, "aica_arm_native": native_c, "kamui1": kamui1, "vram_init": vram_init, "sq_queue_only": sq_queue_only,
+            "sdk": [mods[m] for m in sdk], "sources": sources, "hardware": hardware, "wrap": wrap, "wide_cull": wide_cull,
+            "part_draw": part_draw.config(raw.get("part_draw"), wrap, hardware, wide_cull, ConfigError),
+            "sq_fast": sq_fast, "game_o2": game_o2, "console": console, "arrows": arrows, "left_stick": left_stick, "widescreen": widescreen, "interp_scene": interp_scene, "present_thread": present_thread, "texture_pack": path("texture_pack"), "aica_arm": aica_arm, "aica_arm_fast": aica_arm_fast, "aica_arm_native": native_c, "kamui1": kamui1, "vram_init": vram_init, "sq_queue_only": sq_queue_only,
             "lockstep_sample_pcs": pcs, "lockstep_rtc_pcs": rtc, "lockstep_scene_pcs": scene,
-            "translator_c": tc, "tx_first": first, "not_code": not_code, "contract": contract}
+            "translator_c": tc, "tx_first": first, "spin_words": spin, "not_code": not_code, "contract": contract}
 
 
 def c_string(s):
@@ -297,8 +321,11 @@ def port_config_h(cfg, own_crt=(), bu_image=False):
              "#define PORT_BOOT_SHA256 {" + ", ".join(c_string(h) for h in cfg["boot_sha256"] + [""]) + "}"]
     stick = int(cfg.get("arrows") == "stick")
     lines.append(f"#define PORT_ARROWS_STICK {stick} /* 1: the arrow keys move only the stick (game.json arrows) */")
+    left_stick = ("off", "choice", "on").index(cfg.get("left_stick", "off"))
+    lines.append(f"#define PORT_LEFT_STICK {left_stick} /* the left stick as movement: 0 not offered, 1 a choice, 2 on until changed (game.json left_stick) */")
     lines.append(f"#define PORT_WIDESCREEN {int(bool(cfg.get('widescreen')))} /* 1: Hor+ in play runs (game.json) */")
-    lines.append(f"#define PORT_INTERP_SCENE {int(bool(cfg.get('interp_scene')))} /* 1: in-between frames by scene blending (game.json) */")
+    lines += [f"#define PORT_INTERP_SCENE {int(bool(cfg.get('interp_scene')))} /* 1: in-between frames by scene blending (game.json) */", f"#define PORT_PART_DRAW {int(bool(cfg.get('part_draw')))} /* 1: those frames from object parts (game.json part_draw) */"]
+    lines.append(f"#define PORT_PRESENT_THREAD {int(bool(cfg.get('present_thread')))} /* 1: those frames on a thread of their own (game.json) */")
     if cfg.get("vram_init"):  # pvr/pvr_state.c: texture memory starts with these bytes (game.json vram_init)
         lines.append("#define PORT_VRAM_INIT " + ", ".join(
             "{0x%xu, %s}" % (at, c_string(h)) for at, h in cfg["vram_init"]) + ", {0, 0}")

@@ -15,25 +15,30 @@
 #endif
 #define NAP_MAX_US 1000u
 #define SPIN_US 500u
-static HANDLE g_nap_timer;
+/* About us on the real clock on a high-resolution timer, the calling thread's own (the tick's thread and the
+ * present thread, runtime/frame_thread.c, each have one); before Windows 10 1803, Sleep(1). */
+void pace_sleep_us(u64 us)
+{
+    static __declspec(thread) HANDLE timer;
+    LARGE_INTEGER due;
+    if (!timer) timer = CreateWaitableTimerExW(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
+    due.QuadPart = -(LONGLONG)(us * 10u); /* relative, in 100 ns */
+    if (!timer || !SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE)) {
+        Sleep(1);
+        return;
+    }
+    WaitForSingleObject(timer, (DWORD)(us / 1000u) + 2u);
+}
 
 void pace_nap_until(u64 deadline_us, int extra)
 {
     u64 now = host_ticks(1000000u), until = deadline_us;
-    LARGE_INTEGER due;
     if (extra && until > now + NAP_MAX_US) until = now + NAP_MAX_US;
     if (now + SPIN_US >= until) {
         SwitchToThread();
         return;
     }
-    if (!g_nap_timer)
-        g_nap_timer = CreateWaitableTimerExW(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
-    due.QuadPart = -(LONGLONG)((until - now - SPIN_US) * 10u); /* relative, in 100 ns */
-    if (!g_nap_timer || !SetWaitableTimer(g_nap_timer, &due, 0, NULL, NULL, FALSE)) {
-        Sleep(1); /* before Windows 10 1803: no high-resolution timer */
-        return;
-    }
-    WaitForSingleObject(g_nap_timer, (DWORD)((until - now) / 1000u) + 2u);
+    pace_sleep_us(until - now - SPIN_US);
 }
 
 /* A tick that overruns must not cost a whole slot: waiting for the boundary after "now" turned a 17 ms tick into 33 ms,

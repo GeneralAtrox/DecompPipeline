@@ -1,0 +1,422 @@
+{
+ "game": "spawn",
+ "args": [
+  "--disc",
+  "<projects>/DreamCast/Spawn In the Demon's Hand/Spawn - In the Demon's Hand (Europe)/Spawn - In the Demon's Hand (Europe).cue",
+  "--fixed-clock",
+  "1",
+  "--headless",
+  "--present",
+  "tick",
+  "--size",
+  "2560x1464",
+  "--record",
+  "off",
+  "--save-dir",
+  "{work}",
+  "--seconds",
+  "480",
+  "--audio-dump",
+  "{work}/audio.wav"
+ ],
+ "scenes": {
+  "front_end": {
+   "args": [
+    "--replay",
+    "{here}/20261031-231339.ptrec",
+    "--stop-at",
+    "3100"
+   ],
+   "from": 100,
+   "to": 3100,
+   "blanks": 3000,
+   "counts": {
+    "allocs": 75,
+    "alloc_bytes": 129793444,
+    "draws": 137269,
+    "uploads": 9926,
+    "gpu_creates": 1369,
+    "gpu_copies": 2732,
+    "presents": 2787,
+    "guest_calls": 4563080,
+    "guest_writes": 0,
+    "vector_ops": 3180314,
+    "sound_cpu": 626009776,
+    "scene_headers": 319710,
+    "scene_triangles": 2317098,
+    "sprite_commands": 0,
+    "composes": 0,
+    "disc_bytes": 120354816
+   },
+   "peak": {
+    "allocs": 14,
+    "alloc_bytes": 93429760,
+    "draws": 58,
+    "uploads": 40,
+    "gpu_creates": 37,
+    "gpu_copies": 1,
+    "presents": 1,
+    "guest_calls": 3520,
+    "guest_writes": 0,
+    "vector_ops": 6603,
+    "sound_cpu": 211470,
+    "scene_headers": 821,
+    "scene_triangles": 1917,
+    "sprite_commands": 0,
+    "composes": 0,
+    "disc_bytes": 93284352
+   }
+  },
+  "play": {
+   "args": [
+    "--replay",
+    "{here}/20261031-225236.ptrec",
+    "--stop-at",
+    "21000"
+   ],
+   "from": 20000,
+   "to": 21000,
+   "blanks": 1000,
+   "counts": {
+    "allocs": 0,
+    "alloc_bytes": 0,
+    "draws": 267485,
+    "uploads": 3749,
+    "gpu_creates": 749,
+    "gpu_copies": 1000,
+    "presents": 1000,
+    "guest_calls": 6711965,
+    "guest_writes": 0,
+    "vector_ops": 23270529,
+    "sound_cpu": 194772465,
+    "scene_headers": 438812,
+    "scene_triangles": 3900905,
+    "sprite_commands": 0,
+    "composes": 0,
+    "disc_bytes": 0
+   },
+   "peak": {
+    "allocs": 0,
+    "alloc_bytes": 0,
+    "draws": 327,
+    "uploads": 4,
+    "gpu_creates": 1,
+    "gpu_copies": 1,
+    "presents": 1,
+    "guest_calls": 8676,
+    "guest_writes": 0,
+    "vector_ops": 28495,
+    "sound_cpu": 211468,
+    "scene_headers": 572,
+    "scene_triangles": 5070,
+    "sprite_commands": 0,
+    "composes": 0,
+    "disc_bytes": 0
+   }
+  }
+ },
+ "ledger": [
+  {
+   "date": "2026-11-01",
+   "why": "first baseline for Spawn, from the kit that adds the counters",
+   "changes": {
+    "front_end": {
+     "alloc_bytes": [
+      null,
+      129793444
+     ],
+     "allocs": [
+      null,
+      75
+     ],
+     "blanks": [
+      null,
+      3000
+     ],
+     "composes": [
+      null,
+      0
+     ],
+     "disc_bytes": [
+      null,
+      120354816
+     ],
+     "draws": [
+      null,
+      137269
+     ],
+     "gpu_copies": [
+      null,
+      2732
+     ],
+     "gpu_creates": [
+      null,
+      1369
+     ],
+     "guest_calls": [
+      null,
+      4563080
+     ],
+     "guest_writes": [
+      null,
+      0
+     ],
+     "peak alloc_bytes": [
+      null,
+      93429760
+     ],
+     "peak allocs": [
+      null,
+      14
+     ],
+     "peak composes": [
+      null,
+      0
+     ],
+     "peak disc_bytes": [
+      null,
+      93284352
+     ],
+     "peak draws": [
+      null,
+      58
+     ],
+     "peak gpu_copies": [
+      null,
+      1
+     ],
+     "peak gpu_creates": [
+      null,
+      37
+     ],
+     "peak guest_calls": [
+      null,
+      3520
+     ],
+     "peak guest_writes": [
+      null,
+      0
+     ],
+     "peak presents": [
+      null,
+      1
+     ],
+     "peak scene_headers": [
+      null,
+      821
+     ],
+     "peak scene_triangles": [
+      null,
+      1917
+     ],
+     "peak sound_cpu": [
+      null,
+      211470
+     ],
+     "peak sprite_commands": [
+      null,
+      0
+     ],
+     "peak uploads": [
+      null,
+      40
+     ],
+     "peak vector_ops": [
+      null,
+      15714
+     ],
+     "presents": [
+      null,
+      2787
+     ],
+     "scene_headers": [
+      null,
+      319710
+     ],
+     "scene_triangles": [
+      null,
+      2317098
+     ],
+     "sound_cpu": [
+      null,
+      626009776
+     ],
+     "sprite_commands": [
+      null,
+      0
+     ],
+     "uploads": [
+      null,
+      9926
+     ],
+     "vector_ops": [
+      null,
+      10642253
+     ]
+    },
+    "play": {
+     "alloc_bytes": [
+      null,
+      0
+     ],
+     "allocs": [
+      null,
+      0
+     ],
+     "blanks": [
+      null,
+      1000
+     ],
+     "composes": [
+      null,
+      0
+     ],
+     "disc_bytes": [
+      null,
+      0
+     ],
+     "draws": [
+      null,
+      267485
+     ],
+     "gpu_copies": [
+      null,
+      1000
+     ],
+     "gpu_creates": [
+      null,
+      749
+     ],
+     "guest_calls": [
+      null,
+      6711965
+     ],
+     "guest_writes": [
+      null,
+      0
+     ],
+     "peak alloc_bytes": [
+      null,
+      0
+     ],
+     "peak allocs": [
+      null,
+      0
+     ],
+     "peak composes": [
+      null,
+      0
+     ],
+     "peak disc_bytes": [
+      null,
+      0
+     ],
+     "peak draws": [
+      null,
+      327
+     ],
+     "peak gpu_copies": [
+      null,
+      1
+     ],
+     "peak gpu_creates": [
+      null,
+      1
+     ],
+     "peak guest_calls": [
+      null,
+      8676
+     ],
+     "peak guest_writes": [
+      null,
+      0
+     ],
+     "peak presents": [
+      null,
+      1
+     ],
+     "peak scene_headers": [
+      null,
+      572
+     ],
+     "peak scene_triangles": [
+      null,
+      5070
+     ],
+     "peak sound_cpu": [
+      null,
+      211468
+     ],
+     "peak sprite_commands": [
+      null,
+      0
+     ],
+     "peak uploads": [
+      null,
+      4
+     ],
+     "peak vector_ops": [
+      null,
+      73660
+     ],
+     "presents": [
+      null,
+      1000
+     ],
+     "scene_headers": [
+      null,
+      438812
+     ],
+     "scene_triangles": [
+      null,
+      3900905
+     ],
+     "sound_cpu": [
+      null,
+      194772465
+     ],
+     "sprite_commands": [
+      null,
+      0
+     ],
+     "uploads": [
+      null,
+      3749
+     ],
+     "vector_ops": [
+      null,
+      58779249
+     ]
+    }
+   },
+   "digest": "34d6518cfd855c0baf9bde219670a4821b1cd6e7332c294e991be2781e314fb0"
+  },
+  {
+   "date": "2026-11-01",
+   "why": "the vector helpers now count once per helper call, so that a matrix times a vector tests the flag once rather than five times",
+   "changes": {
+    "front_end": {
+     "peak vector_ops": [
+      15714,
+      6603
+     ],
+     "vector_ops": [
+      10642253,
+      3180314
+     ]
+    },
+    "play": {
+     "peak vector_ops": [
+      73660,
+      28495
+     ],
+     "vector_ops": [
+      58779249,
+      23270529
+     ]
+    }
+   },
+   "digest": "f4efe7c5c4a93141069d2aa2bbae4de37a3ca319544d588e80c36f509088f902"
+  }
+ ]
+}

@@ -14,6 +14,31 @@
 #include <dxgi1_6.h>
 #pragma warning(pop)
 #include "base.h"
+#include "work_count.h"
+
+/* The calls that do the work, counted for --work-counts (work_count.h). A Map to read is left out: it may be a poll of
+ * the GPU, and how many depends on the GPU's speed. */
+#undef ID3D11DeviceContext_Draw
+#undef ID3D11DeviceContext_DrawIndexed
+#undef ID3D11DeviceContext_DrawInstanced
+#undef ID3D11DeviceContext_DrawIndexedInstanced
+#undef ID3D11DeviceContext_Map
+#undef ID3D11DeviceContext_UpdateSubresource
+#undef ID3D11DeviceContext_CopyResource
+#undef ID3D11DeviceContext_CopySubresourceRegion
+#undef ID3D11Device_CreateTexture2D
+#undef ID3D11Device_CreateBuffer
+#define WORK_D3D(id, n, call) (work_add((id), (n)), (call))
+#define ID3D11DeviceContext_Draw(c, n, s) WORK_D3D(WC_DRAWS, 1, (c)->lpVtbl->Draw(c, n, s))
+#define ID3D11DeviceContext_DrawIndexed(c, n, s, b) WORK_D3D(WC_DRAWS, 1, (c)->lpVtbl->DrawIndexed(c, n, s, b))
+#define ID3D11DeviceContext_DrawInstanced(c, n, i, s, si) WORK_D3D(WC_DRAWS, 1, (c)->lpVtbl->DrawInstanced(c, n, i, s, si))
+#define ID3D11DeviceContext_DrawIndexedInstanced(c, n, i, s, b, si) WORK_D3D(WC_DRAWS, 1, (c)->lpVtbl->DrawIndexedInstanced(c, n, i, s, b, si))
+#define ID3D11DeviceContext_Map(c, r, sub, t, f, m) WORK_D3D(WC_UPLOADS, (t) != D3D11_MAP_READ, (c)->lpVtbl->Map(c, r, sub, t, f, m))
+#define ID3D11DeviceContext_UpdateSubresource(c, r, sub, b, p, rp, dp) WORK_D3D(WC_UPLOADS, 1, (c)->lpVtbl->UpdateSubresource(c, r, sub, b, p, rp, dp))
+#define ID3D11DeviceContext_CopyResource(c, d, s) WORK_D3D(WC_GPU_COPIES, 1, (c)->lpVtbl->CopyResource(c, d, s))
+#define ID3D11DeviceContext_CopySubresourceRegion(c, d, ds, x, y, z, s, ss, b) WORK_D3D(WC_GPU_COPIES, 1, (c)->lpVtbl->CopySubresourceRegion(c, d, ds, x, y, z, s, ss, b))
+#define ID3D11Device_CreateTexture2D(d, t, i, o) (work_add(WC_GPU_CREATES, 1), WORK_D3D(WC_UPLOADS, (i) != NULL, (d)->lpVtbl->CreateTexture2D(d, t, i, o)))
+#define ID3D11Device_CreateBuffer(d, t, i, o) (work_add(WC_GPU_CREATES, 1), WORK_D3D(WC_UPLOADS, (i) != NULL, (d)->lpVtbl->CreateBuffer(d, t, i, o)))
 
 #ifdef __cplusplus
 extern "C" {
@@ -62,6 +87,16 @@ void gfx_screen_rect(u32 w, u32 h, f32 wide_k, f32 tall_k, u32 r[4]); /* the 640
 int gfx_option(const char *arg, const char *value); /* the arguments one option takes, 0 if not ours */
 int gfx_init(void);                                 /* 0 on failure (logged) */
 void gfx_pump(void);                                /* host_window.cpp: window events; closing the window ends the run */
+/* host_window.cpp: --present-thread (runtime/frame_extra.c). The thread that shows in-between frames and the game's thread
+ * share the device context: each holds this lock around its use. It does nothing until gfx_lock_on. The lock nests. */
+void gfx_lock_on(void);
+void gfx_lock(void);
+void gfx_unlock(void);
+void gfx_lock_present_thread(void); /* called by that thread, once */
+int gfx_on_present_thread(void);
+int gfx_lock_wanted(void);          /* the game's thread is waiting for the lock: that thread lets it have it */
+unsigned gfx_present_stall_us(void); /* --present-stall-us (present_device.c) */
+int gfx_present_paced(void);         /* --present-pace on (default) or off */
 void gfx_set_vsync(int on);
 int gfx_vsync(void);
 
@@ -72,10 +107,16 @@ int gfx_set_aspect(const char *text); /* --aspect fit|4:3|16:9|21:9|W:H, at once
 const char *gfx_aspect_text(void);    /* the shape in use, in those words */
 f32 port_widescreen(void);            /* the frame's width and height over the screen's: a game's culling widens by them */
 f32 port_tallscreen(void);
+int port_wide_cull_begin(u32 viewport, f32 saved[4]); /* game.json wide_cull: the viewport is the frame for one call */
+void port_wide_cull_end(u32 viewport, const f32 saved[4]);
+int port_shape_chosen(void);          /* 0 only in a check at its original 4:3: a picture upgrade that also applies to a chosen 4:3 asks this */
 void gfx_set_border(u32 argb);        /* the colour around the picture (the console's border colour) */
+u32 gfx_border(void);                 /* that colour */
 void gfx_resolve(void);               /* the draw target into the frame (--ssaa); nothing otherwise */
 void gfx_clear(u32 argb);             /* fills the frame with one colour (the alpha is ignored) */
 int gfx_can_show(void);               /* 1 if the display would take a frame now without blocking */
+void gfx_show_wait(void);             /* --present-thread: waits a moment for that */
+u64 gfx_last_present_us(void);         /* the last Present call's duration (runtime/frame_cost.c) */
 void present_show(void);              /* the frame onto the window; a frame the display will not take is dropped */
 double gfx_presented_fps(void);       /* the last 5 s readout of frames presented a second */
 void gfx_shutdown(void);

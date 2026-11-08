@@ -44,6 +44,7 @@ int rd_is_code(u32 addr);
 int rd_page_guarded(u32 addr);
 void rd_page_open(u32 addr);
 void rd_page_close(u32 addr);
+int rd_guest_copy(u32 p, u32 n, u8 *out, const u8 *in); /* the stricter judge's guest access (rd_veh.c) */
 void rd_arm(void);
 
 /* rd_veh.c */

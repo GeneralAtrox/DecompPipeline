@@ -106,21 +106,21 @@ class Pack:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.rows, self.title = {}, title
 
-    def add(self, k, rgba, w, h, name=None, note="", variant="", rim=""):
+    def add(self, k, rgba, w, h, name=None, note="", variant="", rim="", over=False):
         if variant not in VARIANTS:
             raise ValueError(f"variant {variant!r}: one of {VARIANTS[1:]} or empty")
         if (k, variant) in self.rows:
             return False
         name = name or f"{k:016x}{'-' + variant if variant else ''}.png"
         (self.dir / name).write_bytes(png(rgba, w, h))
-        self.rows[(k, variant)] = (name, note, rim)
+        self.rows[(k, variant)] = (name, note, rim, over)
         return True
 
     def close(self):
-        lines = ["# texture pack (port/pvr/pvr_pack.c): KEY FILE [xbox|playstation] [rim=RRGGBB]"]
+        lines = ["# texture pack (port/pvr/pvr_pack.c): KEY FILE [xbox|playstation] [over] [rim=RRGGBB]"]
         lines += [f"# {self.title}"] if self.title else []
-        lines += [f"{k:016x} {n}" + (f" {v}" if v else "") + (f" rim={rim}" if rim else "") + (f"  # {note}" if note else "")
-                  for (k, v), (n, note, rim) in sorted(self.rows.items())]
+        lines += [f"{k:016x} {n}" + (f" {v}" if v else "") + (" over" if over else "") + (f" rim={rim}" if rim else "") + (f"  # {note}" if note else "")
+                  for (k, v), (n, note, rim, over) in sorted(self.rows.items())]
         (self.dir / "index.txt").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
         return len(self.rows)
 
@@ -135,6 +135,8 @@ def read_index(folder):
             if parts[-1].startswith("rim=") and len(parts) > 2:
                 if len(parts[-1]) != 10 or parts[-1][4:].strip("0123456789abcdefABCDEF"):
                     raise ValueError(f"index line {line!r}: rim=RRGGBB")
+                parts.pop()
+            if parts[-1] == "over" and len(parts) > 2:
                 parts.pop()
             variant = parts[2] if len(parts) > 2 else ""
             if variant not in VARIANTS or len(parts) > 3:

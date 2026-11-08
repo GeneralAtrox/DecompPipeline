@@ -3,7 +3,9 @@
  * size, so it is read through a staging copy and box-filtered down on the CPU; games read it rarely (a snapshot of
  * the screen behind a pause or menu frame). In-between frames (--present interp) draw over the frame target, so each
  * game frame is kept in a copy while they are on, and the read takes the game's frame, not an in-between one. A frame
- * wider or taller than 4:3 is read as the 640x480 screen in its middle: the game has nothing outside it. */
+ * wider or taller than 4:3 is read as the 640x480 screen in its middle: the game has nothing outside it. A game that
+ * draws the picture back over the whole frame asks for the whole frame instead, squeezed to the size it reads
+ * (port_read_whole_frame). */
 #include <stdlib.h>
 #include <string.h>
 #include "pvr_int.h"
@@ -13,7 +15,9 @@
 
 static ID3D11Texture2D *g_tick, *g_staging;
 static u32 g_tick_w, g_tick_h, g_staging_w, g_staging_h;
-static int g_tick_valid;
+static int g_tick_valid, g_read_whole;
+
+void port_read_whole_frame(int on) { g_read_whole = on; }
 
 /* A copy-target texture like the frame (staging when cpu is set), recreated when the frame's size changes. */
 static int ensure(ID3D11Texture2D **t, u32 *w, u32 *h, int cpu)
@@ -72,7 +76,7 @@ static u16 shrink_pixel(const u8 *src, u32 pitch, const u32 scr[4], u32 x, u32 y
 static void shrink(const u8 *src, u32 pitch, u16 *dst, u32 dw, u32 dh)
 {
     u32 scr[4];
-    gfx_screen_rect(g_gfx.frame_w, g_gfx.frame_h, g_gfx.wide_k, g_gfx.tall_k, scr);
+    gfx_screen_rect(g_gfx.frame_w, g_gfx.frame_h, g_read_whole ? 1.0f : g_gfx.wide_k, g_read_whole ? 1.0f : g_gfx.tall_k, scr);
     for (u32 y = 0; y < dh; y++)
         for (u32 x = 0; x < dw; x++) dst[(size_t)y * dw + x] = shrink_pixel(src, pitch, scr, x, y, dw, dh);
 }
@@ -94,7 +98,7 @@ static int map_frame(D3D11_MAPPED_SUBRESOURCE *m)
     return ok;
 }
 
-int pvr_read_frame(void *rgb565_out, u32 width, u32 height)
+static int read_frame_locked(void *rgb565_out, u32 width, u32 height)
 {
     D3D11_MAPPED_SUBRESOURCE m;
     if (!width || !height || !map_frame(&m)) return 0;
@@ -105,7 +109,7 @@ int pvr_read_frame(void *rgb565_out, u32 width, u32 height)
 }
 
 /* One pixel of the displayed 640x480 buffer: what a read of the frame buffer's video memory returns. */
-int gfx_read_pixel(u32 x, u32 y, u16 *rgb565_out)
+static int read_pixel_locked(u32 x, u32 y, u16 *rgb565_out)
 {
     D3D11_MAPPED_SUBRESOURCE m;
     u32 scr[4];
@@ -114,4 +118,20 @@ int gfx_read_pixel(u32 x, u32 y, u16 *rgb565_out)
     *rgb565_out = shrink_pixel((const u8 *)m.pData, m.RowPitch, scr, x, y, 640u, 480u);
     ID3D11DeviceContext_Unmap(g_gfx.ctx, (ID3D11Resource *)g_staging, 0);
     return 1;
+}
+
+int pvr_read_frame(void *rgb565_out, u32 width, u32 height)
+{
+    gfx_lock();
+    int r = read_frame_locked(rgb565_out, width, height);
+    gfx_unlock();
+    return r;
+}
+
+int gfx_read_pixel(u32 x, u32 y, u16 *rgb565_out)
+{
+    gfx_lock();
+    int r = read_pixel_locked(x, y, rgb565_out);
+    gfx_unlock();
+    return r;
 }

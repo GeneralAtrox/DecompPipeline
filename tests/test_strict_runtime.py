@@ -1,13 +1,15 @@
 """The stricter judge's runtimes (pre-wave item 2; tests/test_strict_judge.py has the rest).
 
 3. Runtimes: tc_strict.h's tcs_at and tcs_fr against the Python models (a small C program), and each raw runner (DC,
-   Saturn, GameCube) on a synthetic function with one mocked call: the snapshots (stored bytes, a code pointer, a
-   range past RAM's end "-"), the junk in fr1..fr11 (DC), the mock writes (not into code, not past RAM, not for
-   another callee), the exit frame, each flag alone; with the flags off ("J 0" or no header) the same output as with
-   no strict lines at all.
+   Saturn, GameCube, Xbox 360) on a synthetic function with one mocked call: the snapshots (stored bytes, a code
+   pointer, a range past RAM's end "-"), the junk in fr1..fr11 (DC), the mock writes (not into code, not past RAM,
+   not for another callee), the exit frame, each flag alone; with the flags off ("J 0" or no header) the same output
+   as with no strict lines at all.
 4. Readable: the readable runner on the same shape through a trapped call: a guest pointer and a host local.
+5. Xbox 360's judge (x360_compare): CJ, CS (STRICT_INDEX) and XR in 64 bits; its stamp scope (x360_scope).
 Synthetic data. Run: python -W error tests/test_strict_runtime.py.
 """
+import json
 import os
 import pathlib
 import struct
@@ -17,7 +19,7 @@ import tempfile
 import unittest
 
 sys.path[:0] = [str(pathlib.Path(__file__).resolve().parent)]
-from test_strict_judge import ROOT, T, WORK, at, at8, keys, stream  # noqa: E402
+from test_strict_judge import FLAGS, ROOT, T, WORK, at, at8, keys, result_file, stream  # noqa: E402
 import game_config  # noqa: E402
 
 from core import check, paths, readable_check, toolcfg  # noqa: E402
@@ -38,7 +40,7 @@ u32 fn_test(u32 p, u32 q)
     a.r[2] = 0x%(code)08xu;
     a.r[3] = 0x%(edge)08xu;
     a.s[1] = p + 0x40;
-    rv = tc_call(0x%(target)08xu, &a);
+    rv = %(cast)stc_call(0x%(target)08xu, &a);
     %(fr5)s
     return rv + rd32(p + 4);
 }
@@ -51,6 +53,16 @@ void tc_thunk(const u32 *r, const f32 *fr, u32 *out_r0, f32 *out_fr0)
     (void)fr;
     (void)out_fr0;
     *out_r0 = fn_test(r[0], r[1]);
+}
+"""
+THUNK_X360 = """#include "tc_rt.h"
+u32 fn_test(u32 p, u32 q);
+void tc_thunk(const u64 *r, const f64 *f, u64 *out_r3, f64 *out_f1);
+void tc_thunk(const u64 *r, const f64 *f, u64 *out_r3, f64 *out_f1)
+{
+    (void)f;
+    (void)out_f1;
+    *out_r3 = fn_test((u32)r[0], (u32)r[1]);
 }
 """
 THUNK_GC = """#include "tc_rt.h"
@@ -103,7 +115,10 @@ RT = {"dreamcast_sh4": (0x8C040000, 0x8C040100, (0x8C010000, 0x8C010100), 0x8CFF
       "saturn_sh2": (0x06040000, 0x06040100, (0x06000000, 0x06000100), 0x060FFFFE, 0x06020000, 0x060FE000,
                      (1, 2, 3, 4, 14), ("runner.c", "tc_rt.c", "tc_fpu.c", "tc_p4.c"), False, False),
       "gamecube_ppc": (0x80040000, 0x80040100, (0x80003100, 0x80003200), 0x817FFFFE, 0x80020000, 0x817FE000,
-                       (1, 2, 3, 4, 18), ("runner.c", "tc_rt.c", "tc_ppc.c"), False, False)}
+                       (1, 2, 3, 4, 18), ("runner.c", "tc_rt.c", "tc_ppc.c"), False, False),
+      "xbox360_ppc": (0x40040000, 0x40040100, (0x82000000, 0x82000100), 0x400FFFFE, 0x82020000, 0x700FE000,
+                      (1, 2, 3, 4, 18), ("runner.c", "tc_rt.c", "tc_ppc.c"), False, False)}
+NO_FSCA = ("gamecube_ppc", "xbox360_ppc")  # runners without the SH-4 fsca table argument
 
 
 def vectors(t, header=True, flags=15, masks=()):
@@ -143,8 +158,10 @@ class Runtimes(unittest.TestCase):
             b = d / t
             b.mkdir()
             line = "wrf32(p + 0x20, sh4_fr(5));" if fr5 else "wr32(p + 0x20, 0u);"
-            (b / "work.c").write_text(WORK_C % {"code": code[0], "edge": edge, "target": target, "fr5": line})
-            (b / "thunk.c").write_text(THUNK_GC if t == "gamecube_ppc" else THUNK_SH)
+            cast = "(u32)" if t == "xbox360_ppc" else ""  # its tc_call returns all of r3
+            (b / "work.c").write_text(WORK_C % {"code": code[0], "edge": edge, "target": target, "fr5": line,
+                                                "cast": cast})
+            (b / "thunk.c").write_text({"gamecube_ppc": THUNK_GC, "xbox360_ppc": THUNK_X360}.get(t, THUNK_SH))
             rt = T / t / "runtime"
             cmds.append(f'cd /d "{b}" && cl {" ".join(check.CL_FLAGS)} /TC /I"{rt}" /Fe:runner.exe work.c thunk.c '
                         + " ".join(f'"{rt / s}"' for s in srcs))
@@ -168,7 +185,7 @@ class Runtimes(unittest.TestCase):
         (b / "code.txt").write_text(f"{code[0]:08x} {code[1]:08x}\n")
         (b / "vectors.txt").write_text(vecs)
         args = [str(self.d / "image.bin"), str(b / "code.txt")]  # GameCube: a DOL with no sections
-        if t != "gamecube_ppc":
+        if t not in NO_FSCA:
             args.append(str(self.d / "fsca.bin"))
         r = subprocess.run([str(b / "runner.exe"), *args, str(b / "vectors.txt"), "all", str(b / "out.txt")],
                            capture_output=True, text=True, timeout=60)
@@ -194,8 +211,9 @@ class Runtimes(unittest.TestCase):
             self.assertEqual(got["w"], {p: stream(fp, 8).hex(), p + 0x20: junk.hex(), p + 0x40: stream(fs, 4).hex(),
                                         q: stream(fq, 4).hex()}, t)  # nothing into code, past RAM, for 01234567
             self.assertEqual(got["ret"], (5 + struct.unpack(word, stream(fp, 8)[4:])[0]) & 0xFFFFFFFF, t)
-            n = (7, 4) if t != "gamecube_ppc" else (18, 0)
-            want = f"XR {sp:08x}" + " 00000000" * sum(n) + (" " + "0" * 16) * (18 if t == "gamecube_ppc" else 0)
+            n = {"gamecube_ppc": (18, 0), "xbox360_ppc": (0, 0)}.get(t, (7, 4))
+            wide = {"gamecube_ppc": 18, "xbox360_ppc": 36}.get(t, 0)  # 64-bit words: GC f14..f31, X360 r14..f31
+            want = f"XR {sp:08x}" + " 00000000" * sum(n) + (" " + "0" * 16) * wide
             self.assertEqual(got["xr"], want, t)
             for f in (1, 2, 4, 8):  # one flag alone: only its own effect
                 one = results(self.run_one(t, vectors(t, flags=f)))
@@ -283,6 +301,84 @@ class Readable(unittest.TestCase):
         word = (lambda b: struct.unpack("<I", b[4:])[0])
         self.assertEqual(got["ret"], (5 + word(stream(1, 8)) + word(stream(2, 8))) & 0xFFFFFFFF)
         self.assertEqual(got["xr"], "XR 8cffe000" + " 00000000" * 11)
+
+
+class X360Judge(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(T / "xbox360_ppc"))
+        import x360_compare
+        cls.xc = x360_compare
+
+    def test_xbox360(self):
+        """x360_compare: the CJ alternative (the CALL record's field), CS through STRICT_INDEX, XR in 64 bits."""
+        xc = self.xc
+        meta = {"ret": "u32", "callees": [{"addr": "82020000", "regs": ["r3", "r4", "s1"]}]}
+        z = "0" * 16
+        call = (lambda r4: f"CALL 82020000 {0x40040000:016x} {r4:016x} " + " ".join([z] * 19)
+                + f" {0x40040040:016x} " + " ".join([z] * 6))
+        ret = f"RET {5:016x} {z}"
+        xr = "XR 700fe000 " + " ".join(f"{i:016x}" for i in range(18)) + " " + " ".join(["7ff8000000000001"] * 18)
+        exp = result_file([ret, call(0xDEADBEEF), "CJ 0 2 " + z, "CS 0 1 11223344xx", "CS 0 18 55667788", xr], xc)
+        self.assertEqual(xc.STRICT_INDEX["s1"], 18)
+        for r4, cs, x, n in ((0xDEADBEEF, "CS 0 1 1122334400", xr, 0), (0, "CS 0 1 1122334400", xr, 0),
+                             (1, "CS 0 1 1122334400", xr, 1), (0, "CS 0 1 11223345ff", xr, 1),
+                             (0, "CS 0 1 1122334400", xr.replace("7ff8000000000001", "7ff0000000000002"), 0),
+                             (0, "CS 0 1 1122334400", xr.replace("0000000000000001", "0000000100000001", 1), 1)):
+            act = result_file([ret, call(r4), cs, "CS 0 18 55667788", x], xc)
+            d = xc.compare_vector(meta, b"", {"patches": []}, exp, act)
+            self.assertEqual(len(d), n, (hex(r4), cs, x[:40], d))
+        act = result_file([ret, call(0), "CS 0 1 1122334400", "CS 0 18 55667789", xr], xc)
+        self.assertEqual(len(xc.compare_vector(meta, b"", {"patches": []}, exp, act)), 1)  # s1's snapshot
+        rep = []
+        act = result_file([ret, call(0), "CS 0 1 -", "CS 0 18 55667788", xr], xc)
+        self.assertEqual(xc.compare_vector(meta, b"", {"patches": []}, exp, act, {"call_snapshots": "report"},
+                                           rep), [])
+        self.assertEqual(len(rep), 1)
+
+    def test_wiring(self):
+        """test_strict_judge's Wiring for this target: one copy of the shared files, locked, flags on, the hooks in
+        both runtimes (the readable one runs it: tests/test_x360_rd_strict.py)."""
+        x = T / "xbox360_ppc"
+        g, rt = x / "ghidra_scripts", x / "runtime"
+        for n in ("ghidra_scripts/TcJunk.java", "runtime/tc_strict.h"):
+            self.assertEqual((x / n).read_bytes(), (T / "gamecube_ppc" / n).read_bytes(), n)
+        cfg = json.loads((x / "target.json").read_text(encoding="utf-8"))
+        self.assertTrue({"TcJunk.java", "TcStrict.java"} <= set(cfg["locked_scripts"]))
+        self.assertEqual([cfg[f] for f in FLAGS], [True] * 4)
+        call = "TcStrict.call(res, emu, calls, zeroed)"  # in clobber's place, which it may still call
+        for f, hooks in (("TcOracle", ("TcStrict.of(", call, "TcStrict.exit(res, emu);")),
+                         ("TcVectors", ("TcStrict.vec(r)", "TcStrict.exp(r)", "TcStrict.replay(this, v, r, set)")),
+                         ("TcPrepare", ("TcStrict.header(facts)", "TcStrict.meta(facts)", "TcStrict.dropped[s];")),
+                         ("TcFacts", ('case "mock_write":', 'case "exit_frame":'))):
+            for h in hooks:
+                self.assertEqual((g / f"{f}.java").read_text(encoding="utf-8").count(h), 1, (f, h))
+        src = (rt / "tc_rt.c").read_text(encoding="utf-8")
+        for h in ('#include "tc_strict.h"', "tcrt_strict_reset();", "tcrt_strict_report(out);", "tcs_call("):
+            self.assertEqual(src.count(h), 1, h)
+        veh = (x / "runtime_rd" / "rd_veh.c").read_text(encoding="utf-8")
+        for h, n in (('#include "tc_strict.h"', 1), ("strict_call(target, r, s);", 2), ("tcrt_strict_reset();", 1)):
+            self.assertEqual(veh.count(h), n, h)
+        mem = (x / "runtime_rd" / "rd_mem.c").read_text(encoding="utf-8")
+        self.assertEqual(mem.count("tcrt_strict_report(out);"), 1)
+        for r in (rt / "runner.c", x / "runtime_rd" / "rd_runner.c"):
+            run = r.read_text(encoding="utf-8")
+            self.assertEqual(run.count("tcrt_strict_line(line);"), 2, r.name)
+            self.assertLess(run.index("} else if (!active) {"), run.index("|| line[0] == 'W'"), r.name)
+            self.assertLess(run.index("line[0] == 'J' || line[0] == 'U'"), run.index("} else if (line[0] == 'V') {"))
+        self.assertRegex((x / "x360_check.py").read_text(encoding="utf-8"), r"strict = strict_judge\.modes\(cfg\)[^$]*"
+                         r"compare_vector\(.*strict, report := \[\]\)\n\s+strict_judge\.note\(result, s, i, report\)")
+        lines = (g / "TcStrict.java").read_text(encoding="utf-8").splitlines()
+        self.assertLessEqual(len(lines), 400)
+        self.assertEqual([s for s in lines if len(s) > 120], [])
+
+    def test_stamp_scope(self):
+        """With the six flags off the scripts' change would leave every stamp as it was; with any on (target.json
+        since 2026-11-06) every function is in scope (x360_scope)."""
+        import x360_scope
+        self.assertFalse(x360_scope.in_scope({"mock_junk": False}, "82000000", "prewave_flags"))
+        for f in x360_scope.FLAG_SCOPES["prewave_flags"]:
+            self.assertTrue(x360_scope.in_scope({f: True}, "82000000", "prewave_flags"), f)
 
 
 if __name__ == "__main__":

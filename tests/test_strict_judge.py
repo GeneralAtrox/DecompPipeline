@@ -31,7 +31,7 @@ from core import compare, ghidra, paths, strict_judge  # noqa: E402
 import ppc_compare  # noqa: E402
 
 T = ROOT / "targets"
-TARGETS, ON_TARGETS = ("dreamcast_sh4", "saturn_sh2", "gamecube_ppc"), {"dreamcast_sh4", "saturn_sh2", "gamecube_ppc"}
+TARGETS = ("dreamcast_sh4", "saturn_sh2", "gamecube_ppc"); ON_TARGETS = {*TARGETS, "xbox360_ppc"}  # X360: X360Judge
 FLAGS = list(strict_judge.FLAGS)
 M = (1 << 64) - 1
 WORK = ROOT / "tests" / ".work"
@@ -125,7 +125,7 @@ class Stream(unittest.TestCase):
         WORK.mkdir(parents=True, exist_ok=True)
         cls.tmp = tempfile.TemporaryDirectory(prefix="strict_", dir=WORK)
         cls.out = {}
-        for t in ("dreamcast_sh4", "gamecube_ppc"):
+        for t in ("dreamcast_sh4", "gamecube_ppc", "xbox360_ppc"):
             out = pathlib.Path(cls.tmp.name, t)
             sh = [paths.SHARED_SCRIPTS / d for d in json.loads(text(T / t / "target.json")).get("shared_scripts") or []]
             src = os.pathsep.join(str(p) for p in [T / t / "ghidra_scripts", T / t / "template"] + sh)
@@ -160,7 +160,7 @@ class Stream(unittest.TestCase):
 
     def test_header_and_meta(self):
         for t, args, f4, fs in (("dreamcast_sh4", "r4 r5 r6 r7", 1, 14),
-                                ("gamecube_ppc", "r3 r4 r5 r6 r7 r8 r9 r10", 1, 18)):
+                                *((p, "r3 r4 r5 r6 r7 r8 r9 r10", 1, 18) for p in ("gamecube_ppc", "xbox360_ppc"))):
             a = args.split()[0]
             cfg = {"abi": {"int_args": args.split()}, "mock_write_facts": {"0x8C012345": {a: 16, "why": "x"},
                                                                            "8c000010": {"s1": 4, "why": "y"}}}
@@ -173,7 +173,7 @@ class Stream(unittest.TestCase):
             self.assertEqual(meta, [{"callee": "8c000010", "field": "s1", "size": 4},
                                     {"callee": "8c012345", "field": a, "size": 16}], t)
             self.assertEqual(out[6:9], ["2", "J 2|", ""], t)
-            if t == "gamecube_ppc":
+            if t in ("gamecube_ppc", "xbox360_ppc"):
                 self.assertEqual(out[9], "", t)  # no callee masks: GameCube's mocks keep zeroing, now junk, as before
                 continue
             facts = [f"int_args {args}", "mock_junk 1"]
@@ -202,10 +202,10 @@ class Judge(unittest.TestCase):
     def setUp(self):
         WORK.mkdir(parents=True, exist_ok=True)
 
-    def sh(self, cs, xr=XR_SH, call="8c020000", strict=None, report=None, ecs=("CS 0 1 44332211xxxxxxxx",)):
+    def sh(self, cs, xr=XR_SH, call="8c020000", strict=None, report=None, ecs=("CS 0 1 44332211xxxxxxxx",), exr=XR_SH):
         meta = {"ret": "u32", "callees": [{"addr": "8c020000", "regs": ["r4"]}], "globals": []}
         base = ["RET 00000005 00000000"]
-        exp = result_file(base + ["CALL 8c020000 8c040000 8c040100", *ecs, "CS 0 2 00006655", XR_SH])
+        exp = result_file(base + ["CALL 8c020000 8c040000 8c040100", *ecs, "CS 0 2 00006655"] + ([exr] if exr else []))
         act = result_file(base + [f"CALL {call} 8c040000 8c040100", *cs] + ([xr] if xr else []))
         return compare.compare_vector(meta, b"", {"patches": []}, exp, act, compare.FRAME_LO, strict, report)
 

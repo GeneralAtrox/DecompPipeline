@@ -243,6 +243,8 @@ def rets(out):
 class Runners(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        if subprocess.run(["git", "-C", str(ROOT), "cat-file", "-e", BASE + "^{commit}"], capture_output=True, timeout=60).returncode:
+            raise unittest.SkipTest(f"base commit {BASE} is not in this clone (a public snapshot has no private history)")
         WORK.mkdir(parents=True, exist_ok=True)
         cls.tmp = tempfile.TemporaryDirectory(prefix="gapf_rt_", dir=WORK)
         d = cls.d = pathlib.Path(cls.tmp.name)

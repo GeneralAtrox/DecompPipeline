@@ -39,7 +39,7 @@ from .raw_names import mask, proto_name
 READY, NEEDS_RAW, NEEDS_READABLE, KIT, NATIVE, OUTSIDE = "ready", "needs_raw", "needs_readable", "kit", "native", "outside"
 STATES = (READY, NEEDS_READABLE, NEEDS_RAW, KIT, NATIVE, OUTSIDE)
 HARNESS_FILES = ("vectors.txt", "expected.txt")
-WEAK_PROOF = ("matched_low_coverage", "weak_harness")
+WEAK_PROOF = ("matched_low_coverage", "weak_harness", "unchecked_args")  # core/unchecked_args.STATE
 CHANGED_GRACE_S = 120  # a passing file is copied before its row is written
 
 RAW_FN = re.compile(r"\bfn_([0-9a-f]{8})\b")

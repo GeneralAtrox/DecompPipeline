@@ -15,7 +15,7 @@ import re
 import shutil
 import threading
 
-from . import check, filelock, paths, pch_warnings, readable_argnames, readable_ca, readable_stack, strict_judge, target_hooks, toolcfg
+from . import callee_drift, check, filelock, paths, pch_warnings, readable_argnames, readable_ca, readable_stack, strict_judge, target_hooks, toolcfg
 from .compare import FRAME_LO, STACK_HI
 
 RUNTIME_RD = paths.TARGET / "runtime_rd"
@@ -157,10 +157,11 @@ def pointer_protos(exp):
     return out
 
 
-def build(cfg, sources, thunk_text, protos, build_dir, include_dirs=(), runtime=None):
+def build(cfg, sources, thunk_text, protos, build_dir, include_dirs=(), runtime=None, x64=False):
     """Compile sources + generated thunk and prototype table + the readable runtime into rd_runner.exe. runtime:
     (folder, sources, the target build's own code files) of a target's own readable runtime (targets/gamecube_ppc),
-    else RUNTIME_RD and RUNTIME_SOURCES.
+    else RUNTIME_RD and RUNTIME_SOURCES. x64: a 64-bit runner (targets/xbox360_ppc: 64-bit registers, guest memory
+    below 4 GB), built with the raw judge's Visual Studio environment and the same flags and link options.
     A clean build (no message) is kept by the key of all it read (_runner_key) in build_dir's parent, rd_runners/:
     a build of the very same inputs (the official judge of the work.c the agent's last check built, with the same
     header snapshot) takes that runner instead of compiling again (~2-3 s). The vectors always run afresh."""
@@ -173,14 +174,14 @@ def build(cfg, sources, thunk_text, protos, build_dir, include_dirs=(), runtime=
         names.append(str(dst))
     (build_dir / "thunk.c").write_text(thunk_text, encoding="utf-8")
     (build_dir / "protos.c").write_text(protos_c(protos), encoding="utf-8")
-    env = msvc_env_x86(cfg)
+    env = check.msvc_env(cfg) if x64 else msvc_env_x86(cfg)
     env_path = next((v for k, v in env.items() if k.upper() == "PATH"), "")
     cl = shutil.which("cl.exe", path=env_path)
     if not cl:
         raise RuntimeError("cl.exe not found in the 32-bit Visual Studio environment")
     rd, rt_sources, code = runtime or (RUNTIME_RD, RUNTIME_SOURCES, ())
     key = _runner_key(cl, env, [*names, build_dir / "thunk.c", build_dir / "protos.c"], include_dirs,
-                      link_flags(cfg), rd, code)
+                      link_flags(cfg, x64), rd, code)
     kept = build_dir.parent / "rd_runners" / key[:24]
     if (kept / "rd_runner.exe").is_file():
         shutil.copyfile(kept / "rd_runner.exe", build_dir / "rd_runner.exe")
@@ -189,7 +190,8 @@ def build(cfg, sources, thunk_text, protos, build_dir, include_dirs=(), runtime=
         except OSError:
             pass
         return True, []
-    ok, msgs = _build(cfg, names, build_dir, include_dirs, env, cl, *(runtime[:2] if runtime else ()))
+    ok, msgs = _build(cfg, names, build_dir, include_dirs, env, cl, *(runtime[:2] if runtime else (None, None)),
+                      x64=x64)
     if ok and not msgs:
         keep_runner(build_dir, kept)
     return ok, msgs
@@ -200,12 +202,12 @@ def keep_runner(build_dir, kept):
     check.keep_runner(build_dir, kept, "rd_runner.exe")
 
 
-def _build(cfg, names, build_dir, include_dirs, env, cl, rd=None, sources=None):
+def _build(cfg, names, build_dir, include_dirs, env, cl, rd=None, sources=None, x64=False):
     rd = RUNTIME_RD if rd is None else rd
     sources = RUNTIME_SOURCES if sources is None else sources
     incs = [f"/I{d}" for d in (*include_dirs, rd, paths.RUNTIME)]
     flags = [*C_FLAGS, *incs, f"/Fo{build_dir}\\"]
-    link = link_flags(cfg)
+    link = link_flags(cfg, x64)
     rt = runtime_rd_objs(cl, env, include_dirs, rd, sources)  # None: the runtime is compiled here, as before
     own = [*names, str(build_dir / "thunk.c"), str(build_dir / "protos.c")]
     if rt:  # compile (C_FLAGS' /TC would take an .obj for C source), then link with the cached runtime's objects
@@ -306,7 +308,7 @@ def map_stack_args(meta, exp, act, stack, maps=None, frame_lo=FRAME_LO):
         if ec[0] != ac[0]:
             break
         # the registers compare_vector judges: a listed callee's, else the original's own (CA, a pointer call)
-        for reg in callee_regs.get(ec[0], exp.get("call_args", {}).get(k, [])):
+        for reg in callee_drift.call_regs(callee_regs, ec[0], exp.get("call_args", {}).get(k, []), check.REG_INDEX, caller=meta.get("addr")):
             i = check.REG_INDEX[reg]
             g, h = ec[i], ac[i]
             if not (frame_lo <= g < STACK_HI and lo <= h < hi):
@@ -386,14 +388,16 @@ def run(cfg, harness, build_dir, sets=("dev", "hidden"), vectors=None):
     return out, err
 
 
-def link_flags(cfg):
+def link_flags(cfg, x64=False):
     """The runner's link options. A fixed image base, no ASLR: a vector's arbitrary function-pointer value (TC
     8c0633cc: 0x01040401) is a guest call only while it misses the runner's own code; with a per-build random base it
     sometimes hit .text and ran host code (a crash, a missing call). Without ASLR nothing randomized takes rd_p4.c's
     fixed pages either (with it, QACR0/1's page was taken in 26 of 300 runs). The target's readable_image_base keeps
     the image clear of guest memory."""
     base = cfg.get("readable_image_base") or "0x5a000000"
-    return ["/link", "/LARGEADDRESSAWARE", "/NXCOMPAT", "/DYNAMICBASE:NO", "/FIXED:NO", f"/BASE:{base}"]
+    # x64: the base stays below 4 GB on purpose (guest addresses are 32-bit), so the linker's LNK4281 advice is noise.
+    return ["/link", "/LARGEADDRESSAWARE", "/NXCOMPAT", "/DYNAMICBASE:NO", "/FIXED:NO", f"/BASE:{base}"] + (
+        ["/IGNORE:4281"] if x64 else [])
 
 
 def verdict(result, sets):

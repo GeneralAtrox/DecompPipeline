@@ -92,6 +92,7 @@ public class TcPrepare extends TcVectors {
         blocks.sort(Comparator.comparingLong(x -> x[0]));
         for (int i = 0; i < blocks.size(); i++) blockIndex.put(blocks.get(i)[0], i);
         if (facts.branchCoverage || facts.targetedVectors) dirs = TcDirs.of(listing, body);  // TcDirs, TcBound
+        if (facts.boundaryVectors) edges = TcBound.Edges.of(listing, body);  // compare edges (TcBoundPass.edges)
 
         // fsca table (core/fsca.py): 2 x 65536 x (sin bits, cos bits), little endian; round to nearest, toward zero
         byte[] tb = Files.readAllBytes(fsca);
@@ -193,7 +194,7 @@ public class TcPrepare extends TcVectors {
             callees.append(String.format("{\"addr\":\"%s\",\"regs\":[%s],\"signature\":\"%s\"}",
                 hex(c.getEntryPoint().getOffset()), regs, esc(cSignature("fn_" + hex(c.getEntryPoint().getOffset()), cp))));
         }
-        TcOut.prepare(this, facts.paramSummaries);  // r4..r7 outputs: its own, then its callees' (TcLive.of)
+        TcOut.prepare(this, facts.paramSummaries, facts.tcoutTail);  // r4..r7 outputs: its own, then its callees' (TcLive.of)
         TcTflag.prepare(this, facts.paramSummaries);  // T handed back: its own, then its callees' (TcLive.of)
         live = facts.paramSummaries ? TcLive.of(this, calledBy(fn, body)) : null;  // callees changing r8..r14, r4..r7
         TcTrack.on = TcTrack.of(listing, body, calledBy(fn, body), proto);  // pointer calls' arguments, float NaN words
@@ -286,6 +287,7 @@ public class TcPrepare extends TcVectors {
         String bound = why == null ? TcBoundPass.run(this, proto, seed, new ArrayList<>(globals)) : null;  // TcBound
         if (why == null) align.replace(this, proto, new ArrayList<>(globals), hints, seed);  // for those left out
         String once = why == null ? TcFpu.once(this, proto, seed) : null;  // fipr/ftrv: one rounding vs seven
+        String edge = why == null ? TcBoundPass.edges(this, proto, seed, new ArrayList<>(globals)) : null;  // the last vectors
         String head = fpscrLine() + TcHw.header() + TcCalls.flagHeader() + (live != null ? live.header() : "")
             + (sq != null ? sq.header() : "") + TcOut.header();
         head += TcTflag.header();  // T handed back (TcTflag)
@@ -332,7 +334,7 @@ public class TcPrepare extends TcVectors {
             + (textRestored > 0 ? "\"text_restored\":" + textRestored + "," : "")
             + (bal.length() > 0 ? "\"stack_balance\":[" + bal + "]," : "") + (reach != null ? reach + "," : "")
             + (unhit.length() > 0 ? "\"blocks_unhit\":[" + unhit + "]," : "")
-            + (bound != null ? bound + "," : "") + (once != null ? once + "," : "")
+            + (bound != null ? bound + "," : "") + (once != null ? once + "," : "") + (edge != null ? edge + "," : "")
             + (dirs != null && why == null ? dirs.summary(dirsDev, dirsAll) : "") + (why == null ? align.note() : ""),
             hints.size(), sites, inv, ex);
         Files.write(harness.resolve("oracle_summary.json"), summary.getBytes("UTF-8"));

@@ -4,6 +4,10 @@
  *
  *   --ram-frames FILE        writes the frames
  *   --ram-frames-range A:B   only port frames A to B (the first of them in full)
+ *   --watch-ram-frame ADDR[,ADDR..]@F  logs each write to the guest RAM words ADDR (hex, up to four) between port frame
+ *                            F - 1's capture and F's: the writes behind the differences frame F shows first, in the
+ *                            order they ran (lockstep_watch.c; tools/divergence.py names the writers from port.map);
+ *                            the run ends at frame F
  *
  * A record, little-endian: u32 'RAMF', u32 port frame, u32 label (the frame label the game holds), s32 emulator
  * frame (-1: not driven; the run ends with the emulator's frames), u32 run count, then each run's u32 start and
@@ -12,6 +16,7 @@
 #include <string.h>
 #include "port.h"
 #include "lockstep.h"
+#include "lockstep_parts.h"
 
 #define RAMF_MAGIC 0x464d4152u
 #define BLOCK 32u
@@ -23,6 +28,7 @@ static u8 *g_prev;
 static u32 *g_runs; /* start, length pairs */
 static u32 g_from, g_to = 0xffffffffu, g_frames;
 static u64 g_bytes;
+static u32 g_watch_addr[4], g_watch_n, g_watch_frame; /* --watch-ram-frame (not the base's --watch-ram A@V1:V2) */
 
 int ram_frames_option(const char *arg, const char *value)
 {
@@ -35,6 +41,17 @@ int ram_frames_option(const char *arg, const char *value)
         g_prev = malloc(GUEST_RAM_SIZE);
         g_runs = malloc(BLOCKS * sizeof *g_runs); /* at most BLOCKS / 2 runs: changed runs are apart */
         if (!g_prev || !g_runs) exit(2);
+        return 1;
+    }
+    if (!strcmp(arg, "--watch-ram-frame")) {
+        const char *at = strchr(value, '@');
+        char *end = NULL;
+        if (!at || sscanf_s(at + 1, "%u", &g_watch_frame) != 1 || !g_watch_frame) exit(2);
+        for (const char *p = value; p < at && g_watch_n < 4u; p = end + (*end == ',')) {
+            g_watch_addr[g_watch_n++] = strtoul(p, &end, 16);
+            if (end == p || (*end != ',' && *end != '@')) exit(2);
+        }
+        if (!g_watch_n || end != at) exit(2);
         return 1;
     }
     if (!strcmp(arg, "--ram-frames-range")) {
@@ -55,6 +72,13 @@ void ram_frames_capture(u32 frame, u32 label, s32 emu)
 {
     const u8 *ram = (const u8 *)(uintptr_t)GUEST_RAM_BASE;
     u32 n = 0, head[5];
+    if (g_watch_n && frame + 1u - g_watch_frame <= 1u) { /* armed at frame F - 1's capture, off at F's */
+        volatile u32 *at[4];
+        for (u32 i = 0; i < g_watch_n; i++)
+            at[i] = (volatile u32 *)(uintptr_t)(GUEST_RAM_BASE + (g_watch_addr[i] & (GUEST_RAM_SIZE - 4u)));
+        lockstep_watch_words(at, frame + 1u == g_watch_frame ? g_watch_n : 0u, g_watch_frame);
+        if (frame == g_watch_frame) port_exit("ram watch: done", 0); /* nothing past it to watch */
+    }
     if (!g_f || frame < g_from || frame > g_to) return;
     if (emu == -2) port_exit("ram frames: the emulator frames ended", 0); /* nothing past them to compare */
     if (!g_frames++) {

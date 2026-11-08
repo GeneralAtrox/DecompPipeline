@@ -11,6 +11,8 @@
  *
  * Pages holding machine code are kept inaccessible during the run: a data access there is let through one
  * instruction at a time (single-step) and a read of an instruction byte is reported as CODEREAD (rule R8).
+ *
+ * The stricter judge (tc_strict.h) runs at each call once it is logged, as in tc_rt.c.
  */
 #include <string.h>
 #include <windows.h>
@@ -65,6 +67,34 @@ static void log_call(u32 target, const u32 r[4], const u32 fr[8], const u32 st[8
 
 static void out_copy(u32 call, u32 target, const u32 *rec);
 
+/* The stricter judge (tc_strict.h), as the Dreamcast readable runtime. A pointer into the host stack is a readable
+ * local's: its bytes directly (checked first: the host stack may lie where work RAM low's own addresses are). Any
+ * other is a guest one, in work RAM (rd_mem.c rd_guest_copy). A fact's size is the callee's: a readable local smaller
+ * than it would be overrun, as a C mistake can overrun it. The SH-2 has no FPU: no fr junk, as tc_rt.c. */
+static int host_stack(u32 p, u32 n)
+{
+    ULONG_PTR lo = 0, hi = 0;
+    GetCurrentThreadStackLimits(&lo, &hi);
+    return p >= lo && p + n <= hi && p + n > p;
+}
+
+static int tcs_read(u32 p, u32 n, u8 *out)
+{
+    if (!host_stack(p, n)) return rd_guest_copy(p, n, out, NULL);
+    memcpy(out, (const void *)(uintptr_t)p, n);
+    return 1;
+}
+
+static void tcs_write(u32 p, u32 n, const u8 *in)
+{
+    if (!host_stack(p, n)) (void)rd_guest_copy(p, n, NULL, in);
+    else memcpy((void *)(uintptr_t)p, in, n);
+}
+
+static void tcs_scratch(int i, u32 bits) { (void)i, (void)bits; }
+
+#include "tc_strict.h"
+
 /* The raw-C call API (runs raw matched C through this runtime, for its own regression, and for the original's bytes
  * at out-pointer calls: vectors line B). */
 u32 tc_call(u32 target, const TcArgs *args)
@@ -78,6 +108,7 @@ u32 tc_call(u32 target, const TcArgs *args)
     log_call(tcrt_fold(target), r, fr, st, lo);
     if (g_ncalls <= RD_MAX_CALLS) out_copy(g_ncalls - 1, tcrt_fold(target), g_call_log[g_ncalls - 1]);
     if (rd_tracing && g_ncalls <= RD_MAX_CALLS) rd_trace_call(g_ncalls - 1, tcrt_fold(target), g_call_log[g_ncalls - 1]);
+    if (g_ncalls <= RD_MAX_CALLS) tcs_call(g_ncalls - 1, tcrt_fold(target), g_call_log[g_ncalls - 1]); /* tc_strict.h */
     rd_sh4_result(rv); /* the oracle's mocked callee leaves its result in r0 and fr0 */
     return rv;
 }
@@ -281,6 +312,7 @@ static LONG call_trap(CONTEXT *c)
     g_ret_bits = next_return();
     log_call(target, r, fr, st, lo);
     if (g_nouts && g_ncalls <= RD_MAX_CALLS) out_copy(g_ncalls - 1, target, g_call_log[g_ncalls - 1]);
+    if (g_ncalls <= RD_MAX_CALLS) tcs_call(g_ncalls - 1, target, g_call_log[g_ncalls - 1]); /* after out_copy */
     rd_sh4_result(g_ret_bits);
     if (ret == 'f') c->Eip = (DWORD)(uintptr_t)ret_f32;
     else if (ret == 'L') c->Eip = (DWORD)(uintptr_t)ret_u64;
@@ -341,6 +373,7 @@ void rd_abi_reset(void)
     g_self_host = 0;
     g_self_guest = 0;
     rd_trace_reset();
+    tcrt_strict_reset(); /* not in rd_calls_reset: E sets the returns after N and W */
 }
 
 u32 rd_code_read(void) { return g_code_read; }
@@ -354,4 +387,5 @@ void rd_calls_report(FILE *out)
         fputc('\n', out);
     }
     if (g_ncalls > RD_MAX_CALLS) fprintf(out, "FAULT too-many-calls\n");
+    tcrt_strict_report(out); /* CS lines (tc_strict.h) */
 }

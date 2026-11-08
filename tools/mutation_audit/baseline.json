@@ -479,46 +479,57 @@
  },
  "ps2": {
   "8c0117a0": {
+   "classes": "llllllllll",
    "outcomes": "SKKKKKKKSK",
    "sha": "824cee9777c9be494fa4c934b71bc6c20cbd6e1cb9d31e1dd39265d94d31ae45"
   },
   "8c01436c": {
-   "outcomes": "SKKKSKBBKK",
-   "sha": "72f4bf58ab205d0ee2344768a5112fbe6d341ad21073ada1c24a763a1196c446"
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKKKK",
+   "sha": "5025bbdfd21f3d078ab9a42459b028463dda20591228b322ccea9850f282adff"
   },
   "8c016244": {
+   "classes": "llllllllll",
    "outcomes": "KKKSKKKKKB",
    "sha": "0f4a227770ed4649c76c067576a878459981abfb18549a21d2cc9d5c0e0fd9ee"
   },
   "8c016a88": {
+   "classes": "llllasllll",
    "outcomes": "KKKKKKKKKK",
    "sha": "b59a6da949cb66f6df8a71b42f584074832467529cd8b29e410d1f1f6e025087"
   },
   "8c019a06": {
+   "classes": "lllllllsla",
    "outcomes": "KKKBKKBKKK",
    "sha": "1bc6ba8d6d419105c50aaa8bf360e6ac8c0d028185a8f3e139bd71c1174b2ad4"
   },
   "8c01a2a0": {
+   "classes": "llllllllll",
    "outcomes": "KKSKKKKBBK",
    "sha": "3fd126f646aaff492c77560eaa4a6fd05f2379648cf35ad298c5b85935e0ebdf"
   },
   "8c01c912": {
+   "classes": "lllallslll",
    "outcomes": "KKKKKBKKKK",
    "sha": "a6028d315bd4be207a9d02733f7b16fa9e5e16f3be721226389b779adc4259f9"
   },
   "8c01de2c": {
-   "outcomes": "SSSSSKKKKS",
+   "classes": "llllllllll",
+   "outcomes": "KSKSSKKKKS",
    "sha": "0f3ef24329708ba710246db2111b5438175528fdebfc2445d158d9eb68f8165e"
   },
   "8c01e992": {
+   "classes": "aaaaaaaaaa",
    "outcomes": "SSKSSKSSKS",
    "sha": "4e94763f48f9e2b209fd86391b99f792a4e5791a56d97e199fe64f4b9de26f8b"
   },
   "8c01ea32": {
+   "classes": "aaaaaaaaaa",
    "outcomes": "SSSSSSSSSS",
    "sha": "989feee63a0b252de0d9c7a5b71bca74e34ffddd27f608b5249dbcd24e4325ae"
   },
   "8c01f07c": {
+   "classes": "allllallll",
    "outcomes": "SKKKBSKKKB",
    "sha": "3290e50f3f0d170e7dcec9336289ebb724091d4f966042562f4684516dffbb2a"
   },
@@ -527,556 +538,1453 @@
    "sha": "389958a513e9c0144a45c84ca4aaa28960dc092d6bb97b52aa22ed46f5e290a0"
   },
   "8c025eba": {
+   "classes": "laalallaal",
    "outcomes": "SKKKKBKKKK",
    "sha": "3f05a8e86c8220993b21768021a4775a6338cfb5c6a2373a526a448af04d661e"
   },
   "8c02bd48": {
+   "classes": "llllllllll",
    "outcomes": "KKKKBBKKKK",
    "sha": "3745aca04c4bd287103f127cfdc36bea17d87a655aabf263e4fa5f7347de767f"
   },
   "8c02e40a": {
+   "classes": "lalllaalsl",
    "outcomes": "KKKKKKKKSK",
    "sha": "5cdf1feb50473eea72fa640df476db0eb28e7d4d41cf44b8ef72f8bccba9937e"
   },
   "8c037fc4": {
+   "classes": "lalllaalll",
    "outcomes": "KSBKSSBKKK",
    "sha": "92a788c625f9ece03f78a40de028b7935e30615b4816cb7203a7387f77fd291d"
   },
   "8c03a7c0": {
+   "classes": "lllllallll",
    "outcomes": "KSKKSKBKSK",
    "sha": "28dee468ddb54fdf6741219095eed7ed2aa3363d9576f81d3bc90f77d622360e"
   },
   "8c03cbf6": {
+   "classes": "aaalaaaaaa",
    "outcomes": "SSKKSSKSSS",
    "sha": "87d4f7dc398ef7ffadf24a8b72269b549455088f0c1294c88ff17593f995899e"
   },
   "8c03d8f8": {
+   "classes": "llalllllll",
    "outcomes": "KKKKSBKKKK",
    "sha": "a66601a2e9ed5538f2922d78d478cc687a28b8067c2193e2fad771f38709644a"
   },
   "8c03eee4": {
+   "classes": "llllllllll",
    "outcomes": "KKKKBBBSKS",
    "sha": "e45a52e2cf23ca01dabe3e9644307fa6966e8660b3603a7f00fec269f3adde84"
   },
   "8c042fa2": {
-   "outcomes": "KKKKSBKSSK",
+   "classes": "llllalllll",
+   "outcomes": "KKKKSBKSKK",
    "sha": "9a6d180da912d6b06cf3357938856f9342046aa210e8cc6b89e1b2067b8d8d45"
   },
   "8c044038": {
-   "outcomes": "KKSKKSKBKK",
-   "sha": "9eb463c15e53100ff76b7ec2174262bf93b5e00b64378a919ec6bc34d91b48bd"
+   "classes": "llllllalll",
+   "outcomes": "SKSSSSSBKK",
+   "sha": "5e0995b0ed72b478462647d6e971ce525c3f585a7c4a1d48cda6eab06c7b0769"
   },
   "8c0498dc": {
-   "outcomes": "SSSSKSBBSS",
+   "classes": "llllllllll",
+   "outcomes": "SKSKKSBBSS",
    "sha": "43d2e07fcfd22fcd18394a2281cddd3d64f214afcf826a7bf8891df41019b7a3"
   },
   "8c04c4e2": {
+   "classes": "llalllllll",
    "outcomes": "KKKKKBKSKK",
    "sha": "61bffb02ba55a3cb04e4b20c760f651900d58f6099cf32c9014c6c00546f1ac3"
   },
   "8c059cf0": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKKKKKK",
    "sha": "edd7cd502bfb9efa7112bee7ceafb1465664e7d49801c7301147415f4ff64142"
   },
   "8c05a6c0": {
-   "outcomes": "SKSKBKKKKK",
+   "classes": "llllllllll",
+   "outcomes": "KKSKBKKKKK",
    "sha": "3f2bf8bf86a272c871a76d854ca18061b7dc27fe1fd03702f2f6053ad6aad151"
   },
   "8c05abc8": {
+   "classes": "llll",
    "outcomes": "KBKB",
    "sha": "666fff560d71264d4d04924d4571d898bd5725e189bf5c9a83cc10258b7db26b"
   },
   "8c05afda": {
+   "classes": "ll",
    "outcomes": "KK",
    "sha": "08230e2874f2a0be258e43858b9aadad3a63c6e254d4727d6598b1cfe6b1274a"
   },
   "8c05e598": {
+   "classes": "lalalaalal",
    "outcomes": "KSKSBSKKBK",
    "sha": "13e8ed385358d658c0d4b7aa408f3e713a85c92939fd32fd38a25d18a2c149a3"
   },
   "8c05f6d8": {
-   "outcomes": "KKKKKKSKSK",
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKKKK",
    "sha": "4fe6845472c77267bdc6db1ea8c01643a25e96894f8259480d7334804499592f"
   },
   "8c062f14": {
+   "classes": "llllllllll",
    "outcomes": "KKKKBKBKKK",
    "sha": "47982aace5d9b7fbc9a372e32a1e42b8f861b1c0b96db6e2d951ffcb5dbdaee1"
   },
   "8c064ecc": {
+   "classes": "llllllllll",
    "outcomes": "KKKKBKKKBK",
    "sha": "7af874ea17c28e0dc8ab9c5a3ee07cf0fd3d0d3bb8d3e877cbd9cd6ef6299702"
   },
   "8c065dce": {
+   "classes": "llllllalll",
    "outcomes": "KKKKKSKBKK",
    "sha": "7a2570e3050ba3b52498387919399907182bdfefe5696f5fe7956de0e3ce87f4"
   },
   "8c069a46": {
+   "classes": "llllalalal",
    "outcomes": "KKKKSKSKKK",
    "sha": "8a603984888cbda74240fc7e717f791f7d90d182bcb5d5eb3afcae7aea9eef60"
   },
   "8c06a2e8": {
-   "outcomes": "KKSKKSBBSK",
+   "classes": "llllllllal",
+   "outcomes": "KKKKKSBBSK",
    "sha": "90f29bdbc7b0537e09f1ddca3b13d9771aa3d1e643e72b0c7a9fc1833f30a45d"
   },
   "8c06baf0": {
-   "outcomes": "KKKKSKKSKK",
+   "classes": "lllllallll",
+   "outcomes": "KKKKKKKKKK",
    "sha": "88f703df15fb52415856ff85cd33292f731c0af4dfe427d747300484ccd776e3"
   },
   "8c06d782": {
+   "classes": "laallallll",
    "outcomes": "KKSKBSSKKK",
    "sha": "0adf884b2acc5b23ea45855f1a404e1ca587f41952e87a2e819aa7fd79cc5eb5"
   },
   "8c06dd80": {
-   "outcomes": "KKKKKBBSKK",
-   "sha": "ba0fe0c25e63726b0568c4c8d1b9d7c07714f29f37ec3d80a71a72e8bb252fe6"
+   "classes": "lsllallsll",
+   "outcomes": "KSSKSKSKBK",
+   "sha": "57ffa13bb503a986e3c4409f844417d0cbc68ca3d5d017f4f7cf256060ff31d2"
   },
   "8c06eae4": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKBBKKK",
    "sha": "64fc87e07b3e373ee3aeb6ca3051d8f16ca7e349b01cd54435e8cf69b61451e3"
   },
   "8c06f468": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKKKK",
    "sha": "f8cde2e2bbe43f1bfbaa8fc1ac8135685cccd40c2f545f799f8c9478356a8e48"
   },
   "8c06fff4": {
-   "outcomes": "SSSKSKKKKK",
+   "classes": "laalasllll",
+   "outcomes": "SKSKSKKKKK",
    "sha": "d7c2be0fd155895caa7103e7f8d5a989609ebb1cc7fa14e4741d88e6f6ffb7b8"
   },
   "8c073b60": {
+   "classes": "lllallllll",
    "outcomes": "KKKSKKBKSK",
    "sha": "9d7649dd97c6ce8b3758a839b3e71ffe29325d351c578a4a7988d0f92a9a59ab"
   },
   "8c078816": {
+   "classes": "llallallll",
    "outcomes": "KKSBKSKBKK",
    "sha": "7cdc7bf9011ecf0b52e4a2abe7a535148acaee90327e8b13d208f3b9cc2648bc"
   },
   "8c07c4e6": {
-   "outcomes": "KSKKBKSKKK",
+   "classes": "llllllllll",
+   "outcomes": "KKKKBKSKKK",
    "sha": "0a1bcde49a23368f5aebb3af5be85b0861ff44de250429da6fde833907df06e4"
   },
   "8c07d342": {
+   "classes": "aal",
    "outcomes": "KBK",
    "sha": "e2dbcd789ac0d1e133ab38329123c162b5df2dc20a1ea116a118f095825f6c3f"
   },
   "8c0858e0": {
+   "classes": "llllaallll",
    "outcomes": "KKKKKKKKKK",
    "sha": "c656049ae96a827c6304522b40d6ca798298ec04f59dba926378e81af7b0d4ef"
   },
   "8c088018": {
+   "classes": "laalaallll",
    "outcomes": "KKKKKKKKKK",
    "sha": "acd9a9eff8b50ccb3509949fcf3488cb64cc0fdf287253858c60eaab73c20871"
   },
   "8c08a654": {
-   "outcomes": "KSKSKKSKKK",
+   "classes": "lalalaalll",
+   "outcomes": "KSKSKKKKKK",
    "sha": "b84adc3ec5ec5ab54023c2df4e6d1ab13e62b89b071ea82a3ef89dd364f9f282"
   },
   "8c08cfc8": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKKKK",
    "sha": "64edf9614be5542ca90f5c753c7cba20cebaae9b5c32763c2353105995612350"
   },
   "8c08ebe4": {
-   "outcomes": "SSKSBKBKSS",
+   "classes": "lllllsllll",
+   "outcomes": "KKKKBKBKKS",
    "sha": "7f3fc31f82e8d0f0e0d9bc1c02fe284638bda0a74a4f83fee73094045607108a"
   },
   "8c092b9c": {
+   "classes": "llalalaala",
    "outcomes": "KKKKKBSKKK",
    "sha": "4f80b87d4d799509839397da46f9a5ecf375abcfb601a72227cfa75cd4b8b914"
   },
   "8c0996f8": {
+   "classes": "laaaaalaaa",
    "outcomes": "KSSKKSBSSS",
    "sha": "e4d085ec8f825ee83d14d9e6cde9cd00d9688c525f2462b308b378d38a423a3c"
   },
   "8c09d80e": {
-   "outcomes": "KKSKKSSKKB",
+   "classes": "alllsallll",
+   "outcomes": "KKKKKSSKKB",
    "sha": "49a1c5ee42b87d27ad93adf65058872a7fc1160966f26dcd6e3c5877521a57e7"
   },
   "8c09e214": {
-   "outcomes": "KSKKKKKKKK",
+   "classes": "lsaslllasa",
+   "outcomes": "KKKKKKKKKK",
    "sha": "95340bef6f614bd018e7b666d78f2a5e3dd7ff432e52b2f5c26201f10a2a6546"
   },
   "8c0a0b8e": {
+   "classes": "llallallal",
    "outcomes": "KKKKKSKKSK",
    "sha": "389c49a11c130271a90e221876b41dbab703a4d7e0bc36b564f6c002125bbd58"
   },
   "8c0a6518": {
+   "classes": "llalalllla",
    "outcomes": "KKKKKBBKKK",
    "sha": "967c2ad4b6e7987183d7135f095f49f94a8260293d904da632f342d698336239"
   },
   "8c0a8166": {
-   "outcomes": "KSSKKSKKKK",
+   "classes": "lsssasaaas",
+   "outcomes": "KKSKKSKKKK",
    "sha": "dfe2024fd3a30b90c064d617c7f57ff7a71b33e06ff3b69c2beba5fc1b9a3769"
   },
   "8c0aa444": {
-   "outcomes": "KSSKBKKKKB",
+   "classes": "llllllllll",
+   "outcomes": "KKKKBKKKKB",
    "sha": "f273f5f623e4a211f6e94c132809107ffbae86ff3ba95450b3ca363ecd8a2838"
   },
   "8c0abcb8": {
+   "classes": "lasslaassa",
    "outcomes": "KKSKKKKKSK",
    "sha": "ae63d3740ba27643de6f20e63feafc686f3d7332a9b6ad19f4d77e2b285e70df"
   },
   "8c0ac478": {
+   "classes": "lllllallll",
    "outcomes": "KSKKSKBSSS",
    "sha": "c09ca7b4559b5f32f443e48f5055beb81363e410fce8a1b637e58eabe0bf8d1f"
   },
   "8c0ae232": {
+   "classes": "lll",
    "outcomes": "SSK",
    "sha": "2096a523d9b22b633647736328d706d5cf3686dbe462a8c379c092becb8a5964"
   },
   "8c0b08ac": {
+   "classes": "llalaaaall",
    "outcomes": "KKBKSKSSKB",
    "sha": "1fe8b65ed87de3caa718da73fcdb8e91859e04ecec04d73f8cbce97a5a9c8cad"
   },
   "8c0b1c32": {
+   "classes": "ssssssssls",
    "outcomes": "SSKKSSBSKS",
    "sha": "438d72b3b406a90b785ba509f4adefd8e86d4fbde54068c5ed6b448469cf4d61"
   },
   "8c0b1c48": {
+   "classes": "llllllllll",
    "outcomes": "KKKKSKBKKK",
    "sha": "7146f7f069d35456cea7bcbdb0631fbfd7f8b682960d7f83315ce1719af57a15"
   },
   "8c0b1ce0": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKBKKK",
    "sha": "4ace00895c20707665e19e3957eb64034d6f3c98f22523013fd5d4c2c1c84534"
   },
   "8c0b8d3e": {
-   "outcomes": "KKSKSBBKKS",
+   "classes": "llslllllls",
+   "outcomes": "KKSKSBBKKK",
    "sha": "5f92a2b29717d47188655ea61273cfbf099f049ef81a5880d01f701bf36108bd"
   },
   "8c0b9068": {
-   "outcomes": "KKSKKBKKKK",
+   "classes": "llllllalll",
+   "outcomes": "KKKKKBKKKK",
    "sha": "6610c1dc5c4f9cec2812ffe53ee089d4b2c1719602973abdcf38359c29e5fb48"
   },
   "8c0bc2e2": {
-   "outcomes": "KKKBKSKBKK",
+   "classes": "llllllllll",
+   "outcomes": "KKKBKKKBKK",
    "sha": "c57e716f7734d7610237ac5bc495ca714ea3a51351efa9e2d5f43f07b2ae0f43"
   },
   "8c0bdd00": {
+   "classes": "llllllllll",
    "outcomes": "KSKKKBKKKK",
    "sha": "5caaebb480ad4e0fd48fa75cb456e9ac19b3237a5697017d468674d197c65317"
   },
   "8c0c0040": {
-   "outcomes": "KKSKKBSKKK",
+   "classes": "llllllalll",
+   "outcomes": "KKKKKBSKKK",
    "sha": "9e9321ffb5eb0e980afdbd122c6ee988dfccb74ea5a1d7a378a4f0dec56ff525"
   },
   "8c0c216c": {
+   "classes": "lllll",
    "outcomes": "KKKBK",
    "sha": "c7f5c18cfac718c5e861ba27cb7ab0e9cf856d2e6befb38fb0007a7fc7d82d3e"
   },
   "8c0c5b0c": {
-   "outcomes": "KKKSBKSSKS",
+   "classes": "llllllllll",
+   "outcomes": "KKKKBKKSKK",
    "sha": "d8811cf4d36153db6d58367e068102a67d131ea1bc7fc81f6d46ec6c211744fc"
   },
   "8c0c95ec": {
-   "outcomes": "KSSKSKKBSS",
+   "classes": "lllallllll",
+   "outcomes": "KSSKSKKBSK",
    "sha": "69b1c4934522b119303de67ba0959ac7efaef603af82c1c734d1831dbea58b16"
   },
   "8c0ca3c0": {
+   "classes": "llllllllll",
    "outcomes": "KSSSSSSKKS",
    "sha": "1e52c6046d1197b39d1a270f2b1107206277a86a812c1f11eac10f5b0348fb83"
   },
   "8c0cf378": {
+   "classes": "lsllllalal",
    "outcomes": "KSKKKBKKSK",
    "sha": "0a143de5bd1a6b147c976dfcc9df37cef8aa220f9c98668990a3fde214dc7f55"
   },
   "8c0d0d84": {
+   "classes": "llaaallala",
    "outcomes": "KKSSSSKSKS",
    "sha": "d10c1a73f7bc681ac8fc28ff5ccc7181078ca0ba3cbb18ea3e37a32ed88c319e"
   },
   "8c0d761c": {
-   "outcomes": "KSSKBSKKSK",
-   "sha": "9cab54ec58385f13c9af79faff305929436b33ac04e94597e04546d96393ed3d"
+   "classes": "lllallalsl",
+   "outcomes": "SKSKKKKKSK",
+   "sha": "b8137bb66d9bf4ea4609ba3f8192e5fab7bcbc9b1b915b6133c9d391fa83f9be"
   },
   "8c0d79d4": {
-   "outcomes": "SKKKKKBSKK",
+   "classes": "llllllllll",
+   "outcomes": "SKKKKKBKKK",
    "sha": "8d95de5cc4b079f6d5636701292c86a7a4a3ff7515a0ef8a1afa1f93ef8f972d"
   },
   "8c0dd7ac": {
+   "classes": "laasaaaala",
    "outcomes": "KKKKSSSSKS",
    "sha": "a5ef32704683cd2ae32c9b10adc67455ec2e420ae8eb948d49b38ab3f5de4ca5"
   },
   "8c0df808": {
-   "outcomes": "KKKSKBKBKK",
-   "sha": "876a4bc6da8be9fa39aa14fb7d8313c151ac77f470395a4a4c66f65510433689"
+   "classes": "llllllllsl",
+   "outcomes": "KKSSKKKKSK",
+   "sha": "023ccbceefecbc34d46f53aa4637a79ca0731f44b2b4847fc7177bf5f5950571"
   },
   "8c0e4fdc": {
+   "classes": "lsllaaaaas",
    "outcomes": "KKKKKKKKKK",
    "sha": "25f6062cea2394eaa39261df43056c69e458a77fce1a3f987ef6a0c351073f4a"
   },
   "8c0e55a6": {
-   "outcomes": "SKSSSKSBSK",
+   "accepted_lost": [
+    {
+     "ids": [
+      2
+     ],
+     "why": "coverage regression: the mutated block is unhit by every harness since the 2026-10-25..27 re-prepare (live, today, switches off); the 2026-10-24 baseline harness reached it. docs/proofs/2026-11-07/maudit-triage.md; open on .work/WORK_BOARD.md 2026-11-07 (block 8c0e51c6)"
+    }
+   ],
+   "classes": "llllllllll",
+   "outcomes": "SSSSSKSBSK",
    "sha": "43268e7807b3dbbe01d71125063adf8817856530f1d75a8ba940cf44c90ce03d"
   },
   "8c0ea222": {
-   "outcomes": "SKSKBBSKSK",
+   "classes": "alalllllsl",
+   "outcomes": "SKSKBBSKKK",
    "sha": "88d720ae92edb96474ba70781b8a3656cb4596e002a285568d440366e521f8e3"
   },
   "8c0eb788": {
-   "outcomes": "KKKKKSKKKK",
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKKKK",
    "sha": "5dde3e8ce67e90b45e6790086f8f943aa7afb636b24bd25a1b383c7f65a85779"
   },
   "8c0ee530": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKBSKKK",
    "sha": "c1f05fec8b10b0024ae17e91e8dd41030ce65d21b643cf9f4bf683368b460b9b"
   },
   "8c0ee856": {
-   "outcomes": "KSKSKSKKKK",
+   "classes": "aslalsslls",
+   "outcomes": "KSKSKKKKKK",
    "sha": "239e97ad0f8709351ed08f81b27c93f53cc3f9702316f2fec91dc4d882827cec"
   },
   "8c0f08e0": {
+   "classes": "llallsllll",
    "outcomes": "KKKKKKKKKB",
    "sha": "8343ea6ae59e77d2ab903bbbfbb24c44957b7a40405ca4cc77a2eebdc43c2cd4"
   },
   "8c0f1456": {
-   "outcomes": "KSSKBKSSKK",
+   "classes": "lllllaalaa",
+   "outcomes": "KKKKBKSSKK",
    "sha": "6f8b27f2e092322c7775cb0614a2dd833f73d228dd74704ffca5258145178ea5"
   },
   "8c0f1bc4": {
-   "outcomes": "KSSKSKKSSK",
+   "classes": "llllllllll",
+   "outcomes": "KKSKKKKKKK",
    "sha": "45996a96d5c4136dc41fa70f3cd8be454133ffaa33c9f31a57801655b49f2f69"
   },
   "8c0f341c": {
-   "outcomes": "KKSKBKBKKS",
-   "sha": "dc3be1e8e4557479da3581f66445e489671f5a375ffe33149410e5b1bf5e0a78"
+   "classes": "lllalallll",
+   "outcomes": "KKKSKSBBKS",
+   "sha": "fddcf29f778b33530428d3f7065b4ec29e177b5020d4af7db99e6f2d361e2752"
   },
   "8c0f464a": {
+   "classes": "llalaallll",
    "outcomes": "KKKKSKKKBB",
    "sha": "d4af99c9437f8793b3b22dd4e574b5c69cb65fdafe3e4b654d4df11c971fa961"
   },
   "8c0f4bec": {
+   "classes": "lllllaalll",
    "outcomes": "KKKKKKKKKK",
    "sha": "7b3c45fa1b75156b031d8ad3b55338e7c9598dff27cac522b8bb2b689fdb299a"
   },
   "8c0f6d42": {
+   "classes": "llllllaall",
    "outcomes": "KKKKKKKKKK",
    "sha": "2696a2a761e4ec534afddf3ebe2586033b3bb3f2645eab4fb9571ddbb49ccfa3"
   },
   "8c0f78aa": {
+   "classes": "llllalllla",
    "outcomes": "KKKKKBKKKK",
    "sha": "bbc578659f9f991536ea8a483bad60e844c8c2dec3717c9b0d2c35638270da50"
   },
   "8c0f9d60": {
+   "classes": "llllllllal",
    "outcomes": "KKKKKKKKKK",
    "sha": "1f44073ad30187dc2452576981a34cff691709016c3609ff98916bb7e6c8c4b1"
   },
   "8c0fb608": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKKKBKK",
    "sha": "44fba4e70c0c0281f3636ab3f056c72ed3541bb7eccc47a4e31c451005d77092"
   },
   "8c0fe43c": {
-   "outcomes": "SSSKSSSKSK",
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKKKK",
    "sha": "309749b7078e50e956491cd94eda742e400992335ba132232894ce3d5f78072a"
   },
   "8c1054ac": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKSKK",
    "sha": "9ea6e18d59586e387be7c0da3fb81d5abc2db19d2a55d27e605eaf9efa8fc971"
   },
   "8c1058fa": {
-   "outcomes": "KKKKKBKBKS",
+   "classes": "lllalaslll",
+   "outcomes": "KKKKKBKBKK",
    "sha": "7efef45fb26ff1f0edd3a3e484e2a1aea0570139c9de91d5bde1fb12b0d9b4d7"
   },
   "8c1081d0": {
+   "classes": "llllllllla",
    "outcomes": "KKKKKBBKSS",
    "sha": "216e9245b9a0efd34cae6e3407af18be9b075864e7acd793b738ec5e73a73d23"
   },
   "8c108400": {
+   "classes": "llalalllaa",
    "outcomes": "KKSKSBKKSS",
    "sha": "99010a34c7327c0345caeaad663517fcfe7beeb0ba1a59fdf7c3de50afb8af1f"
   },
   "8c108710": {
+   "classes": "lllalaalll",
    "outcomes": "KKKSKSSKKK",
    "sha": "fda7cc9ca200718a86c8ebcb23c3dee7617dd90f8dd96af4887052659a060ce5"
   },
   "8c10c1c6": {
+   "classes": "llalllllal",
    "outcomes": "KKKKBBKKKK",
    "sha": "08fded0cd5c5e0bec9b2927c97cb7885f95ceceb2d3b05d85261088e06b31a1a"
   },
   "8c10dcf4": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKKBBKK",
    "sha": "1d60f7b8915d7ae5d7d916141cdb8e5794f296096530189f058e6de1484acd99"
   },
   "8c1109a8": {
-   "outcomes": "KKKKKBKKSB",
+   "classes": "llllllllsl",
+   "outcomes": "KKKKKBKKKB",
    "sha": "e4911b756378aa5d7955530417b450ba5cf05621dc55eea21fcd3a7d0023f647"
   },
   "8c11554a": {
-   "outcomes": "KKKKKKBKSK",
+   "classes": "laaslalala",
+   "outcomes": "KKKKKKBKKK",
    "sha": "ab7bb8cd8a4e3040d72fb955169e7d336dbba2cb4200ec3b9a1e41c904c9a6fd"
   },
   "8c119934": {
-   "outcomes": "KSKSKKKBKS",
+   "classes": "lsllllslll",
+   "outcomes": "KSKKKKKBKS",
    "sha": "c5db53ceba7beebd8b16b567cd57f8620091515ce3d6e06a20d5db9a4ce827e2"
   },
   "8c119dc0": {
+   "classes": "lallllllll",
    "outcomes": "KSKKSBKKKK",
    "sha": "4c39e84e833c56b21f46386737549b5d39b4c4be8fd7854db46105d59d8078f0"
   },
   "8c11f6f6": {
+   "classes": "lalaalalla",
    "outcomes": "KSKSKKSKBK",
    "sha": "d2caa5d2e34902849df32a897917a0dd908f3663b0bdaf56139815718b3b931d"
   },
   "8c11fd94": {
-   "outcomes": "SKKSKBKKKK",
+   "classes": "llllllllll",
+   "outcomes": "SKKKKBKKKK",
    "sha": "d821a2f9ebb7a77aff0b05924e3f1acd6a25c96d50a5ab70abfd241a9f6d8204"
   },
   "8c120fcc": {
-   "outcomes": "KSKKKBBSSS",
+   "classes": "llllllllll",
+   "outcomes": "KKKKKBBSKK",
    "sha": "38c8f7a2c10ceaf1ad36edef3147998d3969d48765beddf62aef1ba5e006444c"
   },
   "8c121f38": {
+   "classes": "laaalsalaa",
    "outcomes": "KKKKKKKKKK",
    "sha": "def747f80008ee026e22e6419e15abdc9ef363be1f5006086232f8de8f91d396"
   },
   "8c12e0e4": {
+   "classes": "lllllallll",
    "outcomes": "KKKKKSKKKK",
    "sha": "f4de0e2878d251e63da8fd63f16ff0a1db67f7fcfe940730b5e11d39e1297e2d"
   },
   "8c12f844": {
-   "outcomes": "KKSKKKBBKK",
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKBBKK",
    "sha": "d9a123108f3e0d8e64ab1d2bb9fb16e43067298a40aa6744e755ceb8f075f2a0"
   },
   "8c133a70": {
+   "classes": "lsslsaaaas",
    "outcomes": "KKKKBKKKKB",
    "sha": "70657ba6cb73501fe5e05ff200a893ed6ded874c8812ddfdae3d5c74ddc38ec5"
   },
   "8c13d816": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKBBKKK",
    "sha": "466d29c710a0238969342f2b0c8df1dddf0a1e2ecbf4fefe18f98033a9bd060f"
   },
   "8c145022": {
+   "classes": "llllllalla",
    "outcomes": "KKKKKBKKKK",
    "sha": "e9ab1d813fd98d869ebe56ef075465362c3b787cdc4130baca113d0b012fe743"
   },
   "8c148068": {
+   "classes": "laalalllal",
    "outcomes": "KKKKKBKKKK",
    "sha": "4acff8e06e6aa027777cbdfd0ac6f5dbed60e670ae53b80af9bd312c79c3b80b"
   },
   "8c148eac": {
+   "classes": "llllllllll",
    "outcomes": "SKKKKKKBSK",
    "sha": "7c205a3d78d8cc5715dcd4b7de52560c157a3364708d0feb050d9bec9ef2c8de"
   },
   "8c14a0d4": {
+   "classes": "alllllllla",
    "outcomes": "SKKKBKBKKK",
    "sha": "1b870faa7bc51dbd39c64556631f6b42ae040c0e314f18280768a6fb8a0bbc37"
   },
   "8c14d9d8": {
-   "outcomes": "KSSKSBKSSS",
-   "sha": "30d18e180fe737828c0f0a4994a50337657a2a5141917482b3cb9f43b5dd9178"
+   "classes": "llllsallll",
+   "outcomes": "KSSSKKKSSS",
+   "sha": "5ff712a247af43f5c1897a0eb23433170dacced80fcf6482dca020089cdbf5dd"
   },
   "8c15082c": {
-   "outcomes": "KKKKKKKKKK",
-   "sha": "1ba998d36db9675fdc62a9f21850c3e3988076109c70ed6174a82eedb4f95ffd"
+   "classes": "llsllllsll",
+   "outcomes": "KKKKSBKKKK",
+   "sha": "e00ed56b387cf63d2d122a7af4f51147a1f536419c0376c08325f580058e68f6"
   },
   "8c150f1c": {
+   "classes": "llllllllal",
    "outcomes": "KKKKBBKKKK",
    "sha": "d8827d7b14b9f1d21c9692740c837d37fc8125af4981de7cb856ba9103f03252"
   },
   "8c156658": {
+   "classes": "llllllllll",
    "outcomes": "SSSSSSSBSS",
    "sha": "32d06eb31cef28f5cade4598b3eda06fcb6aa04f5bb3a086a8eccecfafd3de79"
   },
   "8c15a804": {
-   "outcomes": "KSKSKBKKSK",
+   "classes": "llalllalla",
+   "outcomes": "KSKKKBKKSK",
    "sha": "9982965239c03f76fa369c9491a0c7dd9e7b8ec68d51b4946c3b0354b5d330a3"
   },
   "8c15b6f2": {
+   "classes": "llallallal",
    "outcomes": "SKKKBKSSSS",
    "sha": "efc33d579a3c98ff8dbdcda5deb0fe4369cf113397492ab6ae3973ea1a6586f7"
   },
   "8c1619d8": {
-   "outcomes": "SSSSSSSSBK",
-   "sha": "674baacb6c78b6c75e9ff5bead81a9a92b91484d26627dce2a2ae67dae05b755"
+   "classes": "llllslllll",
+   "outcomes": "SSSSSSSBBS",
+   "sha": "0df1e4d5686855fa0239d794016ac396b1d7bba555159f36ee22a3e674b2fbdc"
   },
   "8c168dc8": {
-   "outcomes": "SKKKSKKBBK",
-   "sha": "652c7d4f5d36553c893da8d224de9763800ab2f1afe59bff7c96838a7c6dedb6"
+   "classes": "llllalsall",
+   "outcomes": "KKKSKKSSKK",
+   "sha": "a1684990a77e6c630943cba54e6bfcc6b3bfbebab4f197a0405b1b2e08eecda7"
   },
   "8c16cf6a": {
+   "classes": "llllllllll",
    "outcomes": "KSSKKBKKKK",
    "sha": "e6e3d27edf07e859594d371aeb69c04e8dbec88ff9e91164f266b312defed286"
   },
   "8c16d394": {
+   "classes": "llllaalaal",
    "outcomes": "KKSKKSKKSK",
    "sha": "81166af5c208a05d54edc1f4cf0861713949567010adcf2421f9d1699e26f9b3"
   },
   "8c171288": {
-   "outcomes": "SSKSBSSKKS",
+   "classes": "llllllllsl",
+   "outcomes": "KKKKBKKKKK",
    "sha": "1d13fb966fb121ac905002de9e67a930a0140f097fc633c902c8b120c4e43969"
   },
   "8c177c30": {
+   "classes": "llllllllll",
    "outcomes": "KKKKBKKKKK",
    "sha": "21f4e4ae42f607b3c78c398acf31b5d6554f8fcadcf51fe4cd1662ce4baa7f82"
   },
   "8c177f40": {
+   "classes": "llllllll",
    "outcomes": "KKBKKBKK",
    "sha": "d44a1e41c05daa288238e1c9e55132334045d5c260317bb8431d5d8dac0d4172"
   },
   "8c178860": {
-   "outcomes": "SSSSKSBSSS",
+   "classes": "llllllllll",
+   "outcomes": "KSSKKSBSSS",
    "sha": "27525aa56b422fefc44b718f8877efaeab115776c22f6b1e20fb121dfa13675d"
   },
   "8c179480": {
+   "classes": "l",
    "outcomes": "B",
    "sha": "a2b5ace8cd6646fd416018fc300ec52f7c6a8334e533fd8135657a4b394929cf"
   },
   "8c179bc0": {
-   "outcomes": "KSKKSKSKKS",
+   "classes": "lsllslssla",
+   "outcomes": "KSKKKKSKKS",
    "sha": "1dace4efb2d0e6194bfea857696a537e9d7357f281af48935a24ec192729e624"
   },
   "8c17ab50": {
-   "outcomes": "SKKKKKSSKS",
+   "classes": "assaaaasaa",
+   "outcomes": "SKKKKKKSKS",
    "sha": "1ac0215c339b44e72c3edc8f82296646622d49b620ec17507c59c36f07366a94"
   },
   "8c17b270": {
-   "outcomes": "SSSBKKSLKS",
+   "classes": "sllsaalaal",
+   "outcomes": "SKSBKKSLKK",
    "sha": "ad275ccb466431ce006641c91c64ce269f90782550cfc2a8ee5ef036a27605b9"
   },
   "8c17bac0": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKSBBKK",
    "sha": "998b9cec277678de3a9a35f08dda85047ebbe74d6cbc6e86dc7904ae5518acb8"
   },
   "8c17bbf0": {
+   "classes": "llllllllll",
    "outcomes": "KBKBKBKBKB",
    "sha": "507a36d273e282cbd83dd9b3ef0ad90c5a0064dd0ca8770c4a9e8a4e5876902d"
   },
   "8c17ed90": {
+   "classes": "llalaallal",
    "outcomes": "KKKKKKKKKK",
    "sha": "1ed32eef08d850ce0f43650860acf4e15a74fc273cec3a5aac1d92700dbf96e6"
   },
   "8c17f260": {
+   "classes": "lllllaalll",
    "outcomes": "KKKKKKKKKK",
    "sha": "79672a565552f8d1075a2acb5adb3178505704abcc4d35d0f3d4277a00465a49"
   },
   "8c17f610": {
+   "classes": "llllllllll",
    "outcomes": "KKBBKBBBBB",
    "sha": "5fd121d0268e80668d89a21ab68f6abb18911b423187b822d22c465e50a4a4a2"
   },
   "8c180986": {
+   "classes": "alalallall",
    "outcomes": "SKSKSKKKKS",
    "sha": "29e477db265539973b22f4526516cd8c2a5981f56639232648d663fa2c9f3d36"
   },
   "8c18171a": {
+   "classes": "llllllllll",
    "outcomes": "SKKKKKBKKK",
    "sha": "9ec4d586f69a7c474df17b647573525ca8d02d0165d1b44716c421e0a0bc1464"
   },
   "8c182350": {
+   "classes": "llsllsllll",
    "outcomes": "KKKKKBKKKK",
    "sha": "0f5983bbd75f8d8f045c53d5fa2b6c7f88e82db6061245e279868d48ef1bbd0c"
   },
   "8c182ba8": {
+   "classes": "llllllllll",
    "outcomes": "KSKKBKKSKK",
    "sha": "870294a7f9d81f49eb8e2b49ddd8d8c4fb1ee7cb1c613b55d757b94b9a2d7897"
   },
   "8c182e18": {
+   "classes": "lalllaalla",
    "outcomes": "KKKKKSKKKK",
    "sha": "e1cf4a29ad3568f2b01a47258580fae301428d79ef5c6bd1f9344aab472abe0c"
   },
   "8c183e48": {
+   "classes": "laal",
    "outcomes": "KBKK",
    "sha": "881f6a33fd2af76a7a9e0c8ed1264e058e53536033bb44b5b3f58db17eca5442"
   },
   "8c184ef8": {
-   "outcomes": "KSKKSKBLKB",
+   "classes": "asaasasaas",
+   "outcomes": "KKKKSKBLKB",
    "sha": "7f59787440325da3938843c7d87ebc71809b80398d9afdbfe4f2eab283fb336d"
+  }
+ },
+ "robopit": {
+  "06004378": {
+   "classes": "sasssaalsl",
+   "outcomes": "SKKSSKSKSK",
+   "sha": "530bd782fa3dd2979dbdaf4edfd71163dae69c258b91573fc03a52079c85e4e3"
+  },
+  "060043bc": {
+   "classes": "ssslsssasl",
+   "outcomes": "SSSKSSSKSS",
+   "sha": "27a199daefba92cfe843c068a764c5ce9915198e3907dee0907f2d68d9a35d26"
+  },
+  "0600459c": {
+   "classes": "slassllasa",
+   "outcomes": "SSKSSKKKSK",
+   "sha": "1c66a2329a369c596833e7bd85cc468c232838040cfd11ab3af7b9163afb4207"
+  },
+  "060047dc": {
+   "classes": "sllslslsss",
+   "outcomes": "SSSSKSSSSS",
+   "sha": "484c34e2625a9721aff42b34dd4b8e94d55b54b8eef02012680fbda6e8fe41c6"
+  },
+  "060047f0": {
+   "classes": "llllssllll",
+   "outcomes": "KKSKSKKKKK",
+   "sha": "342c2d097638f15125a066f36584465c85dc5265d4e977f213b7146f706cb236"
+  },
+  "06004a4c": {
+   "classes": "lsslssllsl",
+   "outcomes": "KSSKSKKKSS",
+   "sha": "78a3a197f6fc408c3e9a788c09c3546595191bb5488def9dd57554952f14f461"
+  },
+  "06004b14": {
+   "classes": "sslslsslls",
+   "outcomes": "SSKSKSSBSS",
+   "sha": "ab0257c049d09b6dceeb1f8d98dc4a6b11ba9d547b6f5d074b4acc42bae7610d"
+  },
+  "06004c84": {
+   "classes": "llsllslsss",
+   "outcomes": "KKSKSSKSSK",
+   "sha": "6081ac92160fa4ae9d1e13d25caaca459e658132f1458340c9735a8eee544f2e"
+  },
+  "06004d2c": {
+   "classes": "lsllalllsl",
+   "outcomes": "SSSSSSKKSK",
+   "sha": "05699c0c18a037845a8be5cda17ac4515b8f57f8edb739725de7c0d1d59f7201"
+  },
+  "06004e44": {
+   "outcomes": "",
+   "sha": "ab973edb32f0c16be366ed8d5271222b6bf0de85454800aa3a8184be7be21ca5"
+  },
+  "06004e48": {
+   "classes": "lslalallll",
+   "outcomes": "SKKSKSKKKK",
+   "sha": "07582a5bd599eeafcdb1e52c549372beab8d364eeb1a013ed1288d026aaf6155"
+  },
+  "06004f1c": {
+   "classes": "lsllsslssl",
+   "outcomes": "KSSKKSKSSS",
+   "sha": "758347380d8d5cabd9ddffc3a8f152956689625412e707067b26bd9b1a8267bc"
+  },
+  "060051a0": {
+   "classes": "sllslsllss",
+   "outcomes": "SSBKKSKSKK",
+   "sha": "d3fa68df0f8c7489d0e0ae2158ed5fc46a991808d0e793eac605d2d44be2df8e"
+  },
+  "06005208": {
+   "classes": "sssslsasls",
+   "outcomes": "SSSSKSKSSK",
+   "sha": "87e91e3ef80290ed68ac15b1d56923a89b4eb3503244f2e2693c915928f74655"
+  },
+  "060052f4": {
+   "classes": "lsllsllsll",
+   "outcomes": "KKSKSKKSSK",
+   "sha": "1ac569f6c82da4b5da46861f55407dda4202e52c5479e20c33188022150e004c"
+  },
+  "0600536c": {
+   "classes": "lllalsllls",
+   "outcomes": "SKSSKKKKKK",
+   "sha": "9eaac24e4b7dbafcba104683f70d4d82427cc236e2938efacd9af257663018d1"
+  },
+  "06005698": {
+   "classes": "sllslsslll",
+   "outcomes": "SSKKSKSKSK",
+   "sha": "ae2d52fe98261301438fedf50705c01c85553575b051274a107c07581848c2f1"
+  },
+  "06005eea": {
+   "classes": "llllllllll",
+   "outcomes": "KKSKKKKKSK",
+   "sha": "a6ff66ea21c4125e7a62aa5d6698b27875b37dc9fce5021b1b7945e3033e695e"
+  },
+  "060063f4": {
+   "classes": "lllllsalsl",
+   "outcomes": "KKKKKSKKSK",
+   "sha": "a0c9cabe344be544388a09d8f0c01221e2596ce5408bb397180739160c3e72b3"
+  },
+  "0600bbbc": {
+   "classes": "lslalsslls",
+   "outcomes": "KKKSKKSSKK",
+   "sha": "63cbd3e3d4c166b494ac3956ed6805d5cc4c7feb4fe68ec2c933c542b5de9bef"
+  },
+  "0600bf80": {
+   "classes": "llllllllll",
+   "outcomes": "KKKSKKSKKK",
+   "sha": "3c1989591634d66d4f089f43b4bf10ef0f7b502ffdedbb99af0018edc7fde961"
+  },
+  "0600c2bc": {
+   "classes": "llllllllll",
+   "outcomes": "SSKKSKKKSK",
+   "sha": "18014714593029f9def30076c2d05ccb93026e906063ada22e9c5d5c9ae18596"
+  },
+  "0600c8a8": {
+   "classes": "lsslllllll",
+   "outcomes": "KSSSSKKKKK",
+   "sha": "16f0b23a9c9264e70923108beebb4c9a5a1f19bd68db560bcbc5b517fc473215"
+  },
+  "0600cd50": {
+   "classes": "lsllllllll",
+   "outcomes": "KKSSKSSKKK",
+   "sha": "c905a2ce225adfd81f8601dc25f445fe8f1c497cff0dcc48c86f320aa2ca07ca"
+  },
+  "0600cfc4": {
+   "classes": "lssllalsll",
+   "outcomes": "KSSKBSKSKK",
+   "sha": "4b1e92f6591fc62d9cecbd2cb8ad06117d42f57fc362e933f25a984a6b3b708a"
+  },
+  "0600d454": {
+   "classes": "lsllsslsss",
+   "outcomes": "KSKKSSKKSS",
+   "sha": "61394bf364d51b4199f3447368975e700244717a9854c367cc71428023d7d865"
+  },
+  "0600d990": {
+   "classes": "lslllsslll",
+   "outcomes": "KSKKKSKKKK",
+   "sha": "c03d13ce38c1a4ed6e63acf2b6c41c05c8004069bf99f8ff545215f8925a0242"
+  },
+  "0600da80": {
+   "classes": "lsalslllsl",
+   "outcomes": "KSSKSKKKKK",
+   "sha": "ae6100d3a3f6bf21a354f254b28311d258f41e7a97e8bd00347b0c3a711938ab"
+  },
+  "0600de78": {
+   "classes": "llllllalls",
+   "outcomes": "KKKSKSKKKS",
+   "sha": "7bb36c526ecfdc6af03781bacdd48ba3512ab6e8cd0704c021fba27753bf1555"
+  },
+  "0600eca0": {
+   "classes": "ssslssssss",
+   "outcomes": "SKKKSSKKSS",
+   "sha": "eba68b6b86a354c744be262a77f6d12a91c51b06e87b49b0adc022d77036c9f1"
+  },
+  "0600ed8c": {
+   "classes": "sssllllall",
+   "outcomes": "SSKBKKKKKS",
+   "sha": "2928f6e6104e74713c7a45d3a93f54781a06e4f2d097d06983d98b4cf7fd4af1"
+  },
+  "0600f1e0": {
+   "classes": "lslllslsll",
+   "outcomes": "SSSKKKSSSK",
+   "sha": "726c0e6621b68f8fc320578cfb68a0512ce61d69aca402d1e7610716c61bd575"
+  },
+  "06010c48": {
+   "classes": "alaaallass",
+   "outcomes": "SKSSSKKSSS",
+   "sha": "ac9c516d30edcd5d35ce833489981927c0046f31d84855a5e73282fbb2813eda"
+  },
+  "06010ca0": {
+   "classes": "sllsaalaaa",
+   "outcomes": "SKSSKSKSSS",
+   "sha": "1414ad25d450c82b7ca02bc50acc906a020cb281bf6b122b912fedb0114987a8"
+  },
+  "06010de8": {
+   "classes": "slssssslsl",
+   "outcomes": "KKKSKSSKSK",
+   "sha": "e7939478910e2db1a81c1132055a94b25b13da054f0187bce4eb236485a2dba1"
+  },
+  "06010ecc": {
+   "classes": "lssllaslss",
+   "outcomes": "KSSKSKSKKS",
+   "sha": "7cfaba9bcfa4ee303b0b286158bd1acc5b8624ebaa739827a6d73ec819f4ac9d"
+  },
+  "060111f8": {
+   "classes": "sllslaslss",
+   "outcomes": "SKKSKKSKSK",
+   "sha": "22d2f46b301b30c5789f3a5281084eabee13bf80c848be2a60f8bef6d8d1ad4a"
+  },
+  "0601307c": {
+   "classes": "lsslallsla",
+   "outcomes": "KKKKKKSKSK",
+   "sha": "7163126ceb5c8ed20c77309f498391afde63e40eb80d994dc283987b8449878c"
+  },
+  "06013644": {
+   "classes": "sllsssslsl",
+   "outcomes": "SKSBSSSBSS",
+   "sha": "8475a3459e35957b5b5950681ec0e7719c3d9f69d4d7b37e4bd2ea9f06d796dd"
+  },
+  "06013730": {
+   "classes": "sslsslsasa",
+   "outcomes": "SKSKKSSKSK",
+   "sha": "3a98bafbb6be51371744dd748a3b41cffd9dee20a39998506e6248a5e9e295a3"
+  },
+  "06013c40": {
+   "classes": "sllsasssls",
+   "outcomes": "KKKSKKSKKK",
+   "sha": "70cd1a53fabcc54e264e626a4675e4b60044ef8839712d85c7aa4e868d929882"
+  },
+  "06013df4": {
+   "classes": "allaaaalal",
+   "outcomes": "SSSSSSSSSS",
+   "sha": "c6fbb3e25f277d9204a2cc709eb441dfcb24456e513ddbe61091cfed972daf2c"
+  },
+  "06014050": {
+   "classes": "llllllllsl",
+   "outcomes": "KKSKKSKKSS",
+   "sha": "419c2927d1179cdc068b770e6777ee4afa5bc6cbfa594a1f03c26abc9461d041"
+  },
+  "060140a0": {
+   "classes": "lsllllllll",
+   "outcomes": "KSKSKKSKKK",
+   "sha": "7c9497ce9baf87a8b85b9b405f7502e5498f39e2af137c40820672459561b499"
+  },
+  "060142d8": {
+   "classes": "lslslallls",
+   "outcomes": "SSKSKSKSKS",
+   "sha": "bfea19455c5601d3754ae963fd1dc38da9c99d3ed0de1aafd863577383b63ecc"
+  },
+  "060143b0": {
+   "classes": "slllslslls",
+   "outcomes": "KKKSSKSKKS",
+   "sha": "025cb2010fc95ed90719c34792ce5b762965df6d63713b0c81f991e61d7db5c1"
+  },
+  "0601a978": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKBSKK",
+   "sha": "bfe065e62f6d0bd9bfa8c92ed77097908dcf9fbd04f6226a674c8466d643082e"
+  },
+  "0601ab04": {
+   "classes": "lllllll",
+   "outcomes": "KKKKSKK",
+   "sha": "afc4fafd8ae0b91347342dd5373b310db391af98ea639325b81d52a67acfdeb1"
+  },
+  "0601ab9c": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKSKK",
+   "sha": "16624397c409fbe51aef0b49e7ba22310c5276b5bfe8c4e83dc7e222fc7be917"
+  },
+  "0601aba6": {
+   "classes": "llllllllll",
+   "outcomes": "KKSKKSKKKK",
+   "sha": "85e5eadbb2f09852a563a6853492b51ebb9c7591cda10239ae6a0eb568303205"
+  },
+  "0601ae20": {
+   "classes": "lsslalllsa",
+   "outcomes": "KSSKKBKKSS",
+   "sha": "ce11a4ded23d2c00b17157a40d1d774d2d27790acbb766c798b6153bf32e8ea2"
+  },
+  "0601aeb6": {
+   "classes": "lslslsssas",
+   "outcomes": "KSKSKSKSSS",
+   "sha": "3429c10615f7655cd52d8b24a282af43b71b1e6afa70a6bb2ad48104228a75b7"
+  },
+  "0601b984": {
+   "classes": "llllllllll",
+   "outcomes": "SSSSSSSKKS",
+   "sha": "fae52d255329622454ba47f1bae15f129a846aa69e92f8c5719913fa11d53dad"
+  },
+  "06024fa2": {
+   "classes": "lsllllllll",
+   "outcomes": "KSKKKKBKKK",
+   "sha": "b86fd1851c5713272f3ac109188ca43f96af516e75a34edb3485aae34ac92d14"
+  },
+  "060250d0": {
+   "classes": "llllllllll",
+   "outcomes": "KKKBKSKBKK",
+   "sha": "3e3fde37d0ea7d6e2aa9c53f5970f3b3cc8f9ea2afed130a61047e5d6390af45"
+  },
+  "0602ebf4": {
+   "classes": "lllasllsll",
+   "outcomes": "KKKKKSKKBK",
+   "sha": "3ad9536d9d768fe14cb86a4abb16ec3a7d670dc840d349a28f0a7cc31a2acaf4"
+  },
+  "0602ec80": {
+   "classes": "llllsllsls",
+   "outcomes": "KKSKKKKSKS",
+   "sha": "fabb5f2a431f296a6c47538467957bd846eea87089fa901ab6def3b3d7558ff1"
+  },
+  "0602ed0c": {
+   "classes": "llllllllls",
+   "outcomes": "KKKKSKKKKS",
+   "sha": "37be0673549097589c4e9d8bea258b5d370fd793be642b34b76bba3b129c0b39"
+  },
+  "0602f9cc": {
+   "classes": "lslllsllsl",
+   "outcomes": "KSKKSKKKSS",
+   "sha": "afb578ab53454124e632d4d2d8abf73d67ab6b6ce5fa8fbd6c938c5065b1859f"
+  },
+  "060308ac": {
+   "classes": "lllallalll",
+   "outcomes": "SKKSKSKKKK",
+   "sha": "f3cd44335f4593afa40e1b7ce3be423487e1bb2a2d3ee021c6f2f4869c30f727"
+  },
+  "06033aa8": {
+   "classes": "lllllsllsl",
+   "outcomes": "KKSKKSKKSK",
+   "sha": "0d8d39de5959c4f77c92554c2fb756fd299e7f004f1fa0f9b0d0874eec00fb45"
+  },
+  "06035144": {
+   "classes": "llllalllll",
+   "outcomes": "KKSSSKSKKK",
+   "sha": "a4dab9888e738565419fe0f4145896941c4afd2722fd80c894163c1009a168a9"
+  },
+  "060358b8": {
+   "classes": "lslallllll",
+   "outcomes": "KKKKSSSKKK",
+   "sha": "df1f9842a552107cc4e8ffd2940704db6a05e7a77c567deaecfbd6631dd2dee1"
+  },
+  "06037564": {
+   "classes": "slllsllsls",
+   "outcomes": "SSSSSSSKSS",
+   "sha": "ab07f912073bf7034b617329e896d21d4aff86f45fc74b431226136a4a67d595"
+  },
+  "06037f20": {
+   "classes": "llllllslll",
+   "outcomes": "KKKKSKKSKK",
+   "sha": "2e9c8a88cbba33ad51b98d6db322db80bb3e11ffa362acfdcde4f0ae06651487"
+  },
+  "06038f9c": {
+   "classes": "sllslllsss",
+   "outcomes": "SKKKSKSSKS",
+   "sha": "e30c76130cfc6e46f72e7ee5ab20b88680da0a4ebe56cb5319ced3348d557057"
+  },
+  "06038fb8": {
+   "classes": "llllllllll",
+   "outcomes": "SKSKKKKKSK",
+   "sha": "c669a175bd3abd5f322ee115c7b6d45012844aac2ad2cea27330926eac1d91c5"
+  },
+  "060393bc": {
+   "classes": "llllllllsl",
+   "outcomes": "KKKKKKKKSK",
+   "sha": "4559febf930bd65e6594e627b4c07812fc71f9d1ff498cdf6ca0bb5e43b30abf"
+  },
+  "0603a970": {
+   "classes": "lsllllllll",
+   "outcomes": "KSSSKKKKSK",
+   "sha": "a3d04fab00fd5d412e2befc09ca1ab52d29463a12aca143897bf41c29452d163"
+  },
+  "0603bf44": {
+   "classes": "salllsssls",
+   "outcomes": "SKSKKSSSKS",
+   "sha": "54d6bc3bd8c48b9cb7595c35ecdac0b56faf70747edee63468b1f0d28aa4c8fa"
+  },
+  "06040a10": {
+   "classes": "ssslssslll",
+   "outcomes": "SSSBSSKBKB",
+   "sha": "798e0ffc185ff34e4e19a430c9a16594b78a39e629cb3293067d02a9447bd9f8"
+  },
+  "060415a4": {
+   "classes": "llllalslll",
+   "outcomes": "SSSSKKSKSS",
+   "sha": "7b3f294f565f27dbae79fa049c1940b9cc433d0046c10754c7ca2997240aaeb5"
+  },
+  "06041ad4": {
+   "classes": "saasslsasl",
+   "outcomes": "SKKKSSSKSK",
+   "sha": "7ae2c58299cd48d1dfdde64fa69bcba5e845110eedfe340f4cb7f642d58fea94"
+  },
+  "06043a84": {
+   "classes": "llllllllll",
+   "outcomes": "KKSKSKKBSK",
+   "sha": "15b213cda51dcc497a95985e6469ffd809934e3ba03248abcfcde18de3942f1f"
+  },
+  "060484b4": {
+   "classes": "llllllllll",
+   "outcomes": "SKSSKKKBKK",
+   "sha": "604cf8ff7965b6105f86ba07a6c71d576b2ec22d14c945729f1b22b0b2f3c9f0"
+  },
+  "0604aa68": {
+   "classes": "llllllllll",
+   "outcomes": "KKSKKSSKSK",
+   "sha": "b9d9339ad51e4dddbaa536e1aadebed4909db630a134891812fbf6c7acdf4efb"
+  },
+  "0604b2a8": {
+   "classes": "lslalallla",
+   "outcomes": "KKSSKSBSKS",
+   "sha": "ea0c57d8e1efc885190be27cdc19004f245ea2b8f138b813bef935cb7bff0899"
+  },
+  "0604cd34": {
+   "classes": "llssllsssl",
+   "outcomes": "SSKBSSSSSS",
+   "sha": "fef7d5c94a5014a8c6295a4e531f5ebfeb106c1a014917cdb4fb302ae4ecfb51"
+  },
+  "06050d9c": {
+   "classes": "lsllllllll",
+   "outcomes": "SSKSKKBSKS",
+   "sha": "833fc483413d92d265226a640fe5f0883acc73122183277b498b9cf61cf2963f"
+  },
+  "06050f7c": {
+   "classes": "llllllssll",
+   "outcomes": "SKSKKKSKSK",
+   "sha": "b29af3426d75d223bb0455cbba93127d30494f6adb84a2c2b5353ddaba8edc7a"
+  },
+  "06053d64": {
+   "classes": "llllalalll",
+   "outcomes": "SSSKSKKBSS",
+   "sha": "f54dbc2f173f1c5d614730d0f30393b12452854f8e39ae4ee291f72d1b251afa"
+  },
+  "06056f30": {
+   "classes": "lslallssls",
+   "outcomes": "SKKSKKKKKS",
+   "sha": "ecaa10972f78b05601b47e849e41d5aa861ebc4b0cc2252e767b6a9a3eb9b6f4"
+  },
+  "0605a42c": {
+   "classes": "llllllllll",
+   "outcomes": "KKKSKKSKKS",
+   "sha": "0708f6641280caf39c4c0c9e37beddfd7e08b3cc9a19e66b755315f7cc77f785"
+  },
+  "0605c9d4": {
+   "classes": "lslllsllsl",
+   "outcomes": "KSKKKSBKSK",
+   "sha": "4b03151bd595f726be25fcc946f652cd816626837ec84123b42f165b882e73d8"
+  },
+  "0605ca08": {
+   "classes": "lslllsllsl",
+   "outcomes": "KSKSKSSKSK",
+   "sha": "996d41f38368e13f46cc42f4a77fe00666177616d25d63c1042213fdb93009b1"
+  },
+  "0605caa0": {
+   "classes": "lslsllslsl",
+   "outcomes": "KSKSKKKSKK",
+   "sha": "d89df8ad9baee26aa2ee051f4beac80248a900a58f1d40c11eb46db7c5cc3624"
+  },
+  "0605cb00": {
+   "classes": "lslllllsls",
+   "outcomes": "SSKKKKKSKS",
+   "sha": "8836019eb759b174bde0c022f45beced5e756e19a1709bc6ce65340bda4a1622"
+  },
+  "0605cbfc": {
+   "classes": "lsllllalsl",
+   "outcomes": "SKKSKSSKSK",
+   "sha": "c0939e142a9aa6f3bb76aaad76efcf19c49ef23d737450fe2eb6cac85aae6092"
+  },
+  "0605feac": {
+   "classes": "llllllasal",
+   "outcomes": "KKKSKSKKSK",
+   "sha": "dd07afb8a857b743365d65ec425b248bf0fabdd7c16e75ac6f91b5a53cb0ce5f"
+  },
+  "06060bd4": {
+   "classes": "lsllslllll",
+   "outcomes": "KSSKKBKKKS",
+   "sha": "cb5f8a3f38595b4dcacfa64a79c4cd6a47480d2d78c5723ec462005ee316cd42"
+  },
+  "06060e8c": {
+   "classes": "llllsaslll",
+   "outcomes": "KKSBSSKBKK",
+   "sha": "8a2fde87c0b598ad6bbfb6e039404a18c51db8ca2ccff446952725184791bd0a"
+  },
+  "06061360": {
+   "classes": "lsllaaslsa",
+   "outcomes": "KSKKSSSKKS",
+   "sha": "f1eeec8c08755ab7d899ab80015536784676809df40a56e0a34d884a1f21c5fc"
+  },
+  "0606143c": {
+   "classes": "lsllllalls",
+   "outcomes": "KSKKKKKKKS",
+   "sha": "6c97149137b02f5367ccc897629da2aa9c1e69f2d7322dea53baeff780be564a"
+  },
+  "06061e78": {
+   "classes": "ssllssssls",
+   "outcomes": "SSSSSSSKSS",
+   "sha": "b4bea198074b405d1577cad30575d6345ccf3bdb975bb8601cacb95445a665e6"
+  },
+  "06061e90": {
+   "classes": "sssssalssl",
+   "outcomes": "SSSKKKSSSS",
+   "sha": "f795e5313ed6fe0adf95f1c44a812e597eeeeb6e6ea9163a2ac9136b4078c858"
+  },
+  "060625e0": {
+   "classes": "slslslllll",
+   "outcomes": "SKKKSKKKKK",
+   "sha": "00cdcacf054d7f7f9b8c05be7033c86f7ae577a51632ba8b62f98c04b4db96a3"
+  },
+  "06062a3c": {
+   "classes": "sasllslsls",
+   "outcomes": "KSKKKSKKKK",
+   "sha": "e4233b4386ded9080fc24de5b98f1ed276037b0c734d050363f2a36a5acbd583"
+  },
+  "06062cf0": {
+   "classes": "sssaslsssa",
+   "outcomes": "KKKKSSSKSK",
+   "sha": "6a7e0321b59668c340c55d48bd980eb4ab530b7f09298da696803bec9e1d9c57"
+  },
+  "06062edc": {
+   "classes": "sssllllssl",
+   "outcomes": "KSSKSSSSKS",
+   "sha": "32f1efa3e462d55cc4e5e156028bf21ee3f270579e230c79203b87d337246366"
+  },
+  "06063124": {
+   "classes": "lsllsallsl",
+   "outcomes": "KKKKSSKSSS",
+   "sha": "a4b6fe805c3be32178f640cf0db118ffc76d2dc668479f570e5eeb6555488e66"
+  },
+  "060631f4": {
+   "classes": "llllsllssl",
+   "outcomes": "KKSKKKSSSK",
+   "sha": "53be048fab884821e31e8fd9bd6d2fc41d743f2dc7451000e00ca4606326bd93"
+  },
+  "06063658": {
+   "classes": "lsllllslsl",
+   "outcomes": "KSSKSKSSKK",
+   "sha": "6395c25750a694c6f7ad1b5f2b6e91ee12b6c8f723c54d9f1ad8b022979253f7"
+  },
+  "06063fcc": {
+   "classes": "llllllslls",
+   "outcomes": "SKKKKKKKKS",
+   "sha": "95c47e1ffd148830d69acab6ea28c0b32338880fbd153613a245c613dc2a87e9"
+  },
+  "0606422c": {
+   "classes": "ssssssslls",
+   "outcomes": "SSSKSSKKKK",
+   "sha": "881907bd6dff24feaf7bf45ad626ee4fc2c90f974b922a293b643d42f638e2aa"
+  },
+  "06065018": {
+   "classes": "sslsssllls",
+   "outcomes": "SSSKSSSSSS",
+   "sha": "5bc51e240879b618131e50a4ece2c45d17ed5f3881998a88bd1c0b4bf93b8af0"
+  },
+  "06065248": {
+   "classes": "lslllsllss",
+   "outcomes": "KSKKKKKKKS",
+   "sha": "f06ae93072e09dfcf9f0081b594ca7b4cc889638bc93ca6e03e57d1c6bb638c5"
+  },
+  "06065500": {
+   "classes": "slllslslss",
+   "outcomes": "SSSKSSSBKS",
+   "sha": "720319f19a46af1236bfc182d969e8a5626ed88bba2b40e7b4c0d79ec808c39a"
+  },
+  "06065560": {
+   "classes": "slsslsssll",
+   "outcomes": "SSSKKSSSSS",
+   "sha": "39f2f9edbf4642f15039d640fcc26f1d8c3ac3498578233a50b1b091abe46deb"
+  },
+  "06065860": {
+   "classes": "llsssllsll",
+   "outcomes": "KKSKKKKSSK",
+   "sha": "1ac025131ae259489fb12cbd4ea18dcdfc7d7742d74c920384ca6447dae767ce"
+  },
+  "06065ab4": {
+   "classes": "lsllsslsll",
+   "outcomes": "SSKKKKSSSK",
+   "sha": "59f4e3eb9bc1a140191a615922a2d863237effbccd21320cd34df6b8d49d317b"
+  },
+  "06065af8": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKKKK",
+   "sha": "1bfba432bbce78746d4e6fb7bf2f6f7b5ad14e07405c983c3741a8c3f50d332a"
+  },
+  "06065da8": {
+   "classes": "ssssslslsl",
+   "outcomes": "SSKSSKSKSS",
+   "sha": "0c9fde646ed72af3fc3e0a0b4798c8580318b95e7685f938729c48d67073d777"
+  },
+  "06065e74": {
+   "classes": "lslllsllll",
+   "outcomes": "KSKSKSKKKK",
+   "sha": "ec5c272add211f8162338501137114071aff2d3f397c049b6c1ac8869760bbcb"
+  },
+  "0606605c": {
+   "classes": "llllllllll",
+   "outcomes": "SKSKBKKKKK",
+   "sha": "57b5af4847d53b62788f0899abab00324c779024337e5659d46fd3cc13e6b50a"
+  },
+  "0606635c": {
+   "classes": "lslslsllll",
+   "outcomes": "KKKSKKSKKS",
+   "sha": "5d473b4030278727fdf7dffa38250e1911a9687030d04b0f4aa5e9e77cd435f9"
+  },
+  "060665a0": {
+   "classes": "sllsalsasl",
+   "outcomes": "KKKKKSKKKK",
+   "sha": "a3598083f8254a8d57e96b439a2254f2c1ace6b039fd9c2829d1b20a72b0f36a"
+  },
+  "06066620": {
+   "classes": "lsllllllsl",
+   "outcomes": "KKSKKKKKKS",
+   "sha": "57f8f60d7529ff0daa8ed1c5beda3ad1e3db262064bb2e2fb92dba31b63c929d"
+  },
+  "06066a94": {
+   "classes": "llllllllll",
+   "outcomes": "KSKBKKKKKS",
+   "sha": "2cec4aa17ccfb96523fe2c751f3dd651117fbd68240d875578a799324b656eb2"
+  },
+  "06066ba4": {
+   "classes": "sssslllsls",
+   "outcomes": "SSKKKKSSSS",
+   "sha": "f11213a785bf6260099ac60796093c96ad7eef6f3a845cc5675966d8bc119e15"
+  },
+  "0606705c": {
+   "classes": "lslllllals",
+   "outcomes": "KKKKKKSKKS",
+   "sha": "281c4e2efa964d33198f8a71ff5e57a9c54f1eb8f69e2339968ad06293ccb893"
+  },
+  "06067158": {
+   "classes": "slllslssss",
+   "outcomes": "SKBKSSKSSS",
+   "sha": "c75eed3e8201abd6c4bd435b955c7582e685ee055bff62b9d1b44644a46b7dfe"
+  },
+  "06067594": {
+   "classes": "slsslsllll",
+   "outcomes": "SSSKKSSKSS",
+   "sha": "984d858480555381a4e7193a33c9eed79126eec7e3c795e9b9385017c6d76387"
+  },
+  "060676e8": {
+   "classes": "lsalslllll",
+   "outcomes": "KSSSKKSKSS",
+   "sha": "2e7e99d73b46f26990f038405b24aaa4c6f45642e27a261b944d57dca2ebfd6b"
+  },
+  "060677a0": {
+   "classes": "llslsallal",
+   "outcomes": "KKSKKKKSKB",
+   "sha": "1e971619a7bca08800aef8fda6a09928e84f2627ac69704d957b48ce04a54e3a"
+  },
+  "06067840": {
+   "classes": "lssllsllsl",
+   "outcomes": "KSKKKKKSSK",
+   "sha": "7472a87375d75afb3a4ba2bbf0ffd30cdde5d62c3479f0f2a489946d7d4c1eac"
+  },
+  "06067e3c": {
+   "classes": "lsllssllll",
+   "outcomes": "KSKKKKKSKK",
+   "sha": "86b41257d42cf6f2d1cb4e1d9eb51cab66de63bd2dffa93fb4f5acc75cbf078b"
+  },
+  "060680d8": {
+   "classes": "lsllllllss",
+   "outcomes": "KKKKSKKKSK",
+   "sha": "d69c9faea1da2d19109c58a88c380cf123b166788523ae5c4870a16502ad3cf3"
+  },
+  "06068254": {
+   "classes": "lsslssllss",
+   "outcomes": "KSSKSKKKSK",
+   "sha": "55bc4c4bb2ab00a135735c21fd356eebe7d9a6e1f04f61727770eaebb24e36da"
+  },
+  "06068980": {
+   "classes": "slllssslls",
+   "outcomes": "SKBSSSSKKS",
+   "sha": "39f5f1b7ce27a0d5460b8cebde5c33243ffdb7a2b2735a27bd5a01fee826c326"
+  },
+  "06068d78": {
+   "classes": "llallsllsl",
+   "outcomes": "KKSKBKKKSS",
+   "sha": "5aa2c31aa47ccc7e927d056d01e8306fc468e3274448c6373cb23f708bf4cd27"
+  },
+  "060699ec": {
+   "classes": "lllllsllls",
+   "outcomes": "KSKSKSSKKS",
+   "sha": "b46e8670d5a1f70ade873e646fbcb31286b6da2872d36482cb4a135d3cdf205b"
+  },
+  "06069dcc": {
+   "classes": "lslllalsll",
+   "outcomes": "KSSKKSKSKK",
+   "sha": "b3655e363cdf6e7476364304db592610d1bbdffa265d3dba1c2f03f97da28be0"
+  },
+  "0606a2f8": {
+   "classes": "lslalsalls",
+   "outcomes": "SKKSKSKKKS",
+   "sha": "ce640bf2697cda89927b473587e00f7cb3cea9ebc381dd6de4f7f8b4a8f9b47e"
+  },
+  "0606a500": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKSKSKKK",
+   "sha": "aacd84f9766107ea4a2f4c2af9aa412c2b5887b7ed190bffdef93448bb26dd09"
+  },
+  "0606a664": {
+   "classes": "lslalallll",
+   "outcomes": "KSSSKSBKKS",
+   "sha": "e39d0a519bfe30f663a5db68c4cc69db22e9e347f4e647392cae660580e048f7"
+  },
+  "0606bfb0": {
+   "classes": "lslllallls",
+   "outcomes": "KKSSKKBKKK",
+   "sha": "647b04290a326e7b7b5f77974511a9c4593fead3d8c53e631ed7d1b48d2e2680"
+  },
+  "0606cd6c": {
+   "classes": "sslsssslss",
+   "outcomes": "SKSSKSKKKK",
+   "sha": "0c6a0a0a1f81ffd897fb571be17f7f8008a6adc0d35a208af568a4332a0395b3"
+  },
+  "0606ce90": {
+   "classes": "sassssssss",
+   "outcomes": "SKSKKSKSKS",
+   "sha": "881f7ce7698571953ad1b6a0f4eefb3a9e912f3d29db32d9bc5443ede78029ca"
+  },
+  "0606cf0c": {
+   "classes": "sssslsalsl",
+   "outcomes": "SSSKSSKKKS",
+   "sha": "6b9bbcfaa685c2335e4a37bce2176842e4ebd2f9cdb063c47f6f521c88ea8844"
+  },
+  "0606d6c6": {
+   "classes": "allsaaaala",
+   "outcomes": "SSSSSSSSKS",
+   "sha": "6fc602f074d6747aa2e13fb2786655fc1cbc6b6e30a8109df11674140c44b9fc"
+  },
+  "0606e45c": {
+   "classes": "llalasllsa",
+   "outcomes": "SSSSSSKSKK",
+   "sha": "53d2020802a41c08ad825705574e0c0a3a65a1e8b7b2dda69f5f85e7e5d97064"
+  },
+  "0606e4c0": {
+   "classes": "lsalslllsl",
+   "outcomes": "SKSSSKKSSK",
+   "sha": "221cd541666d6e74c06bc5dc4762d3ba76f915804b99652c23741f3a4310fd7c"
+  },
+  "0606e678": {
+   "classes": "llallsllsl",
+   "outcomes": "SSSSSKSSSS",
+   "sha": "61229652b89c996c5d69b69cf64caf6362f14fa471b46c96389109e243e97a5b"
+  },
+  "0606e960": {
+   "classes": "lllllllsll",
+   "outcomes": "KKKKKKSKKS",
+   "sha": "f65ae4acee14fd71146feecb159d4564df4af694d81c4f2c939b6bdf7340f426"
+  },
+  "06075ea6": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKSKSKK",
+   "sha": "b55ed9d2d835783dbbc4c66e19602a55fde5375d645c2ba1242585b5e36d268c"
+  },
+  "06075fcc": {
+   "classes": "lsllllslls",
+   "outcomes": "KSKSKBSKKS",
+   "sha": "16a3bc0c9b30e144962dd7bf70a5a7cc7193d5ee2e1cd96c20408967b973de25"
+  },
+  "060760d4": {
+   "classes": "saslsllsss",
+   "outcomes": "SSKKSSKSSS",
+   "sha": "b6e49ccf9ff11d06044d0bc37ca99900e088c9977e3ceb54420b257678b0a2ac"
+  },
+  "0607621e": {
+   "classes": "llllllllll",
+   "outcomes": "KSKBSKKKKK",
+   "sha": "e28f03b88b3f91c3d714ab28025abc2754b6117234e605685083e189889571db"
+  },
+  "06077048": {
+   "classes": "llllllllll",
+   "outcomes": "KSSKSBSKSS",
+   "sha": "949368a98a7542df6566c53428eb604991f1a525e91cb56da18c6fa4995135d5"
+  },
+  "06081ba2": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKBKK",
+   "sha": "365ccc9ba7e1155889f0553c5979f5bab06b295c34f4b6678477fdb7cd4608fc"
   }
  },
  "skies": {
@@ -1415,18 +2323,22 @@
  },
  "spawn-main": {
   "8c010724": {
-   "outcomes": "KKKSKKSBKS",
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKBKK",
    "sha": "020bfe5dc42c7dbf0dd3d672e0949737e2aef5473f5170c867bf283cceaa5b41"
   },
   "8c010dc0": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKSKKKK",
    "sha": "5fac5ee654de78f268b553b4212435d805608af1a018d4c3ecb12145fd903a87"
   },
   "8c01104c": {
+   "classes": "l",
    "outcomes": "K",
    "sha": "4a296cbf759148bf6db0ba5bdc9d31a8e5596ddce1827c35c357ffe213dfd7c3"
   },
   "8c0116c0": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKSKBSS",
    "sha": "590a9425a597586d11613f4dd4cc869abc199a8790d5ef5356ef97528edce7ac"
   },
@@ -1435,11 +2347,13 @@
    "sha": "343dced1935c654d065ed2e2812edc6faa14cac2280c96a645a76d3d22b95adf"
   },
   "8c011bfc": {
-   "outcomes": "KKSKSKSKBS",
+   "classes": "llalalalla",
+   "outcomes": "KKKKKKKKBK",
    "sha": "b6e7f17585796d0076826a617557923fd86840a46003a531bdc256c88e74e9a2"
   },
   "8c011e24": {
-   "outcomes": "KSKKKSKSKK",
+   "classes": "lllalaalla",
+   "outcomes": "KSKKKSKKKK",
    "sha": "766b8b0463dd4e65a5082ebad6df90920e1c1314fbf775970445855e5f7f0f86"
   },
   "8c011ea0": {
@@ -1451,6 +2365,7 @@
    "sha": "ccb8b2ee9f49abbabb325fa2c047e3d9c8943a3ea0080b54b4be1f7bda2a1a00"
   },
   "8c011ebc": {
+   "classes": "aaalaaaaaa",
    "outcomes": "SSKKSSSSSB",
    "sha": "cbdb2f50e4220db07d9a81535ca711e7fd3d7e2c261adc07f5fa50f4215f5258"
   },
@@ -1459,6 +2374,7 @@
    "sha": "35134dd02fba4acc5c788bee085703b285d6f8612c828cb6c1f74e07e640214f"
   },
   "8c012480": {
+   "classes": "laaaaaaaaa",
    "outcomes": "KBKKKKKSKK",
    "sha": "0401003e40991c023e120667e6960f27b8811b11a18e83286dc436620b02c2d5"
   },
@@ -1467,68 +2383,97 @@
    "sha": "b586558e819b393312f5900350edbc405601e8d0badb1055ea889891cbd66296"
   },
   "8c015660": {
-   "error": "baseline FAIL at compare: the matched C does not pass its harness here (40/96 failing)"
+   "classes": "lllsllllls",
+   "outcomes": "KKKKKKBBKS",
+   "sha": "c88d79383b1de30354e1b6a76c942aa1324858410e1c4d6b241e994f8c5c68b3"
   },
   "8c015fa2": {
    "outcomes": "",
    "sha": "6641f1c993c0e256a6d558b1d6a1c893b85b128d68d008ae37aca502849e8da8"
   },
   "8c016498": {
+   "classes": "allaasaaaa",
    "outcomes": "SSKSSKKSSK",
    "sha": "60bdb70cfd09a582cb7a9f2fe95091c08e2739ebb67957edab68edad9b426e04"
   },
   "8c0168ac": {
-   "error": "baseline FAIL at compare: the matched C does not pass its harness here (94/96 failing)"
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKSKK",
+   "sha": "df6eea88858455ed8751aad0ae1cb970cfcc0aa46f42ce82cb120af4576acfc7"
   },
   "8c016c16": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKBKSKB",
    "sha": "8d918aa958146c0d4dd1265ae1785d3c3e334a0c95be71d3622aa2ae1935ca30"
   },
   "8c01773c": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKBKKKK",
    "sha": "971a2745407e97c26018e940a2e5230d1d45c2c061f33b3eb76b188982ec2975"
   },
   "8c017920": {
-   "outcomes": "SSSBKSSKSS",
+   "classes": "ssssssllss",
+   "outcomes": "SSSBKSKKSK",
    "sha": "611ee16d98105b37fc4a029ae541a3d5e32decf347b9524258a810093569d6f6"
   },
   "8c0184ba": {
-   "outcomes": "KSBKKSKBKS",
-   "sha": "a11d1d44ab5b48b6a7d6d323cc7a35ad3a22fb914757b90296486adfac3a3b92"
+   "classes": "slllaslssa",
+   "outcomes": "KKSKSKKSSK",
+   "sha": "6beab3ce627eb4cb8562c5673c46315245549f99f9b0adcf8165b5e8014e811a"
   },
   "8c01b128": {
-   "outcomes": "SSSSSSSSSS",
-   "sha": "9559793bb2d1112d7bf396263cb79aea31ac5d631e54740d929c1b1b7179eb88"
+   "classes": "lsllllllll",
+   "outcomes": "KKKKKKBKKS",
+   "sha": "9832d646f00029d0527475736007b08d37e7c8ce7d6344bc9f3502115ea69832"
   },
   "8c01b9fe": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKKKK",
    "sha": "6eca6b07d58ecb6f6bf0eb1ba9839315cd27926060d1b56b40df89800cca858b"
   },
   "8c01bcc8": {
-   "outcomes": "SSKKKKKKKK",
+   "accepted_lost": [
+    {
+     "ids": [
+      3,
+      5,
+      10
+     ],
+     "why": "coverage regression: the mutated block is unhit by every harness since the 2026-10-25..27 re-prepare (live, today, switches off); the 2026-10-24 baseline harness reached it. docs/proofs/2026-11-07/maudit-triage.md; open on .work/WORK_BOARD.md 2026-11-07 (block 8c01bd18)"
+    }
+   ],
+   "classes": "llllllllll",
+   "outcomes": "SSSKSKKKKS",
    "sha": "8a27e11e3f03a8d80d31f4ad4d32263255df62473c00ce8a94595b1b8368869b"
   },
   "8c01bee0": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKBBKKK",
    "sha": "19995fb72b6a8f915fe1dd65f881c25ba2d0373d67e12fe111d0d34194332515"
   },
   "8c01de10": {
-   "outcomes": "KKSKSSSBBS",
+   "classes": "llslalasla",
+   "outcomes": "KKSKSSKBBS",
    "sha": "5b193d0c48867979f58fa082729a61f342a53227ba98104a0e9589a78b2f7a1a"
   },
   "8c01f240": {
+   "classes": "llllllllll",
    "outcomes": "KSSKSSSSBS",
    "sha": "392569f1eb9189f932119fd87a95cc565a2ff5c6e0ebc5d56384629baaafa065"
   },
   "8c020480": {
+   "classes": "llallallal",
    "outcomes": "KKKKBKKKSK",
    "sha": "8f18d41cbd06728d20a78fe85a7b8e7c514fbadffd24c1692ae41963614af347"
   },
   "8c022420": {
-   "outcomes": "KSKKKKKBKK",
-   "sha": "32cd5a5d264ae9b72e4b1c3414e7e91d14cdae9b9081c50179b9d0cebda85fd8"
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKSSK",
+   "sha": "ba2567ca67feb1fe08d0f75c4a93dc761c48b6b444f06a5b3c2f99289029245a"
   },
   "8c023b60": {
+   "classes": "llllalllla",
+   "excluded": "(b, probable) judge false positive: TcTflag T export (98e2bde0), no real caller reads T: docs/proofs/2026-11-07/maudit-triage.md",
    "outcomes": "KKKKKBKKKK",
    "sha": "8e05a7cbee44df9e34a33cb8aac65921cf856eceac2c4ae9f2d806b500581d72"
   },
@@ -1537,6 +2482,7 @@
    "sha": "78f802ce6a1f4348e6639dfb64c28b1859081174c30ac8680b001c2b66603262"
   },
   "8c023e48": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKBKKS",
    "sha": "6a67614c75aefbdcfb98e1fd7b258c65f6daccb16965863e5443b5724cf93e3d"
   },
@@ -1549,11 +2495,13 @@
    "sha": "e07d297bf094a9a43985d1ba330241d05dd51eadfa2320d52b3007ef1457b38b"
   },
   "8c024ada": {
+   "classes": "llllaallaa",
    "outcomes": "KSKKSSKKKS",
    "sha": "5729ee0824c6254b3515c6385c35e23bbc1d17644de25dd8ef1c58ad3a1d6c8a"
   },
   "8c024dd4": {
-   "outcomes": "SSSS",
+   "classes": "ssss",
+   "outcomes": "SSSK",
    "sha": "1c2020aeb25715b968f82e024eb4f4844e8a6b6be17e964c301d3bb8d07db126"
   },
   "8c024e20": {
@@ -1561,38 +2509,55 @@
    "sha": "3667dcf558c523fdf257bf9caae9386a1eac726a4c23ff858aaa676c9216e502"
   },
   "8c025f6e": {
+   "classes": "lslllssaas",
    "outcomes": "KSKSKSBSKK",
    "sha": "1fb782faedeecabb221308e67a6433ec50284a9c63b132a6ac6333e6f7aee6dd"
   },
   "8c029060": {
-   "outcomes": "KKSKKBSKKK",
+   "accepted_lost": [
+    {
+     "ids": [
+      8
+     ],
+     "why": "coverage regression: the mutated block is unhit by every harness since the 2026-10-25..27 re-prepare (live, today, switches off); the 2026-10-24 baseline harness reached it. docs/proofs/2026-11-07/maudit-triage.md; open on .work/WORK_BOARD.md 2026-11-07 (block 8c0290d2)"
+    }
+   ],
+   "classes": "llllllllll",
+   "outcomes": "KKSKKBKSKK",
    "sha": "05dc643ed12732deeb1e06da75b732b95e8bb32941e03d88e68d1cb1be63f515"
   },
   "8c02c0c0": {
-   "outcomes": "KKKKKKKKKK",
-   "sha": "e827d5b406ac0cec3227ba874785fcea2aabd27ca63c28e8aa6392c1c3937dc8"
+   "classes": "llllllllll",
+   "outcomes": "KKKSSKKBKK",
+   "sha": "f78bcb2064a55b719410315febf2c3daeb1efa1200df02a97db6d0824ed34904"
   },
   "8c02eb90": {
+   "classes": "lllllsllll",
    "outcomes": "KKSKKKKKKK",
    "sha": "8c118bd9cad2a86f9a6f35d01cb9acde344d960863ac576002e434b1cdd1c25a"
   },
   "8c02f3a0": {
+   "classes": "llllllllll",
    "outcomes": "SKKKKSBKKK",
    "sha": "b47b1ca0be4139b6eae8a4c45c6a8e07012c27857daca031dbcd8389773f5f06"
   },
   "8c02fe1c": {
+   "classes": "llalaallal",
    "outcomes": "KKSKSSKKSK",
    "sha": "4375c6fb1aafb33b55f7b51c1acec1dfd899cb2e27b180948969420290d753b6"
   },
   "8c030604": {
+   "classes": "llllllalll",
    "outcomes": "KKKKKBKKKK",
    "sha": "8e731d419e933934ecb9d2669ff7857940b04d5a335d7d601b5b7d4bca6e68a2"
   },
   "8c030eb4": {
-   "outcomes": "KKKKKKSBKK",
-   "sha": "df70f190457d6c874d5eb600e8b5bc3c48a5988716f445f329813716933bbfe4"
+   "classes": "llllslslll",
+   "outcomes": "KKKKKKKBKK",
+   "sha": "43a81d207cf6bb50c5a5461ec3f8660287919af287215453e0cc910e18db7528"
   },
   "8c031786": {
+   "classes": "llllllllll",
    "outcomes": "KKKKBKKKKK",
    "sha": "b16b31985926aa9fde20686d8b7a6d79bcfd5dd7ef2e50dd4d63a4051ae69293"
   },
@@ -1601,122 +2566,152 @@
    "sha": "1fcd3c7065f79c0e05407575969bdc9b1a2f87edea54da7fc8f9535a35bff3f7"
   },
   "8c036384": {
+   "classes": "llllaallaa",
    "outcomes": "KKKKSKKKSS",
    "sha": "11524502f115905ee904f51bde42e3e2a013d9422ce3f0afbbe102c9c3f1b391"
   },
   "8c03678a": {
+   "classes": "llllllalaa",
    "outcomes": "KKKKKKKKKK",
    "sha": "90a56f5339d42f39fa319167a425ff498bd6a02e4fe8adc2473be88a05607ad4"
   },
   "8c0373a0": {
-   "outcomes": "KSBBSKBKKB",
+   "classes": "lallalllal",
+   "outcomes": "KKBBKKBKKB",
    "sha": "0e3dac0a35b10006a304b2fc53b671fb7e38139f521219112b26af638c6c90ae"
   },
   "8c038de0": {
-   "outcomes": "KSSKKBSSSB",
+   "classes": "lsslllaals",
+   "outcomes": "KSKKKBSSSB",
    "sha": "21170cbc1ada173e9e3445c00f1841ebb051092367bc1e12a3b9533d3c23b26d"
   },
   "8c039620": {
+   "classes": "lslllalsll",
    "outcomes": "KSKKKKKSKK",
    "sha": "3cf1df89eff81d9e68a6566c4ae65706b0a867bad55c8b2f8503352f8a195fb7"
   },
   "8c039ae0": {
+   "classes": "lllasaaasa",
    "outcomes": "KKBKSKKKKK",
    "sha": "39dde1135e57e40a9c831496eb7c53561b3f2a96ff4f1ba612cffd4d85496f50"
   },
   "8c03a5e6": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKBKKKK",
    "sha": "ac5930bf48fd115f27aa1e3247e37c66ae4dd84f83870ad46e4d772148bde905"
   },
   "8c03a7cc": {
+   "classes": "lllallllll",
    "outcomes": "KKKBKKBKKB",
    "sha": "02320893424a94fe5072167f0f203abf4f92d9dab5c0964634fbbce076f0c5fc"
   },
   "8c03b400": {
+   "classes": "lllllllall",
    "outcomes": "KKKKKKBKKK",
    "sha": "aa3d86904e1a95a577e36bc10c8f49b6625d93583b86e5bb38290e7d0d461602"
   },
   "8c03c340": {
+   "classes": "llllllllll",
    "outcomes": "KSSSSBBSSS",
    "sha": "0d4169cfd3ba1d4cc1750d6247a02d58ed3fd2da03fc13238cbf92d5df8d9114"
   },
   "8c03c964": {
+   "classes": "llllllllll",
    "outcomes": "KSSKBBBKKS",
    "sha": "31b15158eadb8f3ec43b05c79ed7b167efe069255f91c8d63824a85dc226cded"
   },
   "8c03e6e0": {
+   "classes": "llllllllll",
    "outcomes": "SSSSSBBSSS",
    "sha": "f660ace35e95b89bf43860d512bb285e9aa79c73e5de227ca712767abbce2364"
   },
   "8c03e9a4": {
+   "classes": "llllllllll",
    "outcomes": "KKKKSSBKBK",
    "sha": "da4675365de0cf88ca293daf8a4c0760faa223bd823eca561e6edef6aeea53ca"
   },
   "8c041640": {
+   "classes": "llsslssssl",
    "outcomes": "KKSKBKSSBB",
    "sha": "128a528b06f8185d601a79f38df17b5f2f50c9265a1db608a325ae9483c66cd4"
   },
   "8c041af6": {
-   "outcomes": "KSKSBBBKKK",
+   "classes": "llllslllll",
+   "outcomes": "KKKKBBBKKK",
    "sha": "da980b223925f12ab7cd3f4ee404fe2540579ac65d45959966ae4588a3051696"
   },
   "8c042ea0": {
+   "classes": "laslsslsll",
    "outcomes": "SKSKSBSSSK",
    "sha": "5bb410e0b3de747c057b09cf67b17863075b94742a6b460239fc19422c569481"
   },
   "8c044f34": {
+   "classes": "lllsllllll",
    "outcomes": "SSSKKKSKKK",
    "sha": "94c64c9e00b003030d2e638b8fece5c0ae21137a7ef5a19cc97ba56b56fb9758"
   },
   "8c045abc": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKBKBBK",
    "sha": "154b5004e1a7935191513a644a1e85709f65b8b5702fe1e5d2c23a96176a10ac"
   },
   "8c045ad8": {
+   "classes": "lllllll",
    "outcomes": "KKKBKBK",
    "sha": "4f1aa37bd2a86dd73325c9b6fdb3b710c3bef4d2c27e3a334cc078aee9562d24"
   },
   "8c046220": {
+   "classes": "aaasaaaaal",
    "outcomes": "KKKKKKKKKB",
    "sha": "3d9e754abc810ed7fcc542ba75694ceb3c6d9715815ed7ccdf030d70c911eca0"
   },
   "8c0465c0": {
+   "classes": "llllllllll",
    "outcomes": "KKKKBBSKKK",
    "sha": "79a7d8595c000154ee83597310707639a4e032e3bc3afd4783956c4b8ace637e"
   },
   "8c047598": {
+   "classes": "laaalaalla",
    "outcomes": "KSSSKSSBKS",
    "sha": "5390c61426f9cd06d825e6cfaccdf1faae82ab7621311d18d2a5d184dbd27b8e"
   },
   "8c0475c4": {
-   "outcomes": "KSKKSBKKKK",
+   "classes": "llllalllll",
+   "outcomes": "KKKKSBKKKK",
    "sha": "83389c93b3b7cd6dfd32e0cecb5d027e0214b02a60479136257ee21b117ba59b"
   },
   "8c0498a8": {
-   "outcomes": "SKSKSKSSKK",
+   "classes": "lllllallll",
+   "outcomes": "KKKKKKSKKK",
    "sha": "c08f309f4f11595ebb08844db7ec5f867a50f0a187142beb22cc589245f619e3"
   },
   "8c049a40": {
-   "outcomes": "KSSSKSSKKS",
-   "sha": "75a0aa3cc6d2c9f7eaa07c62ad1a0f39dc22bffe1463caa4fdc64c20f4c0df7b"
+   "classes": "lllllsllll",
+   "outcomes": "KKSBKSKSBK",
+   "sha": "36beda25c06e3bff3aa2c8ab1038e04ac87b3c2e5a45048cad225d5228a7614a"
   },
   "8c04a276": {
+   "classes": "l",
    "outcomes": "K",
    "sha": "bed49fb71dfc71f7a093621be5f2d54e00fcfc102364127daafbe043a5bbcde7"
   },
   "8c04ab40": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKSKKKK",
    "sha": "2d4e9c39b137d0026ff4bf37d720069c2d83a6c7ed09797bff5cf433b8ae868e"
   },
   "8c04ac80": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKKKKKK",
    "sha": "68e4262c6f738d34dbc1441cae3d13a389c2d932d0ecb056434f5238813571d9"
   },
   "8c04b040": {
+   "classes": "llalllllal",
    "outcomes": "SKSKBKKKKK",
    "sha": "16b5f5bf1a50c8503a9a8b62a3f85c2e9fb82fce245c6f77bb71fdee1f892124"
   },
   "8c04b160": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKKKK",
    "sha": "8d03992a1fec0c981cb9427e24d0e4a74e34dbfe33279f2f29658f015f0b5e74"
   },
@@ -1725,121 +2720,153 @@
    "sha": "0612ae27a37cf7597e854b629d3615d41ece69e886e90a13728faad4e9609651"
   },
   "8c04b560": {
+   "classes": "llalllllaa",
    "outcomes": "KKKKKKKKSK",
    "sha": "8558aead09343314729a83c9aca27ef2ab2ddd22e88e48ac820f866e719204a5"
   },
   "8c04b720": {
+   "classes": "llllallall",
    "outcomes": "KKKKKKKSKK",
    "sha": "5cce035f9c2d261be0390e7fb2147b529cd103727918cc91004293799a015d88"
   },
   "8c04ba60": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKBKKKK",
    "sha": "31fae74242f994f88d03a8edd42e7e451ed385673b67f2bd662b3f7b74fa3a1e"
   },
   "8c04bc80": {
+   "classes": "llllllalll",
    "outcomes": "KKKKKBKKKK",
    "sha": "88d068218ce1b37e810df290acda482cfbd652262d5369c993051a0c8adb9ca8"
   },
   "8c04bd40": {
+   "classes": "lalalalall",
    "outcomes": "KKKKKBKKKK",
    "sha": "c7ec4d115244497d1c96a66c8b98c0dce92f67d4c7187ef4fa4ae8083fe32f12"
   },
   "8c04c466": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKKKKKK",
    "sha": "b243bead7993e528180b05f243b12f774a01751d606d50ae48f4c8fafad20353"
   },
   "8c04c860": {
-   "outcomes": "KSKKSKSKSK",
+   "classes": "lsllslssll",
+   "outcomes": "KSKKKKSKKK",
    "sha": "69fbdb4fab4598e420ba8fbe45e393fdadebe799967a77f196927ea3ff97014f"
   },
   "8c04d020": {
-   "error": "baseline FAIL at compare: the matched C does not pass its harness here (47/96 failing)"
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKKKK",
+   "sha": "9195367a7d410c1bf7e780668e71f051f7889d175600222917ac6b63e5cfeb94"
   },
   "8c04da10": {
+   "classes": "llllsslsll",
    "outcomes": "KKKKSKKSSK",
    "sha": "e70331dba9d195373352e8f68705d8bf89153763ae8e564f74c1e144bf0e2972"
   },
   "8c04dc90": {
+   "classes": "aaslaslsas",
    "outcomes": "SSSKKKKSKS",
    "sha": "1f8532a19d61e6c2fa2415bffce86613f96b393405bdd47b92d2406256bb8e74"
   },
   "8c04e620": {
-   "outcomes": "SSBKSSBKSS",
+   "classes": "llllllllll",
+   "outcomes": "KKBKKKBKKK",
    "sha": "fdfe91d5486d6f866f3f02a222b30f38a4ec7ee3e369ad47ef35ffe24001797a"
   },
   "8c04e630": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKBKK",
    "sha": "07baffca00abe8676a4a83a501274d08e07060d063e188b48a734e01c2f3079e"
   },
   "8c04e8f0": {
+   "classes": "llllllllll",
    "outcomes": "KSKKKSSKKS",
    "sha": "6e12db12db16851fbe3e433a4d5fa02a0ff26768b0b2e64559d3b7e44274a6cc"
   },
   "8c04ead0": {
+   "classes": "lll",
    "outcomes": "KBK",
    "sha": "406a531ca7c45d7c1e84672bf06c384f7e31a78908e1943ca83beb9dd032e878"
   },
   "8c04f200": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKKKS",
    "sha": "38693e58f75fef5605236b60e0ab8970ebd8c1386084948612287a3cb10dac21"
   },
   "8c04f820": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKKKK",
    "sha": "0c13131ff7029d2657c629b7843bc83891123c3b688d3acea7253c23b45f2097"
   },
   "8c04f840": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKKKK",
    "sha": "1fdd7e7f0312813b8650d4b95f63532705b41c35b7623db390454c9c10f8de97"
   },
   "8c04fc00": {
+   "classes": "l",
    "outcomes": "K",
    "sha": "7a90af3a2a668e2f2cc167247246c1b3c22b2caf8954df9109330e0119e2c919"
   },
   "8c04fc30": {
+   "classes": "llllallaal",
+   "excluded": "(b, probable) judge false positive: TcTflag T export (98e2bde0), no real caller reads T: docs/proofs/2026-11-07/maudit-triage.md",
    "outcomes": "KKKKSKKKKK",
    "sha": "94c0c2f301c36a825c1d4f7e3f31d4660c56591e7bc5c128d19bedb999f785df"
   },
   "8c04ff40": {
-   "outcomes": "BSSSSSSSSS",
+   "classes": "aaaaaaaaaa",
+   "outcomes": "BSKKSKSSSS",
    "sha": "a146522b56ad17db03d91d9f936128e0783fa318593c48845a0fa174ad06e8e0"
   },
   "8c04fff0": {
+   "classes": "llllllllll",
    "outcomes": "SKSKKKKKKK",
    "sha": "1f7969c0c5808215d37c98ed8c2efd705308e0267658c233aeb6a94f26ef026c"
   },
   "8c050880": {
-   "outcomes": "SSSSBKSSKS",
+   "classes": "assaslasla",
+   "outcomes": "SSKSBKSSKS",
    "sha": "84a46761081e0d1fd853f0b8e6eccf37dd24207c3ef2e7e63d6b2071804c0af6"
   },
   "8c050c40": {
+   "classes": "lslllllsll",
    "outcomes": "SSKKKKKBBK",
    "sha": "f82a9da30025c0f7fb162c6c7770f38f817d9343a05d387381b8d8cd8e0651c8"
   },
   "8c0517b0": {
+   "classes": "lll",
    "outcomes": "KBK",
    "sha": "d6ec9373d1eae7aaabe9ab3a4f7f73abfab773b54e7bbef17d2d679594883f7c"
   },
   "8c052010": {
+   "classes": "llllllll",
    "outcomes": "KKKBKKBK",
    "sha": "b8b3c2d64aada964e59b1a9a49bceefb9e44cac06323ffb02754b9913a477143"
   },
   "8c052320": {
+   "classes": "lllllll",
    "outcomes": "SKKBKKK",
    "sha": "d5037032b3fa4bee9f5d7311527bdb9af67c3db9136de7f10bb0320ea8ceb5bb"
   },
   "8c052410": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKKKBKK",
    "sha": "ed3a9834c3bb0ad5b8de4203b8d87e354fe6e243f74e28deebba17bc873f2f10"
   },
   "8c0524e0": {
-   "outcomes": "SKSKKKSKKK",
+   "classes": "aaaassaaaa",
+   "outcomes": "SKSKKKKKKK",
    "sha": "e035199a2f5c997c7ebdac67e3f7290a98a92f9a576f8ced6fa7e61503ed6143"
   },
   "8c053040": {
+   "classes": "lsllllllls",
    "outcomes": "KKBBKKBBKK",
    "sha": "d0ded42ba71b540916e11a635522853afdb93bbace89357922d0343eaed5e30d"
   },
   "8c0530a0": {
+   "classes": "llslllslll",
    "outcomes": "KKKBKKKBKK",
    "sha": "bc994da68ac86ebf2c4de9ce0aa7cbc15772b278bb03533b66eb6660eb0301db"
   },
@@ -1848,118 +2875,148 @@
    "sha": "09318d1a62cfbe74efa056f40db5d2c4b008a8143e434b2ca2434b658a39995e"
   },
   "8c0535b0": {
+   "classes": "llllllllll",
    "outcomes": "KKBKKBKKBK",
    "sha": "38c32b45cd6127f0b61d626400bc9113e80f773d5f59fb844752ee00532f7fe9"
   },
   "8c053680": {
-   "outcomes": "SSSSSSSBSS",
-   "sha": "fef6fef9472e2f9e08c0cbb8274f1fb39938cebf78eb707ae87f9551096019e8"
+   "classes": "aaaalaalas",
+   "outcomes": "SSSSKSSKSS",
+   "sha": "80983757f3506077b3641cdc5d71de544506c3f0436a69b7dd9faf8a418f8d84"
   },
   "8c053ac0": {
+   "classes": "lslllslssl",
    "outcomes": "KKBKBBKKBK",
    "sha": "d370ca1c8cc74ce9a752cc127b4bd38561677a7c7333820a9077db16594b335f"
   },
   "8c053e00": {
-   "outcomes": "KKKKKKKKKS",
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKKKK",
    "sha": "0e85f63310aeef9258aae5e824a19b4e8f9343103f8399672b5605ac2b388c40"
   },
   "8c054230": {
-   "outcomes": "SSKKKBBBKK",
+   "classes": "llllllslll",
+   "outcomes": "SKKKKBBBKK",
    "sha": "7ce10ed25c4e615d2f7bc366a5f11f087d1dc9db740ae7be893658192391dd07"
   },
   "8c0544b0": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKBBKK",
    "sha": "5ae68041b1b2f9f71badc86313ab12167220f497fe39fe8f398fbff172fd118e"
   },
   "8c055170": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKBBB",
    "sha": "0974881129eebe8e94aa9a9dcee318a59f71ea977c2d04fb1a14ffcec75d6271"
   },
   "8c055ab0": {
+   "classes": "llllllllll",
    "outcomes": "KKBKKKBKKK",
    "sha": "367d1529fd71e263ef8fe5460c10ca81fdc55d76b212e53633ca9df83fb453db"
   },
   "8c055b80": {
+   "classes": "laassaaala",
    "outcomes": "KKKKSSSSKK",
    "sha": "cd6139bf0c7261e636453ad20e04e265eaa0a3096d50a71fd738ede7c582d2bd"
   },
   "8c055c20": {
+   "classes": "llslslllsl",
    "outcomes": "KKKBKKKKBK",
    "sha": "0f2c2028506e07c3161b47a987db42582da9e6117c9eef43359cdbdfd7280202"
   },
   "8c055ea0": {
+   "classes": "aasaasassa",
    "outcomes": "KKKKKKKSSK",
    "sha": "a5921716dc443dbe31b358d48fde8789df1e7d549323d4fd6413a3b4cfd89c57"
   },
   "8c0560c0": {
+   "classes": "llllllllll",
    "outcomes": "KKBKKKBKKB",
    "sha": "cc9e7482416e1e25b300f0cb102e2b43412f4b143c9e617342974c7e46a4fb52"
   },
   "8c0563a0": {
-   "outcomes": "SKKKKKKKKK",
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKKKK",
    "sha": "2194d68091596f3bf9b95b95807d014f361edcd600d9aba65193da5c8c004db9"
   },
   "8c056460": {
+   "classes": "llllllllll",
    "outcomes": "KKKBBKKKBK",
    "sha": "744740490182bb89b651b9c3fd03b89a83e7b93e56947150073caf8365bfd1c8"
   },
   "8c0578c0": {
+   "classes": "llllllllll",
    "outcomes": "KKKKBKKKKK",
    "sha": "fce4755b20cdba9e894092d312de8555b1a574e33d99302a000b0fd989356ba1"
   },
   "8c057940": {
+   "classes": "lll",
    "outcomes": "KBK",
    "sha": "3f7ab4a703275701de974d676ac65508dda8e0d7b7d2853f9cded9df20b1b35d"
   },
   "8c057a80": {
+   "classes": "laaallalll",
    "outcomes": "KKKKKKKKKK",
    "sha": "8c9b9449fe8b06d1f5d9de07a3214ed481b90f14c47d8bbd06d4be1cf787803a"
   },
   "8c057c20": {
+   "classes": "lllaaaalll",
    "outcomes": "KKKBKKBKBK",
    "sha": "939036803e7cce92324d6d19a94a3b609f944637ec0c575cfc950f2081afcc3a"
   },
   "8c058030": {
-   "outcomes": "SKKKSSSBBK",
+   "classes": "alllslalll",
+   "outcomes": "SKKKKSSBBK",
    "sha": "9c5dffb74ed3d70b320f037a045298b06ea421201f49500009ff922b6f877a14"
   },
   "8c0584a0": {
+   "classes": "llll",
    "outcomes": "KBKK",
    "sha": "02729a0a91b7d59775eb481ac8ee1d34bc8f1543a478e2e406b7774562583289"
   },
   "8c058560": {
+   "classes": "llllallall",
+   "excluded": "(b, probable) judge false positive: TcTflag T export (98e2bde0), no real caller reads T: docs/proofs/2026-11-07/maudit-triage.md",
    "outcomes": "KKKKSKBSKK",
    "sha": "531752445be4ffde588cb24a19f8548ffab0fe4b659a7658eaae4d2d47976dc5"
   },
   "8c0588d0": {
+   "excluded": "(b) judge false positive: TcOut r4..r7 export through a tail jump (7d498852), no real caller reads it: docs/proofs/2026-11-07/maudit-triage.md; and TcTflag T export (98e2bde0)",
    "outcomes": "KKKSKSKKKS",
    "sha": "9bb2c3758a489d14ef350486c4a0cdd926a1ac96cfab1f27e6d97e49af4b4b95"
   },
   "8c059b20": {
+   "classes": "lslllalsal",
    "outcomes": "KSKKBKKSKK",
    "sha": "f434b3f9c8686872395d72c096c39015ac48db3557c349cdf1e23c255b5ec6c8"
   },
   "8c05a2e0": {
+   "classes": "llllllllll",
    "outcomes": "KSSSSKBKKS",
    "sha": "394f72dfc51b7c889a4af25a5f9c7b309a08ea0045256dc11c0640a6a3395866"
   },
   "8c05a360": {
+   "classes": "lsllllssll",
    "outcomes": "KSSSSKSSSS",
    "sha": "3cf2e89dd71a7dc831ef7cfd5d3ebfdb8a2b43c1ffbab54ae5bb320faae8ddb0"
   },
   "8c05b7d8": {
+   "classes": "lllalaalla",
    "outcomes": "KKKKKSKSKS",
    "sha": "e7a7d1c450681361618ec3c316d556d265fe931f809b20592ad368a7e3f2a23b"
   },
   "8c05badc": {
+   "classes": "llllllllll",
    "outcomes": "SKKKKSKKKK",
    "sha": "62b4cd43387f2c54c79c69944795d2bf2b89a0aab8de508d8eb6880fc2dfb32b"
   },
   "8c05bb48": {
+   "classes": "lll",
    "outcomes": "KBK",
    "sha": "4179a32eb41a78279e66857103381de5691ea90806753f55b6735d676ae612af"
   },
   "8c05bbd2": {
+   "classes": "lllll",
    "outcomes": "KKBKK",
    "sha": "ee56c325d840a74f016df7a2338ebbb90ea99cd5e404a5b5824e48c6f56cb74e"
   },
@@ -1968,650 +3025,1223 @@
    "sha": "e7cb4a2fa86c0f1b3096d78466245cb052395cdd567af5afa62ec24915f1e550"
   },
   "8c05c3e8": {
+   "classes": "l",
    "outcomes": "K",
    "sha": "d20f2377e2ae2e758a9de52eec6acf92ffd63568fc27a628c43012306377387b"
   },
   "8c05c3fa": {
+   "classes": "l",
    "outcomes": "K",
    "sha": "33e223d11e94e4e24282b6abe6129b4acd63f975c9bdc1da623c9cc83f7b5033"
   },
   "8c05c5b2": {
+   "classes": "ll",
    "outcomes": "KK",
    "sha": "df78e837e2811db7b7fe18d8fac0faa692a19c6e2e78a8959db68d29d9161677"
   },
   "8c05c84c": {
+   "classes": "ll",
    "outcomes": "KK",
    "sha": "82261130cd492420701d6c465494b8529761ebc059349d33478a9b56a935c189"
   },
   "8c05d9c0": {
+   "classes": "allllllall",
+   "excluded": "(a) real port defect, fresh harness FAIL: docs/proofs/2026-11-07/maudit-triage.md",
    "outcomes": "SKKSKKKKKK",
    "sha": "d8fd71f129a1f3e5028afb584a07d7c5d47bc5a6dba560bf7616a9303f23b073"
   },
   "8c05db50": {
-   "outcomes": "KKKKSKSKSK",
+   "classes": "lallaallla",
+   "outcomes": "KKKKSKKKKK",
    "sha": "dce55913c395633a586d79ea6c58cbe6bfcdcbd833e63e57d1bdc8986096214a"
   },
   "8c05ebe0": {
+   "classes": "lssllallsa",
    "outcomes": "KKKKSKKSKK",
    "sha": "16836a2c60470147d1e7a476e42a2e27feb0e29cabf2cd5b9543817fcd549829"
   },
   "8c05f220": {
+   "classes": "llllllllll",
    "outcomes": "SKSKSBKKSS",
    "sha": "959d7e8a4982d0c199eae9b2956e30dc412ca12245c3912b04ff1c43e78046eb"
   },
   "8c060a00": {
-   "outcomes": "KKSKBBKKKK",
-   "sha": "fe95baf12e810a3f228d5d2c8e6adea1e240f99ad513d433410a2253e60b85c8"
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKBKKK",
+   "sha": "f95732b20d0f8d1987f070767a13f1354b76ed3ecd5b547db2a7a588b0c2917a"
   },
   "8c063620": {
+   "excluded": "(a) real port defect, fresh harness FAIL: docs/proofs/2026-11-07/maudit-triage.md",
    "outcomes": "KKKKKBKKKS",
    "sha": "d9aa8e656a1b6f580da5c165cf573df18d1ab99bcf4de94473005dfaf84662c5"
   },
   "8c063920": {
+   "classes": "llllllllll",
    "outcomes": "KKSKKKKKKK",
    "sha": "93303cf731a775c2f132c717378a2d7f922ee3929afefe66cfe7da61ddf20ceb"
   }
  },
  "tc": {
   "8c010350": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKKKK",
    "sha": "ea0066c6b032e7d48bac5d71371a4f6849f65a4119b78f6e75130ca054cbcd3b"
   },
   "8c0103c4": {
-   "outcomes": "KSKKBKSSSK",
+   "accepted_lost": [
+    {
+     "ids": [
+      3,
+      6
+     ],
+     "why": "coverage regression: killed only by edge vectors (boundary_vectors, off on Dreamcast); the 2026-10-30 re-prepare misses what the 2026-10-24 baseline harness reached. docs/proofs/2026-11-07/maudit-triage.md; open on .work/WORK_BOARD.md 2026-11-07"
+    }
+   ],
+   "classes": "lssllsasal",
+   "outcomes": "KSSKBSSSSK",
    "sha": "201b1db82ccee62d82b33bc17945bb78c1dc36b56cef79f5a2c483ac23f84606"
   },
   "8c010a58": {
+   "classes": "llllllllll",
    "outcomes": "SKKKKBKKKK",
    "sha": "f9f8d2ea30a62a137950544c45e8c24377ef11966c5850979cc02938acb91edb"
   },
   "8c0111b0": {
+   "classes": "llalalllal",
    "outcomes": "KKKKKKKKKK",
    "sha": "7777de5dca92c643147f62cf6d032b74c42bf18ba1a39e5de1b462754a92516f"
   },
   "8c01160c": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKKKKBK",
    "sha": "f7fbcf978d473d9127ce3ed2ec487103c3ff99c5231d7568fd5f764e2fd10a6d"
   },
   "8c0148d8": {
+   "classes": "aallaaalaa",
    "outcomes": "KSKKKKBKBK",
    "sha": "25bfe18f04c1d76c77e93906bf1e33a0e85d6228d9d0be2b88026de3ad1a239a"
   },
   "8c014984": {
+   "classes": "llllllllll",
    "outcomes": "KKKSKKKSKK",
    "sha": "ff08572ea51047093b56eff8f4ce0af096c11f0522f94d61a62ba00ae7e2643e"
   },
   "8c014bd8": {
+   "classes": "llllllllll",
    "outcomes": "SKKKKKKKKK",
    "sha": "c8521dccdfed85a99fca6ed72868efc26b323098238713ddb9dc81aa92dd3343"
   },
   "8c014d20": {
+   "classes": "l",
    "outcomes": "K",
    "sha": "ea2e94ade6e8aef17f798568ea462a217e9e44802f63b64e406b9cbea16b4e4c"
   },
   "8c014d56": {
+   "classes": "slsssasssa",
    "outcomes": "KKSKKKSKSK",
    "sha": "eba7de762a9741f0550e2887ca2850c08357fab48cc1583f7e260985567e39a6"
   },
   "8c014dc4": {
-   "outcomes": "SSBSKKSKSS",
+   "classes": "aasaaaasss",
+   "outcomes": "SSBSKKSKSK",
    "sha": "7231d93ff4a894793af862f541c84a43cb441506441c4e1b11f4f760bf7b27c9"
   },
   "8c014e28": {
+   "classes": "llllll",
    "outcomes": "KKKKKK",
    "sha": "f6de1b4d0610a9a31525b305d47d31174c31efa09522590ff579834d16389ae9"
   },
   "8c0150b4": {
-   "outcomes": "SSSSKSBSSK",
+   "classes": "lslllsslll",
+   "outcomes": "SSSKKSBSSK",
    "sha": "4b340dbbc6cf252a6832aa1f30ca63f1fe07933358a257ca0b344d6db773543d"
   },
   "8c01575a": {
+   "classes": "llalaallla",
    "outcomes": "KKKKKKKKKK",
    "sha": "09d028a7bb55f7e70431bb4329ee8b7061edb3d1964a61a017afcfa81a658e61"
   },
   "8c015abc": {
+   "classes": "lllallslll",
    "outcomes": "KKKKKKBSKK",
    "sha": "845fddc2353193e57d359136c826e3c9ba8e0b383f3c91799da05146bc1a6783"
   },
   "8c017f18": {
+   "classes": "lllslaslll",
    "outcomes": "KSKKKKKKKK",
    "sha": "3efb5e185a3daca426314aa86b046c1f08764c95c9d28c92b1284941ffe514b3"
   },
   "8c01b900": {
-   "outcomes": "KKKKKBKSKS",
+   "classes": "lllallalll",
+   "outcomes": "KKKKKBKSKK",
    "sha": "d5046b6c836d18b5004e37cb43389c2b17a61413be69f6cb3e74af4d3825367f"
   },
   "8c01c124": {
-   "outcomes": "KKSKKKKKBK",
+   "classes": "llslslllsl",
+   "outcomes": "KKKKKKKKBK",
    "sha": "47875b29a67a7ce0d105262b0c5cf6914a77dcebf7e776101b39fc20ee863a29"
   },
   "8c01c58e": {
+   "classes": "aallaall",
    "outcomes": "KBKKKKBK",
    "sha": "65a74c77a3bf68af36da98d84bb36a681804e067e60690192b2d50f472ba63f9"
   },
   "8c01c9b8": {
+   "classes": "ll",
    "outcomes": "KK",
    "sha": "1d95a6b50a6e68304fbf0dfb91e27106eae128d095ded99ba58c4ff919843eb7"
   },
   "8c01cbae": {
+   "classes": "llasllllls",
    "outcomes": "KKSBKKBKBK",
    "sha": "e29a4aba0dbe192e235ffc40b42c75c1ee7f61a599678742b39393720823759c"
   },
   "8c01d272": {
+   "classes": "llllalllal",
    "outcomes": "KKSKKKKKKB",
    "sha": "4cd890b4abcf948511c20f870182312a95dc61fc8676681b58e12012ac622227"
   },
   "8c01d3c8": {
+   "classes": "aaaaaaaaal",
    "outcomes": "KKKKKKKKKK",
    "sha": "d297818c56b2ce1df41265a89878ac1d7cb1efbfedeea34e78c02f6484309a42"
   },
   "8c01d73a": {
-   "outcomes": "SKKKSSSKSS",
+   "classes": "slaasssass",
+   "outcomes": "SKKKSKSKSK",
    "sha": "9b94a60ec914b4c8d8d8e38f76cfab435785f4c0fa8450abb490e38b0dbf16d0"
   },
   "8c01d874": {
+   "classes": "aaalasaasa",
    "outcomes": "KKKKKKKSKS",
    "sha": "1dddc4c0c28af513544fa4458cb65d6112b888c1c0be818ecd31c77353613a5a"
   },
   "8c01dc18": {
+   "classes": "ll",
    "outcomes": "KK",
    "sha": "133fa10b07eb0e34beb4ccdc6ca7889c022ecafcbbbcb7a955b7a74987ced89a"
   },
   "8c01e40e": {
-   "outcomes": "SSSSKSSBKS",
+   "classes": "aassssslas",
+   "outcomes": "SSKSKSKBKS",
    "sha": "05e149cc45588f574e942d2bda98f4e792ff270123dcaee20c0c7497944248d5"
   },
   "8c01e634": {
+   "classes": "sasasalsaa",
    "outcomes": "SKKKKSBKKS",
    "sha": "c1a5ca82b822ccedf2e5298947b6b210a74bd193975357da9a08e601388633b9"
   },
   "8c01ec8a": {
+   "classes": "llllllasll",
    "outcomes": "SKKKKKKKKK",
    "sha": "dc9e3dcb6eab403e794af6b69df0e344cf74ba318b3cddf8670bbd4605d720b7"
   },
   "8c01f904": {
+   "classes": "lllllllall",
    "outcomes": "KKKKKKBKKK",
    "sha": "af0b962eeb5fc8325d22b85dd9d1c8ed99cf6a2137d8432d807096a627506ecc"
   },
   "8c022d5e": {
+   "classes": "lll",
    "outcomes": "KBK",
    "sha": "9842de60ce35727f93cf9db2aaa867abf1150d3077a5f0006137eb0882ff63b1"
   },
   "8c02320e": {
+   "classes": "l",
    "outcomes": "B",
    "sha": "e2b7e43e8380e2967105f15cadd11b2150e38ad98d66e9398f81f6665166c48a"
   },
   "8c023446": {
+   "classes": "l",
    "outcomes": "K",
    "sha": "7cd67a4ed048d0d12702ff296a51ab40c86bc844069677fec9c057f3cc44aa2a"
   },
   "8c023710": {
+   "classes": "llllllllal",
    "outcomes": "KSSKBSSSSK",
    "sha": "dd601f0d5e5de9ed41964546432e37e971051f43e3ed8721b42cdc304926fe68"
   },
   "8c025cde": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKBKKKK",
    "sha": "2aedff74dfbdac64baaa58a28d84ee73e10e15256debf8592e17f8543b99228d"
   },
   "8c026c64": {
+   "classes": "llllllllll",
    "outcomes": "KKSKKKSKKK",
    "sha": "c4b93ae76917896483e69f8e8f57ed0a18bfc2801684ae317965186913c991f8"
   },
   "8c027ddc": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKSKK",
    "sha": "e3a390d89f3dee57e68ea6e9f71a12f7214cc92487aefc769370e94df7f470c6"
   },
   "8c028660": {
+   "classes": "llalllaaal",
    "outcomes": "SKSKKKKKKK",
    "sha": "6284090186d1faed98cb45cf96c2043fe7ed2469b7629f92f3b364aedbcebc7f"
   },
   "8c02bf80": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKSBBKK",
    "sha": "fcd58ee4dffd53b977814870829934d00c16d318df1d4f8d0ca32f564f58b202"
   },
   "8c02c156": {
+   "classes": "lllaallala",
    "outcomes": "KKKKKKKSKK",
    "sha": "22f47a1b2d5ab39662e45effc4fbdc2ba2b7524fcf3f858bf920fee398e892f9"
   },
   "8c030c88": {
+   "classes": "lallaallal",
    "outcomes": "KKKKKKSKKK",
    "sha": "c0de24b54df167963551462fccce8b86a0a720894380d3e209f4d641f5324335"
   },
   "8c0334f8": {
+   "classes": "llllllll",
    "outcomes": "KKKKKKKK",
    "sha": "2e1943596be8fcaa8f9cdc4d494f3de5a865b1e497e18d40d342a0c9316979d7"
   },
   "8c0345f8": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKKKK",
    "sha": "007a48c1ee5eddc4625036f882ad35f4c9e9c9d1f641a97223efa71dff93618f"
   },
   "8c0349c2": {
+   "classes": "ll",
    "outcomes": "SB",
    "sha": "932a0968c737d482878d9560b06ae546046d2c4aa35ee761500990fa1228c44e"
   },
   "8c03561c": {
-   "outcomes": "SKKKKKSKSK",
-   "sha": "4761032d6b2f8d9d8e8933b32f40f6e09d505fbf0a3eb0046eba0a647fb850cc"
+   "classes": "lllllsllll",
+   "outcomes": "KKKKKSBSKK",
+   "sha": "c893e0e67c14a9d73c6068b665745b06280071c6fcf1fcebd508f020f896f93d"
   },
   "8c0364ae": {
+   "classes": "lallaallll",
    "outcomes": "KKKKKKKKKK",
    "sha": "dd6f36d1742b7a3cdd5e9bad54905404a048193618cf68d214714422154f2056"
   },
   "8c03670c": {
+   "classes": "llllllllll",
    "outcomes": "KSSKKKKKKK",
    "sha": "b861574cf560e41f2c1274c9b0b64778e785297dd3fe075d7e535da5c136143c"
   },
   "8c0367da": {
+   "classes": "llllllllll",
    "outcomes": "KKKSBKSKKK",
    "sha": "489ed4f680be2aad9449d3666825b41417a5669226d498e8b5daf286919a17d3"
   },
   "8c036b2c": {
+   "classes": "lll",
    "outcomes": "KKK",
    "sha": "1101697a4a6ea056dc7fc13991d290699d7cd8c8dd0e8fa63edf54a6f48ea754"
   },
   "8c036d64": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKBKK",
    "sha": "1db8e49ecc44be238033224eadf14c4ec3a70067801eacbb1c9dd3a780fbc62f"
   },
   "8c036e62": {
-   "outcomes": "KKSKBSKKSK",
+   "classes": "llallallal",
+   "outcomes": "KKSKBKKKKK",
    "sha": "0d95bd89af4c7f66c48ce70c9dacb7aa3df97422e4461a7a9c71de045a9e978d"
   },
   "8c038d5a": {
-   "outcomes": "KSSKSSKKSS",
+   "classes": "laalaallal",
+   "outcomes": "KSSKSSKKSK",
    "sha": "310ec83e9929f89ed2da41193b1cb4da26fd6cce9c3e2060dcb51727d47076a9"
   },
   "8c03a06c": {
+   "classes": "llallallll",
    "outcomes": "SSSSBSKSSK",
    "sha": "1e1a583adb67b6456f4f32e40cb44d566f11f41595e8c488eec6403a1b9b6a72"
   },
   "8c03a134": {
-   "outcomes": "SSSSSSBBSS",
-   "sha": "1accf4f360ef143a9132f838cff5952b3c6fffae7c9ce41d57d5c1f4e4e0a331"
+   "classes": "lsllllslll",
+   "outcomes": "SSSSSKKKSK",
+   "sha": "2ff76456d29dd55f840c6aacbb760775cc3a2f3da30aae85b1d211ed43f4e14b"
   },
   "8c03ca1a": {
+   "classes": "llallallaa",
    "outcomes": "KKSKBKKKKK",
    "sha": "ec788d1f3b5dc2cf9109da36ba4060b63f4c070ba1887094b0836fee2242c24d"
   },
   "8c03d4e4": {
+   "classes": "lllallalll",
    "outcomes": "KSSKSBKSSS",
    "sha": "f7732d5b0b11ac935a95e39cdc0d1a5dc6912405a8bc147b387824ce54e48acf"
   },
   "8c0411a2": {
+   "classes": "llllllllll",
    "outcomes": "SKKKKBKKKK",
    "sha": "e13002b89c65fc96ac05bf13b3455da04d7ab72226e0783a29bb182ad9600a23"
   },
   "8c0422c4": {
+   "classes": "alllallll",
    "outcomes": "KKKKBKBBB",
    "sha": "45f32d61c9207e141b184b18fe8b0152a81072667257990e8bcb60b954d03983"
   },
   "8c0432a8": {
-   "outcomes": "SKSKSSSKSK",
+   "classes": "llllllllll",
+   "outcomes": "SKSKSKSKSK",
    "sha": "32413228e8f03a34a1fd190a3f47f9a14d75f09ac51a4028ba18517f0fc42d01"
   },
   "8c044806": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKKKKBK",
    "sha": "17ca9d1e7203f7ad3331b67d20a68bef453f220b0ed3eaf5799fe93cdfeedee4"
   },
   "8c046402": {
+   "classes": "lsllllslll",
    "outcomes": "KSKSSBBKKK",
    "sha": "a346600c9ef4750941c5b21f241d6d97c6f3a209741c1e511c62a7801e48c7e2"
   },
   "8c049480": {
+   "classes": "lllllllall",
    "outcomes": "KKKKKKKKKK",
    "sha": "bc7bd04d65c9dd234fd8af0831310834e56db4e8503b419f8d1e8a8e02eb2608"
   },
   "8c04aaf4": {
+   "classes": "llalalllll",
    "outcomes": "KKKKKKKKBK",
    "sha": "91039e23e49884ee12d089a6958945e97f0a300d71cf4ad69a65c2fb63fa2028"
   },
   "8c04ac3c": {
+   "classes": "llllalllla",
    "outcomes": "KKKKBKKKKK",
    "sha": "d0884919e834afb13493a128eabec007f3b9c24720b410b723bfe071751b9315"
   },
   "8c04bf0c": {
-   "outcomes": "KSSKSBKKSK",
+   "classes": "llllllllll",
+   "outcomes": "KKKKKBKKKK",
    "sha": "4fd1eb73a9ffbad20e66979554662afe88a08fc0612ff2dcc61e18255f3dee93"
   },
   "8c04bfdc": {
+   "classes": "ll",
    "outcomes": "KK",
    "sha": "dae37dbe6dbf823d4cc8f31ab140373479af52473a5679d32e8e60c964e72136"
   },
   "8c04c00c": {
+   "classes": "l",
    "outcomes": "K",
    "sha": "ac3ad995fb37a05bd645e57b7c694ccb03aa20e9ae8d38f13cca33b3f8c8c729"
   },
   "8c04c7ea": {
+   "classes": "l",
    "outcomes": "K",
    "sha": "344ab78dd91cb842db39eba61664b134aec46b4fd3fb7165f3b73e0b54a29e93"
   },
   "8c04cb1c": {
+   "classes": "aaalaaaaaa",
    "outcomes": "KSKKSSSSSS",
    "sha": "b531fa80d87529258efc3d7a69d2728b2936469f56f61c94b8becaacd26d4905"
   },
   "8c04d82e": {
+   "classes": "lallallall",
    "outcomes": "KKKBKKKSKB",
    "sha": "13905ed7c3ab3259b6f4d1b82ae4cde4fd2a5ae750e248431c375182f895bca6"
   },
   "8c04de9c": {
-   "outcomes": "KKKKBKSKKK",
+   "classes": "laalalllll",
+   "outcomes": "KKKKBKKKKK",
    "sha": "acbb14b0d4ee63347e35fae003e51e1a56a4b0eb4fe72b7d4652476db30aaad3"
   },
   "8c04e794": {
-   "outcomes": "KKKSBSBSSK",
-   "sha": "3ba94c821dfee5b5e58848ab64482ebd48d99a9e3fa5ba25d4bd689de2287476"
+   "classes": "lsllllllsl",
+   "outcomes": "KSSKSSKKKS",
+   "sha": "8e8bdbc152c2c014ef3ada10f9487415e3d859f06579b53d19ddbc657f671a96"
   },
   "8c04f198": {
+   "classes": "llllllllll",
    "outcomes": "KKKKBKKKKK",
    "sha": "1046b233690315aa1e890f9b71fb4e912d311827adbd17265f4f14efbdba9e48"
   },
   "8c04f6e6": {
+   "classes": "llllll",
    "outcomes": "KBBBBK",
    "sha": "b92ec100a42cb7839b85328ce2153a4882559ae9bc5b49807bc309dadfcce725"
   },
   "8c04f77c": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKBKKK",
    "sha": "eefbb44e22404aee8cd612e811fca2eb5738585948d9f0bb6c842d94807f645c"
   },
   "8c04ff7c": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKKKK",
    "sha": "47f94488b2eddb84232cc55b906d2b0f2bc30e6b0845078cde52cdfa0f1931a4"
   },
   "8c050b40": {
+   "classes": "llllllllll",
    "outcomes": "KKKKBKKKKK",
    "sha": "821caaa7103fc6dde5fc8f88e2a39020f9c0792dcafa4185ad87e401effe85c8"
   },
   "8c051134": {
+   "classes": "lsllaallsl",
    "outcomes": "KSKKSKKKSK",
    "sha": "f4b5a0c29c05ba6cc2ac1b66bc299fa4aef9b59c3f6072611d6c5f3bd9a496b8"
   },
   "8c051190": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKBKKK",
    "sha": "beaf69f86c0cb1ea6f11b8e0b8384e3863510b58300ef9682df8900b9fee4a88"
   },
   "8c0511a2": {
-   "outcomes": "SSSSKSSSKS",
+   "classes": "asssssssss",
+   "outcomes": "SSKSKSKSKS",
    "sha": "4b5bd96db6e63116be45e88613d7e864751e19f65cb5d458ab67915551328192"
   },
   "8c053a90": {
-   "outcomes": "SKKSKKKKKS",
+   "classes": "llllllllll",
+   "outcomes": "SKKKKKKKKS",
    "sha": "5246cf1f5a30c31398f750443637e2f036202b76159c24c315e37061c23773ef"
   },
   "8c053b8c": {
+   "classes": "llllllllll",
    "outcomes": "KKKKSKKKKK",
    "sha": "a180f81433771ec029c62fa1e928588f054478473296b47aa152e99d3a32ec45"
   },
   "8c055120": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKKKKKK",
    "sha": "ab65b423f82a4af3b09e590d84f13a36035a21e868d8b17b774f758d1f752c0f"
   },
   "8c0551b2": {
+   "classes": "lllallllll",
    "outcomes": "KKKBBKKKKB",
    "sha": "a2d78aaa4a477d6f14ca2377793efaf136263e30cf378717fdfb9d451e503955"
   },
   "8c0552ec": {
+   "classes": "lllllllaaa",
    "outcomes": "KKKKBKKKKK",
    "sha": "26e407dd217b259bf21dabfaee17330de366281f697eee268b7f341cae39babe"
   },
   "8c05664c": {
+   "classes": "lllalllall",
    "outcomes": "KKKKKKKKKK",
    "sha": "728cbcfb60aa0327b5a2378c330c7b756fc2a1e58fac7d4bc1ff4a80f9e2edbe"
   },
   "8c056b30": {
-   "outcomes": "KSKSKSKSKS",
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKKKK",
    "sha": "aef29047e60d9ab9b8b6eef78c94ba57a4058fe61c05f6b5734f10694bf24d36"
   },
   "8c058360": {
+   "classes": "lllslllsll",
    "outcomes": "KKKKKKKKKK",
    "sha": "243ea0c7cc964a8063631b9124bdb422cf2e0fc07048672c20ba7fad8aaab203"
   },
   "8c059214": {
+   "classes": "llalaaaaaa",
    "outcomes": "KKKKKKKKSK",
    "sha": "0aa706fd7ae6a0c16b12357ee37c5a9442d26adfb8198831a80d1a43cac550c5"
   },
   "8c059440": {
+   "classes": "lallaallaa",
    "outcomes": "KSKKSKKKKK",
    "sha": "a791ac66e7916b5e9180b47bf226340c78c84a0f8505c22652e6579c850b05ff"
   },
   "8c05b410": {
+   "classes": "lllllll",
    "outcomes": "KBKKBBK",
    "sha": "f484b58baf8ea4cca0dbe353bdccba36eafb17b724238036220cd156538f90b0"
   },
   "8c05bfbc": {
-   "outcomes": "SKKBKKSSBB",
+   "classes": "aslallllls",
+   "outcomes": "SKKBKKSKBB",
    "sha": "456c84d5e4a46f58cf69969387687d382325d071750e39b4c4c2524f90bc7f56"
   },
   "8c05d362": {
+   "classes": "llllallaal",
    "outcomes": "KKKKSKKKKK",
    "sha": "4a443447483b2ece50fcd46f0520d6eafc0bbcbee482700eb96afb383a1161c5"
   },
   "8c05d4ae": {
+   "classes": "aalaaalaal",
    "outcomes": "KKKKBKKSKK",
    "sha": "e6598a13074a5467605bc974faafd6fe0cfff7233ccd966a4d59736d73e96bc9"
   },
   "8c05d524": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKKKK",
    "sha": "515279690dfed831fa09168f6c7215eed07e539c3702c648ad6b54a57f6c30e2"
   },
   "8c05f0a6": {
-   "outcomes": "KSSKBKKSSS",
+   "classes": "lssllslsss",
+   "outcomes": "KSKKBKKSKS",
    "sha": "0b13dda1988c292ddbb6f2e67e5a5093edb09d3a3256759bc64243d8baa1e8c1"
   },
   "8c05f7f8": {
+   "classes": "asalaallaa",
    "outcomes": "SSKKSKKKKK",
    "sha": "e2a77d2fbebc283a0bf90e42f68bac9b037169ecce70ee18e7a997bb200c6825"
   },
   "8c061216": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKKKKBK",
    "sha": "842a3c7001fa3c12d4d93e5210a29c674ec8d881a2463e9be66774467e5f521a"
   },
   "8c061270": {
-   "outcomes": "KKKBKKKSSK",
+   "classes": "llllllllll",
+   "outcomes": "KKKBKKKKSK",
    "sha": "f0d26365768e8355e1b82d05573dfbffb2aead1827c9b1b750ff52ad53bea9c4"
   },
   "8c06147c": {
+   "classes": "llllllllll",
    "outcomes": "KBKBKBKBKK",
    "sha": "e3df1ba6bd932be97c38b1c160d00c1998b1da46f8e50b5e4c8df7a9f832fb16"
   },
   "8c06161c": {
+   "classes": "slssslsass",
    "outcomes": "KKKBKKKKKK",
    "sha": "879a409b748a174f834182f9a7ec1d9af096f0904ab614174197da0fa0aeb482"
   },
   "8c061698": {
-   "outcomes": "SSKSKSKSSS",
+   "classes": "aasaslsaaa",
+   "outcomes": "SKKSKSKSSK",
    "sha": "46a2016057fd926ddf431d238dc01528fb7fda9c30b0bc853ae1670847da4419"
   },
   "8c061ad4": {
+   "classes": "aaaassasaa",
    "outcomes": "KSSKBSKSKS",
    "sha": "91a902c68af60136e17f88d0843bbfa789739533de7bc961c640825788c4aacd"
   },
   "8c061ae0": {
+   "classes": "aaaallllll",
    "outcomes": "SSSSBKBKBK",
    "sha": "7e9a93584806a077675753843acc702010ee3b99b5b94fab61464d1a71f302ee"
   },
   "8c061c68": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKKBBKK",
    "sha": "8cf81c2ce1cd31bed95ae6a640923b9c553cb5c133bed7e137c28e97b9751487"
   },
   "8c061e54": {
+   "classes": "lsllsllsll",
    "outcomes": "KKBKKBKKBK",
    "sha": "89036a1c3f2e7ce080975ac7b3b44416b7c37bd17772fae9506ccdb0442acd26"
   },
   "8c061fbc": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKSKKK",
    "sha": "f62079f60c50171b0ec6199d0bfd2f7230876539d5c0d20a45bd93e39d32ad3c"
   },
   "8c0624fa": {
-   "outcomes": "KKKKKKBKKK",
-   "sha": "ffbc5e1bb9c8484e4ea4cc184c2b89f2c150983c59934c0dd640baffe835c72f"
+   "classes": "lsllsallla",
+   "outcomes": "KKKKKKKKKK",
+   "sha": "7c9b2b52a0291f47ee6b7dde7685009728968e03b4c8381109b02f53b84501fe"
   },
   "8c06263a": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKKKKBK",
    "sha": "a2c9d7edd3bbd481258c4853ffa9ab19d17d8f40a048f55a1b8daf1e86ba4d43"
   },
   "8c062980": {
-   "outcomes": "SSSKKKSSKB",
+   "classes": "asslslaall",
+   "outcomes": "SKKKKKSSKB",
    "sha": "b3884b6823f95eee61edbe944dace4e5c3af6a1e3b78a8faeec452864aee6bab"
   },
   "8c062bea": {
+   "classes": "lllllallll",
    "outcomes": "KSKKBKSKKK",
    "sha": "155ed5f7a35689a3bbf42b255cdb667cad8b91887f8856ac60a18ac056ca9a20"
   },
   "8c0631e4": {
+   "classes": "laalllalaa",
    "outcomes": "KKKBKKKBKK",
    "sha": "6dd1182e8ac6df8b7722ed9b95ed28752c0f9bbfc8592475a95c72acd011acb9"
   },
   "8c06339e": {
+   "classes": "aaaaaaaaaa",
    "outcomes": "KKKKKKKKKK",
    "sha": "b8c0f72938a129b160bbe67393b516e8353eb8186aa53a315e7dced1fe472a7f"
   },
   "8c063658": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKKBBKK",
    "sha": "02b03d66595efc80f010e40dd0678f8980e055a24c6234cff26325c7eeca6756"
   },
   "8c063722": {
-   "outcomes": "SKKBBSKBKB",
+   "classes": "llllllllll",
+   "outcomes": "SKKBBKKBKB",
    "sha": "309480b6dac9934c8104ca9b37e03eb0081247760cad78ad569ff4690433b177"
   },
   "8c064be2": {
-   "outcomes": "KKKKKSBKKS",
-   "sha": "8bf6fae4f39f5edb90eb2c32b2a2f92abe0e52ab674c745e45299f8f3617d5d1"
+   "classes": "lslllsllll",
+   "outcomes": "KSKKKSKKKK",
+   "sha": "e30344750f214ea6bc0657c0b3fc86d3748732c23cf753bafe579df531c12280"
   },
   "8c067594": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKBKB",
    "sha": "79e608d148ce650524f569180b47985b6a84b9e472079689f4ada2d01117d7be"
   },
   "8c06784c": {
-   "outcomes": "KKKKBKKKSK",
+   "classes": "lllllallll",
+   "outcomes": "KKKKBKKKKK",
    "sha": "391519461d652582def525157029db9fc34a5f25419aed2b9eb00a8c1b09877f"
   },
   "8c067944": {
+   "classes": "aallllaaal",
    "outcomes": "KKKBKBKKKK",
    "sha": "da8554cb13478bc2669f29a6de72cbd307a096387ab9d8ec8b354cb670841e8b"
   },
   "8c067a00": {
+   "classes": "llllllll",
    "outcomes": "KKBKKKBB",
    "sha": "e745c0476bb73c5fe7c7cf36593ed357845e310726987873f0c2965a26e94bed"
   },
   "8c06d500": {
+   "classes": "llllllllla",
    "outcomes": "KKKKKBKKKK",
    "sha": "c041b56a2090f61d431d68f7bec462fbaed4ff6da17fabc16f7c9a993170a865"
   },
   "8c06d534": {
-   "outcomes": "KKKKKKKKKS",
+   "classes": "lallaallal",
+   "outcomes": "KKKKKKKKKK",
    "sha": "e530abad44eeab6aae58edd2e56bc1c65dbb3cdb9786ed336ae2265953d8aaac"
   },
   "8c06d942": {
-   "outcomes": "KKSKKKKKKK",
+   "classes": "llllalllll",
+   "outcomes": "KKKKKKKKKK",
    "sha": "571647beb6a04eb5d2b54a62f1f1e37c5104effaefe1a43c3c9c7605e2956b81"
   },
   "8c06ddc0": {
-   "outcomes": "KKKSKSSKKK",
+   "classes": "lllslaalll",
+   "outcomes": "KKKKKSKKKK",
    "sha": "a652e535e5980884899124292b26ee5a5a32685dcbc92d47a97b3f762de24fc1"
   },
   "8c06de2c": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKBKKKK",
    "sha": "258d34a171d261cd818dc0a6cc4159e65f83a0bdfa4928684460c13f7f82ce1e"
   },
   "8c06e66e": {
+   "classes": "llllllllll",
    "outcomes": "KKKKBKKSKK",
    "sha": "5a7c190791997ec4248d699322de6385759dde6f67a876e0ef2406a5c8d27e73"
   },
   "8c06ea36": {
-   "outcomes": "SKKKBKKKSK",
+   "classes": "lllllllsal",
+   "outcomes": "SKKKBKKKKK",
    "sha": "8feb42fb6567cf19a21ae9f480031054a39b205cea9e879065cb23ceba500e4d"
   },
   "8c06ec10": {
+   "classes": "llllssllll",
    "outcomes": "KKKKBKKKKK",
    "sha": "bfac1fee002cfcd02d0a6ef49fa48f5d9ea7d61d1a5389cb7b3a19a82b59a5ce"
   },
   "8c06ff88": {
+   "classes": "lsllllslll",
    "outcomes": "KSKKKKSKKK",
    "sha": "695759891022ee6f2348129b9e41692b3a57285fb3c80f164453b052eba45275"
   },
   "8c072c24": {
+   "classes": "lslllsllll",
    "outcomes": "KKKKKKKBKK",
    "sha": "6960c5f42d2c7f3126b5b920258bf1706f1505e1fdff7a2dd75bdca87f933d7a"
   },
   "8c07301c": {
+   "classes": "lllllllll",
    "outcomes": "KKKKKKBKK",
    "sha": "a1528680a16965bcf742245511eaf49eebf3016bcbe140b2cac13205cfe7aa46"
   },
   "8c0749e8": {
+   "classes": "llllaallaa",
    "outcomes": "KKKKSKKKKK",
    "sha": "5e3d1109288e1ac359c25aa28dd7f9065d4a307df95944f8f831b9fa3b55e8d8"
   },
   "8c074aea": {
-   "outcomes": "KSSSSBBSKS",
-   "sha": "c393cdca3670286abc9e9d2554f3ca6e264d265e6810c32d3dded6787d415e66"
+   "classes": "lsllllllll",
+   "outcomes": "KKKKKSBSKS",
+   "sha": "136e20091ca8becf00ad73e980a88639ccca921aac15e436e466e9b9bb1338e4"
   },
   "8c075768": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKKKBKK",
    "sha": "2c4ca437ee23e7ec9576bbff3fd223175831082dc12f949c9a8639086e441761"
   },
   "8c076324": {
-   "outcomes": "KSSSSSSKSS",
+   "classes": "allalaalll",
+   "outcomes": "KKKSSSSKSK",
    "sha": "85b27771347c6ef6656cbab8506399c7b74f28bdc9c10cdd88322541f6075280"
   },
   "8c076ac2": {
+   "classes": "lalallslll",
    "outcomes": "KSKSKKKKKK",
    "sha": "5eb294336a79ca2fbb9c108ac709df4bfee5d16a9bf80ff17d1e93eea398aab7"
   },
   "8c0770b8": {
-   "outcomes": "KKSKBKKKSK",
+   "classes": "llllllllll",
+   "outcomes": "KKSKBKKKKK",
    "sha": "9e5539dc497250dce1afea10bf867afd1eaeb6bbd8f46dad8b43d8cee7b3583e"
   },
   "8c0778f8": {
-   "outcomes": "KSSKSKSSSK",
+   "classes": "llalaallal",
+   "outcomes": "KSSKSKKSSK",
    "sha": "653450a32b7ae9cb85e2d72d23e8d6c92bc71cdab2276fe9fa6b84348d74a0c7"
   },
   "8c07ab6a": {
+   "classes": "llllllllll",
    "outcomes": "SKKBSSSKSS",
    "sha": "6a9fab032aac8449ee8420d8be2c154113bf2e211ea66ef0ca4da7286e787056"
   },
   "8c07d854": {
-   "outcomes": "SSKSKSKBSK",
-   "sha": "6a39b86d3893333d22e57aa37af92c15622418dc3095390d55d4c40081bc5618"
+   "classes": "lllsllslls",
+   "outcomes": "SSKKKSBBSK",
+   "sha": "66f760b2c88c5466bd3a7535024aaf528beffe4754dfdcf890aa7556193d750f"
   },
   "8c07e47c": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKKKBBK",
    "sha": "80052778a2d10db96f7a0c1a35d775b04b94c4cfd75dd06d73a3ebdd9d6a70cf"
   },
   "8c07f68a": {
+   "classes": "llllllllll",
    "outcomes": "KKKBKKKKBK",
    "sha": "8ac2c370d795cd9d6febcd5401a1701ae3bb2d239d49ab4954fb7a9d416d486f"
   },
   "8c080dd8": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKKKK",
    "sha": "5052249587020ffbb66da4b1c88c0d3e19372cc7849838ec55f13cb8702e818c"
   },
   "8c08e2b8": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKKKK",
    "sha": "1c7fa017682f2af42dee879108a8c875149e536c14adb7a8aa23523daa22c468"
   },
   "8c08f664": {
+   "classes": "llllllalla",
    "outcomes": "KKKKKBSKKK",
    "sha": "dc03df5bcfa89a73013fca0ada41ea09a0ec2712c4dc350e0556174c1684efda"
   },
   "8c097180": {
+   "classes": "aal",
    "outcomes": "KBK",
    "sha": "c84eec92978f4913e12394d0c4caab038d986a2dcb7769b859c207c15c36d339"
   },
   "8c099098": {
+   "classes": "lllaallala",
    "outcomes": "KKKSKKKSKB",
    "sha": "ebe7703591a35c1f1913db2eeb478bfeb35c26ccbfc5f83cf3eabffe8cd7c12a"
   },
   "8c09b254": {
-   "outcomes": "KSKKSKBKKK",
+   "classes": "lsllsllsll",
+   "outcomes": "KSKKKKBKKK",
    "sha": "62c326a3a103eb2892506067e85502ed3db6148ab5a5d9f8996fccf40770a538"
   },
   "8c09bfb6": {
+   "classes": "llllllllll",
    "outcomes": "KKKKKKKKBK",
    "sha": "649c79fa2e0445977a675ed30988b47935f36a15a5399c3e0eb2fb43c3504c8f"
   },
   "8c09c4c6": {
+   "classes": "asaaaasass",
    "outcomes": "SKKKKBSKSK",
    "sha": "03edc300657b452fb197e6bc0cc83b3f61052475ce57c2c0126003c0cd69cc1c"
+  }
+ },
+ "th": {
+  "8233b4a0": {
+   "classes": "llllalllll",
+   "outcomes": "KKKKKKKKKK",
+   "sha": "8aa37e030556ece8b31f49f8cfdb6ef898232b8b5d7de52d59e5a0d9fd7300db"
+  },
+  "82395e40": {
+   "classes": "llllllllal",
+   "outcomes": "KKKKKKKKKK",
+   "sha": "3a742f83d0ee1463c8b9a871de49c50335494a755e7049e7f93a67048b4ae7ce"
+  },
+  "8239c808": {
+   "classes": "llllllllll",
+   "outcomes": "KKSKKKKKKK",
+   "sha": "1157d09bd8ef0f71db642d9f43f55137ed236135a278e93e00b953d1861b9a9f"
+  },
+  "8239f0b8": {
+   "classes": "llllllllla",
+   "outcomes": "KKKKKKKKKK",
+   "sha": "3b3a9eb4b2a0eb42b73852494186f9eb4430c34b36db13690beeef878e28f19c"
+  },
+  "823a0cf0": {
+   "classes": "llllllllla",
+   "outcomes": "KKKKKKKKKK",
+   "sha": "92e23d117bc18fa0f5cb129b2132c9a9743ca9b1552f811304a94d8da8939a8b"
+  },
+  "823f4590": {
+   "classes": "aalaalalll",
+   "outcomes": "SSSKKKSSKK",
+   "sha": "05085c9a641aae16156a35b5995c0c9090e8bc706d3b4d1415bc1accbd7174da"
+  },
+  "8246bb10": {
+   "classes": "llllllllll",
+   "outcomes": "KKKSSKSKSS",
+   "sha": "2646927e7dbdd21e9175d6f9e01ebe7d74786eee3ec81a7d7cd9f6a0f828ff01"
+  },
+  "8247ef20": {
+   "classes": "llllalllll",
+   "outcomes": "KKSKKKKKKK",
+   "sha": "3c6b09be39d2687b5caafe6ea9d40816b918746cef0b9ef72f9228c96c9f8ca1"
+  },
+  "824be700": {
+   "classes": "llllllllll",
+   "outcomes": "KSKKKKSKKK",
+   "sha": "d06474151a2f3145993731db8fa9907fead08abf650bb4be5e7d92281040c4fe"
+  },
+  "824e7a88": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKKSK",
+   "sha": "4a9abff46ef56fc149184a56b6a06dcf606278ce38456de19409de0ca5ca590b"
+  },
+  "824f98d8": {
+   "classes": "llllllllll",
+   "outcomes": "SKKSSKKKKK",
+   "sha": "d3a95a557a8975de1e2220756b44b5d9460e1c4eb09f35f71128eec2b391b96a"
+  },
+  "8250dae8": {
+   "classes": "llallallal",
+   "outcomes": "KKKKSKKKSK",
+   "sha": "9905ca7e315c4b0ab1e18762f83e0ec54ffbc3011bdf1ba7912cb9e460e8c632"
+  },
+  "82692918": {
+   "classes": "lallallala",
+   "outcomes": "KKKSKKKKKK",
+   "sha": "330577fa1a58b8accf87fc26cbd1862ccf81f62300889ae82b64b5b351e4ada0"
+  },
+  "826e0dd0": {
+   "classes": "llllallall",
+   "outcomes": "KKKKKKKKKK",
+   "sha": "3c436ad34a8d5e23b9c41b273b1946050f012c07e783f89d1a0fa461b181ba2b"
+  },
+  "8274dc60": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKKKK",
+   "sha": "eed8ae39ff10a77393b10f29e7bc8d0f1ee1cd0e5b9a66d8b3215a0032535802"
+  },
+  "8277d310": {
+   "classes": "aaalaallla",
+   "outcomes": "SKSKSKKKKS",
+   "sha": "645a655f88356ddc26cea21960eaa5df8755219110313139c560e732c9d8568f"
+  },
+  "827d22f8": {
+   "classes": "llllllllll",
+   "outcomes": "KKSKKKKKKK",
+   "sha": "1c51b6308ad746b84efd60c440938fb45438dc39bc3a08cbbcb321b4a537a157"
+  },
+  "82801900": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKKKK",
+   "sha": "aee5ce6a4984699a6c1b6a2d63c54a96951470138bc39c921364c1e52532adcd"
+  },
+  "82802e40": {
+   "classes": "llllllllll",
+   "outcomes": "SKKSSKSSSK",
+   "sha": "1e968e881d11cd4b5bca94043ec91dc3c9351afc8180c49830f84a708e8ba723"
+  },
+  "8282a218": {
+   "classes": "laalllllll",
+   "outcomes": "KSSKSSKSSS",
+   "sha": "01d0a4708c5c75be0425caa3259dcf6be88573ab458428d08d6890b57db184d8"
+  },
+  "828c9a10": {
+   "classes": "llllllalll",
+   "outcomes": "KKKBKKKSSK",
+   "sha": "176e367adf287aec465b124dc109a0cc33dfd1dd41508ba2b239e1976edcfa46"
+  },
+  "8291d1f8": {
+   "classes": "llllllllll",
+   "outcomes": "SKKKKSKSKK",
+   "sha": "11bffa00cbd86d42ff7bbfe72219e051a76e09639aa208b9a39da07421911ec9"
+  },
+  "8292f130": {
+   "classes": "llllllllll",
+   "outcomes": "KKKBKKKBKK",
+   "sha": "36da7940ecf11921b168abdf5444ad4fa2b24ea5b91c04c998c5acbcbe1b9bf1"
+  },
+  "8294b220": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKSSKK",
+   "sha": "193b210dcaa9f0a643eec25e3870074ecfea947d36e3bd4f7aef9649449eddd8"
+  },
+  "8297dc28": {
+   "classes": "llllalaaaa",
+   "outcomes": "KKSKBKSSSK",
+   "sha": "d263d57047366413d6e580e266dd9e06a266a6c2df6fd135a64958cfaa3cd005"
+  },
+  "82988f10": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKSKKK",
+   "sha": "545c2b846d8658888ad9cfeb22ef58035e97ec7aa3437b529b90915c68392926"
+  },
+  "829f6e20": {
+   "classes": "llllllllll",
+   "outcomes": "KKKBKKKBKS",
+   "sha": "ba1337335ab2742f6a9ade17ef922f44e6b252e49d0d32f074bcc4d359ef811d"
+  },
+  "82a27588": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKKKK",
+   "sha": "d16771b93ff9e678e50c4858bacb46e7316c0db1c533f73faaa064c61de62240"
+  },
+  "82a468a8": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKBKK",
+   "sha": "91f675f193a3b92ab16ea7d5eb6df284e1736cac4da72c8176f02511d658e495"
+  },
+  "82a4a96c": {
+   "classes": "ll",
+   "outcomes": "KK",
+   "sha": "092514cf04145158848b241b1bfef11cac81f2ab1828ae3459a6056c788f0411"
+  },
+  "82a4be14": {
+   "classes": "llllllll",
+   "outcomes": "SKSSBSSK",
+   "sha": "088826c166e1be8491e3cb9ff97fde6cb84aca36c0682f8311c580105bfd4b2a"
+  },
+  "82a58d60": {
+   "classes": "llalllalal",
+   "outcomes": "KKSKSKSKKK",
+   "sha": "723a354f5532fecb3426f6069bcda7568103189d91e9ddcd05d4a23eaf4a4dd7"
+  },
+  "82a63354": {
+   "classes": "lllllll",
+   "outcomes": "SKSSBSS",
+   "sha": "4241d251f2112153eba1b88e98e401e410f555f0298776f0eb75781cc39340f0"
+  },
+  "82a6ffb8": {
+   "classes": "llllallall",
+   "outcomes": "KSKSKKKKKK",
+   "sha": "d0e6d39860679093d4264e8f7a08d984698e20137c2e1eeee45c183eed881baa"
+  },
+  "82aa3458": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKKKK",
+   "sha": "8b5cb24bd37351b9f563ca5c606eba36bcf71f3d42076e0bcb9cbec7e5189c4c"
+  },
+  "82ad91e8": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKSKSK",
+   "sha": "e7664ed0a0f79337e665cba81cd734b4d24916d9ec537dfb979c6c9ac63067ca"
+  },
+  "82ae9748": {
+   "classes": "llllllllll",
+   "outcomes": "KSSSKSSKSS",
+   "sha": "1376af61ae84f86e46dcb791ba51fbaddebc2520a351b2e531036aea1b2cb626"
+  },
+  "82b3a998": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKSKKKK",
+   "sha": "7f8c30ef43d1d16ecfbdeadb7e6d1ea95de4bbd71d1ce0f58da9aa36bade7795"
+  },
+  "82b4dd70": {
+   "classes": "llllllllll",
+   "outcomes": "KKSKSKKKKK",
+   "sha": "a64116aaf6750032d63feb4ea70408d5f67fe1c8304136fab6b397ac3c1ee2b5"
+  },
+  "82b719c8": {
+   "classes": "llllllllll",
+   "outcomes": "KSKKKKSKKK",
+   "sha": "2c65ac1ddbeffd18075b06c3cba149ee0613b1c771ff3dfffe01f244c6cc721c"
+  },
+  "82b9d648": {
+   "classes": "llllllllll",
+   "outcomes": "SSSSSKSSSS",
+   "sha": "6ae21dc39aef54dde689aeebd3f81f2e916f1e300e75458e69e351f07fd88210"
+  },
+  "82c25150": {
+   "classes": "llllllllll",
+   "outcomes": "KKKSKKKSKS",
+   "sha": "9050f0a45ce474863e6f9867c0f6796bad417b56e7197f0e36b60900e3c1c5ea"
+  },
+  "82c35e90": {
+   "classes": "lllll",
+   "outcomes": "KKKBK",
+   "sha": "25969ca656e16b48333e74ac2009ca7ba59ede0237c6d00a7edaa76a6b447dfd"
+  },
+  "82c531f0": {
+   "classes": "llllllllll",
+   "outcomes": "KSSSKSSSSS",
+   "sha": "a502a9794e750130c3b48983ea109e294704f62852c6421b5a25c9303bd81acc"
+  },
+  "82c55848": {
+   "classes": "lllllll",
+   "outcomes": "SKSSBSS",
+   "sha": "e36002f60f9c189e384eb652e61cf149153a6d4abfffad6b30a2cca670086e29"
+  },
+  "82cf30a0": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKKKK",
+   "sha": "55f71e1259db4e5a1e419767b4d0764953909153f7afe84ec3e8e1a3ecebe179"
+  },
+  "82cf5eb0": {
+   "classes": "llllllllll",
+   "outcomes": "SKKKKKSKSK",
+   "sha": "3906718d4972780563f19355729553ddc03017efc171015ae57e9ef7d7b1a4fd"
+  },
+  "82d20228": {
+   "classes": "lllllllala",
+   "outcomes": "KKSKBKSSKS",
+   "sha": "acde7eebca7de3d03336528dcb042f1c41f1c7849284c0a0b3e04705dc0f8759"
+  },
+  "82d36de8": {
+   "classes": "llllllllll",
+   "outcomes": "KKSKSKKKSK",
+   "sha": "be45fa5e12af703d99617e000c62f3242bd9a04c6d8cdf5fcdcf93d931407b47"
+  },
+  "82d41630": {
+   "classes": "llllalllll",
+   "outcomes": "KKKKKKSKKK",
+   "sha": "39245a28dcb4c287fc810af2ed484540498a4292ba5be62388e0d7b655d864d1"
+  },
+  "82d5cae0": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKBBKKK",
+   "sha": "e6070b26e19beda4619cc0f396b43d388ac96a9263f72a5c555871218ca9c633"
+  },
+  "82d99880": {
+   "classes": "lllllllaal",
+   "outcomes": "KKKKKKKKKK",
+   "sha": "8289863e930260d1a2e97bc2b96b055b7c92ba035436abcaea96b6e077048ab6"
+  },
+  "82daf800": {
+   "classes": "llallallll",
+   "outcomes": "KSKKKKKSSS",
+   "sha": "0e2ef2031a3684e50ba39566bb5ad90497c41bd440f684cba72b3a42b097aa9f"
+  },
+  "82e154b0": {
+   "classes": "llllllllll",
+   "outcomes": "KKKSKKBKKK",
+   "sha": "bb73ae73afcf32ed79fa27fd3c698c0f79f368fb9d5d83f30bb9ab4faf480656"
+  },
+  "82e4d7b0": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKSSKKK",
+   "sha": "dc84dde70ce16dea298883b09796f4c8273244e7b179c9de8647210d44abbd9d"
+  },
+  "82e6d348": {
+   "classes": "lll",
+   "outcomes": "KKB",
+   "sha": "76066996be24274836fb62dbb949c5838356c555d62142eb29abec3627298963"
+  },
+  "82eaf930": {
+   "classes": "lallllalal",
+   "outcomes": "KKKKKKKKKB",
+   "sha": "0c018438babee053c95a811a42b3dc2ce61291ba7be066e43fa7c6605d2678bf"
+  },
+  "82ec7600": {
+   "classes": "llllllllll",
+   "outcomes": "KKKKKKKKKK",
+   "sha": "39b99ef3e3755db7f99625b76185f7389c03ab6985e3ceb455254df9de15f760"
+  },
+  "82eef37c": {
+   "classes": "llllll",
+   "outcomes": "KKKKKK",
+   "sha": "2739c8e3e953c4a69b9d0545c8864e8a5930c61a4606b9fde514dc01779a5b91"
+  },
+  "82eef4a0": {
+   "classes": "llllll",
+   "outcomes": "KKKKKK",
+   "sha": "7c8613f78518da33a4536db515466550927f1b9dd0912304d2e669772c297a3a"
+  },
+  "82ef4d48": {
+   "classes": "llllll",
+   "outcomes": "KKKKKK",
+   "sha": "bee9926fe7f22252cd75492806dcafc2ab5359acdb49e27647afc5e6ebff4a7d"
+  },
+  "82f1f160": {
+   "classes": "llalaallll",
+   "outcomes": "SKKKKKKKBK",
+   "sha": "d76755a8264c8237fde7df272be2038559e6e335ecb58e5a8943b59de9537346"
+  },
+  "82f2aec8": {
+   "classes": "llaaalalal",
+   "outcomes": "KKKKKBKKKK",
+   "sha": "2f4969aa6f1db1086cc893f6bfb0ed755c19c44d24654698c9456ab6f7cc9243"
+  },
+  "82f7dab0": {
+   "classes": "aaalllalll",
+   "outcomes": "KKKSSKKSSK",
+   "sha": "f6b701492797d39335751d92eb6e6497c830b36476c05479c11d5bf40189eb9c"
+  },
+  "82f93418": {
+   "classes": "lllllallll",
+   "outcomes": "KKSSKKSSKS",
+   "sha": "a3a6a9325219568e4f59cdb1c06a35733848dd4d02b52fcabd815c4864b41ff6"
+  },
+  "82fa5ba0": {
+   "classes": "lallllllaa",
+   "outcomes": "SKSKKSKSKK",
+   "sha": "4198a3c71bcfe902b9874558eb1fa1dda2d670bffa08d05f832651f96fbd7c7d"
+  },
+  "82fccf20": {
+   "classes": "allllalall",
+   "outcomes": "KKKSSKSKSS",
+   "sha": "d2b7c101747f9da115a6478b653591ea4b8fae6edcf367d6b6a39ad7caefb959"
+  },
+  "82fce4c8": {
+   "classes": "alalalllll",
+   "outcomes": "KSKSKKSKSS",
+   "sha": "424d51611768cac577db0e9552696d934c150b1f3df6d5b56ab134e9b4aa28fe"
+  },
+  "82ffb808": {
+   "classes": "lllalaaall",
+   "outcomes": "KSKKKKKKSS",
+   "sha": "7253faa8297a65bfb39ebe2e1a9b6e6608d9c5b28bd32b069bfd9f921ae0965b"
+  },
+  "83014f80": {
+   "classes": "llallllall",
+   "outcomes": "SKKSSSSKKS",
+   "sha": "4ef723cc0babac5c6af3703e2b0ca9157783c6a6695bcc67db2688c0ea579e5a"
+  },
+  "8303bc08": {
+   "classes": "llalllllll",
+   "outcomes": "SKKKSKSKSK",
+   "sha": "91546094f9000707ef50213604b4c95b09346aff419d01b279888a16b2a9b501"
+  },
+  "8303db18": {
+   "classes": "alllallaal",
+   "outcomes": "KKSSKKSKKK",
+   "sha": "f5c6a8c3ef973f714862c855e7e070475e1fe8741a7e83661c1982f55a3d49fa"
+  },
+  "8303e8e0": {
+   "classes": "aaalllalla",
+   "outcomes": "KKKKSSKSKK",
+   "sha": "38126bfe3d3afb31383760d680703b2f88f2ab6c8e05760f3abc294c7af188db"
+  },
+  "83042308": {
+   "classes": "lllalllaaa",
+   "outcomes": "SSKKSSSKKK",
+   "sha": "a056ead5cf43d7dd12ab575514807ee8f0a1fc5a9c07f13be785590ecbd222af"
+  },
+  "83057be8": {
+   "classes": "llaaalllll",
+   "outcomes": "SSKKKKKKSS",
+   "sha": "b343e46615224f4e6cb88d7493ad568b3f34948580708db669c2d5f385d19d02"
+  },
+  "83065d70": {
+   "classes": "lllaaaalll",
+   "outcomes": "SKSKKKKSSS",
+   "sha": "3e332edf381d488efc6717dea40808bfdd75e1fc4b313c0e25f465fccc08e788"
+  },
+  "8309a470": {
+   "classes": "aaaaaaaaaa",
+   "outcomes": "KSKKSKKKKK",
+   "sha": "4668faf9fe839c6f79da96dcd32897d0e8b4d676fec236e0b1d4cfe859e4c3a8"
+  },
+  "830af770": {
+   "classes": "aaaaaaaaaa",
+   "outcomes": "SSKSKKKKKS",
+   "sha": "fc6b9366b5e5e911a86ef73397f20ba5920b7153d538c83da37474c1ebcf439a"
+  },
+  "83105240": {
+   "classes": "aaaaaaaaaa",
+   "outcomes": "SSKKSKSSKK",
+   "sha": "a289f3309ae303a44ca9aed4e1699d26c2b7bf869f2d0c162b2addf2b8c480de"
+  },
+  "831139a8": {
+   "classes": "aaaaaaaaaa",
+   "outcomes": "KSKSKKKSKK",
+   "sha": "9b735136b9afc62524c0ea6a2c315798c1644895e0cbee0a6a72358998305508"
   }
  }
 }

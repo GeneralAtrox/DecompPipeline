@@ -28,5 +28,11 @@ void tcrt_reset(void);
 void tcrt_poke(u32 addr, const u8 *data, u32 len);
 void tcrt_set_call_returns(const u64 rets[16], const u64 frets[16]);
 void tcrt_report(FILE *out, u64 r3, u64 f1_bits);
+/* tc_strict.h (included by tc_rt.c): the stricter judge's vectors.txt lines J and U (header), N and W (per
+ * vector, after tcrt_reset, which forgets them), and its report (CS lines). */
+void tcrt_strict_line(const char *line);
+void tcrt_strict_reset(void);
+int tcrt_strict_flags(void);
+void tcrt_strict_report(FILE *out);
 
 #endif

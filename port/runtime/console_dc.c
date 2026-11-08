@@ -15,7 +15,7 @@
 
 
 const PortConsole port_console = {
-    "dreamcast", "Dreamcast", PORT_GAME_NAME, port_version, 640u, 480u, PORT_VBLANK_HZ, PORT_CONSOLE_INTERP | PORT_CONSOLE_FPSCAP,
+    "dreamcast", "Dreamcast", PORT_GAME_NAME, port_version, 640u, 480u, PORT_VBLANK_HZ, PORT_CONSOLE_FPSCAP,
 };
 
 /* ---- the scene dump ---- */
@@ -61,15 +61,26 @@ int console_lockstep_pad(HostPad *pad) { return lockstep_pad(pad); }
 s32 console_lockstep_timer(s32 live) { return lockstep_timer(live); }
 int console_lockstep_time(HostTime *t) { return lockstep_time(t); }
 
-/* ---- the menu bar: Display > VMU screen, Display > Texture pack ---- */
+/* ---- the menu bar: Display > VMU screen, Display > Texture pack, Display > In-between frames ---- */
 static const char *const k_vmu_labels[] = {"&Off", "&Beside the picture", "O&ver the picture (top left)"};
 static const char *const k_vmu_values[] = {"off", "side", "over"}; /* gfx_vmu_mode_name's words */
+/* --interp-scene, greyed while the game's own draw function makes in-between frames: off (the ticks alone, or that draw
+ * function where the game offers one) or the renderer's screen blending (pvr/pvr_blend.c). The renderer keeps the
+ * scene before from the start, so a change applies from the next start. */
+static const char *const k_scene_labels[] = {"&Off", "&Screen blending"};
+static const char *const k_scene_values[] = {"off", "only"};
+static int g_scene_next = -1;
+static int scene_get(void) { return g_scene_next >= 0 ? g_scene_next : extra_scene_mode() > 0; }
+static void scene_set(int choice) { g_scene_next = choice; }
+static int scene_available(void) { return extra_scene_mode() >= 0; }
 
 static PortMenuItem k_menu[] = {
     {"Display", "V&MU screen", PORT_MENU_CHOICE, "vmu-screen", gfx_vmu_mode, gfx_vmu_set_mode, k_vmu_labels, k_vmu_values, 3,
      NULL},
     {"Display", "&Texture pack", PORT_MENU_CHOICE, "texture-pack", pvr_pack_choice, pvr_pack_set_choice, NULL, NULL, 0,
      pvr_pack_available},
+    {"Display", "In-&between frames (from the next start)", PORT_MENU_CHOICE, "interp-scene", scene_get, scene_set,
+     k_scene_labels, k_scene_values, 2, scene_available},
 };
 
 const PortMenuItem *console_menu_extra(unsigned *count)

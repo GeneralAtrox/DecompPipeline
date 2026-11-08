@@ -9,6 +9,7 @@
 #include "arm7.h"
 #include "aica_arm_probe.h"
 #include "prof.h"
+#include "work_count.h"
 
 #ifdef PORT_AICA_ARM_NATIVE
 extern const Arm7Native arm7_driver_native; /* game.json aica_arm_native: tools/arm7_translate.py's blocks of the driver */
@@ -136,6 +137,7 @@ static void run_samples(u32 n)
     for (u32 i = 0; i < n; i++) sample_step();
     prof_end(pt);
     arm7_probe_run_end(pb, i0, n, &g_arm);
+    work_add(WC_SOUND_CPU, (u32)(g_arm.executed - i0));
     if (!g_timed) return;
     g_time_ns += arm7_probe_now_ns() - t0;
     if (g_samples - g_time_from >= (u64)AICA_RATE * 10u) {

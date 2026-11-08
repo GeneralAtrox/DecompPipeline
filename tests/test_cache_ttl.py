@@ -40,6 +40,15 @@ class CacheTtl(unittest.TestCase):
         with self.assertRaises(ValueError):
             agent_cli.agent_env({"cache_ttl": "10m"})
 
+    def test_python_on_path_first(self):
+        """`python check.py` finds the pipeline's own Python on a machine whose PATH has only the py launcher."""
+        from unittest import mock
+        only = r"C:\Windows"  # example: a PATH holding only the py launcher's folder
+        with mock.patch.dict(os.environ, {"PATH": only}):
+            path = agent_cli.agent_env()["PATH"].split(os.pathsep)
+        self.assertEqual(path[0], os.path.dirname(sys.executable))
+        self.assertIn(only, path)
+
     def test_session_gets_it(self):
         seen = []
 

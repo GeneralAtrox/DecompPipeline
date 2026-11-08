@@ -18,6 +18,12 @@ DTPK (all words little-endian), as read from the banks themselves:
 SPSD: 0x00 "SPSD", 0x08 the form (as PCMS), 0x09 bit 0 stereo, 0x0c the data's size, 0x2a u16 the rate; data from
   0x40; stereo data alternates 0x2000-byte blocks, left first, each channel's ADPCM running on across its blocks.
 
+Writing: dtpk_keep(blob, keep, filler) returns a copy of a bank with only the samples in keep: the header and every
+  table as they are, the kept samples' data packed after them (offsets rewritten, 4-aligned), every other sample
+  entry pointed at one filler sample ({word form bits, loop start, loop end, data}, e.g. a bank's own silent sample)
+  and the size at 0x08 set. Requests and programs are untouched, so a request whose program names a dropped sample
+  plays the filler. (A bank too big for the sound RAM left, cut to the samples a game plays.)
+
 Usage: python aica_bank.py dump FILE OUTDIR [--offset N] [--size N]   (a DTPK or SPSD file, or one inside an image)
        python aica_bank.py list FILE [--offset N] [--size N]
 """
@@ -142,6 +148,38 @@ def dtpk_samples(blob):
 
 def dtpk_sample_pcm(blob, s):
     return decode(blob[s["offset"]:s["offset"] + s["size"]], s["pcms"])
+
+
+def dtpk_keep(blob, keep, filler):
+    """A copy of a DTPK bank with only the samples whose index is in keep (see the module's "Writing")."""
+    if not is_dtpk(blob):
+        raise ValueError("not a DTPK bank")
+    table = struct.unpack_from("<8I", blob, 0x20)[7]
+    samples = dtpk_samples(blob)
+    if not samples:
+        raise ValueError("a bank with no samples")
+    start = min(s["offset"] for s in samples)
+    if any(t >= start for t in struct.unpack_from("<8I", blob, 0x20) if t) or table + 4 + 16 * len(samples) > start:
+        raise ValueError("a table after the sample data: not a layout this writes")
+    out = bytearray(blob[:start])
+    out += bytes(-len(out) & 3)
+    where = {}
+    for s in samples:
+        if s["index"] in keep:
+            where[s["index"]] = len(out)
+            out += blob[s["offset"]:s["offset"] + s["size"]] + bytes(-s["size"] & 3)
+    fill = len(out)
+    out += filler["data"] + bytes(-len(filler["data"]) & 3)
+    for s in samples:
+        e = table + 4 + 16 * s["index"]
+        word, lsa, lea, z, size = struct.unpack_from("<IHHII", blob, e)
+        if s["index"] in where:
+            struct.pack_into("<I", out, e, (word & 0xff000000) | where[s["index"]])
+        else:
+            struct.pack_into("<IHHII", out, e, filler["form"] << 24 | fill, filler["loop_start"], filler["loop_end"], z,
+                             len(filler["data"]))
+    struct.pack_into("<I", out, 8, len(out))
+    return bytes(out)
 
 
 def spsd_info(blob):

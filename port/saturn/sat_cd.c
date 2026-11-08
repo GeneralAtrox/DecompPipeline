@@ -3,6 +3,10 @@
  * waiting, the registers carry the periodic status. The disc is read as the game plays it: sectors flow from the
  * drive through the selectors (sat_cdbuf.c) at a fixed rate per frame, and the ISO 9660 file commands answer from the
  * cue sheet's data track (sat_disc.c).
+ *
+ * Fast loads (Display > Fast disc loads; sat_main.c decides). At the drive's 2x a game's loads take seconds of black
+ * screen; with fast loads a data play fills the buffer as fast as the game empties it, unless its first sector starts
+ * a Sega FILM movie, whose frames are paced on the drive's rate.
  * Nearest existing: none for the Saturn; the Dreamcast kit's GD-ROM command set (port/dc) is a different device. */
 #include <stddef.h>
 #include <stdlib.h>
@@ -14,8 +18,9 @@ enum { ST_PAUSE = 1, ST_PLAY = 3, ST_NODISC = 7, ST_ERROR = 9, ST_PERIODIC = 0x2
 
 static u32 g_hirq = 0x07c1u, g_mask; /* as the BIOS leaves it: no disc-change flag */
 static u16 g_cr[4];
-static int g_unread, g_playing, g_repeat;
+static int g_unread, g_playing, g_repeat, g_quick;
 u32 sat_cd_data_rate = 150; /* sectors a second a data play delivers: a 2x drive turns 150 (--cdrate N). The movies pace their frames on it; 1200 made them play in bursts */
+int sat_cd_fast_loads = -1; /* 1: a load fills the buffer at once; 0: the drive's rate; -1: not set (sat_main.c decides) */
 static u32 g_state = ST_PAUSE, g_pos = 150, g_play_start, g_play_end, g_actual, g_acc;
 static SatFile g_dir[SAT_MAX_FILES];
 static int g_ndir;
@@ -46,10 +51,20 @@ static void reply_state(void)
     g_cr[1] = g_cr[2] = g_cr[3] = 0;
 }
 
-static void play(u32 start, u32 end, int repeat)
+/* a data play the game waits on: anything on the data track but a movie (its first sector starts "FILM") */
+static int quick(u32 start)
+{
+    u8 raw[SAT_SECTOR];
+    const SatTrack *t = track_at(start, NULL);
+    return sat_cd_fast_loads > 0 && t && (t->ctrl & 0x40) && sat_disc_read(start, raw) && memcmp(raw + 16, "FILM", 4) != 0;
+}
+
+static void play(u32 start, u32 at, u32 end, int repeat)
 {
     sat_cdda_flush();
-    g_play_start = g_pos = start;
+    g_quick = quick(start);
+    g_play_start = start;
+    g_pos = at;
     g_play_end = end;
     g_repeat = repeat;
     g_playing = 1;
@@ -97,21 +112,26 @@ static void put_file(u8 *o, const SatFile *f)
     o[8] = f->gap, o[9] = f->unit, o[10] = f->fn, o[11] = f->attr;
 }
 
+/* Play: a start, end or mode of all ones keeps the one in force, so a start of 0xffffff resumes a paused play where it
+ * stopped, with the same loop. The end in frame form is a sector count. */
 static void cmd_play(u32 c3, u32 c4, u32 pos24)
 {
-    u32 epos = (c3 & 0xff) << 16 | c4, start, end;
-    if (pos24 == 0xffffffu) {
-        start = g_pos, end = g_play_end;
-    } else if (pos24 & 0x800000u) {
-        start = pos24 & 0xfffffu;
+    u32 epos = (c3 & 0xff) << 16 | c4, mode = c3 >> 8, start = g_play_start, at = g_pos, end = g_play_end;
+    int fad = pos24 != 0xffffffu && (pos24 & 0x800000u);
+    if (fad) {
+        start = at = pos24 & 0xfffffu;
+    } else if (pos24 != 0xffffffu) {
+        u32 t0 = (pos24 >> 8) & 0xff;
+        start = at = sat_disc_track(t0 ? t0 : 1) ? sat_disc_track(t0 ? t0 : 1)->fad : 150;
+    }
+    if (epos != 0xffffffu && (fad || (epos & 0x800000u))) {
         end = start + (epos & 0xfffffu);
-    } else {
-        u32 t0 = (pos24 >> 8) & 0xff, t1 = (epos >> 8) & 0xff;
-        start = sat_disc_track(t0 ? t0 : 1) ? sat_disc_track(t0 ? t0 : 1)->fad : 150;
+    } else if (epos != 0xffffffu) {
+        u32 t1 = (epos >> 8) & 0xff;
         end = t1 && t1 < sat_disc_ntracks() ? sat_disc_track(t1 + 1)->fad : sat_disc_leadout();
     }
-    port_log("cd: play frames %u..%u repeat %u\n", start, end, (c3 >> 8) & 15u);
-    play(start, end, (c3 >> 8) & 15);
+    port_log("cd: play frames %u..%u from %u mode %02x at vertical blank %u\n", start, end, at, mode, sat_vblank_count());
+    play(start, at, end, mode == 0xffu ? g_repeat : (int)(mode & 15u));
 }
 
 static u32 cmd_file(u32 cmd, u32 c1, u32 c2, u32 c3, u32 c4)
@@ -139,7 +159,7 @@ static u32 cmd_file(u32 cmd, u32 c1, u32 c2, u32 c3, u32 c4)
             u32 first = g_dir[fid].fad + pos24, n = (g_dir[fid].size + 2047u) / 2048u - pos24;
             f->mode = 1, f->fad = first, f->count = n;
             cdb_connect_cd(c3 >> 8);
-            play(first, first + n, 0);
+            play(first, first, first + n, 0);
             reply_state();
         }
         return 0;
@@ -235,7 +255,9 @@ static u32 command(void)
         return H_EHST;
     }
     case 0x10: cmd_play(c3, c4, pos24); reply_state(); return 0;
-    case 0x11: if (pos24 & 0x800000u) g_pos = pos24 & 0xfffffu; stop(); reply_state(); return 0;
+    case 0x11: /* seek: 0xffffff pauses where the play is (a game's pause; play 0xffffff resumes it) */
+        if (pos24 != 0xffffffu && (pos24 & 0x800000u)) g_pos = pos24 & 0xfffffu;
+        stop(); reply_state(); return 0;
     case 0xe0: reply_state(); return H_EFLS;
     case 0xe1: reply_state(); g_cr[1] = 4; return 0;
     default: {
@@ -295,10 +317,7 @@ static u32 dtr_read(u32 p, u32 size)
     return xfer_read(size);
 }
 
-static void dtr_write(u32 p, u32 size, u32 value)
-{
-    (void)p, (void)size, (void)value;
-}
+static void dtr_write(u32 p, u32 size, u32 value) { (void)p, (void)size, (void)value; }
 
 /* once a frame: the drive delivers sectors, the periodic status refreshes */
 void sat_cd_frame(void)
@@ -311,7 +330,9 @@ void sat_cd_frame(void)
         const SatTrack *t = track_at(g_pos, NULL);
         int data = t && (t->ctrl & 0x40);
         u32 n = FRAME_SECTORS;
-        if (data) {
+        if (data && g_quick) {
+            n = CD_BLOCKS; /* as many as the buffer takes: cdb_store stops at full */
+        } else if (data) {
             g_acc += sat_cd_data_rate;
             n = g_acc / sat_sys_hz();
             g_acc %= sat_sys_hz();
@@ -356,6 +377,8 @@ void sat_cd_frame(void)
     g_hirq |= H_SCDQ;
 }
 
+/* sat_movie.c: the host played a movie itself; the drive is left paused where the original's play of the file left it */
+void sat_cd_played(u32 start, u32 at, u32 end) { stop(), g_play_start = start, g_pos = at, g_play_end = end; }
 
 int sat_cd_playing_audio(u32 *fad, u32 *end) /* for the sound path: CD-DA is playing */
 {

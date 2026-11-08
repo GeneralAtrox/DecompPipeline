@@ -3,8 +3,8 @@
 // --window picks a window instead, sized WxH, Nx (N times the console's picture) or fit (the largest whole multiple of it whose
 // whole window, title bar and menu bar included, the desktop's usable area holds). Alt+Enter and F11 switch between the two, and the choice is kept in the settings.
 // The output's pixel size goes to the renderer (gfx_resize), which keeps the 4:3 picture pillarboxed whatever the
-// window's shape. The window can also pause the game or mute it while it is not focused, and count frames in its
-// title.
+// window's shape. The window can also pause the game or mute it while it is not focused, and count frames (on the
+// menu bar: host_counter.cpp).
 // A windowed window is sized and placed by its outer rectangle (title bar, borders and menu bar included) inside the
 // work area of the display it is on (host_place.h), at any display scaling.
 #ifndef NOMINMAX
@@ -37,7 +37,7 @@ bool g_windowed, g_fit, g_paused;
 int g_scale;          // --window Nx (0: not used)
 int g_win_w, g_win_h; // --window WxH: the client size asked for (0: fit or Nx)
 host::Prefs g_prefs;
-unsigned g_frames;
+unsigned g_frames, g_count_blanks; // frames shown and port_vblank_count() since g_count_start (frame_counter)
 Uint64 g_count_start;
 
 bool parse_size(const char *v, int *w, int *h)
@@ -301,19 +301,23 @@ extern "C" void *host_window_hwnd(void)
     return SDL_GetPointerProperty(SDL_GetWindowProperties(g_window), SDL_PROP_WINDOW_WIN32_HWND_POINTER, nullptr);
 }
 
+// Once a second: frames shown and the game's own ticks (vertical blanks run) a second, to the menu bar (host_counter.cpp).
+static void frame_counter(void)
+{
+    Uint64 now = SDL_GetTicks();
+    u32 blanks = port_vblank_count();
+    if (now - g_count_start < 1000) return;
+    double secs = static_cast<double>(now - g_count_start) / 1000.0;
+    if (!g_paused) host::counter_show(g_prefs.fps_counter, g_frames / secs, (blanks - g_count_blanks) / secs, port_console.tick_hz);
+    g_frames = 0;
+    g_count_start = now;
+    g_count_blanks = blanks;
+}
 
 extern "C" void host_window_frame(void)
 {
-    Uint64 now = SDL_GetTicks();
     g_frames++;
-    if (now - g_count_start < 1000) return;
-    if (g_prefs.fps_counter && !g_paused) {
-        char text[32];
-        std::snprintf(text, sizeof text, "%.0f fps", g_frames * 1000.0 / static_cast<double>(now - g_count_start));
-        set_title(text);
-    }
-    g_frames = 0;
-    g_count_start = now;
+    if (!gfx_on_present_thread()) frame_counter();
 }
 
 // The window as the display sees it: a window that is covered or not focused may be given few presents (DWM).
@@ -329,11 +333,68 @@ extern "C" const char *host_window_state(void)
 
 // Window events: closing ends the run, a new pixel size resizes the output, Alt+Enter and F11 switch full screen,
 // and while paused the game thread waits here (still handling events) until the window is focused again.
+// --present-thread: the lock around the device context (host.h). The game's thread is the window's: while it waits it answers
+// messages sent to the window, since a present on the other thread can wait for those. It says it is waiting, so the other
+// thread, which draws frame after frame, cannot keep it out.
+static CRITICAL_SECTION g_gfx_cs;
+static volatile LONG g_gfx_mt, g_gfx_wanted, g_gfx_waits; static LONGLONG g_gfx_wait_us; /* the game's thread's waits (gfx_lock_waits) */
+static __declspec(thread) int g_gfx_present_thread;
+
+extern "C" void gfx_lock_on(void)
+{
+    InitializeCriticalSection(&g_gfx_cs);
+    g_gfx_mt = 1;
+}
+
+extern "C" void gfx_lock(void)
+{
+    if (!g_gfx_mt) return;
+    if (g_gfx_present_thread) {
+        EnterCriticalSection(&g_gfx_cs);
+        return;
+    }
+    InterlockedIncrement(&g_gfx_wanted);
+    if (!TryEnterCriticalSection(&g_gfx_cs)) {
+        LARGE_INTEGER a, b, f;
+        QueryPerformanceCounter(&a);
+        do {
+            MSG m;
+            PeekMessageW(&m, NULL, 0, 0, PM_NOREMOVE | PM_QS_SENDMESSAGE);
+            SwitchToThread();
+        } while (!TryEnterCriticalSection(&g_gfx_cs));
+        QueryPerformanceCounter(&b);
+        QueryPerformanceFrequency(&f);
+        g_gfx_waits++, g_gfx_wait_us += (b.QuadPart - a.QuadPart) * 1000000 / f.QuadPart;
+        if ((b.QuadPart - a.QuadPart) * 10 >= f.QuadPart)
+            port_log("gfx: the game's thread waited %lld ms for the device context\n", (b.QuadPart - a.QuadPart) * 1000 / f.QuadPart);
+    }
+    InterlockedDecrement(&g_gfx_wanted);
+}
+
+extern "C" void gfx_unlock(void)
+{
+    if (g_gfx_mt) LeaveCriticalSection(&g_gfx_cs);
+}
+
+extern "C" void gfx_lock_present_thread(void) { g_gfx_present_thread = 1; }
+extern "C" int gfx_on_present_thread(void) { return g_gfx_present_thread; }
+extern "C" int gfx_lock_wanted(void) { return g_gfx_wanted != 0; }
+extern "C" void gfx_lock_waits(unsigned *n, unsigned long long *us) { *n = (unsigned)g_gfx_waits, *us = (unsigned long long)g_gfx_wait_us; }
+
 extern "C" void gfx_pump(void)
 {
     SDL_Event e;
     if (!g_window) return;
-    while (SDL_PollEvent(&e)) handle(e);
-    while (g_paused)
-        if (SDL_WaitEventTimeout(&e, 100)) handle(e);
+    frame_counter(); /* frames shown by the other thread (--present-thread) count here */
+    while (SDL_PollEvent(&e)) {
+        gfx_lock();
+        handle(e);
+        gfx_unlock();
+    }
+    if (g_paused) {
+        gfx_lock();
+        while (g_paused)
+            if (SDL_WaitEventTimeout(&e, 100)) handle(e);
+        gfx_unlock();
+    }
 }

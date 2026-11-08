@@ -26,12 +26,21 @@ static int parse_size(const char *v, u32 *w, u32 *h)
     return 1;
 }
 
+/* --present-stall-us N: every Present takes N us longer (a test of a slow display: a 300 Hz desktop, 11-07, 7 ms
+ * each); --present-pace off: the thread of in-between frames takes the device context as before (runtime/frame_thread.c) */
+static unsigned g_stall_us;
+static int g_unpaced;
+unsigned gfx_present_stall_us(void) { return g_stall_us; }
+int gfx_present_paced(void) { return !g_unpaced; }
+
 int gfx_option(const char *arg, const char *value)
 {
     int n = console_present_option(arg, value);
     if (n) return n;
     if (!strcmp(arg, "--headless") || !strcmp(arg, "--no-window")) return g_gfx.headless = 1;
     if (!strcmp(arg, "--warp")) return g_gfx.warp = 1;
+    if (!strcmp(arg, "--present-stall-us") && value) return g_stall_us = (unsigned)strtoul(value, NULL, 10), 2;
+    if (!strcmp(arg, "--present-pace") && value) return g_unpaced = !strcmp(value, "off"), 2;
     if (!strcmp(arg, "--vsync") && value) {
         g_gfx.vsync = strcmp(value, "off") != 0;
         return 2;

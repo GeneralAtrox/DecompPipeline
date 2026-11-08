@@ -60,6 +60,7 @@ static int top(void) { return g_depth ? g_stack[g_depth - 1u] : GAME; }
 
 u64 prof_enter(int id)
 {
+    if (gfx_on_present_thread()) return 0u; /* the rows are the game thread's */
     u64 t = prof_now();
     g_acc[top()] += t - g_since;
     g_since = t;
@@ -295,7 +296,7 @@ void prof_scene(u32 headers, u32 triangles)
     g_triangles = triangles;
 }
 
-void prof_frame(void)
+static void prof_frame_locked(void)
 {
     u64 t;
     Rec r;
@@ -388,4 +389,11 @@ int prof_option(const char *arg, const char *value)
         return 2;
     }
     return 0;
+}
+
+void prof_frame(void)
+{
+    gfx_lock();
+    prof_frame_locked();
+    gfx_unlock();
 }

@@ -25,7 +25,10 @@ RESERVED = {"on", "off"}  # what --texture-pack takes as words
 
 
 def pack_files(name, folder, notice):
-    """(archive name, source file) for a pack; raises ValueError if it is not fit to ship."""
+    """(archive name, source file) for a pack; raises ValueError if it is not fit to ship. A NOT_FOR_RELEASE.txt in the
+    folder stops it: the pack holds art whose owner hasn't been settled, for the player's own copy only."""
+    if (pathlib.Path(folder) / "NOT_FOR_RELEASE.txt").is_file():
+        raise ValueError(f"pack {name}: {folder} is marked NOT_FOR_RELEASE.txt: " + (pathlib.Path(folder) / "NOT_FOR_RELEASE.txt").read_text(encoding="utf-8").strip())
     folder = pathlib.Path(folder)
     if name in RESERVED or not name or any(c in name for c in "/\\:#=&"):
         raise ValueError(f"pack name {name!r}: --texture-pack would not read it as a folder of packs/")

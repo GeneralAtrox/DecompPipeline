@@ -164,7 +164,7 @@ static u32 oc_read(u32 a, u32 size)
     if (o >= 0x120u && o < 0x140u) o -= 0x20u; /* the divider repeats at 0x...ff20 */
     if (o >= 0x118u && o < 0x120u) o -= 8u;    /* DVDNTH/DVDNTL are also read at 0x...ff18 and 0x...ff1c */
     if (o == 0x11u) sat_poll_hint(8); /* FTCSR: a wait for the other CPU's signal */
-    if (o == 0x12u || o == 0x13u) { /* FRC */
+    if (o == 0x12u) { /* FRC: reading its upper byte latches the lower one, so a byte pair is one count (Robo Pit's movie clock) */
         u32 c = sat_frt_count();
         *(u16 *)(g_oc + 0x12) = bswap16((u16)c);
     }
@@ -173,7 +173,8 @@ static u32 oc_read(u32 a, u32 size)
 }
 
 /* The on-chip DMA controller, auto-request channels only (what the game uses to copy and clear memory): a transfer
- * runs to completion when the channel is enabled and DMAOR's master enable is set, and sets CHCR's TE. */
+ * runs to completion when the channel is enabled and DMAOR's master enable is set, and sets CHCR's TE. With 16-byte
+ * units TCR counts longwords, 4 per unit (the game sets it to bytes / 4), so a unit takes 4 off the count. */
 static u32 oc32(u32 o) { return bswap32(*(u32 *)(g_oc + o)); }
 static void dmac_run(u32 ch)
 {
@@ -185,12 +186,12 @@ static void dmac_run(u32 ch)
         return;
     }
     if (n == 0) n = 0x1000000u;
-    for (u32 i = 0; i < n; i++) {
+    for (u32 i = 0; i < n; i += unit == 16u ? 4u : 1u) {
         if (unit == 1u) wr8(dar, rd8(sar));
         else if (unit == 2u) wr16(dar, rd16(sar));
         else if (unit == 4u) wr32(dar, rd32(sar));
         else
-            for (u32 k = 0; k < 16u; k += 4u) wr32(dar + k, rd32(sar + k));
+            for (u32 k = 0; k < 16u && i + k / 4u < n; k += 4u) wr32(dar + k, rd32(sar + k));
         sar += sm == 1u ? unit : sm == 2u ? (u32)-(s32)unit : 0u;
         dar += dm == 1u ? unit : dm == 2u ? (u32)-(s32)unit : 0u;
     }
@@ -302,6 +303,12 @@ u32 rd32(u32 a)
     if (q - 0x06000000u < 0x02000000u) return bswap32(*(u32 *)(g_wh + (a & (SAT_WRAM_SIZE - 1u))));
     if (q - SAT_WRAM_L_BASE < SAT_WRAM_SIZE) return bswap32(*(u32 *)(g_wl + (q - SAT_WRAM_L_BASE)));
     return bus_read(a, 4);
+}
+
+u32 sat_dma_rd32(u32 a) /* a read by the SCU's DMA (sat_scu.c), not by a CPU: no poll hint */
+{
+    u32 q = a & 0xdfffffffu;
+    return q - 0x06000000u < 0x02000000u || q - SAT_WRAM_L_BASE < SAT_WRAM_SIZE ? sat_peek32(a) : bus_read(a, 4);
 }
 
 u16 rd16(u32 a)

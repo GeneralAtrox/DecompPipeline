@@ -12,9 +12,16 @@ import re
 import ram_delta
 
 
+def gen_dir(game, build_dir):
+    """The build's generated folder, as tools/build.py names it: BD_gen for a --build-dir BD, gen for the default
+    build (no --build-dir: x86, or x86chk with --checked)."""
+    own = build_dir if build_dir not in (None, "", "x86", "x86chk") else None
+    return pathlib.Path(game) / "build" / (f"{own}_gen" if own else "gen")
+
+
 def global_names(game, build_dir):
     """[(guest address, name)] of the game's globals, from the build's generated game.h."""
-    h = pathlib.Path(game) / "build" / f"{build_dir}_gen" / "include" / "game.h"
+    h = gen_dir(game, build_dir) / "include" / "game.h"
     if not h.exists():
         return []
     pat = re.compile(r"#define (\w+) \(\*\(rdg_\w+_t \*\)0x([0-9a-f]{8})u\)")
@@ -41,18 +48,22 @@ def paired_frames(ref_ram, port_ram, drive=None):
     where = {}  # label -> the reference frames with it (the game's timer restarts, so labels repeat)
     for i in range(len(emu)):
         where.setdefault(emu.tag(i)[2], []).append(i)
-    eit = emu.frames()
-    ei, eram = next(eit, (None, None))
-    for pi, pram in prt.frames():
-        _, at, label = prt.tag(pi)
-        if drive and 0 <= int(at) < len(drive):
-            label = drive[int(at)]
-        j = next((i for i in where.get(label, ()) if i >= ei), None)
-        if j is None:
-            continue
-        while ei < j:
-            ei, eram = next(eit)
-        yield prt.tag(pi), emu.tag(ei), pram, eram
+    try:
+        eit = emu.frames()
+        ei, eram = next(eit, (None, None))
+        for pi, pram in prt.frames():
+            _, at, label = prt.tag(pi)
+            if drive and 0 <= int(at) < len(drive):
+                label = drive[int(at)]
+            j = next((i for i in where.get(label, ()) if i >= ei), None)
+            if j is None:
+                continue
+            while ei < j:
+                ei, eram = next(eit)
+            yield prt.tag(pi), emu.tag(ei), pram, eram
+    finally:  # also when the caller stops early (closing() in divergence.first_divergence)
+        emu.close()
+        prt.close()
 
 
 def region(text, names):

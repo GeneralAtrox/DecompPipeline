@@ -19,6 +19,7 @@ public class TcFacts {
     boolean fpscrModel;
     boolean paramSummaries; // "param_summaries": callee summaries decide compared callee registers (TcSum, TcSig)
     boolean targetedVectors; // "targeted_vectors": boundary-value vectors for untaken branch directions (TcBound)
+    boolean boundaryVectors; // "boundary_vectors": vectors at the compares' edges (TcBound.Edges, TcBoundPass)
     boolean branchCoverage; // "branch_coverage": record branch directions (TcDirs; report only)
     boolean coverageInputs; // "coverage_inputs": constant-guided inputs (TcGuide) in about a third of the vectors
     long oracleBudgetS;     // vector generation's budget, in seconds of work at workPerS (0: none; TcBudget)
@@ -104,6 +105,7 @@ public class TcFacts {
                 case "fpscr_model": f.fpscrModel = v.equals("1") || v.equals("true"); break;
                 case "param_summaries": f.paramSummaries = v.equals("1") || v.equals("true"); break;
                 case "targeted_vectors": f.targetedVectors = v.equals("1") || v.equals("true"); break;
+                case "boundary_vectors": f.boundaryVectors = v.equals("1") || v.equals("true"); break;
                 case "branch_coverage": f.branchCoverage = v.equals("1") || v.equals("true"); break;
                 case "coverage_inputs": f.coverageInputs = v.equals("1") || v.equals("true"); break;
                 case "oracle_budget_s": f.oracleBudgetS = Long.parseLong(v); break;

@@ -22,5 +22,6 @@ void end_line(const char *fmt, ...);
 void log_dir(char *out, size_t cap);
 int autosave_path(char *out, size_t cap);
 void recording_header(char *out, size_t cap);
+int port_plant_fault(void); /* fault_plant.c: --fault-at's test fault */
 
 #endif

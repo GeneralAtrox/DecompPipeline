@@ -1,6 +1,9 @@
 /* Saturn SH-2 readable-C test runner (32-bit, work RAM at its own address): executes the function on every vector and prints its observable effects.
  *
  * usage: rd_runner <image> <code_ranges> <fsca_table> <vectors.txt> <dev|hidden|all> <out.txt>
+ *
+ * The stricter judge's lines J and U (header), N and W (per vector) go to tc_strict.h (tcrt_strict_line), as
+ * runtime/runner.c passes them.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -87,12 +90,15 @@ int main(int argc, char **argv)
             tcrt_add_live(t, reg, n, d);
         } else if (line[0] == 'S') { /* a state pointer into the store-queue window, before the first vector (TcSq) */
             tcrt_set_sq_window();
-        } else if (line[0] == 'Y') { /* a listed hardware register and its value, before the first vector (TcHw) */
+        } else if (line[0] == 'Y') { /* a listed hardware register, its value and width (4 if none), before the first
+                                        vector (TcHw), as runtime/runner.c reads it */
             char *p = line + 1;
-            u32 reg = (u32)strtoul(p, &p, 16);
-            tcrt_add_hw(reg, (u32)strtoul(p, &p, 16));
+            u32 reg = (u32)strtoul(p, &p, 16), value = (u32)strtoul(p, &p, 16), size = (u32)strtoul(p, &p, 10);
+            tcrt_add_hw(reg, value, size ? size : 4);
         } else if (line[0] == 'Z') { /* GBR is state, before the first vector (TcHw): reported at exit as GB */
             tcrt_set_gbr_state();
+        } else if (line[0] == 'J' || line[0] == 'U') { /* the stricter judge's flags and facts (tc_strict.h) */
+            tcrt_strict_line(line);
         } else if (line[0] == 'V') {
             char set[16] = {0};
             sscanf_s(line + 2, "%d %15s", &id, set, (unsigned)sizeof set);
@@ -109,6 +115,8 @@ int main(int argc, char **argv)
             }
         } else if (!active) {
             continue;
+        } else if (line[0] == 'N' || line[0] == 'W') { /* after V's reset: the junk's key, a snapshot (tc_strict.h) */
+            tcrt_strict_line(line);
         } else if (line[0] == 'R') {
             sscanf_s(line + 1, "%x %x %x %x", &r[0], &r[1], &r[2], &r[3]);
         } else if (line[0] == 'F' || line[0] == 'X') {

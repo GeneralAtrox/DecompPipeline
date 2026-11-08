@@ -53,6 +53,7 @@ public class TcPrepare extends TcVectors {
         frameLo = facts.frameLo;
         spinWait = a.length > 10 && a[10].startsWith("spin");
         if (spinWait && a[10].startsWith("spin:")) for (String w : a[10].substring(5).split("_")) spinWords.add(Long.parseLong(w, 16));
+        TcHw.windowHit = false;
         TcHw.on = TcHw.parse(a.length > 11 ? a[11] : "-");  // listed hardware ops (TcHw), null: none (every prepare)
         List<String> hints = hintsFile.equals("-") ? new ArrayList<>() : Files.readAllLines(Paths.get(hintsFile));
         Files.createDirectories(packet);
@@ -81,6 +82,7 @@ public class TcPrepare extends TcVectors {
         blocks.sort(Comparator.comparingLong(x -> x[0]));
         for (int i = 0; i < blocks.size(); i++) blockIndex.put(blocks.get(i)[0], i);
         if (facts.branchCoverage || facts.targetedVectors) dirs = TcDirs.of(listing, body);  // TcDirs, TcBound
+        if (facts.boundaryVectors) edges = TcBound.Edges.of(listing, body);  // compare edges (TcBoundPass.edges)
 
         // fsca table (core/fsca.py): 2 x 65536 x (sin bits, cos bits), little endian; round to nearest, toward zero
         byte[] tb = Files.readAllBytes(fsca);
@@ -265,6 +267,7 @@ public class TcPrepare extends TcVectors {
         }
         String reach = why == null ? TcReach.run(this, proto, seed, seeds) : null;  // vectors reaching unreached calls
         String bound = why == null ? TcBoundPass.run(this, proto, seed, new ArrayList<>(globals)) : null;  // TcBound
+        String edge = why == null ? TcBoundPass.edges(this, proto, seed, new ArrayList<>(globals)) : null;  // the last vectors
         String head = fpscrLine() + TcHw.header() + (live != null ? live.header() : "")
             + (sq != null ? sq.header() : "");
         Files.write(harness.resolve("vectors.txt"), (head + TcStrict.header(facts) + vout).getBytes("UTF-8"));  // J, U
@@ -309,9 +312,18 @@ public class TcPrepare extends TcVectors {
             + (textRestored > 0 ? "\"text_restored\":" + textRestored + "," : "")
             + (bal.length() > 0 ? "\"stack_balance\":[" + bal + "]," : "") + (reach != null ? reach + "," : "")
             + (unhit.length() > 0 ? "\"blocks_unhit\":[" + unhit + "]," : "")
-            + (bound != null ? bound + "," : "")
+            + (bound != null ? bound + "," : "") + (edge != null ? edge + "," : "")
             + (dirs != null && why == null ? dirs.summary(dirsDev, dirsAll) : ""),
             hints.size(), sites, inv, ex);
+        if (TcHw.windowHit && why == null) {  // only functions that store there: other metas unchanged
+            StringBuilder hw = new StringBuilder();
+            for (long[] w : TcBase.HW_WINDOWS) {
+                hw.append(hw.length() > 0 ? "," : "").append("[\"").append(hex(w[0])).append("\",\"").append(hex(w[1] - 1)).append("\"]");
+            }
+            meta = meta.substring(0, meta.lastIndexOf("\n}")) + ",\n  \"hw_windows\": [" + hw + "]\n}\n";
+            Files.write(packet.resolve("meta.json"), meta.getBytes("UTF-8"));
+            Files.write(harness.resolve("meta.json"), meta.getBytes("UTF-8"));
+        }
         Files.write(harness.resolve("oracle_summary.json"), summary.getBytes("UTF-8"));
         println("TcPrepare: " + summary.trim());
     }

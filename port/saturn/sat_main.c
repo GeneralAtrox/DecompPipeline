@@ -5,9 +5,18 @@
  *
  *   port.exe --disc <image.cue> [--image FILE] [--seconds N] [--log FILE] [--save FILE] [--cdrate N]
  *            [--fixed-clock 1]  (virtual time: the vertical blank comes by the machine's own count, so a run repeats exactly)
- *            [--headless] [--fast] [--frames N] [--wav FILE | --audio-dump FILE] [--shot VB FILE] [--shot-every N]
+ *            [--headless] [--fast] [--frames N] [--wav FILE | --audio-dump FILE] [--shot VB FILE] [--shot-every N] [--shot-max N]
  *            [--input NAME@V[+N],..] [--replay FILE.ptrec] [--record off] [--scene-dump-at V] [--stop-at V]
+ *            [--ground-shadows under|original] [--cd-fast-loads on|off] [--in-between on|off]   (play runs: under, on, on; checks: original, off, none)
+ *            [--twin-stick on|off]   (game.json twin_stick: in fights the right stick turns; on in unscripted runs)
+ *            [--auto-load on|off]   (the game's load path at boot when its save is there: on in unscripted play runs)
+ *            [--part-choice NAME]   (a model part the game offers, sat_part.c; default the original)
+ *            [--net on|off|HOST[:PORT]]   (the Online menu's saved choice: host, play alone, join)
+ *            [--net-host PORT|on | --net-join HOST[:PORT]] [--net-delay N] [--net-wait on|off] [--net-hash-every N]
+ *            [--net-pace on|off] [--net-test-*]   (online play for two, game.json netplay: sat_net.h)
  *            [--aspect fit|4:3|16:9|21:9] [--volume 0..100] [--window ...]   (the base's: window, input, session, log)
+ *            [--bands N]   (VDP2 composed in N bands at once, base/bands.c; 0 as the cores, at most 4; 1 one thread)
+ *            [--v1-bands on|off]   (VDP1 drawn in those bands too, each band its own rows; off: one thread)
  *            [--layers HEX] [--peek A,..] [--v1dump N] [--profile] [--sample] [--trace ...]   (bring-up aids)
  * An option nobody knows is skipped, so the saved settings of a newer base never stop an older kit. */
 #include <stdarg.h>
@@ -18,6 +27,7 @@
 #include "sat.h"
 #include "sat_sys.h"
 #include "sat_cd.h"
+#include "sat_part.h"
 #include "sat_game.h"
 #include "sat_scsp.h"
 #include "sat_vdp.h"
@@ -26,8 +36,12 @@
 #include "scene_dump.h"
 #include "session.h"
 #include "play_stats.h"
+#include "work_count.h"
 #include "present_cpu.h"
+#include "bands.h"
 #include "host.h"
+#include "autoload.h"
+#include "sat_net.h"
 
 static u32 g_max_frames, g_watch_s;
 static const char *g_image = SAT_IMAGE_DEFAULT, *g_cue = "";
@@ -48,7 +62,9 @@ void port_exit(const char *why, int code)
 {
     if (InterlockedExchange(&g_exiting, 1)) return;
     port_log("exit: %s (%d) after %u vertical blanks\n", why, code, sat_vblank_count());
+    sat_net_end();
     play_stats_report();
+    work_count_report();
     game_log_end(end_words(why, code), code, code != 0);
     sat_profile_report();
     sat_perf_report();
@@ -105,6 +121,7 @@ static int kit_option(const char *a, const char *v, KitRun *r)
     }
     if (!strcmp(a, "--headless")) {
         r->headless = 1;
+        cpu_present_option(a, NULL); /* the counters' run opens the device with no window */
         return 1;
     }
     if (!strcmp(a, "--profile")) {
@@ -130,6 +147,12 @@ static int kit_option(const char *a, const char *v, KitRun *r)
     }
     else if (!strcmp(a, "--cdrate")) sat_cd_data_rate = (u32)atoi(v);
     else if (!strcmp(a, "--v1dump")) sat_v1_dump_every = (u32)atoi(v);
+    else if (!strcmp(a, "--v1-bands")) sat_v1_bands_set(strcmp(v, "off") != 0);
+    else if (!strcmp(a, "--ground-shadows")) sat_v1_ground_shadows = !strcmp(v, "under");
+    else if (!strcmp(a, "--in-between-shot")) sat_inb_shot_option(v);
+    else if (!strcmp(a, "--in-between")) sat_inb_on = !strcmp(v, "on"); /* play runs: on (sat_inb.c) */
+    else if (!strcmp(a, "--cd-fast-loads")) sat_cd_fast_loads = strcmp(v, "off") != 0;
+    else if (!strcmp(a, "--part-choice")) sat_part_option(v);
     else if (!strcmp(a, "--layers")) sat_layer_mask = (u32)strtoul(v, NULL, 16);
     else if (!strcmp(a, "--peek")) {
         for (char *s = (char *)v; *s && sat_peek_n < 16; sat_peek_n++) {
@@ -139,6 +162,7 @@ static int kit_option(const char *a, const char *v, KitRun *r)
     }
     else if (!strcmp(a, "--wav") || !strcmp(a, "--audio-dump")) sat_audio_wav(v);
     else if (!strcmp(a, "--shot-every")) r->shot_every = (u32)atoi(v);
+    else if (!strcmp(a, "--shot-max")) sat_shot_max = (u32)atoi(v);
     else if (!strcmp(a, "--trace")) sat_set_trace((u32)atoi(v));
     else if (!strcmp(a, "--watch") || !strcmp(a, "--seconds")) g_watch_s = (u32)atoi(v);
     else if (!strcmp(a, "--volume")) audio_set_volume(atoi(v), 0);
@@ -151,6 +175,20 @@ static int kit_option(const char *a, const char *v, KitRun *r)
     else if (!strcmp(a, "--fixed-clock")) host_set_fixed_clock(atoi(v) != 0);
     else return 0;
     return 2;
+}
+
+/* Fast loads (sat_cd.c) as the replay recorded them (off when it has no note, as before the choice), else as asked or,
+ * if not asked, on in a play run; kept in the recording when on, so a run with it off records nothing new. */
+#define FAST_LOADS_NOTE "*cd-fast-loads"
+static void fast_loads_start(int play_run)
+{
+    u8 on = 0;
+    if (session_note_replayed(FAST_LOADS_NOTE, &on, 1)) sat_cd_fast_loads = on != 0;
+    else if (session_replaying()) sat_cd_fast_loads = 0;
+    else if (sat_cd_fast_loads < 0) sat_cd_fast_loads = play_run;
+    on = (u8)(sat_cd_fast_loads > 0);
+    if (on) session_save_read(FAST_LOADS_NOTE, &on, 1, 1);
+    port_log("cd: fast loads %s\n", on ? "on" : "off");
 }
 
 int port_main(int argc, char **argv)
@@ -176,18 +214,21 @@ int port_main(int argc, char **argv)
             used = 3;
         } else if ((used = kit_option(a, v, &run)) == 0 && (used = input_option(a, v)) == 0 &&
                    (used = session_option(a, v)) == 0 && (used = scene_dump_option(a, v)) == 0 &&
-                   (used = game_log_option(a, v)) == 0 && (used = play_stats_option(a, v)) == 0 &&
-                   (used = host_window_option(a, v)) == 0 && (used = sat_video_dump_option(a, v)) == 0 && (used = cpu_present_option(a, v)) == 0) {
+                   (used = game_log_option(a, v)) == 0 && (used = play_stats_option(a, v)) == 0 && (used = work_count_option(a, v)) == 0 &&
+                   (used = host_window_option(a, v)) == 0 && (used = sat_video_dump_option(a, v)) == 0 && (used = cpu_present_option(a, v)) == 0 &&
+                   (used = autoload_option(a, v)) == 0 && (used = sat_movie_option(a, v)) == 0 && (used = sat_net_option(a, v)) == 0 &&
+                   (used = bands_option(a, v)) == 0) {
             used = 1; /* unknown: skipped */
         }
     }
     port_log_open(run.log);
     game_log_start();
+    sat_net_start(g_image); /* online play: a joiner takes the host's settings and save here */
     host_phangrade_start();
     sat_mem_init();
     sat_sys_init();
     sat_sys_set(SAT_FRAME_HZ, run.fast);
-    sat_sys_set_det(run.det);
+    sat_sys_set_det(run.det || sat_net_on()); /* online play runs on the --det timeline */
     sat_call_init();
     sat_scu_init();
     sat_smpc_init();
@@ -196,6 +237,21 @@ int port_main(int argc, char **argv)
     sat_cd_init(g_cue);
     sat_cdda_enable(!run.headless && !run.fast && !host_fixed_clock() && !g_audio_off);
     sat_audio_enable(!run.headless && !run.fast && !host_fixed_clock() && !g_audio_off);
+    if (sat_v1_ground_shadows < 0) sat_v1_ground_shadows = !run.headless && !run.fast && !host_fixed_clock(); /* a play run */
+    fast_loads_start(!run.headless && !run.fast && !host_fixed_clock());
+    sat_smpc_clock_start(!run.headless && !run.fast && !host_fixed_clock() && !run.det && !sat_net_on());
+    sat_movie_start(!run.headless && !run.fast && !host_fixed_clock(), !g_audio_off);
+    sat_part_start();
+#ifdef SAT_TWIN_STICK
+    {
+        static const PortTwinStick twin = SAT_TWIN_STICK;
+        port_twin_start(&twin);
+    }
+#else
+    port_twin_start(NULL);
+#endif
+    sat_bup_auto_load(!run.headless && !run.fast && !host_fixed_clock());
+    sat_net_started();
     sat_video_options(run.headless, run.shot_vb, run.shot_path, run.shot_every);
     f = fopen(g_image, "rb");
     if (!f) {

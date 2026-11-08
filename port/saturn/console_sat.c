@@ -10,18 +10,26 @@
 #include "sat_sys.h"
 #include "sat_vdp.h"
 #include "sat_disc.h"
+#include "sat_cd.h"
+#include "sat_part.h"
 #include "sat_game.h"
+#include "sat_net.h"
 #include "console.h"
 #include "scene_json.h"
 #include "scene_dump.h"
 #include "present_cpu.h"
 
-const PortConsole port_console = {"saturn", "Saturn", SAT_GAME_NAME, "saturn kit 1", 320u, 224u, SAT_FRAME_HZ, 0u};
+#ifdef SAT_NETPLAY
+#define SAT_CONSOLE_FLAGS (PORT_CONSOLE_FPSCAP | PORT_CONSOLE_ONLINE) /* online play (sat_net.c): the Online menu */
+#else
+#define SAT_CONSOLE_FLAGS PORT_CONSOLE_FPSCAP
+#endif
+const PortConsole port_console = {"saturn", "Saturn", SAT_GAME_NAME, "saturn kit 1", 320u, 224u, SAT_FRAME_HZ, SAT_CONSOLE_FLAGS};
 
 /* ---- run state ---- */
 u32 port_vblank_count(void) { return sat_vblank_count(); }
 
-int port_extra_drawing(void) { return 0; } /* no in-between frames */
+int port_extra_drawing(void) { return sat_inb_drawing(); } /* in-between frames: sat_inb.c */
 
 /* ---- the scene dump: the SH-2's memory is big-endian, so a scalar is handed over byte-reversed (the dump reads host
  * order). A field of 2, 4 or 8 bytes is a number; a longer one is a string or a block and is read as it lies. ---- */
@@ -59,6 +67,9 @@ void console_replay_args(struct Json *j, int after)
         scene_carry(j, "--image", 1);
     } else {
         scene_carry(j, "--cdrate", 0);
+#ifdef SAT_GROUND_SHADOW_PMOD
+        json_f(j, " --ground-shadows %s", sat_v1_ground_shadows > 0 ? "under" : "original"); /* the play run's, from its settings too */
+#endif
     }
 }
 
@@ -131,16 +142,50 @@ int console_lockstep_time(HostTime *t)
     return 0;
 }
 
-/* ---- the menu bar: nothing the Saturn adds ---- */
+/* ---- the menu bar: Display > Fast disc loads (sat_cd.c), Native movie player (sat_movie.c) for a game that names its
+ * movie routine, Shadows for a game that names its floor shadows
+ * (sat_vdp1_list.c) and a model part for a game that offers one (sat_part.c). A load's speed and the part are kept in the
+ * recording at start, so a change to either applies from the next start. While an online match is on, those that change the
+ * game (fast loads, the movie player, the part) are greyed: the joiner plays the host's (sat_net_setup.c). ---- */
+static int g_fast_next = -1;
+static int alone(void) { return !sat_net_on(); }
+static int fast_get(void) { return g_fast_next >= 0 ? g_fast_next : sat_cd_fast_loads > 0; }
+static void fast_set(int on) { g_fast_next = on != 0; }
+static const char *const k_shadow_labels[] = {"&Under what stands on them", "In the game's &order (as on the Saturn)"};
+static const char *const k_shadow_values[] = {"under", "original"};
+static int shadows_get(void) { return sat_v1_ground_shadows > 0 ? 0 : 1; }
+static void shadows_set(int choice) { sat_v1_ground_shadows = choice == 0; }
+static int inb_get(void) { return sat_inb_on > 0; }
+static void inb_set(int on) { sat_inb_on = on != 0; } /* applied at the next vertical blank (sat_inb.c) */
+
+static const PortMenuItem k_menu[] = {
+    {"Display", "Fast &disc loads (from the next start)", PORT_MENU_CHECK, "cd-fast-loads", fast_get, fast_set, NULL, NULL, 0, alone},
+    {"Display", "&In-between frames", PORT_MENU_CHECK, "in-between", inb_get, inb_set, NULL, NULL, 0, NULL},
+    {"Display", "&Shadows", PORT_MENU_CHOICE, "ground-shadows", shadows_get, shadows_set, k_shadow_labels, k_shadow_values, 2, NULL},
+    {"Display", "Native mo&vie player (from the next start)", PORT_MENU_CHECK, "movie-native", sat_movie_get, sat_movie_set, NULL, NULL, 0, alone},
+};
+
 const PortMenuItem *console_menu_extra(unsigned *count)
 {
-    *count = 0;
-    return NULL;
+    static PortMenuItem menu[5];
+    unsigned n = 0;
+    menu[n++] = k_menu[0];
+    menu[n++] = k_menu[1];
+#ifdef SAT_GROUND_SHADOW_PMOD
+    menu[n++] = k_menu[2];
+#endif
+#ifdef SAT_MOVIE_FN
+    menu[n++] = k_menu[3];
+#endif
+    if (sat_part_menu()) menu[n] = *sat_part_menu(), menu[n].available = menu[n].available ? menu[n].available : alone, n++;
+    *count = n;
+    return menu;
 }
 
 void console_pads_changed(void) {}
 
-/* ---- the presenter's hooks: a CPU frame goes through base/present_cpu.c, which has no overlay and does not widen yet ---- */
+/* ---- the presenter's hooks: a CPU frame goes through base/present_cpu.c, which has no overlay; a game with game.json
+ * "widescreen" has its picture composed wider in a play run (sat_wide.c) ---- */
 int console_present_option(const char *arg, const char *value)
 {
     (void)arg;
@@ -149,11 +194,14 @@ int console_present_option(const char *arg, const char *value)
 }
 void console_present_over(void *back_buffer) { (void)back_buffer; }
 void console_present_release(void) {}
+#ifdef SAT_WIDESCREEN
+int console_widens(void) { return 1; }
+#else
 int console_widens(void) { return 0; }
-void extra_set_interp(int on) { (void)on; }
-int extra_interp(void) { return 0; }
-void extra_set_fps(unsigned fps) { (void)fps; }
-unsigned extra_fps(void) { return 0; }
+#endif
+int extra_interp(void) { return sat_inb_live(); }
+void extra_set_fps(unsigned fps) { cpu_present_set_fps(fps); } /* the menu's cap: the showing thread's rate */
+unsigned extra_fps(void) { return cpu_present_fps(); }
 
 /* ---- the launcher contract: is this disc the game (base/install.c does the rest) ---- */
 int console_check_image(const char *image)

@@ -16,6 +16,7 @@ from scorecard_records import job_days  # noqa: F401  (the scorecard's job regis
 TOOL = pathlib.Path(__file__).resolve().parents[1]  # DecompPipeline/
 if str(TOOL) not in sys.path:
     sys.path.insert(0, str(TOOL))
+from core import in_game  # noqa: E402  (standard library only: no workspace needed)
 GIT_TIMEOUT_S = 60
 SKIP_DIRS = {".git", "__pycache__", "backup", "retired", "regress", "sandbox", "harness", "matched", "matched_stale",
              "runs", "work", "packets", "oracle", "ghidra", "ghidra_slots", "export_copy", "probe_copy", "build",
@@ -210,6 +211,22 @@ def final_audit(state):
     return {"file": files[-1].name, "verdict": m.group(1) if m else "none"}
 
 
+def in_game_figures(st, ws, rd):
+    """Readable C proven in the running game (core/in_game.readable_proven): {readable, proven, reached (readable
+    functions some divergence scenario enters, state/coverage.json), proven_reached}; None without both
+    state/coverage.json and state/in_game.json."""
+    cov = load_json(st / "coverage.json")
+    if not isinstance(cov, dict) or not (st / "in_game.json").is_file():
+        return None
+    reached = {a.lower() for s in (cov.get("scenarios") or {}).values() if isinstance(s, dict)
+               for a in s.get("entered") or []}
+    readable = {a.lower() for a, r in rd.items() if isinstance(r, dict) and r.get("status") == "readable"} \
+        if isinstance(rd, dict) else set()
+    proven = {a.lower() for a in in_game.readable_proven(ws)}
+    return {"readable": len(readable), "proven": len(proven), "reached": len(readable & reached),
+            "proven_reached": len(proven & reached)}
+
+
 def workspace_metrics(ws, with_scope=True):
     """One workspace's figures from state/ (ledger, readable.json, prepare_timing.jsonl, final audit, divergence)."""
     ws = pathlib.Path(ws)
@@ -220,7 +237,10 @@ def workspace_metrics(ws, with_scope=True):
     status = {}
     for r in ledger.values():
         status[r.get("status")] = status.get(r.get("status"), 0) + 1
-    matched = [a for a, r in ledger.items() if r.get("status") == "matched"]
+    # ledger truth (tools/proof_backlog.py truth): a matched row marked unverified (its latest harness verdict is a
+    # FAIL or stale) or unproven (unlisted call args) does not count as matched here
+    marked = {a for a, r in ledger.items() if r.get("status") == "matched" and (r.get("unverified") or r.get("unproven"))}
+    matched = [a for a, r in ledger.items() if r.get("status") == "matched" and a not in marked]
     rd = load_json(st / "readable.json")
     readable = None
     if isinstance(rd, dict):
@@ -245,9 +265,10 @@ def workspace_metrics(ws, with_scope=True):
             "scenarios": (root / "port" / "divergence_scenarios.json").is_file(),
             "scope": len(scope), "scope_source": scope_src, "rows": len(ledger), "status": status,
             "matched": len(matched), "matched_in_scope": sum(1 for a in matched if a in scope),
+            "unverified": len(marked),
             "agent": _attempt_totals(ledger.values()), "readable": readable, "prepare_s": prep,
             "final_audit": final_audit(st), "busy": busy_totals(st), "oplog": oplog_records(st),
-            "port_oplog": oplog_records(root / "port" / "state"),
+            "port_oplog": oplog_records(root / "port" / "state"), "in_game": in_game_figures(st, ws, rd),
             "divergence": ({"file": str(st / "divergence.json"), "when": div.get("when"),
                             "counts": div.get("counts") or {}} if isinstance(div, dict) else None)}
 
@@ -257,6 +278,7 @@ def median(xs):
 
 
 STATUS_CLOSED = re.compile(r"\bfixed\b|unavoidable|none found", re.I)
+AUDIT_GLOBS = ("WASTE_AUDIT_*.md", "LESSONS.md")  # LESSONS.md: the earlier audits, condensed, with their findings
 
 
 def parse_waste_audit(text):
@@ -290,17 +312,17 @@ def audit_date(text):
 
 def waste_audits(src, extra=None):
     """[(name, path or ref:path, where, text)] newest first (by the date in the title, then the name): docs/
-    WASTE_AUDIT_*.md in the checkout, the pending refs and every other worktree of the repository (an audit still being
+    WASTE_AUDIT_*.md and LESSONS.md in the checkout, the pending refs and every other worktree of the repository (an audit still being
     written there is reported as not landed)."""
     out = []
     if extra:
         p = pathlib.Path(extra)
         out.append((p.name, str(p), "given", p.read_text(encoding="utf-8", errors="replace")))
-    for p in sorted((src.tool / "docs").glob("WASTE_AUDIT_*.md")):
+    for p in (q for g in AUDIT_GLOBS for q in sorted((src.tool / "docs").glob(g))):
         out.append((p.name, str(p), "checkout", p.read_text(encoding="utf-8", errors="replace")))
     for ref in src.pending:
         for n in src.tree(ref):
-            if fnmatch.fnmatchcase(n, "docs/WASTE_AUDIT_*.md"):
+            if any(fnmatch.fnmatchcase(n, "docs/" + g) for g in AUDIT_GLOBS):
                 text, where = src.read(n)
                 if text is not None and where != "checkout":
                     out.append((pathlib.Path(n).name, f"{ref}:{n}", f"branch {ref}", text))
@@ -308,7 +330,7 @@ def waste_audits(src, extra=None):
     for wt, branch in src.worktrees():
         if wt.resolve() == here:
             continue
-        for p in sorted((wt / "docs").glob("WASTE_AUDIT_*.md")):
+        for p in (q for g in AUDIT_GLOBS for q in sorted((wt / "docs").glob(g))):
             out.append((p.name, str(p), f"worktree {branch} (not landed)",
                         p.read_text(encoding="utf-8", errors="replace")))
     seen, uniq = set(), []
@@ -320,21 +342,38 @@ def waste_audits(src, extra=None):
 
 
 def mutation_rates(text):
-    """{key: {"functions", "mutants", "killed", "rate"}} from tools/mutation_audit/baseline.json, counted as
-    tools/mutation_audit.py compare() counts them (mutants dropped by lint or build are left out)."""
+    """{key: {"functions", "mutants", "killed", "raw_rate", "logic", "rate", "classed"}} from
+    tools/mutation_audit/baseline.json. raw_rate: every survivor counted (lint and build drops left out). rate: the
+    gate's figure, core/mutation's score: killed / (killed + logic survivors), since an arg_slot or stack survivor is
+    equivalent by the judge's design. A record without its mutants' "classes" (tools/mutation_audit.py classes: its
+    matched C changed since) has every survivor counted as logic, never the kinder way; "unclassed" counts them.
+    "excluded": functions kept out of the gate by name, not counted; "accepted_lost": lost kills accepted by name
+    (tools/mutation_audit.py baseline --accept-lost), printed beside the rate."""
     out = {}
     for key, fs in (json.loads(text) or {}).items():
-        k = {"functions": 0, "mutants": 0, "killed": 0}
+        k = {"functions": 0, "mutants": 0, "killed": 0, "logic": 0, "unclassed": 0, "excluded": 0, "accepted_lost": 0}
         for rec in fs.values():
+            k["accepted_lost"] += sum(len(x.get("ids") or ()) for x in rec.get("accepted_lost") or ())
+            if rec.get("excluded"):
+                k["excluded"] += 1
+                continue
             if rec.get("error"):
                 continue
             k["functions"] += 1
-            for o in rec.get("outcomes") or "":
+            outs, cls = rec.get("outcomes") or "", rec.get("classes")
+            if cls is None or len(cls) != len(outs):
+                k["unclassed"] += 1
+                cls = "l" * len(outs)
+            for o, c in zip(outs, cls):
                 if o in "LB":
                     continue
                 k["mutants"] += 1
                 k["killed"] += o == "K"
-        k["rate"] = round(100.0 * k["killed"] / k["mutants"], 1) if k["mutants"] else None
+                k["logic"] += o == "S" and c == "l"
+        k["raw_rate"] = round(100.0 * k["killed"] / k["mutants"], 1) if k["mutants"] else None
+        n = k["killed"] + k["logic"]
+        k["rate"] = round(100.0 * k["killed"] / n, 1) if n else None
+        k["classed"] = k["unclassed"] == 0
         out[key] = k
     return out
 

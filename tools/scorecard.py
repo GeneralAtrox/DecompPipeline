@@ -19,6 +19,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))  # also under python -I
 import scorecard_data as sd  # noqa: E402
 import scorecard_runtime as sr  # noqa: E402
+from scorecard_scale import add, gate_scale  # noqa: E402  (gate 5)
 from scorecard_data import at_least, at_most, check, unmeasured  # noqa: E402,F401  (the checks every gate builds)
 
 TOOL = sd.TOOL
@@ -33,7 +34,8 @@ def gate_status(checks):
 
 def probe(src, item, fmt):
     """("pass"|"partial"|"fail", where or what is missing) for a spec probe ("all"/"any" globs, "json_key")."""
-    pats = [p.format(**fmt) for p in item.get("all") or item.get("any") or []]
+    # a "{kit}" pattern is the console's own port kit folder (spec "kit"); a console with none has no such pattern
+    pats = [p.format(**fmt) for p in item.get("all") or item.get("any") or [] if "{kit}" not in p or fmt.get("kit")]
     wheres = [src.where(p) for p in pats]
     if item.get("json_key"):
         rel, key = item["json_key"][0].format(**fmt), item["json_key"][1]
@@ -46,7 +48,11 @@ def probe(src, item, fmt):
     if item.get("any"):
         hit = [w for w in wheres if w]
         if not hit:
+            # the folder the patterns share, whole names only: with none shared, each pattern in full (the old
+            # slice cut the first letter of every one, "/{ort/runtime/sh2_rt.c, argets/...}")
             base = os.path.commonprefix(pats).rpartition("/")[0]
+            if not base:
+                return "fail", "none of " + ", ".join(pats)
             return "fail", f"none of {base}/{{" + ", ".join(p[len(base) + 1:] for p in pats) + "}"
         return ("pass", "checkout") if "checkout" in hit else ("partial", hit[0] + " (not landed)")
     gone = [p for p, w in zip(pats, wheres) if not w]
@@ -57,7 +63,7 @@ def probe(src, item, fmt):
 
 
 def gate_toolset(src, spec, con, projects_dir):
-    fmt = {"target": con["target"], "cpu": con["cpu"]}
+    fmt = {"target": con["target"], "cpu": con["cpu"], "kit": con.get("kit")}
     out, got = [], {}
     for st in spec["stages"]:
         status, where = probe(src, st, fmt)
@@ -89,12 +95,14 @@ def by_game(wss):
             b[1] |= w["_matched"]
         g["scope"] = sum(len(s) for s, _ in bins.values())
         g["matched"] = sum(len(s & m) for s, m in bins.values())
+        g["unverified"] = sum(w.get("unverified") or 0 for w in ws)  # ledger truth: marked rows, not counted
         rds = [w["readable"] for w in ws if w["readable"]]
         g["verified"] = sum(r["verified"] for r in rds) if rds else None
         g["port"] = any(w["port"] for w in ws)
         g["scenarios"] = any(w["scenarios"] for w in ws)
         g["audits"] = [w["final_audit"] for w in ws if w["final_audit"]]
         g["divergence"] = [w["divergence"] for w in ws if w["divergence"]]
+        g["in_game"] = [w["in_game"] for w in ws if w.get("in_game")]
         port_log = next((w["port_oplog"] for w in ws if w.get("port_oplog")), None)  # one game folder
         g["oplogs"] = [w["oplog"] for w in ws if w.get("oplog")] + ([port_log] if port_log else [])  # no record: absent
         g["oplog_whole"] = [w.get("oplog") or [] for w in ws] + ([port_log or []] if g["port"] else [])
@@ -121,7 +129,9 @@ def gate_handsoff(games, th):
         return [check("reference game", "fail", missing="no DP workspace for this console")]
     g = games[0]
     raw = at_least("raw verified (matched / functions in scope)", g["pct"], th["verified_pct"],
-                   f"state/ledger.json: {g['matched']}/{g['scope']}; scope: {', '.join(g['scope_sources'])}")
+                   f"state/ledger.json: {g['matched']}/{g['scope']}"
+                   + (f" ({g['unverified']} matched rows marked unverified or unproven, not counted)"
+                      if g.get("unverified") else "") + f"; scope: {', '.join(g['scope_sources'])}")
     if not g["scope_measured"] and raw["status"] == "pass":  # ledger rows are not the game's functions: never green
         raw.update(status="partial", missing="functions in scope not from core.audit's game ranges")
     out = [check("reference game", "info", g["name"], source=f"{len(g['workspaces'])} workspace(s) under {g['root']}"),
@@ -168,9 +178,10 @@ def rates(wss, games):
     rdn = sum(r["readable"] for r in rd)
     r = {"matched": matched, "readable": rdn, "prepare_n": sum(len(w["prepare_s"]) for w in wss),
          "prepare_median_s": sd.median([x for w in wss for x in w["prepare_s"]])}
-    r["raw_usd"] = a["usd"] / matched if matched and a["costed"] else None
-    r["raw_tokens"] = a["tokens"] / matched if matched and a["tokened"] else None
-    r["raw_s"] = a["seconds"] / matched if matched and a["timed"] else None
+    none = matched and not a["attempts"]  # the translator matched every one: no agent ran, nothing spent (a measure)
+    r["raw_usd"] = a["usd"] / matched if matched and a["costed"] else 0.0 if none else None
+    r["raw_tokens"] = a["tokens"] / matched if matched and a["tokened"] else 0.0 if none else None
+    r["raw_s"] = a["seconds"] / matched if matched and a["timed"] else 0.0 if none else None
     r["rd_usd"] = sum(x["agent"]["usd"] for x in rd) / rdn if rdn and any(x["agent"]["costed"] for x in rd) else None
     r["rd_tokens"] = (sum(x["agent"]["tokens"] for x in rd) / rdn if rdn and any(x["agent"]["tokened"] for x in rd)
                       else None)
@@ -184,14 +195,10 @@ def rates(wss, games):
     return r
 
 
-def add(*xs):
-    return None if any(x is None for x in xs) else sum(xs)
-
-
 def gate_waste(r, th, audit):
     out = []
     if audit is None:
-        out.append(unmeasured("waste audit open findings", "no docs/WASTE_AUDIT_*.md in the checkout, the pending "
+        out.append(unmeasured("waste audit open findings", "no docs/WASTE_AUDIT_*.md or docs/LESSONS.md in the checkout, the pending "
                               "branches or any worktree", "0"))
     else:
         name, path, where, text = audit
@@ -231,7 +238,7 @@ def gate_waste(r, th, audit):
 
 
 def gate_trust(src, spec, con, key, games, mut):
-    fmt = {"target": con["target"], "cpu": con["cpu"]}
+    fmt = {"target": con["target"], "cpu": con["cpu"], "kit": con.get("kit")}
     out = []
     for item in spec["prewave_items"]:
         status, where = probe(src, item, fmt)
@@ -249,62 +256,38 @@ def gate_trust(src, spec, con, key, games, mut):
         else:
             low = min(keys, key=lambda k: keys[k]["rate"] if keys[k]["rate"] is not None else -1)
             c = at_least("mutation-audit kill rate (lowest workspace)", keys[low]["rate"], th,
-                         f"baseline.json [{where}]: " + ", ".join(f"{k} {v['rate']}% ({v['killed']}/{v['mutants']})"
-                                                                  for k, v in sorted(keys.items())))
+                         f"baseline.json [{where}], logic survivors only (arg_slot and stack survivors are equivalent "
+                         f"by design; raw: every survivor): " + ", ".join(
+                             f"{k} {v['rate']}% ({v['killed']}/{v['killed'] + v['logic']}; raw {v['raw_rate']}%"
+                             + (f"; {v['unclassed']} functions without classes, every survivor counted"
+                                if v["unclassed"] else "")
+                             + (f"; {v['accepted_lost']} lost kills accepted" if v.get("accepted_lost") else "")
+                             + (f"; {v['excluded']} functions excluded" if v.get("excluded") else "") + ")"
+                             for k, v in sorted(keys.items())))
             if where != "checkout" and c["status"] == "pass":
                 c["status"], c["missing"] = "partial", f"baseline on {where}, not landed"
             out.append(c)
     out.append(div_check("zero divergence (all ports)", [d for g in games for d in g["divergence"]],
                          any(g["scenarios"] for g in games)))
+    out.append(in_game_check(games, spec["thresholds"]["readable_in_game_pct"]))
     return out
 
 
-def projection(n, r, par):
-    """(USD, raw-stage hours) for n functions at rates r, or None where a rate is missing."""
-    usd = add(r["raw_usd"], r["rd_usd"])
-    hours = (None if r["raw_s"] is None or r["prepare_median_s"] is None else
-             max(n * r["raw_s"] / par["workers"], n * r["prepare_median_s"] / par["slots"]) / 3600)
-    return (None if usd is None else n * usd), hours
-
-
-def gate_scale(spec, r, n_src, par, ref=None):
-    b = spec["baseline"]
-    n, nsrc = n_src
-    out = [check("baseline size", "pass", n, source=nsrc) if n else unmeasured("baseline size", nsrc)]
-    usd, h = projection(n or 0, r, par)
-    if n is None or usd is None:
-        out.append(unmeasured("projected agent cost", "no function count" if n is None else
-                              "no measured raw + readable cost on this console", f"<= {b['budget_usd']} USD"))
-    else:
-        out.append(at_most("projected agent cost (agent on every function)", usd, b["budget_usd"],
-                           f"{n} x {usd / n:.4f} USD measured", " USD"))
-    if n is None or h is None:
-        out.append(unmeasured("projected machine hours", "no function count" if n is None else
-                              "no measured agent seconds and prepare times on this console",
-                              f"<= {b['budget_hours']} h"))
-    else:
-        out.append(at_most("projected machine hours (raw stage)", h, b["budget_hours"],
-                           f"max(agent {r['raw_s']:.1f} s / {par['workers']} workers, prepare "
-                           f"{r['prepare_median_s']:.2f} s / {par['slots']} slots) x {n}; config.json max_workers, "
-                           "ghidra_parallel", " h"))
-    rt = r["rd_timed"]
-    if n is None or h is None or r["rd_s"] is None:
-        out.append(unmeasured("projected machine hours (raw + readable)", "no function count" if n is None else
-                              "no measured raw-stage hours" if h is None else
-                              f"no readable function whose agent attempts all carry duration_s ({rt['rows']} timed "
-                              "row(s))", f"<= {b['budget_hours']} h"))
-    else:
-        h_rd = n * r["rd_s"] / par["workers"] / 3600
-        out.append(at_most("projected machine hours (raw + readable)", h + h_rd, b["budget_hours"],
-                           f"raw {h:,.1f} h + readable {r['rd_s']:.1f} s / {par['workers']} workers x {n} = "
-                           f"{h_rd:,.1f} h; readable.json: {rt['seconds']:.0f} s over {rt['readable']} readable of "
-                           f"{rt['rows']} rows timed in full (agent-run rows only: an upper bound)", " h"))
-    if n and ref and (r["raw_usd"] is None or r["raw_s"] is None):
-        usd, h = projection(n, ref[1], par)
-        out.append(check(f"for scale only: at {ref[0]}'s measured rates", "info",
-                         f"{usd:,.0f} USD, {h:,.1f} h raw stage" if usd is not None and h is not None else None,
-                         source="not this console's own rates; does not count toward the gate"))
-    return out
+def in_game_check(games, th):
+    """Readable C proven in the running game (core/in_game): proven / readable functions a divergence scenario
+    enters, over every game of the console; the plain proven / all readable figure in the source."""
+    name = "readable C proven in the running game"
+    igs = [(g["name"], x) for g in games for x in g.get("in_game") or []]
+    if not igs:
+        return unmeasured(name, "no workspace with both state/coverage.json and state/in_game.json (decomp.py "
+                          "divergence writes them)", f">= {th}%")
+    reached, proven = sum(x["reached"] for _, x in igs), sum(x["proven_reached"] for _, x in igs)
+    src = "state/in_game.json against state/coverage.json: " + "; ".join(
+        f"{n}: {x['proven_reached']}/{x['reached']} readable functions a scenario enters proven, {x['proven']}/"
+        f"{x['readable']} of all readable" for n, x in igs)
+    if not reached:
+        return unmeasured(name, "no divergence scenario enters a readable function: " + src, f">= {th}%")
+    return at_least(name, 100.0 * proven / reached, th, src)
 
 
 def scorecard(spec, src, projects_dir, keys=None, waste=None, scope=True):

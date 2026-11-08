@@ -276,6 +276,8 @@ void gfx_show(void) {}
 void gfx_capture_extra(void) {}
 u32 k2_frame_lines(void) { return 480u; }
 void k2_run_callback(s32 slot) { (void)slot; }
+void pvr_parts_lists(const u32 *ptrs) { (void)ptrs; }
+void pvr_parts_scene(void) {}
 s32 kmCreateTextureSurface(KMSURFACEDESC *surface, u32 width, u32 height, u32 type);
 s32 kmBeginScene(KMSYSTEMCONFIGSTRUCT *config);
 

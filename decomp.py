@@ -15,6 +15,10 @@ Every command works on one project workspace (a folder with project.json):
   python decomp.py --project DIR sizes                fail if any pipeline or project source file exceeds 400 lines
   python decomp.py --project DIR audit [--project DIR ...] [--verbose] [--json]
                                                       unmatched functions by blocker kind (exit 2: UNDECLARED kinds)
+  python decomp.py --project DIR divergence [NAME...|--all] [--game DIR] [--build-dir B] [--workers N] [--requeue]
+                                                      the port in check mode against Flycast: the first differing
+                                                      word per scenario and the function that wrote it
+                                                      (core/divergence.py; state/divergence.json)
 --project may be omitted when $DECOMP_PROJECT is set or the current folder holds project.json.
 """
 import argparse
@@ -102,6 +106,16 @@ def main():
                     help="more workspaces for one combined table (repeatable)")
     au.add_argument("--json", action="store_true")
     au.add_argument("--verbose", action="store_true", help="list the addresses of every kind")
+    dv = sub.add_parser("divergence", help="the port against Flycast, scenario by scenario (core/divergence.py)")
+    dv.add_argument("scenario", nargs="*")
+    dv.add_argument("--all", action="store_true")
+    dv.add_argument("--game", help="the port folder with game.json (default: the workspace's sibling port/)")
+    dv.add_argument("--build-dir", default="x86-agent")
+    dv.add_argument("--workers", type=int, default=2)
+    dv.add_argument("--timeout", type=int, default=1800, help="seconds per recording and per port run")
+    dv.add_argument("--requeue", action="store_true", help="reviewer's notes and readable redos for the writers")
+    dv.add_argument("--float-ulps", type=int, default=0, help="TEMPORARY diagnostic: float words this close are "
+                    "counted apart (status float-close, never clean)")
     a = ap.parse_args()
     if a.cmd == "audit":  # read-only; several workspaces at once
         wss = [str(pathlib.Path(p).resolve()) for p in ([a.project] if a.project else []) + a.audit_projects]
@@ -188,6 +202,9 @@ def main():
         sys.exit(sizes.main([]))
         print("all files <= 400 lines" if not over else f"{len(over)} file(s) over 400 lines")
         sys.exit(1 if over else 0)
+    elif a.cmd == "divergence":
+        from core import divergence
+        sys.exit(divergence.main(a))
     elif a.cmd == "investigate":
         from core import orch
         o = orch.Orchestrator()

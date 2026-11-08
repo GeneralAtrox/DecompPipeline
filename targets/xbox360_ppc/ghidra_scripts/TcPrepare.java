@@ -35,7 +35,7 @@ public class TcPrepare extends TcVectors {
         long entry = Long.parseLong(a[0], 16);
         Path packet = Paths.get(a[1]), harness = Paths.get(a[2]);
         int ndev = Integer.parseInt(a[3]), nhidden = Integer.parseInt(a[4]);
-        long seed = Long.parseLong(a[5]);
+        long seed = TcStrict.start(Long.parseLong(a[5]));  // TcStrict: the junk's key
         String marks = a.length > 7 ? a[7] : "-";
         String hintsFile = a.length > 8 ? a[8] : "-";
         facts = TcFacts.load(a.length > 9 ? a[9] : "-");
@@ -51,6 +51,7 @@ public class TcPrepare extends TcVectors {
         body = fn.getBody();
         String name = "fn_" + hex(entry);
         findInline();
+        if (facts.branchCoverage || facts.targetedVectors) dirs = TcDirs.of(listing, body);  // TcDirs, TcBound
 
         BasicBlockModel bbm = new BasicBlockModel(currentProgram);
         CodeBlockIterator it = bbm.getCodeBlocksContaining(body, monitor);
@@ -98,9 +99,11 @@ public class TcPrepare extends TcVectors {
         passThrough(proto, called);
         TcTrack.on = TcTrack.of(listing, body, calledBy(), proto, flow);  // pointer calls' arguments, float NaN words
         StringBuilder callees = new StringBuilder();
+        Map<Long, List<String>> regsOf = new HashMap<>();  // TcStrict: each callee's compared registers
         for (Function c : called.keySet()) {
             Proto cp = called.get(c);
             StringBuilder regs = new StringBuilder();
+            regsOf.put(c.getEntryPoint().getOffset(), calleeRegs(cp));
             for (String r : calleeRegs(cp)) regs.append(regs.length() > 0 ? "," : "").append('"').append(r).append('"');
             if (callees.length() > 0) callees.append(",\n    ");
             String cname = isImport(c) ? c.getName() : "fn_" + hex(c.getEntryPoint().getOffset());
@@ -111,6 +114,7 @@ public class TcPrepare extends TcVectors {
                 keeps.isEmpty() ? "" : ",\"keeps\":" + jsonList(keeps)));
         }
         di.dispose();
+        TcStrict.callees(regsOf);  // mock_junk: where a CJ line can matter (TcStrict)
         if (proto.unsupported == null && refuse != null) proto.unsupported = refuse;
 
         StringBuilder gl = new StringBuilder();
@@ -142,12 +146,15 @@ public class TcPrepare extends TcVectors {
             : outOfTime ? String.format("oracle: vector generation did not finish in time (dev %d of %d tried valid,"
                 + " hidden %d of %d)", valid[0], tried[0], valid[1], tried[1]) : null;
         List<String> widened = new ArrayList<>();
+        bound = why == null ? TcBoundPass.run(this, proto, seed, new ArrayList<>(globals)) : null;  // before the widths
         if (why != null) {
             vout.setLength(0);
             eout.setLength(0);
             valid[0] = valid[1] = 0;
             covDev.clear();
             covAll.clear();
+            dirsDev.clear();
+            dirsAll.clear();
             blockHits.clear();
             println("TcPrepare: unsupported: " + why);
         } else {
@@ -159,8 +166,12 @@ public class TcPrepare extends TcVectors {
             if (!rk.equals(proto.ret)) widened.add("return " + proto.ret + "->" + rk);
             proto.ret = rk;
         }
+        for (int s = 0; s < 2; s++) {  // chosen vectors whose strict replay failed: not written (TcStrict.replay)
+            valid[s] -= TcStrict.dropped[s];
+            if (TcStrict.dropped[s] > 0) invalid.merge("strict flags: the replay failed", TcStrict.dropped[s], Integer::sum);
+        }
         writeMeta(packet, harness, proto, why);
-        Files.write(harness.resolve("vectors.txt"), vout.toString().getBytes("UTF-8"));
+        Files.write(harness.resolve("vectors.txt"), (TcStrict.header(facts) + vout).getBytes("UTF-8"));  // J, U
         Files.write(harness.resolve("expected.txt"), eout.toString().getBytes("UTF-8"));
         String sum = summary(blocks, hints.size(), widened);
         Files.write(harness.resolve("oracle_summary.json"), sum.getBytes("UTF-8"));
@@ -190,10 +201,12 @@ public class TcPrepare extends TcVectors {
         for (String k : new String[] {"callees", "globals", "blocks", "ppc_special", "frame_helpers", "fixed_regs"}) {
             m.append("  \"").append(k).append("\": ").append(metaFields.get(k)).append(",\n");
         }
-        m.append("  \"cpu\": \"ppc64\"\n}\n");
+        m.append("  \"cpu\": \"ppc64\"").append(TcStrict.meta(facts)).append("\n}\n");
         Files.write(packet.resolve("meta.json"), m.toString().getBytes("UTF-8"));
         Files.write(harness.resolve("meta.json"), m.toString().getBytes("UTF-8"));
     }
+
+    String bound;  // the targeted-vector pass's summary fragment (TcBoundPass), or null
 
     String summary(List<long[]> blocks, int nhints, List<String> widened) {
         StringBuilder inv = new StringBuilder();
@@ -212,7 +225,8 @@ public class TcPrepare extends TcVectors {
                 + "\"hints\":%d,\"call_sites\":{%s},\"invalid\":{%s},\"examples\":%s}\n",
             valid[0], tried[0], valid[1], tried[1], blocks.size(), covDev.size(), covAll.size(),
             blockHits.isEmpty() ? 0 : Collections.min(blockHits.values()), repaired, fix.fixups,
-            unhit.isEmpty() ? "" : "\"blocks_unhit\":" + jsonList(unhit) + ",", fmaChecked, fmaSensitive,
+            (unhit.isEmpty() ? "" : "\"blocks_unhit\":" + jsonList(unhit) + ",") + (bound != null ? bound + "," : "")
+            + (dirs != null && valid[0] + valid[1] > 0 ? dirs.summary(dirsDev, dirsAll) : ""), fmaChecked, fmaSensitive,
             jsonList(widened), nhints, sites, inv, jsonList(examples));
     }
 

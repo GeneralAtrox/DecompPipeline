@@ -1,0 +1,10 @@
+toycommander (dreamcast kit), scene front_end
+  added allocation: fails, as it should: alloc_bytes 2048 -> 280832, allocs 1 -> 4357
+  extra draw: fails, as it should: draws 5808 -> 7260
+  repeated upload: fails, as it should: uploads 5808 -> 10164
+  clean kit: passes: []
+robopit (saturn kit), scene front_end
+  added allocation: fails, as it should: alloc_bytes 9096 -> 335496, allocs 4 -> 5104
+  extra draw: fails, as it should: draws 5100 -> 10200
+  repeated upload: fails, as it should: uploads 5100 -> 10200
+  clean kit: passes: []

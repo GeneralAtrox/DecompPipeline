@@ -33,6 +33,7 @@ public abstract class TcVectors extends TcOracle {
     StringBuilder vout = new StringBuilder(), eout = new StringBuilder();
     Map<String, Integer> invalid = new TreeMap<>();
     Set<Integer> covDev = new TreeSet<>(), covAll = new TreeSet<>();
+    Set<Integer> dirsDev = new TreeSet<>(), dirsAll = new TreeSet<>();  // branch directions (TcDirs)
     Map<Integer, Integer> blockHits = new TreeMap<>();
     Map<Long, Integer> siteHits = new TreeMap<>();
     int[] valid = new int[2], tried = new int[2];
@@ -100,15 +101,14 @@ public abstract class TcVectors extends TcOracle {
                 }
                 if (repairs > 0) repaired++;
                 valid[s]++;
-                writeVector(id, sets[s], v, r);
+                if (!writeVector(id++, sets[s], v, r)) continue;  // the strict replay failed (TcStrict): its id unused
                 goodVecs.add(v);
                 goodRes.add(r);
                 if (hasFma) checkFma(v, r);
-                if (s == 0) covDev.addAll(r.cov);
-                covAll.addAll(r.cov);
+                if (s == 0) { covDev.addAll(r.cov); dirsDev.addAll(r.dirs); }
+                covAll.addAll(r.cov); dirsAll.addAll(r.dirs);
                 for (int c : r.cov) blockHits.merge(c, 1, Integer::sum);
                 for (long site : r.sites) siteHits.merge(site, 1, Integer::sum);
-                id++;
             }
         }
         budget = new TcRun.StepBudget(STEP_LIMIT);  // the checks on the finished set (probeWidths) run in full
@@ -164,7 +164,9 @@ public abstract class TcVectors extends TcOracle {
         return ret.equals("u32") && sign ? "s32" : ret.equals("s32") && zero ? "u32" : "u64";
     }
 
-    void writeVector(int id, String set, Vec v, Result r) {
+    // False: the run with the strict flags on (TcStrict.replay) failed, and nothing is written.
+    boolean writeVector(int id, String set, Vec v, Result r) {
+        if ((r = TcStrict.replay(this, v, r, set)) == null) return false;
         vout.append("V ").append(id).append(' ').append(set).append("\nR");
         for (long x : v.r) vout.append(' ').append(hex64(x));
         vout.append("\nF");
@@ -181,15 +183,16 @@ public abstract class TcVectors extends TcOracle {
                     .append(bytesHex(Arrays.copyOfRange(d, o, Math.min(d.length, o + PATCH_LINE)))).append('\n');
             }
         }
-        vout.append("E\n");
+        vout.append(TcStrict.vec(r)).append("E\n");  // lines N, W (TcStrict)
         eout.append("V ").append(id).append(' ').append(set).append('\n');
         eout.append("RET ").append(hex64(r.r3)).append(' ').append(hex64(r.f1)).append('\n');
         for (String w : r.writes) eout.append("W ").append(w).append('\n');
         for (String c : r.calls) eout.append("CALL ").append(c).append('\n');
         eout.append(TcTrack.exit(r.tr));
-        eout.append("COV");
+        eout.append(TcStrict.exp(r)).append("COV");  // lines CJ, CS, XR (TcStrict)
         for (int c : r.cov) eout.append(' ').append(c);
         eout.append("\nE\n");
+        return true;
     }
 
     // The call sites: call instructions to code outside the body (helper families excepted), and branches to another

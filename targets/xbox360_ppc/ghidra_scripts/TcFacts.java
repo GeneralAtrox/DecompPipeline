@@ -15,6 +15,13 @@ public class TcFacts {
     boolean haveCode;
     long oracleDeadlineS, oracleRescueS;
     int minValid;
+    boolean targetedVectors; // "targeted_vectors": boundary-value vectors for untaken branch directions (TcBound)
+    boolean branchCoverage; // "branch_coverage": record branch directions (TcDirs; report only)
+    // The stricter judge (TcStrict; target.json "mock_junk", "mock_writes", "call_snapshots", "exit_frame"): bits
+    // 1, 2, 4 and 8 of strict (0: all off), and the callees known to write through a pointer argument (project.json
+    // "mock_write_facts", lines "mock_write callee field size": TcStrict.facts).
+    int strict;
+    List<String[]> mockWrites = new ArrayList<>();
 
     static TcFacts defaults() {
         TcFacts f = new TcFacts();
@@ -60,6 +67,13 @@ public class TcFacts {
                 case "oracle_deadline_s": f.oracleDeadlineS = Long.parseLong(v); break;
                 case "oracle_rescue_s": f.oracleRescueS = Long.parseLong(v); break;
                 case "min_valid": f.minValid = Integer.parseInt(v); break;
+                case "targeted_vectors": f.targetedVectors = v.equals("1") || v.equals("true"); break;
+                case "branch_coverage": f.branchCoverage = v.equals("1") || v.equals("true"); break;
+                case "mock_junk": f.strict |= v.equals("1") || v.equals("true") ? 1 : 0; break;
+                case "mock_writes": f.strict |= v.equals("1") || v.equals("true") ? 2 : 0; break;
+                case "call_snapshots": f.strict |= v.equals("1") || v.equals("true") ? 4 : 0; break;
+                case "exit_frame": f.strict |= v.equals("1") || v.equals("true") ? 8 : 0; break;
+                case "mock_write": f.mockWrites.add(w); break;
                 default: throw new IllegalArgumentException("unknown target fact: " + line);
             }
         }

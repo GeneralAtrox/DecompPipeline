@@ -140,6 +140,14 @@
       "0x06100000"
     ],
     "float_regs": false,
+    "hw_windows": [
+      ["0x20100000", "0x2017ffff"],
+      ["0x25800000", "0x258fffff"],
+      ["0x25a00000", "0x25d7ffff"],
+      ["0x25e00000", "0x25fbffff"],
+      ["0x25fe0000", "0x25feffff"],
+      ["0xfffffe00", "0xffffffff"]
+    ],
     "unmapped": [
       [
         "0x00200000",
@@ -443,5 +451,17 @@
     "command": ["{python}", "{target}/translate.py", "--repo", "{repo}", "--binary", "{binary}", "--addr", "{addr}",
                 "--meta", "{meta}", "--target-json", "{target_json}", "--bodies", "{bodies}", "--out", "{out}"],
     "timeout_s": 120
-  }
+  },
+  "stamp_scopes": [
+    {"scope": "unlisted_call_args", "why": "TcTrack.of writes CA lines also at a direct call or branch to code no listed callee starts, and at a run on past the body's end (2026-11-07): only a body without a computed call or jump that has one makes other bytes (core/unchecked_args.sh_in_scope / ppc_in_scope)",
+     "scripts": {"TcTrack.java": ["4c4c62903bbdc96be36d1a038404945ff38ae801fa25eadcbbc8a3fc4a6b60dc", "f88aa365763470303fec97944d13b755a8583c3f93810b26641b1dae0e0ed73c"]}},
+    {"scope": "boundary_vectors", "flags": ["boundary_vectors"],
+     "why": "the compare-edge pass (TcBound.Edges, TcBoundPass.edges) changes no harness byte while boundary_vectors is off: its edges are never recorded and the pass never runs",
+     "scripts": {
+       "TcBound.java": ["f2f05bdacf2971165552f416d43b68da032190280612ff7134273ce9b9023165", "201c711521ea78477868cdf0f5a97c4a0be78650f4311d51d0c001b963f6535c"],
+       "TcBoundPass.java": ["dfc76db283ecba04446c0b7c13e9a7045288cc7cdebde3194a446a3a547973ef", "f0cb461dc3b91180b30688e70106954e304680518cd58897edde07671d9dac0e"],
+       "TcFacts.java": ["96294dd78364cf0fabc865c1fbbe34b2922bfda846cda7fa45d4b99dbc4b1701", "a151c519c03479838adb9231761fc9e8e77664501baf3c4818c704303ef190a6"],
+       "TcOracle.java": ["6c85cd07bb87d33e5633691800558837d43f36aac9bbd214ae195dbbb9b3a8da", "ddd833806287ec28a1087be0a5f9d765b2b31eaf1ee4bcde4081daff7f0acc16"],
+       "TcPrepare.java": ["403d588eb823f21a4dd546a22c851cc6c33bc5c8f3392e3dd5a6f7ce01990c16", "997348d35bf270676d725b381703759e2d9d2e199bff142d98e09835e97af889"]}}
+  ]
 }

@@ -206,9 +206,9 @@ static void dump(u32 frame)
     /* The clipboard holds a prompt: one instruction line (as Phangrade's crash prompt leads), the JSON, then
      * Phangrade's context for the run. */
     Json prompt = {0};
-    json_f(&prompt, "The game \"%s\" (Dreamcast port) shows a problem at the frame captured below. Read the user's "
+    json_f(&prompt, "The game \"%s\" (%s port) shows a problem at the frame captured below. Read the user's "
                     "description of it, then investigate with this scene dump (how_to_reach replays the session to "
-                    "this frame).\n\n", port_console.game);
+                    "this frame).\n\n", port_console.game, port_console.name);
     if (j.p) json_put(&prompt, j.p);
     const char *ctx = scene_env("PHANGRADE_AGENT_CONTEXT", env, sizeof env);
     u32 size = 0;

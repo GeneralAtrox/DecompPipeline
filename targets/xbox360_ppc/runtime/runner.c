@@ -78,7 +78,9 @@ int main(int argc, char **argv)
     static f64 f[TCRT_CALL_FLOATS];
     int id = -1, active = 0;
     while (fgets(line, sizeof line, in)) {
-        if (line[0] == 'V') {
+        if (line[0] == 'J' || line[0] == 'U') { /* the stricter judge's flags and facts (tc_strict.h) */
+            tcrt_strict_line(line);
+        } else if (line[0] == 'V') {
             char set[16] = {0};
             sscanf_s(line + 2, "%d %15s", &id, set, (unsigned)sizeof set);
             active = strcmp(want, "all") == 0 || strcmp(want, set) == 0;
@@ -92,6 +94,8 @@ int main(int argc, char **argv)
             }
         } else if (!active) {
             continue;
+        } else if (line[0] == 'N' || line[0] == 'W') { /* after V's reset: the junk's key, a snapshot (tc_strict.h) */
+            tcrt_strict_line(line);
         } else if (line[0] == 'R') {
             dwords(line + 1, r, 8);
         } else if (line[0] == 'F') {

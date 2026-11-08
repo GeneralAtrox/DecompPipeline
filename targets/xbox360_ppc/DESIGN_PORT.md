@@ -48,7 +48,7 @@ per-game table before a second game uses the kit. The kernel and XAM host calls 
 ## 3. No caller, no code: the table
 
 Rows are added by a stop, not by plan. Columns: part, what calls it, first log or function that needed it, host call,
-share of the frame budget (6.94 ms p99 at 2560x1600).
+share of the frame budget (6.67 ms p99 to make a frame at 2560x1600).
 
 | Part | Caller | First needed by | Host call | Budget share |
 |---|---|---|---|---|
@@ -121,7 +121,7 @@ by the kit: the library that touches it is replaced, so a guest access there is 
 
 ## 5. Budget from day one
 
-6.94 ms p99 at 2560x1600; 4:3, 16:9, 21:9 and Fit window; every controller button assignable; the play summary in the game log
+6.67 ms p99 to make a frame and 1 late frame per 1,000 at 2560x1600; 4:3, 16:9, 21:9 and Fit window; every controller button assignable; the play summary in the game log
 (reuse `port/runtime/play_stats.c`, `game_log.c`, the overlay, input and launcher path, and the aspect-ratio and
 in-between-frame kit; no parallel copies).
 

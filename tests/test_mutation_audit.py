@@ -4,7 +4,9 @@
 2. the gate: a mutant the baseline killed that a run did not is a lost kill and fails it; flips (the matched C no
    longer passes), stale functions (the matched C changed) and gained kills are reported, not failed; a function the
    run lacks fails it; dropped mutants are not compared;
-3. `baseline` only moves up (refuses a lost kill) and keeps keys the run did not cover;
+3. `baseline` only moves up (refuses a lost kill) and keeps keys the run did not cover; a lost kill is accepted only
+   when named with a reason (--accept-lost), and kept on the record; a named exclusion (--exclude) keeps the old
+   outcomes out of the gate until a run judges the function without an error; a flip never replaces outcomes;
 4. which changes need the audit: the judge, a runtime, target.json, a locked script; not docs or unlocked scripts.
 Synthetic data (no build). Run: python -W error tests/test_mutation_audit.py (also from test_tooling.py).
 """
@@ -127,6 +129,49 @@ class Gate(unittest.TestCase):
             new = json.loads((here / "baseline.json").read_text())
             self.assertEqual(new["sat"]["s"]["outcomes"], "KSSS")
             self.assertEqual(new["tc"]["e"], {"error": "x"})  # kept: the run did not cover it
+
+
+class AcceptAndExclude(unittest.TestCase):
+    def run_baseline(self, here, run, *extra):
+        p = here / "run.json"
+        p.write_text(json.dumps(run))
+        out = io.StringIO()
+        with mock.patch.object(ma, "HERE", here), contextlib.redirect_stdout(out), \
+                mock.patch.object(sys, "argv", ["x", "baseline", str(p)] + list(extra)):
+            code = ma.main()
+        return code, out.getvalue(), json.loads((here / "baseline.json").read_text())
+
+    def test_named_losses_and_exclusions(self):
+        old = {"tc": {"a": f("1", "KKSK"), "b": f("2", "KKK"), "c": f("3", "KS"), "d": f("4", "KK"),
+                      "e": f("5", "KK")}}
+        run = {"tc": {"a": f("1", "KSSS"), "b": f("2", "KKK"), "c": {"error": "lint"}, "d": f("4", "KK"),
+                      "e": {"error": "TcOut export"}}}
+        with tempfile.TemporaryDirectory() as d:
+            here = pathlib.Path(d)
+            (here / "baseline.json").write_text(json.dumps(old))
+            code, out, base = self.run_baseline(here, run)
+            self.assertEqual((code, base), (1, old))                       # the losses are not named
+            self.assertIn("tc:a:2, tc:a:4", out)
+            code, out, base = self.run_baseline(here, run, "--accept-lost", "tc:a:2=coverage")
+            self.assertEqual((code, base), (1, old))                       # every lost kill must be named
+            code, out, base = self.run_baseline(here, run, "--accept-lost", "tc:a:2,m04=coverage",
+                                                "--accept-lost", "tc:b:1=x")
+            self.assertEqual((code, base), (1, old))                       # and only lost ones
+            with self.assertRaises(SystemExit):                            # a reason is required
+                self.run_baseline(here, run, "--accept-lost", "tc:a:2,4")
+            code, out, base = self.run_baseline(here, run, "--accept-lost", "tc:a:m02,4=blocks unhit since 10-25",
+                                                "--exclude", "tc:e=TcOut tail-jump export")
+            self.assertEqual(code, 0, out)
+            self.assertEqual(base["tc"]["a"]["outcomes"], "KSSS")
+            self.assertEqual(base["tc"]["a"]["accepted_lost"], [{"ids": [2, 4], "why": "blocks unhit since 10-25"}])
+            self.assertEqual(base["tc"]["c"], old["tc"]["c"])              # a flip keeps the old outcomes
+            self.assertEqual(base["tc"]["e"], dict(old["tc"]["e"], excluded="TcOut tail-jump export"))
+            res = ma.compare(base, run)
+            self.assertEqual((res["keys"]["tc"]["excluded"], res["lost"]), (["e"], []))
+            self.assertIn("excluded 1", ma.report(res))
+            code, out, base = self.run_baseline(here, {"tc": {"e": f("5", "KK")}})   # fixed: judged again
+            self.assertEqual((code, base["tc"]["e"]), (0, f("5", "KK")))
+            self.assertEqual(base["tc"]["a"]["accepted_lost"][0]["ids"], [2, 4])     # kept across baselines
 
 
 class Needed(unittest.TestCase):

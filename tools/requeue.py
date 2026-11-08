@@ -52,19 +52,20 @@ def requeue_offline(ws, ledger, addrs, note):
         sys.exit("a server is running now; nothing changed (run again to go through its API)")
     stamp = time.strftime("%Y%m%d-%H%M%S")
     done = []
-    with filelock.locked(paths.LEDGER):  # re-read under the lock: the ledger as it is now, not as first read
+    def change(now):  # under the lock, on the ledger as it is now (not as first read); one line per function
         shutil.copyfile(paths.LEDGER, paths.STATE / f"ledger.before-requeue-{stamp}.json")
-        ledger.clear()
-        ledger.update(paths.read_json(paths.LEDGER))
         for a in addrs:
-            r = ledger["functions"].get(a)
+            r = now["functions"].get(a)
             if not r or r.get("status") in ACTIVE:
                 continue
             r["requeued"] = f"{time.strftime('%Y-%m-%d %H:%M')}: was {r['status']}; {note}"
             r["status"] = "queued"
             r.pop("matched_file", None)
             done.append(a)
-        paths.write_json(paths.LEDGER, ledger)
+        ledger.clear()
+        ledger.update(now)
+
+    filelock.update_json(paths.LEDGER, change, {"loop": False, "functions": {}}, dump=filelock.dumps_rows)
     for a in done:
         m = paths.MATCHED / f"{a}.c"
         if m.exists():  # matched/ only holds C that passes the current checker; the job judges this first

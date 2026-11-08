@@ -164,10 +164,10 @@ def emu_run(game, spec, out, seconds, inputs, exe=None, hw=None, lua_vars=None, 
     return time.monotonic() - t0
 
 
-def port_run(game, build_dir, spec, drive, trace, seconds, extra=()):
+def port_run(game, build_dir, spec, drive, trace, seconds, extra=(), rdir=None):
     cfg = load_game(game)
     bdir = pathlib.Path(game) / "build" / build_dir
-    rdir = pathlib.Path(game) / "build" / f"{build_dir}_lockstep"
+    rdir = pathlib.Path(rdir or pathlib.Path(game) / "build" / f"{build_dir}_lockstep")  # rdir: the run's folder
     rdir.mkdir(parents=True, exist_ok=True)
     cmd = [str(bdir / "port.exe"), "--disc", str(cfg["disc"]), "--seconds", str(seconds), "--log",
            str(rdir / "port.log"), "--headless", "--fixed-clock", "1", "--audio", "off", "--present", "tick",

@@ -12,7 +12,8 @@
 // Results: Ghidra's return storage is checked against what the code leaves changed: a callee-saved or restored
 // register is not a result (Ghidra's "return in r11" of `mov r11,r0; ... mov.l @r15+,r11`): the ABI register r0 is;
 // a 64-bit result is r0:r1 only when r1 is left changed; another changed caller-saved register is a nonstandard
-// result register (Proto.retReg).
+// result register (Proto.retReg), unless it is the register of one of Ghidra's parameters: that is Ghidra's
+// `return param_1`, and a call in between leaves the register holding whatever the callee left.
 // The game is built single-precision (no doubles), but Ghidra's SH-4 model often types two single floats as one
 // 8-byte pair: a parameter in drN, a result in dr0 (or fr1). Then the float parameters are exactly the registers
 // the function reads (singlesProto); Ghidra's own float parameters are dropped, as are those the code never reads
@@ -193,7 +194,9 @@ public class TcSig {
         }
         if (base.retStorage == null) return;
         int m = TcFlow.maskOf(base.retStorage);
-        if (m != 0 && (m & changed) != 0 && (m & facts.calleeSaved) == 0 && (m & facts.args()) != 0) {
+        boolean ownParam = false; // Ghidra's `return param_1` in the parameter's own register: it assumed calls keep r4
+        for (TcBase.Param q : base.params) ownParam |= base.retStorage.equals(q.storage);
+        if (m != 0 && !ownParam && (m & changed) != 0 && (m & facts.calleeSaved) == 0 && (m & facts.args()) != 0) {
             p.retReg = base.retStorage; // a changed caller-saved register: a nonstandard result register
         } else if ((changed & r0) == 0) {
             p.ret = "void"; // a restored register is no result, and the ABI result register is left as it was

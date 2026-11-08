@@ -1,7 +1,9 @@
 """Gate 6 of the scorecard (tools/scorecard_runtime.py): 144 fps at 2560x1600, no emulated layers.
 1. the session summary line parses (last one in a log; times as median/p99/worst);
 2. with no log, or only logs at another size or too short, the fps and p99 checks are unmeasured and the gate is never
-   green; a log at the target size is judged: the worst session counts, 144 fps and 6.94 ms p99 pass, below fail;
+   green; a log at the target size is judged: the worst session counts, a make p99 of 6.67 ms and 1 late frame per
+   1,000 shown pass, up to twice that is partial, beyond fails, and a log without the figures (older than the bar) is
+   unmeasured;
 3. the layers check reads docs/RUNTIME_TARGET.md's table: open layers fail, a row with no port kit is unmeasured, a console
    with no row is unmeasured, "Replaced ..." rows are closed;
 4. the aspect-ratio check reads the proof table of RUNTIME_TARGET.md: no table or no row for the reference game is
@@ -22,7 +24,10 @@ import scorecard as sc  # noqa: E402
 import scorecard_runtime as sr  # noqa: E402
 
 SPEC = json.loads((ROOT / "tools" / "scorecard" / "spec.json").read_text(encoding="utf-8"))
-OK = "play summary: shown_fps 144.6 output 2560x1600 frames 8640 tick_ms 1.10/2.30/9.10 draw_ms 2.00/3.10/12.00 frame_ms 6.50/6.80/14.00\n"
+OK = ("play summary: shown_fps 144.6 output 2560x1600 frames 8640 tick_ms 1.10/2.30/9.10 draw_ms 2.00/3.10/12.00 "
+      "frame_ms 6.50/6.80/14.00 make_ms 3.00/5.10/12.00\n"
+      "play verdict: pass make_ms p99 5.10 (bar 6.67) late 4 of 8600 shown (0.47 per 1000, bar 1) loading 40 shown 9 late machine target_laptop\n")
+OLD = OK.splitlines()[0].replace(" make_ms 3.00/5.10/12.00", "") + "\n"  # a log from before the bar
 DOC = """# x
 ## Emulated layers in the play path
 
@@ -50,6 +55,10 @@ class Summary(unittest.TestCase):
         self.assertEqual((s["fps"], s["w"], s["h"], s["frames"]), (144.6, 2560, 1600, 8640))
         self.assertEqual(s["frame_ms"], (6.5, 6.8, 14.0))
         self.assertEqual(s["tick_ms"][2], 9.1)
+        self.assertEqual(s["make_ms"], (3.0, 5.1, 12.0))
+        self.assertEqual((s["verdict"], s["late"], s["judged"], s["shown_loading"], s["late_loading"]), ("pass", 4, 8600, 40, 9))
+        self.assertNotIn("late", sr.parse_summary(OLD))
+        self.assertEqual(s["machine"], "target_laptop")
         self.assertIsNone(sr.parse_summary("play summary: nothing useful"))
 
     def test_layer_table_stops_at_the_next_heading(self):
@@ -84,14 +93,35 @@ class Gate(unittest.TestCase):
         self.assertIn("1920x1080", out[0]["missing"])
 
     def test_the_worst_session_counts(self):
-        slow = OK.replace("144.6", "120.0").replace("6.50/6.80/14.00", "8.00/9.50/20.00")
+        slow = OK.replace("3.00/5.10/12.00", "4.00/9.50/20.00").replace("late 4 of", "late 40 of")
         out = self.run_gate({"logs/port.log": OK, "logs/port.1.log": slow})
-        self.assertEqual((out[0]["status"], out[0]["value"]), ("fail", 120.0))
-        self.assertEqual((out[1]["status"], out[1]["value"]), ("partial", 9.5))  # at_most: up to twice the target is partial
-        worse = self.run_gate({"logs/port.log": slow.replace("8.00/9.50/20.00", "8.00/15.00/20.00")})
-        self.assertEqual((worse[1]["status"], worse[1]["value"]), ("fail", 15.0))
+        self.assertEqual((out[0]["status"], out[0]["value"]), ("partial", 9.5))  # at_most: up to twice the target is partial
+        self.assertEqual((out[1]["status"], out[1]["value"]), ("fail", 4.6512))  # 40 of 8600 shown
+        worse = self.run_gate({"logs/port.log": slow.replace("4.00/9.50/20.00", "4.00/15.00/20.00")})
+        self.assertEqual((worse[0]["status"], worse[0]["value"]), ("fail", 15.0))
         good = self.run_gate({"logs/port.log": OK})
         self.assertEqual([c["status"] for c in good[:2]], ["pass", "pass"])
+        # the bar's edges: 6.67 ms and 1 per 1,000 pass, just over is partial
+        edge = OK.replace("3.00/5.10/12.00", "3.00/6.67/12.00").replace("late 4 of 8600", "late 8 of 8000")
+        self.assertEqual([c["status"] for c in self.run_gate({"logs/port.log": edge})[:2]], ["pass", "pass"])
+        over = OK.replace("3.00/5.10/12.00", "3.00/6.68/12.00").replace("late 4 of 8600", "late 9 of 8000")
+        self.assertEqual([c["status"] for c in self.run_gate({"logs/port.log": over})[:2]], ["partial", "partial"])
+        # shown-frame spacing is not a check: a session at 6.94 ms frames passes on its figures
+        self.assertEqual([c["status"] for c in self.run_gate({"logs/port.log": OK.replace("6.50/6.80/14.00", "6.94/7.40/14.00")})[:2]],
+                         ["pass", "pass"])
+        # a log from before the bar has no figures: unmeasured, never green
+        old = self.run_gate({"logs/port.log": OLD})
+        self.assertEqual([c["status"] for c in old[:2]], ["unmeasured", "unmeasured"])
+
+    def test_only_the_users_laptop_passes_or_fails(self):
+        slow = OK.replace("3.00/5.10/12.00", "4.00/15.00/20.00").replace("target_laptop", "Build box A")
+        out = self.run_gate({"logs/port.log": slow})
+        self.assertEqual([c["status"] for c in out[:2]], ["unmeasured", "unmeasured"])  # Build box A: never a fail
+        self.assertIn("Build box A", out[0]["missing"])
+        both = self.run_gate({"logs/port.log": slow, "logs/port.1.log": OK.replace("target_laptop", "TARGET_LAPTOP")})
+        self.assertEqual([c["status"] for c in both[:2]], ["pass", "pass"])  # the laptop's counts, build box A's does not
+        unnamed = self.run_gate({"logs/port.log": OK.replace(" machine target_laptop", "")})
+        self.assertEqual([c["status"] for c in unnamed[:2]], ["unmeasured", "unmeasured"])
 
     def test_layers(self):
         out = self.run_gate({"logs/port.log": OK})

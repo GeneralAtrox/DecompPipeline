@@ -1,5 +1,6 @@
-"""The fast store-queue helpers (port/tools/tx_sqfast.py) against the judged ones (sqmodel.SQ_HELPERS): the same random
-stores and sends through both, compiled with MSVC, must leave the same queues and RAM. Planted faults must be caught.
+"""The fast store-queue helpers (port/tools/tx_sqfast.py) against the judged ones (sqmodel.SQ_HELPERS, and
+sq_callee_helpers for a function whose mocked callees store into the queues): the same random stores, callee marks and
+sends through both, compiled with MSVC, must leave the same queues and RAM. Planted faults must be caught.
 
 Nearest existing: tests/test_host_pace.py - the same compile-and-print harness; it covers the pacing and the spin filter.
 """
@@ -15,7 +16,7 @@ sys.path.insert(0, str(TOOL / "port" / "tools"))
 sys.path.insert(0, str(TOOL / "targets" / "dreamcast_sh4" / "translator"))
 import game_config  # noqa: E402
 import tx_sqfast  # noqa: E402
-from sh4translate.sqmodel import SQ_HELPERS  # noqa: E402
+from sh4translate.sqmodel import SQ_HELPERS, sq_callee_helpers  # noqa: E402
 from test_lockstep import HAVE_VC, NO_VC  # noqa: E402
 
 MODEL_C = r"""#include <stdint.h>
@@ -47,6 +48,9 @@ void @NAME@_op(u32 op, u32 a, u32 v)
     case 3: b.u = v & 0x7f7fffffu; sq_wrf32(&queues, a, b.f); break;
     case 4: sq_pref(&queues, a); break;
     case 5: sq_start(&queues, a); break;
+#ifdef CALLEE
+    case 7: { unsigned long long lo = (unsigned long long)v * 0x9e3779b97f4a7c15ull; sq_mark(&queues, a, lo & (lo >> 3), lo >> 1); } break;
+#endif
     default: sq_moved(&queues, a, a + (v & 0x1ffu)); break;
     }
 }
@@ -74,7 +78,11 @@ static u32 address(void)
 }
 int main(void)
 {
+#ifdef CALLEE
+    static const u32 mix[16] = {2, 2, 2, 2, 3, 3, 3, 7, 4, 4, 4, 0, 1, 7, 5, 6}; /* 7: a mocked callee's bytes */
+#else
     static const u32 mix[16] = {2, 2, 2, 2, 3, 3, 3, 3, 4, 4, 4, 0, 1, 2, 5, 6};
+#endif
     u32 i;
     for (i = 0; i < 400000u; i++) {
         u32 op = mix[rnd() % 16u], a = address(), v = rnd();
@@ -96,12 +104,12 @@ int main(void)
 """
 
 
-def judged_text():
-    return "\n".join(SQ_HELPERS)
+def judged_text(callee=False):
+    return "\n".join(sq_callee_helpers() if callee else SQ_HELPERS)
 
 
-def fast_text(plant=None):
-    text = tx_sqfast.rewrite(judged_text())
+def fast_text(plant=None, callee=False):
+    text = tx_sqfast.rewrite(judged_text(callee))
     if plant:
         assert plant[0] in text, plant[0]
         text = text.replace(plant[0], plant[1])
@@ -110,15 +118,15 @@ def fast_text(plant=None):
 
 @unittest.skipUnless(HAVE_VC, NO_VC)
 class SqFast(unittest.TestCase):
-    def run_pair(self, plant=None):
+    def run_pair(self, plant=None, callee=False, fast=None):
         with tempfile.TemporaryDirectory() as td:
             d = pathlib.Path(td)
-            (d / "judged.c").write_text(MODEL_C.replace("@NAME@", "judged").replace("@HELPERS@", judged_text()))
-            (d / "fast.c").write_text(MODEL_C.replace("@NAME@", "fast").replace("@HELPERS@", fast_text(plant)))
+            (d / "judged.c").write_text(MODEL_C.replace("@NAME@", "judged").replace("@HELPERS@", judged_text(callee)))
+            (d / "fast.c").write_text(MODEL_C.replace("@NAME@", "fast").replace("@HELPERS@", fast or fast_text(plant, callee)))
             (d / "driver.c").write_text(DRIVER_C)
             vc = str(game_config.vcvars32()).replace("/", "\\")
-            r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && cl /nologo /O2 /W3 driver.c judged.c fast.c /Fet.exe"', cwd=d,
-                               capture_output=True, text=True, timeout=120)
+            r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && cl /nologo /O2 /W3 {"/DCALLEE " if callee else ""}driver.c judged.c '
+                               'fast.c /Fet.exe"', cwd=d, capture_output=True, text=True, timeout=120)
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
             return subprocess.run([str(d / "t.exe")], capture_output=True, text=True, timeout=120).stdout
 
@@ -132,6 +140,20 @@ class SqFast(unittest.TestCase):
                       ("o + n <= 32u", "1"),  # a store across two blocks taken the short way
                       ("q->marked[k] = 0;\n}", "}")):  # the queue not emptied by a send
             self.assertNotIn("same", self.run_pair(plant), plant)
+
+    def test_callee_marks_same_as_judged(self):
+        self.assertEqual(self.run_pair(callee=True).strip(), "same 1")
+
+    def test_callee_planted_faults_are_caught(self):
+        plain = judged_text(True)  # the helpers without src, as the tool wrote them before 2026-11-03: Spawn lost its menu bar
+        for name, fast in tx_sqfast.FAST.items():
+            s, e = tx_sqfast.helper_span(plain, name)
+            plain = plain[:s] + fast + plain[e:]
+        self.assertNotIn("same", self.run_pair(callee=True, fast=plain))
+        for plant in (("for (i = 0; i < n; i++) q->src[k][o + i] = 0;", ""),  # a store leaves a callee's byte in place
+                      ("q->src[k][j] != to + j :", "1 :"),  # a send writes over the callee's own byte
+                      ("for (j = 0; j < 32u; j++) q->src[k][j] = 0;", "")):  # a send leaves the callee's bytes queued
+            self.assertNotIn("same", self.run_pair(plant, callee=True), plant)
 
     def test_a_file_without_all_helpers_is_not_rewritten(self):
         self.assertIsNone(tx_sqfast.rewrite("static void sq_put(SqQueues *q, u32 a, u32 n, u32 v) { }"))

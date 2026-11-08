@@ -32,8 +32,8 @@ typedef struct PortConsole {
     unsigned flags;        /* PORT_CONSOLE_*: what its presenter does (the menu greys an entry the console cannot apply) */
 } PortConsole;
 enum {
-    PORT_CONSOLE_INTERP = 1, /* in-between frames (Display > In-between frames) */
     PORT_CONSOLE_FPSCAP = 2, /* a frame-rate cap (Display > Frame-rate cap) */
+    PORT_CONSOLE_ONLINE = 4, /* online play: the Online menu (base/host_online.cpp) and the option --net on|off|HOST[:PORT] */
 };
 
 extern const PortConsole port_console;
@@ -129,9 +129,8 @@ void console_present_over(void *back_buffer); /* an ID3D11Resource: what the con
 void console_present_release(void);           /* the device is going away */
 int console_widens(void);                     /* 1: a play run's world fills the window unless the player chose a shape */
 
-/* ---- in-between frames: drawing and undoing them is the console's (PORT_CONSOLE_INTERP, PORT_CONSOLE_FPSCAP grey the menu) ---- */
-void extra_set_interp(int on); /* --present interp|tick */
-int extra_interp(void);
+/* ---- in-between frames: drawing and undoing them is the console's; they follow the frame-rate cap (PORT_CONSOLE_FPSCAP greys it) ---- */
+int extra_interp(void);        /* --present */
 void extra_set_fps(unsigned fps); /* --fps N, 0 uncapped */
 unsigned extra_fps(void);
 

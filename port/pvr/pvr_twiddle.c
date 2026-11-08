@@ -5,7 +5,9 @@
  * (rows of TEXT_CONTROL's width). Mip-mapped textures store their levels smallest first; the TCW addresses the chain.
  * 16-bit texels expand to 8 bits per channel by repeating their top bits, as the texture unit does. YUV422 stores
  * two texels in 32 bits (U, Y0, V, Y1) and converts with the ITU-R BT.601 equations; only the rectangle and stride
- * layouts hold it here (the TA's YUV converter writes those; the game's movie frames use them).
+ * layouts hold it here (the TA's YUV converter writes those; the game's movie frames use them). A movie frame is the
+ * largest texture decoded every tick, so its rows go a pair at a time with SSE2 (--pvr-yuv: simd, the default; table,
+ * one texel at a time as before; check, simd and every texel compared with table, for a replay's proof).
  * Palettized textures (formats 5 and 6: 4-bit and 8-bit indices, twiddled, low nibble first) look their texels up in
  * palette RAM (pvr_pal.c). Their TCW bits 26..21 are the palette selector, not the layout bits: a 4-bit texture uses
  * entries selector * 16.., an 8-bit one (selector & 0x30) * 16... Their mip levels are where 16-bit ones are, counted
@@ -13,6 +15,7 @@
  *
  * The twiddle and VQ decoding are adapted from Lodoss (port/src/setup/pvr.cpp), MIT License, Copyright (c) 2026
  * GeneralAtrox; see that project's LICENSE. */
+#include <emmintrin.h>
 #include <intrin.h>
 #include <string.h>
 #include "pvr_int.h"
@@ -142,6 +145,37 @@ static u32 yuv(u32 y, u32 u, u32 v)
     return r | g << 8 | b << 16 | 0xff000000u;
 }
 
+/* --pvr-yuv */
+enum { YUV_SIMD, YUV_TABLE, YUV_CHECK };
+static int g_yuv_mode;
+static u32 g_yuv_checked, g_yuv_differ;
+
+int pvr_yuv_option(const char *value)
+{
+    if (!strcmp(value, "simd")) g_yuv_mode = YUV_SIMD;
+    else if (!strcmp(value, "table")) g_yuv_mode = YUV_TABLE;
+    else if (!strcmp(value, "check")) g_yuv_mode = YUV_CHECK;
+    else return 0;
+    return 2;
+}
+
+/* w texels of YUV422 from texture-memory byte `at` (even), whose pairs lie whole in texture memory: yuv()'s sums in
+ * four lanes, its clamp from the two saturating packs (a sum's top half fits 16 bits), alpha set over its lane. */
+static void yuv_row(const u8 *p, u32 at, u32 w, u32 *out)
+{
+    const __m128i round = _mm_set1_epi32(32768), alpha = _mm_set1_epi32((int)0xff000000u);
+    u32 x = 0;
+    if (at & 2u) *out++ = yuv(p[1], p[-2], p[0]), p += 2, x = 1;
+    for (; x + 2u <= w; x += 2u, p += 4, out += 2) {
+        __m128i uv = _mm_set_epi32(0, g_yuv_bu[p[0]], -g_yuv_gu[p[0]] - g_yuv_gv[p[2]], g_yuv_rv[p[2]]);
+        __m128i a = _mm_add_epi32(_mm_add_epi32(uv, round), _mm_set1_epi32((s32)p[1] << 16));
+        __m128i b = _mm_add_epi32(_mm_add_epi32(uv, round), _mm_set1_epi32((s32)p[3] << 16));
+        __m128i s = _mm_packs_epi32(_mm_srai_epi32(a, 16), _mm_srai_epi32(b, 16));
+        _mm_storel_epi64((__m128i *)out, _mm_or_si128(_mm_packus_epi16(s, s), alpha));
+    }
+    if (x < w) *out = yuv(p[1], p[0], p[2]);
+}
+
 static u16 rd16(const u8 *vram, u32 at)
 {
     return (u16)(vram[at & (PVRX_VRAM_SIZE - 1u)] | vram[(at + 1u) & (PVRX_VRAM_SIZE - 1u)] << 8);
@@ -252,6 +286,29 @@ u32 pvr_decode(u32 tcw, u32 w, u32 h, u32 stride, u32 *out, u32 out_texels)
         if ((tcw & TCW_STRIDE) && !stride) pvr_todo("pvr: a stride texture before the stride is set");
         u32 pair_at = ~0u, u = 0, v = 0;
         if (fmt == FMT_YUV422 && !g_yuv_ready) yuv_tables();
+        if (fmt == FMT_YUV422 && g_yuv_mode != YUV_TABLE) {
+            for (u32 y = 0; y < h; y++) {
+                u32 at = (base + y * pitch * 2u) & (PVRX_VRAM_SIZE - 1u);
+                /* near the end of texture memory a row's addresses wrap: the texel loop below reads them so */
+                if (at + w * 2u + 4u > PVRX_VRAM_SIZE) {
+                    for (u32 x = 0; x < w; x++) {
+                        u32 a = at + x * 2u, pair = a & ~3u;
+                        out[y * w + x] = yuv(rd8(vram, a + 1u), rd8(vram, pair), rd8(vram, pair + 2u));
+                    }
+                    continue;
+                }
+                yuv_row(vram + at, at, w, out + y * w);
+            }
+            if (g_yuv_mode != YUV_CHECK) return 1;
+            for (u32 y = 0; y < h; y++)
+                for (u32 x = 0; x < w; x++) {
+                    u32 at = base + (y * pitch + x) * 2u, pair = at & ~3u;
+                    g_yuv_differ += out[y * w + x] != yuv(rd8(vram, at + 1u), rd8(vram, pair), rd8(vram, pair + 2u));
+                }
+            if (!(g_yuv_checked++ & 63u) || g_yuv_differ)
+                port_log("pvr: --pvr-yuv check: %u textures, %u texels differ\n", g_yuv_checked, g_yuv_differ);
+            return 1;
+        }
         for (u32 y = 0; y < h; y++)
             for (u32 x = 0; x < w; x++) {
                 u32 at = base + (y * pitch + x) * 2u;

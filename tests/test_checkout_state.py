@@ -40,7 +40,7 @@ from core import ghidra, oracle_stamp, paths
 state, own = pathlib.Path(sys.argv[2]), pathlib.Path(sys.argv[3])
 paths.STATE, paths.SCRIPTS, paths.TARGET_SCRIPTS = state, state / "ghidra_scripts", own
 paths.INPUTS = state.parent / "TcInputs.java"  # the project's, the same for both
-cfg = dict(paths.config(), ghidra_timeout_s=int(sys.argv[4]))
+cfg = dict(paths.config(), ghidra_timeout_s=int(sys.argv[4]), stamp_scopes=[])  # scopes read the image; none here
 facts, scripts = ghidra.write_facts(cfg), paths.sync_scripts()
 print(json.dumps({"facts": facts, "scripts": str(scripts),
                   "stamp": oracle_stamp.stamp(cfg, "8c010000", scripts, facts, None, 4, 4)}))
@@ -234,7 +234,8 @@ class SharedScripts(unittest.TestCase):
         shutil.copytree(paths.SHARED_SCRIPTS, shared)
         saved, paths.SHARED_SCRIPTS = paths.SHARED_SCRIPTS, shared
         try:
-            cfg = paths.config()
+            # no stamp scopes: their finders and hooks read the game image, which the fixture has none of
+            cfg = dict(paths.config(), stamp_scopes=[])
 
             def stamps():  # a prepare's, and oracle_fresh's with its scripts (both with no facts file)
                 return (oracle_stamp.stamp(cfg, "82000000", paths.sync_scripts(), None, None, 4, 4),

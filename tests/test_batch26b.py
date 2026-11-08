@@ -21,7 +21,7 @@ from core import toolcfg  # noqa: E402
 # what the repository tracks (live's git ls-files: these roots); the rest of a stage folder is not shipped
 TRACKED_DIRS = ("core", "docs", "port", "targets", "tests", "tools", "ui")
 TRACKED_TOP = (".gitignore", "AGENTS.md", "LICENSE", "README.md", "config.json", "decomp.py", "refine.py", "xproject.py")
-IGNORED_PARTS = {"__pycache__", ".work", "ghidra_work", "backup", "launcher_backup"}
+IGNORED_PARTS = {"__pycache__", ".work", "ghidra_work", "backup", "launcher_backup", "build"}  # build: git-ignored output
 IGNORED_NAMES = {toolcfg.LOCAL, "patterns.local.json"}
 TEXT = {".py", ".md", ".json", ".java", ".c", ".h", ".txt", ".html", ".js", ".css", ".gitignore", ".bat", ".sh",
         ".slaspec", ".sinc", ".pspec", ".cspec", ".ldefs", ".opinion", ".tsv", ".cfg", ""}
@@ -133,7 +133,8 @@ class Patterns(unittest.TestCase):
         spec = json.loads((TOOL / "tests" / "patterns.json").read_text(encoding="utf-8"))
         self.assertEqual(spec["fixtures"], [])
         rel = [pathlib.Path(f).relative_to(TOOL).as_posix() for f in tracked_files(TOOL)]
-        self.assertEqual([f for f in rel if f.endswith(".c") and not f.startswith(("targets/", "port/"))], [])
+        # tests/: the C drivers and reference C the tests build (sat_*_test.c, autoload_test.c, fixtures/), no game code
+        self.assertEqual([f for f in rel if f.endswith(".c") and not f.startswith(("targets/", "port/", "tests/"))], [])
         # port/ is the game-free port kit: its C may hold no guest code address, game name or game.h runtime include
         # (tests/test_port_kit.py, the same scan)
         import test_port_kit
@@ -142,9 +143,9 @@ class Patterns(unittest.TestCase):
 
 class NoMachinePaths(unittest.TestCase):
     def test_tracked_files_clean(self):
-        files = tracked_files(TOOL)
-        self.assertGreater(len(files), 200)
-        self.assertEqual(machine_paths(files), [])
+        files = [f for f in tracked_files(TOOL) if f.relative_to(TOOL).parts[:2] != ("docs", "proofs")]
+        self.assertGreater(len(files), 200)  # docs/proofs (and docs/launcher_backup) are dated records of a machine's
+        self.assertEqual(machine_paths(files), [])  # run, kept as written; scrubbing them is the public snapshot's step
 
     def test_a_machine_path_is_found(self):
         d = pathlib.Path(tempfile.mkdtemp())

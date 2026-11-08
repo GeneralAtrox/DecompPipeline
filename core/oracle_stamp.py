@@ -21,7 +21,9 @@ the stamp says which inputs made a harness, not that a run under load would make
 A scoped oracle change (config "stamp_scopes", from target.json) leaves the stamps of the functions it cannot reach
 as they were: each scope lists script files with their hashes before and after the change, and a function the
 target's stamp_scope hook (core/target_hooks) puts outside the scope is stamped with the "before" hashes (a file the
-change added has none, null: such a function's stamp has no line for it). Only while every file's hash is still its
+change added has none, null: such a function's stamp has no line for it). A scope with "flags" (config switches)
+needs no hook: a change that makes no harness byte while its switches are off reaches every function while one is
+on and none while all are off. Only while every file's hash is still its
 "after" hash: any later edit of one stamps every function anew.
 The callee records are an input too: each records the callee's signature the harness was built with, and a harness
 is current only while they equal the callees' own harness signatures (current(); core/callee_drift.py).
@@ -135,23 +137,59 @@ def stamp(cfg, addr, scripts_dir, facts_path, hints, ndev, nhidden):
     return stamp_of(cfg, addr, scripts, facts_text(facts_path), hints, ndev, nhidden)
 
 
+SCOPED_FACTS = re.compile(r"^tcout_tail_exports .*\n?", re.M)  # facts lines a finder scope stamps per function
+
+
 def facts_hashed(body):
-    """facts_text of a facts file whose text is body (None: no facts file), without the file."""
+    """facts_text of a facts file whose text is body (None: no facts file), without the file. A SCOPED_FACTS line is
+    left out: the flag's scope (a "finder" scope) moves the stamps it can change, and only those."""
     if body is None:
         return "-"
+    body = SCOPED_FACTS.sub("", body)
     return re.sub(r"^code_ranges (.*)$", lambda m: "code_ranges " + file_hash(m.group(1).strip()), body, flags=re.M)
+
+
+def _regout_tail(cfg, addr):
+    """In the tcout_tail_exports scope: a tail jump lands on addr's entry (tail_scope, cached per
+    workspace)."""
+    root = str(paths.ROOT)
+    if root not in _FINDER_CACHE:
+        _FINDER_CACHE[root] = tail_scope(paths.ROOT)
+    return addr.lower() in _FINDER_CACHE[root]
+
+
+def tail_scope(ws):
+    """The addresses (8 hex digits) whose TcOut exports target.json "tcout_tail_exports" can change (TcOut.readAfter):
+    a tail jump (bra, braf, jmp; core/regout's decoder and sites) lands on the function's entry and the function
+    leaves some r4..r7 changed. A superset: an unresolved tail jump counts for every callee its meta.json lists."""
+    from . import regout
+    c, out = regout.Code(*regout.load(ws)), set()
+    for f in c.bodies:
+        for _, t, tail in c.sites(f):
+            if tail:
+                out.update(g for g in ([t] if t is not None else c.callees.get(f, []))
+                           if g in c.bodies and ~c.kept(g) & regout.R4_7)
+    return {f"{x:08x}" for x in out}
+
+
+FINDERS = {"regout_tail": _regout_tail}  # a "flags" scope's "finder": with its flags on, the functions it can change
+_FINDER_CACHE = {}
 
 
 def scoped_hashes(cfg, addr, scripts):
     """{file name: hash} of the scripts whose "before" hash stands for this function (config "stamp_scopes"); None
-    for a file the change added."""
+    for a file the change added. A "flags" scope with a "finder" (FINDERS) holds, with its flags on, only for the
+    functions the finder names: the rest keep their stamps (a superset finder, as TcOut's tail jumps)."""
     out = {}
     hook = target_hooks.get("stamp_scope")
     for sc in cfg.get("stamp_scopes") or []:
-        files = sc.get("scripts") or {}
-        if not hook or any(n not in scripts or file_hash(scripts[n]) != h[1] for n, h in files.items()):
+        files, flags = sc.get("scripts") or {}, sc.get("flags")
+        if (not hook and flags is None) or any(n not in scripts or file_hash(scripts[n]) != h[1] for n, h in files.items()):
             continue
-        if not hook(cfg, addr, sc["scope"]):
+        on = any(cfg.get(f) for f in flags) if flags is not None else hook(cfg, addr, sc["scope"])
+        if on and sc.get("finder"):
+            on = FINDERS[sc["finder"]](cfg, addr)
+        if not on:
             out.update({n: h[0] for n, h in files.items()})
     return out
 

@@ -3,8 +3,10 @@
  * system-manager interrupt for each packet: the game's handler copies OREG and, when SR says more is coming (NPE),
  * writes IREG0 = CONTINUE for the next. SNDON / SNDOFF start and stop the sound CPU (sat_scsp.c). */
 #include <string.h>
+#include <time.h>
 #include "sat.h"
 #include "sat_sys.h"
+#include "session.h"
 
 #define SMPC_LO 0x00100000u
 #define OREG(n) (0x21u + 2u * (n))
@@ -28,15 +30,49 @@ static u32 smpc_read(u32 p, u32 size)
 
 static int n_logged;
 
-/* OREG0..30: SETTIME flag, the clock (BCD), cartridge code, area code, system status, SMEM */
+/* The clock INTBACK reports, as the console's battery clock would. A play run starts it from the host's local time (the
+ * base's game clock, so a replay has the recording's) and moves it on with the vertical blanks; a check, --det, online
+ * or headless run, and a replay of a recording made before this, keep 1997-01-01 00:00:00, a Wednesday. A game stamps
+ * its saves with it (Robo Pit: BUP SetDate). Kept in a recording as a note when on. */
+#define CLOCK_NOTE "*smpc-clock"
+static time_t g_clock0 = 852076800; /* 1997-01-01 00:00:00 */
+static int g_clock_on;
+
+void sat_smpc_clock_start(int play_run)
+{
+    u8 on = 0;
+    if (!session_note_replayed(CLOCK_NOTE, &on, 1) && !session_replaying()) on = (u8)(play_run != 0);
+    if (on) {
+        HostTime h;
+        struct tm t = {0};
+        host_local_time(&h);
+        t.tm_year = h.year - 1900, t.tm_mon = h.month - 1, t.tm_mday = h.day;
+        t.tm_hour = h.hour, t.tm_min = h.minute, t.tm_sec = h.second;
+        g_clock0 = _mkgmtime(&t);
+        g_clock_on = 1;
+        session_save_read(CLOCK_NOTE, &on, 1, 1);
+    }
+    port_log("smpc: clock %s\n", on ? "from the host's local time" : "fixed at 1997-01-01 00:00:00");
+}
+
+static u8 bcd(u32 v) { return (u8)((v / 10u % 10u) << 4 | v % 10u); }
+
+/* OREG0..30: SETTIME flag, the clock (BCD year, day of week and month, day, hours, minutes, seconds), cartridge code,
+ * area code, system status, SMEM */
 static void intback_status(void)
 {
+    time_t s = g_clock0 + (g_clock_on ? (time_t)(sat_vblank_count() / sat_sys_hz()) : 0);
+    struct tm t;
+    gmtime_s(&t, &s);
     memset(g_reg + 0x20, 0, 0x40);
-    g_reg[OREG(0)] = 0x80;  /* SETTIME not done */
-    g_reg[OREG(1)] = 0x19;  /* 1997-01-01 00:00:00, a Wednesday */
-    g_reg[OREG(2)] = 0x97;
-    g_reg[OREG(3)] = 0x31;
-    g_reg[OREG(4)] = 0x01;
+    g_reg[OREG(0)] = 0x80; /* SETTIME not done */
+    g_reg[OREG(1)] = bcd((u32)(t.tm_year + 1900) / 100u);
+    g_reg[OREG(2)] = bcd((u32)t.tm_year % 100u);
+    g_reg[OREG(3)] = (u8)(t.tm_wday << 4 | (t.tm_mon + 1));
+    g_reg[OREG(4)] = bcd((u32)t.tm_mday);
+    g_reg[OREG(5)] = bcd((u32)t.tm_hour);
+    g_reg[OREG(6)] = bcd((u32)t.tm_min);
+    g_reg[OREG(7)] = bcd((u32)t.tm_sec);
     g_reg[OREG(8)] = 0x00;  /* no cartridge */
     g_reg[OREG(9)] = 0x0c;  /* area code: Europe */
     g_reg[OREG(10)] = 0x34; /* system status 1 */

@@ -136,7 +136,7 @@ void sat_mix_sample(s32 *left, s32 *right)
         if (!s->on) continue;
         a = fetch(s, s->pos);
         nx = s->pos + 1u;
-        if (s->lpctl && s->lea > s->lsa && nx >= s->lea) nx = s->lsa + (nx - s->lea);
+        if (s->lpctl && s->lea > s->lsa && nx > s->lea) nx = s->lsa + (nx - s->lea - 1u); /* LEA is the loop's last sample */
         b = fetch(s, nx);
         v = (float)a + (float)(b - a) * ((float)s->frac / 65536.0f);
         total = s->att + (float)s->tl * 4.0f;
@@ -147,8 +147,8 @@ void sat_mix_sample(s32 *left, s32 *right)
         s->frac += s->inc;
         s->pos += s->frac >> 16;
         s->frac &= 0xffffu;
-        if (s->pos >= s->lea) {
-            if (s->lpctl && s->lea > s->lsa) s->pos = s->lsa + (s->pos - s->lea) % (s->lea - s->lsa);
+        if (s->pos > s->lea) { /* past the loop's last sample: Robo Pit's movie voice loops 0..0xffff over a ring of 65,536 */
+            if (s->lpctl && s->lea > s->lsa) s->pos = s->lsa + (s->pos - s->lea - 1u) % (s->lea - s->lsa + 1u);
             else s->on = 0;
         }
     }

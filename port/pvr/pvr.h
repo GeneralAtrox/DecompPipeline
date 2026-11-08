@@ -42,6 +42,11 @@ void pvr_set_cheap_shadow(s32 intensity);
 /* pvr_pack.c: --texture-pack DIR|on|off (texture packs: replacement images, host-side only); the arguments taken */
 int pvr_pack_option(const char *arg, const char *value);
 
+/* pvr_parts.c, from the SDK: where each TA list's write position is kept (uncached addresses, PVRX_LISTS of them),
+ * and the start of a scene (the parts of the one before are spent). */
+void pvr_parts_lists(const u32 *ptrs);
+void pvr_parts_scene(void);
+
 /* pvr_draw.c: draws a scene's passes into the frame target. Returns 0 when nothing could be drawn. */
 int pvr_render(const PvrPass *passes, u32 count);
 int pvr_read_frame(void *rgb565, u32 width, u32 height); /* the last frame, scaled to width x height; 0 if none */

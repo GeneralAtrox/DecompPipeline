@@ -132,6 +132,8 @@ def SDK_BLOCK(src, flag):
 PANEL_C = r"""#include <stdio.h>
 #include "gfx_vmu.c"
 GfxState g_gfx;
+int g_work_on;
+u64 g_work_now[WC_N];
 
 int main(int argc, char **argv)
 {

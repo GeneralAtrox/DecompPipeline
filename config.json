@@ -9,6 +9,7 @@
   "objdiff_cli": null,
   "dtk": null,
   "translators": {},
+  "flycast_divergence": null,
   "claude": "claude",
   "model": "haiku",
   "readable_model": "opus",

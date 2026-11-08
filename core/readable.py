@@ -185,16 +185,19 @@ def fn_pointer_type(proto):
     return f"{ret} (*)({', '.join(types) or 'void'})"
 
 
-def game_h(reg, verify_self=None, addrs=None, raw_sigs=None, aliases=None, lean_globals=None):
+def game_h(reg, verify_self=None, addrs=None, raw_sigs=None, aliases=None, lean_globals=None, wide=False):
     """game.h text. verify_self: the address under test (verification build); None for the port header.
 
     addrs: functions to declare besides the registry's; raw_sigs: {addr: raw signature} for those. aliases: {addr:
     raw signature} of named functions readable C may still call by their raw name fn_ADDR with the raw arguments
     (readable_abi.raw_alias_ok: the registry's placement starts with the raw parameters'); verification build only.
-    lean_globals: a lean game.h (readable_lean): only the functions in addrs, and only these globals."""
+    lean_globals: a lean game.h (readable_lean): only the functions in addrs, and only these globals. wide: a 64-bit
+    verification build (targets/xbox360_ppc): each guest address goes through uintptr_t on its way to a pointer, as
+    a 32-bit constant cast straight to a 64-bit pointer is warning C4312."""
     lines = ["/* Generated from readable/names/*.json: do not edit. */", "#ifndef GAME_H", "#define GAME_H", "",
              '#include "rd_rt.h"', '#include "types.h"', ""]
     lean = lean_globals is not None
+    at = "(uintptr_t)" if wide else ""
     fns = sorted(set(addrs or ()) if lean else set(reg.functions) | set(addrs or ()))
     globs = sorted((a, e) for a, e in reg.globals.items() if not lean or a in lean_globals)
     protos = {a: reg.proto(a, raw_sig=(raw_sigs or {}).get(a)) for a in fns}
@@ -206,16 +209,16 @@ def game_h(reg, verify_self=None, addrs=None, raw_sigs=None, aliases=None, lean_
         for a in fns:
             if a != verify_self:
                 name = parse_proto(protos[a])[1]
-                lines.append(f"#define {name} (({fn_pointer_type(protos[a])})0x{a}u)")
+                lines.append(f"#define {name} (({fn_pointer_type(protos[a])}){at}0x{a}u)")
         for a, sig in sorted((aliases or {}).items()):
             raw = raw_proto(sig)
             name = parse_proto(raw)[1]
             if a != verify_self and name != parse_proto(protos.get(a) or reg.proto(a))[1]:
-                lines.append(f"#define {name} (({fn_pointer_type(raw)})0x{a}u) /* raw name */")
+                lines.append(f"#define {name} (({fn_pointer_type(raw)}){at}0x{a}u) /* raw name */")
         for a, e in globs:
             name = global_name(e["decl"])
             td = re.sub(rf"\b{name}\b", f"rdg_{name}_t", e["decl"].rstrip(";"), count=1)
-            lines += [f"typedef {td};", f"#define {name} (*(rdg_{name}_t *)0x{a}u)"]
+            lines += [f"typedef {td};", f"#define {name} (*(rdg_{name}_t *){at}0x{a}u)"]
     lines += ["", "#endif", ""]
     return "\n".join(lines)
 

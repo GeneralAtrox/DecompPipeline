@@ -158,12 +158,12 @@ void pvr_modvol_draw(const PvrScene *s, u32 pass, ID3D11Buffer *frame_consts)
     const u32 *r = s->range[pass][PVRX_LIST_OPAQUE_MOD];
     D3D11_RECT all = {0, 0, (LONG)g_gfx.draw_w, (LONG)g_gfx.draw_h};
     u32 base = r[0];
-    if (g_pvr.shadow < 0) {
+    if (g_pvr_drawn->shadow < 0) {
         pvr_todo("pvr: modifier volumes with two-parameter polygons (cheap shadow off)");
         return;
     }
     if (!ready()) return;
-    pvr_seen("modifier volumes: cheap shadow, intensity %d/256", g_pvr.shadow);
+    pvr_seen("modifier volumes: cheap shadow, intensity %d/256", g_pvr_drawn->shadow);
     ID3D11DeviceContext_PSSetShader(cx, NULL, NULL, 0);
     ID3D11DeviceContext_OMSetBlendState(cx, g_no_color, NULL, 0xffffffffu);
     for (u32 i = r[0]; i < r[1]; i++) {
@@ -212,7 +212,7 @@ void pvr_modvol_trans_draw(const PvrScene *s, u32 pass)
     ID3D11DeviceContext *cx = g_gfx.ctx;
     const u32 *r = s->range[pass][PVRX_LIST_TRANS_MOD];
     u32 base = r[0];
-    if (g_pvr.shadow < 0) {
+    if (g_pvr_drawn->shadow < 0) {
         pvr_todo("pvr: translucent modifier volumes with two-parameter polygons (cheap shadow off)");
         return;
     }

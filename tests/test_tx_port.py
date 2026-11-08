@@ -300,7 +300,7 @@ class PortForm(unittest.TestCase):
             inc = [ROOT / "port" / "runtime" / "tx", ROOT / "targets" / "dreamcast_sh4" / "runtime"]
             cl = ("cl /nologo /c /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 "
                   + " ".join(f'/I"{p}"' for p in inc) + " tx_8c010000.c")
-            vc = str(game_config.vcvars32()).replace("/", "\\")
+            vc = str(game_config.vcvars32() or self.skipTest("no 32-bit Visual Studio (game_config.vcvars32)")).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
                                errors="replace", timeout=300)
             self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-1000:])
@@ -315,6 +315,7 @@ STACK_DRIVER_C = r"""/* tx_rt.c's tc_call into a translated callee's glue: the c
 #include "port_dispatch.h"
 #include "overlay.h"
 #include "tx_rt.h"
+#include "work_count.h"
 
 u32 rd32(u32 addr);
 void wr32(u32 addr, u32 value);
@@ -339,8 +340,11 @@ const int port_dispatch_nchunks = 0;
 
 const PortDispatch *overlay_find(u32 addr) { (void)addr; return NULL; }
 const PortDispatch *overlay_glue(u32 addr) { (void)addr; return NULL; }
+const PortDispatch *overlay_find_glue(u32 addr, const PortDispatch **glue) { (void)addr; *glue = NULL; return NULL; }
 u32 overlay_delta(void) { return 0; }
-u32 tx_ovl_delta;
+u32 tx_ovl_delta, port_sh4_fr[16], port_sh4_ro[4];
+int g_prof_on, g_work_on; u64 g_work_now[WC_N]; volatile int port_tx_spin_on; /* off: profiler, counters, spin */
+void prof_call(u32 target) { (void)target; }  u32 port_tx_spin_read(u32 addr, u32 v) { (void)addr; return v; }
 const PortDispatch *port_dispatch_find(u32 addr) { (void)addr; return NULL; }
 u32 guest_fold(u32 a) { return (a >> 24) == 0x0cu ? a | 0x80000000u : a; }
 int guest_is_ram(u32 a) { return guest_fold(a) - 0x8c000000u < 0x01000000u; }
@@ -384,7 +388,7 @@ class StackWords(unittest.TestCase):
             cl = ("cl /nologo /TC /std:c11 /W4 /WX /O1 " + " ".join(f'/I"{p}"' for p in inc)
                   + f' driver.c "{rt / "tx" / "tx_rt.c"}" /Fe:drv.exe /link /LARGEADDRESSAWARE /DYNAMICBASE:NO '
                   "/BASE:0x5a000000")
-            vc = str(game_config.vcvars32()).replace("/", "\\")
+            vc = str(game_config.vcvars32() or self.skipTest("no 32-bit Visual Studio (game_config.vcvars32)")).replace("/", "\\")
             r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
                                errors="replace", timeout=300)
             self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-1000:])

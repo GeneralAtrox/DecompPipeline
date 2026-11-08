@@ -1,0 +1,418 @@
+{
+ "game": "toycommander",
+ "args": [
+  "--disc",
+  "<projects>/DreamCast/ToyCommander/Toy Commander/Toy Commander (Europe) (En,Fr,De,Es).cue",
+  "--fixed-clock",
+  "1",
+  "--headless",
+  "--present",
+  "tick",
+  "--size",
+  "2560x1464",
+  "--record",
+  "off",
+  "--save-dir",
+  "{work}",
+  "--seconds",
+  "480",
+  "--audio-dump",
+  "{work}/audio.wav"
+ ],
+ "scenes": {
+  "front_end": {
+   "args": [
+    "--replay",
+    "{here}/20261031-121005.ptrec",
+    "--stop-at",
+    "3000"
+   ],
+   "from": 100,
+   "to": 3000,
+   "blanks": 2900,
+   "counts": {
+    "allocs": 1,
+    "alloc_bytes": 2048,
+    "draws": 5808,
+    "uploads": 5808,
+    "gpu_creates": 1452,
+    "gpu_copies": 1452,
+    "presents": 1451,
+    "guest_calls": 46831069,
+    "guest_writes": 0,
+    "vector_ops": 0,
+    "sound_cpu": 0,
+    "scene_headers": 8712,
+    "scene_triangles": 26136,
+    "sprite_commands": 0,
+    "composes": 0,
+    "disc_bytes": 42850304
+   },
+   "peak": {
+    "allocs": 1,
+    "alloc_bytes": 2048,
+    "draws": 4,
+    "uploads": 4,
+    "gpu_creates": 1,
+    "gpu_copies": 1,
+    "presents": 1,
+    "guest_calls": 43017,
+    "guest_writes": 0,
+    "vector_ops": 0,
+    "sound_cpu": 0,
+    "scene_headers": 6,
+    "scene_triangles": 18,
+    "sprite_commands": 0,
+    "composes": 0,
+    "disc_bytes": 935936
+   }
+  },
+  "play": {
+   "args": [
+    "--replay",
+    "{here}/20261031-121005.ptrec",
+    "--stop-at",
+    "15000"
+   ],
+   "from": 14000,
+   "to": 15000,
+   "blanks": 1000,
+   "counts": {
+    "allocs": 0,
+    "alloc_bytes": 0,
+    "draws": 43052,
+    "uploads": 1500,
+    "gpu_creates": 0,
+    "gpu_copies": 500,
+    "presents": 500,
+    "guest_calls": 391281,
+    "guest_writes": 0,
+    "vector_ops": 11256267,
+    "sound_cpu": 0,
+    "scene_headers": 68906,
+    "scene_triangles": 849549,
+    "sprite_commands": 0,
+    "composes": 0,
+    "disc_bytes": 0
+   },
+   "peak": {
+    "allocs": 0,
+    "alloc_bytes": 0,
+    "draws": 243,
+    "uploads": 3,
+    "gpu_creates": 0,
+    "gpu_copies": 1,
+    "presents": 1,
+    "guest_calls": 1479,
+    "guest_writes": 0,
+    "vector_ops": 45619,
+    "sound_cpu": 0,
+    "scene_headers": 353,
+    "scene_triangles": 4124,
+    "sprite_commands": 0,
+    "composes": 0,
+    "disc_bytes": 0
+   }
+  }
+ },
+ "ledger": [
+  {
+   "date": "2026-11-01",
+   "why": "first baseline for Toy Commander, from the kit that adds the counters",
+   "changes": {
+    "front_end": {
+     "alloc_bytes": [
+      null,
+      2048
+     ],
+     "allocs": [
+      null,
+      1
+     ],
+     "blanks": [
+      null,
+      2900
+     ],
+     "composes": [
+      null,
+      0
+     ],
+     "disc_bytes": [
+      null,
+      42850304
+     ],
+     "draws": [
+      null,
+      5808
+     ],
+     "gpu_copies": [
+      null,
+      1452
+     ],
+     "gpu_creates": [
+      null,
+      1452
+     ],
+     "guest_calls": [
+      null,
+      46831069
+     ],
+     "guest_writes": [
+      null,
+      0
+     ],
+     "peak alloc_bytes": [
+      null,
+      2048
+     ],
+     "peak allocs": [
+      null,
+      1
+     ],
+     "peak composes": [
+      null,
+      0
+     ],
+     "peak disc_bytes": [
+      null,
+      935936
+     ],
+     "peak draws": [
+      null,
+      4
+     ],
+     "peak gpu_copies": [
+      null,
+      1
+     ],
+     "peak gpu_creates": [
+      null,
+      1
+     ],
+     "peak guest_calls": [
+      null,
+      43017
+     ],
+     "peak guest_writes": [
+      null,
+      0
+     ],
+     "peak presents": [
+      null,
+      1
+     ],
+     "peak scene_headers": [
+      null,
+      6
+     ],
+     "peak scene_triangles": [
+      null,
+      18
+     ],
+     "peak sound_cpu": [
+      null,
+      0
+     ],
+     "peak sprite_commands": [
+      null,
+      0
+     ],
+     "peak uploads": [
+      null,
+      4
+     ],
+     "peak vector_ops": [
+      null,
+      0
+     ],
+     "presents": [
+      null,
+      1451
+     ],
+     "scene_headers": [
+      null,
+      8712
+     ],
+     "scene_triangles": [
+      null,
+      26136
+     ],
+     "sound_cpu": [
+      null,
+      0
+     ],
+     "sprite_commands": [
+      null,
+      0
+     ],
+     "uploads": [
+      null,
+      5808
+     ],
+     "vector_ops": [
+      null,
+      0
+     ]
+    },
+    "play": {
+     "alloc_bytes": [
+      null,
+      0
+     ],
+     "allocs": [
+      null,
+      0
+     ],
+     "blanks": [
+      null,
+      1000
+     ],
+     "composes": [
+      null,
+      0
+     ],
+     "disc_bytes": [
+      null,
+      0
+     ],
+     "draws": [
+      null,
+      43052
+     ],
+     "gpu_copies": [
+      null,
+      500
+     ],
+     "gpu_creates": [
+      null,
+      0
+     ],
+     "guest_calls": [
+      null,
+      391281
+     ],
+     "guest_writes": [
+      null,
+      0
+     ],
+     "peak alloc_bytes": [
+      null,
+      0
+     ],
+     "peak allocs": [
+      null,
+      0
+     ],
+     "peak composes": [
+      null,
+      0
+     ],
+     "peak disc_bytes": [
+      null,
+      0
+     ],
+     "peak draws": [
+      null,
+      243
+     ],
+     "peak gpu_copies": [
+      null,
+      1
+     ],
+     "peak gpu_creates": [
+      null,
+      0
+     ],
+     "peak guest_calls": [
+      null,
+      1479
+     ],
+     "peak guest_writes": [
+      null,
+      0
+     ],
+     "peak presents": [
+      null,
+      1
+     ],
+     "peak scene_headers": [
+      null,
+      353
+     ],
+     "peak scene_triangles": [
+      null,
+      4124
+     ],
+     "peak sound_cpu": [
+      null,
+      0
+     ],
+     "peak sprite_commands": [
+      null,
+      0
+     ],
+     "peak uploads": [
+      null,
+      3
+     ],
+     "peak vector_ops": [
+      null,
+      81880
+     ],
+     "presents": [
+      null,
+      500
+     ],
+     "scene_headers": [
+      null,
+      68906
+     ],
+     "scene_triangles": [
+      null,
+      849549
+     ],
+     "sound_cpu": [
+      null,
+      0
+     ],
+     "sprite_commands": [
+      null,
+      0
+     ],
+     "uploads": [
+      null,
+      1500
+     ],
+     "vector_ops": [
+      null,
+      21020418
+     ]
+    }
+   },
+   "digest": "0aa8cddc374f9cf2217e7bb2d5445962b4765495cf5d80e4086cb2cfb8ceb454"
+  },
+  {
+   "date": "2026-11-01",
+   "why": "the scenes now run the mix, as a play run does",
+   "changes": {},
+   "digest": "0aa8cddc374f9cf2217e7bb2d5445962b4765495cf5d80e4086cb2cfb8ceb454"
+  },
+  {
+   "date": "2026-11-01",
+   "why": "the vector helpers now count once per helper call, so that a matrix times a vector tests the flag once rather than five times",
+   "changes": {
+    "play": {
+     "peak vector_ops": [
+      81880,
+      45619
+     ],
+     "vector_ops": [
+      21020418,
+      11256267
+     ]
+    }
+   },
+   "digest": "b05090cd87505ae820b33154110e12f02a7636f0a984ace4e8c3e67727169fca"
+  }
+ ]
+}

@@ -16,6 +16,7 @@ DecompPipeline's Xbox 360 target. The baseline title is Too Human. It is built l
 | C runtime and runner (`runtime/`) | done, tested bit for bit in both fma modes |
 | Judge glue (`x360_check.py`, `x360_compare.py`, `x360_agent.py`, `hooks.py`) | done, tested |
 | Ghidra scripts (`ghidra_scripts/`, `template/`, `tools/ghidra_setup.py`, `decode_audit.py`) | written; they compile and their pure parts are tested; **never run in Ghidra yet** (PROOF_PLAN.md) |
+| Readable C (`runtime_rd/`, `x360_readable*.py`, `readable_task.md`, the `readable_*` hooks) | done: a 64-bit readable runtime with guest memory at its own addresses; parity and a Too Human sample in docs/proofs/2026-11-06/x360_readable.md; the design in docs/READABLE_SATURN_GAMECUBE.md |
 | VMX128 (vector) functions | judged since phase 2 (DESIGN.md §5): stand-ins in Ghidra, `TcVmx` oracle executor, `vmx.py` helpers; estimates, Direct3D pack/unpack and vector-ABI functions stay refused |
 
 ## Commands
@@ -67,4 +68,9 @@ python tests/test_xbox360_ppc.py
 python tests/test_xbox360_glue.py
 python tests/test_xbox360_helpers.py
 python tests/test_xbox360_scripts.py
+python tests/test_x360_readable.py
 ```
+
+Readable C runs as on the other targets (`refine.py --project WS run ADDR...`); the agent's Bash runs `python
+check.py`, so `python` must be on the PATH of the machine that runs the agents (build box A has only the `py` launcher on
+it: put the Python 3.12 folder first).

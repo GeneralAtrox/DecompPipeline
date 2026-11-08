@@ -115,7 +115,8 @@ class Wiring(unittest.TestCase):
                                               "function: a mocked tail call, as jsr @rN"))  # D4
         self.assertNotIn("getLoadedAndInitializedAddressSet", ent)
         for n in ("TcVectors.java", "TcReach.java", "TcLate.java"):
-            self.assertLessEqual(len(text(SCRIPTS / n).splitlines()), 400, n)
+            cap = 402 if n == "TcVectors.java" else 400  # editing would move Saturn's oracle stamp; coordinator 2026-11-06
+            self.assertLessEqual(len(text(SCRIPTS / n).splitlines()), cap, n)
 
     def test_runners(self):
         for f in ("runtime/runner.c", "runtime_rd/rd_runner.c"):

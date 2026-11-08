@@ -2,7 +2,8 @@
 // itself; TcPrepare sets `on` for every prepare (null: the body has no computed call or jump and no float store, and
 // nothing changes).
 // 1. Calls through function pointers (bctrl, bctr: a target not in meta callees, whose argument registers come from
-//    the callee's prototype), and tail branches to code in no function (TcRun.tailJump). The argument registers the run set since its entry or its last call (its own
+//    the callee's prototype), and direct calls and branches to code no listed callee starts (outside the prepared
+//    closure, or a run on past the body's end: unlisted, TcRun.tailJump, TcRun.pastEnd). The argument registers the run set since its entry or its last call (its own
 //    parameters count as set at entry; after a call r3 and f1 hold its scripted results and the registers the mock
 //    zeroes are unset, TcOracle.clobber, while those the callee keeps keep their state), in order up to the first gap
 //    (r3..r10; f1..f13), are that call's arguments: expected.txt "CA reg..." after its CALL line (call). The judge
@@ -56,27 +57,36 @@ final class TcTrack {
         this.flow = flow;
     }
 
-    // `on` for the body (null when it has neither a computed call or jump, nor a tail branch to code in no function,
-    // nor a float store).
+    // `on` for the body (null when it has neither a computed call or jump, nor a flow to code no listed callee
+    // starts, nor a float store).
     static TcTrack of(Listing listing, AddressSetView body, List<Function> callees, TcBase.Proto proto, TcFlow flow) {
+        Set<Long> c = new HashSet<>();
+        for (Function g : callees) c.add(g.getEntryPoint().getOffset());
         boolean calls = false, stores = false;
         for (Instruction in : listing.getInstructions(body, true)) {
             FlowType f = in.getFlowType();
             calls |= f.isComputed() && (f.isCall() || f.isJump());
-            if (f.isJump() && !f.isComputed()) {
-                for (Address to : in.getFlows()) {
-                    calls |= !body.contains(to) && in.getProgram().getFunctionManager().getFunctionContaining(to) == null;
-                }
+            if ((f.isJump() || f.isCall()) && !f.isComputed()) {
+                for (Address to : in.getFlows()) calls |= unlisted(in, to, body, c);
             }
+            calls |= in.getFallThrough() != null && unlisted(in, in.getFallThrough(), body, c);
             stores |= store(in);
         }
         if (!calls && !stores) return null;
-        Set<Long> c = new HashSet<>();
-        for (Function g : callees) c.add(g.getEntryPoint().getOffset());
         Set<String> p = new HashSet<>();
         for (TcBase.Param q : proto.params) p.add(q.storage);
         p.retainAll(ARGS);
         return new TcTrack(c, p, calls, stores, flow);
+    }
+
+    // A flow out of the body to an address no listed callee starts. The oracle mocks it as a call (TcOracle) whose target
+    // has no record, so the CA line holds its arguments (call): a direct call or branch to code no prepared function
+    // starts, or a run on past the body's end. Before 2026-11-07 only a computed call or jump turned the lines on, and
+    // such a call had no argument compared (core/unchecked_args.py; target.json stamp scope unlisted_call_args).
+    // The frame helpers (__savegprlr_N ...) run inline: no call, no record.
+    static boolean unlisted(Instruction in, Address to, AddressSetView body, Set<Long> c) {
+        return !body.contains(to) && !c.contains(to.getOffset())
+            && !TcBase.isHelper(in.getProgram().getFunctionManager().getFunctionAt(to));
     }
 
     static boolean store(Instruction in) {

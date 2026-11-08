@@ -97,6 +97,9 @@ class Names(unittest.TestCase):
         self.assertEqual(p[0x8c900300][0], "u16 g_u16_900300")
         self.assertTrue(p[0x8c900400][2].startswith("address passed only"))
         self.assertEqual(gi.entry(*[p[0x8c900000][i] for i in (0, 2, 3)])["machine"], "globals")
+        be = gi.propose(list(acc), acc, [], 0x8d000000, {}, set(), be=True)  # big-endian: be_ types, bytes stay u8
+        self.assertEqual([be[a][0] for a in sorted(be)][:4], ["be_u32 g_words_900000[2]", "be_f32 g_f32_900100",
+                                                             "u8 g_bytes_900200[8]", "be_u16 g_u16_900300"])
 
 
 class Evidence(unittest.TestCase):

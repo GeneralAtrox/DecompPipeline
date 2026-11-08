@@ -40,8 +40,9 @@ RULES = [
 SOURCE = {".c", ".cpp", ".cc", ".h", ".hpp"}
 # A wait on a line carrying this comment is a test aid's or a sampler thread's, not the game's tick (base/pace.c has that)
 NOT_THE_TICK = "not the tick"
-# port/ folders that are not console kits: the base itself, tools, the renderer's shaders and generated output
-NOT_KITS = {"base", "tools", "build", "third_party", "vendor", "vcpkg_installed"}
+# port/ folders that are not console kits: the base itself, tools, the image tool (imgtool: a library and command line
+# for art tools, never in a game), the renderer's shaders and generated output
+NOT_KITS = {"base", "tools", "imgtool", "build", "third_party", "vendor", "vcpkg_installed"}
 COMMENTS = re.compile(r"/\*.*?\*/|//[^\n]*", re.S)
 
 

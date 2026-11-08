@@ -65,6 +65,7 @@ s32 kmBeginScene(KMSYSTEMCONFIGSTRUCT *config)
     if (!g_k2_config && kmSetSystemConfiguration(c) != K2_OK) return K2_ERROR;
     g_bank = (g_bank + 1u) % (c->vertex_banks ? c->vertex_banks : 1u);
     g_pass_count = 0;
+    pvr_parts_scene();
     c->buffer_desc->pass = &c->pass[0];
     lockstep_scene();
     return K2_OK;
@@ -107,6 +108,7 @@ s32 kmBeginPass(KMVERTEXBUFFDESC *vertexBuffer)
     p->autosort = !(info->region_array_flag & 1u); /* KM_PASSINFO_PRESORT */
     p->z_clear = !(info->region_array_flag & 2u);  /* KM_PASSINFO_DISABLE_Z_CLEAR */
     d->current = g_list_ptrs;
+    pvr_parts_lists(g_list_ptrs);
     return K2_OK;
 }
 

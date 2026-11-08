@@ -29,6 +29,19 @@ static u32 g_delta;                     /* the delta of the unit resolved last *
 static const PortOverlay *g_who;        /* ... and the unit */
 u32 tx_ovl_delta;                       /* set by tc_call around a call into a unit (tx_rt.c) */
 
+/* The calls repeat a few hundred targets a frame. What cannot change while the port runs is kept per address: the unit
+ * that claims it and, for the unit resolved there last, its row and glue. Whether that unit is loaded is still checked
+ * on every call. */
+#define CACHE 2048u
+#define NO_UNIT 0xffffffffu
+typedef struct {
+    u32 addr, claim;         /* claim: the first claiming unit's index + 1, NO_UNIT for none; 0: the slot is empty */
+    u32 row_unit, glue_unit; /* index + 1 of the unit row and glue were found for; 0: none yet */
+    const PortDispatch *row, *glue;
+} Cached;
+static Cached g_cache[CACHE];
+static u32 g_lo, g_hi; /* every unit's ranges and slots lie in [g_lo, g_hi): most calls are to main's code, outside */
+
 u32 overlay_delta(void) { return g_delta; }
 
 static int in_unit(const PortOverlay *o, u32 a)
@@ -69,13 +82,55 @@ static const PortDispatch *search(const PortDispatch *rows, u32 n, u32 a)
 
 static const PortDispatch *row_at(const PortOverlay *o, u32 a) { return search(o->rows, o->nrows, a); }
 
+static int outside(u32 a)
+{
+    if (!g_hi) {
+        g_lo = 0xffffffffu;
+        for (int i = 0; i < port_noverlays; i++) {
+            const PortOverlay *o = &port_overlays[i];
+            if (o->slot_align) {
+                if (o->slot_lo < g_lo) g_lo = o->slot_lo;
+                if (o->slot_hi > g_hi) g_hi = o->slot_hi;
+            } else
+                for (u32 r = 0; r < o->nranges; r++) {
+                    if (o->ranges[r].lo < g_lo) g_lo = o->ranges[r].lo;
+                    if (o->ranges[r].hi > g_hi) g_hi = o->ranges[r].hi;
+                }
+        }
+        if (!g_hi) g_lo = g_hi = 1u; /* no ranges: every address is outside */
+    }
+    return a < g_lo || a >= g_hi;
+}
+
+/* a's cache slot, holding the unit that claims a (the first, as the search in table order found it) */
+static Cached *cached(u32 a)
+{
+    Cached *e = &g_cache[((a >> 2) ^ (a >> 13)) % CACHE];
+    if (e->claim && e->addr == a) return e;
+    e->addr = a, e->claim = NO_UNIT, e->row_unit = e->glue_unit = 0;
+    for (int i = 0; i < port_noverlays; i++)
+        if (claims(&port_overlays[i], a)) {
+            e->claim = (u32)i + 1u;
+            break;
+        }
+    return e;
+}
+
+/* Unit u's (index + 1) function at c, its address for the call at a (c depends on a and u only), or NULL */
+static const PortDispatch *row_for(Cached *e, u32 u, u32 c)
+{
+    const PortOverlay *o = &port_overlays[u - 1u];
+    if (e->row_unit != u) e->row = in_unit(o, c) ? row_at(o, c) : NULL, e->row_unit = u;
+    return e->row;
+}
+
 /* The function at a of the unit loaded now that has one there: group g's active unit if so, else the one that is
  * (it becomes active). Only units with a function at a compete: one loaded over another's data leaves its code. */
-static const PortDispatch *loaded_row(u32 g, u32 a)
+static const PortDispatch *loaded_row(u32 g, u32 a, Cached *e)
 {
     u32 cur = g < MAX_GROUPS ? g_active[g] : 0;
     const PortOverlay *o = cur ? &port_overlays[cur - 1u] : NULL;
-    const PortDispatch *d = o && in_unit(o, a) ? row_at(o, a) : NULL;
+    const PortDispatch *d = o ? row_for(e, cur, a) : NULL;
     g_delta = 0;
     if (d && loaded(o, 0)) {
         g_who = o;
@@ -96,7 +151,7 @@ static const PortDispatch *loaded_row(u32 g, u32 a)
 }
 
 /* The same for a slot unit's call at a: the unit loaded at a's slot base (units are tried at that base only). */
-static const PortDispatch *slot_row(const PortOverlay *claim, u32 a)
+static const PortDispatch *slot_row(const PortOverlay *claim, u32 a, Cached *e)
 {
     u32 g = claim->group, base = a & ~(claim->slot_align - 1u), cur = 0, at = MAX_SLOTS;
     const PortDispatch *d;
@@ -105,7 +160,7 @@ static const PortDispatch *slot_row(const PortOverlay *claim, u32 a)
     if (cur) {
         const PortOverlay *o = &port_overlays[cur - 1u];
         u32 delta = base - o->canon, c = a - delta;
-        if (in_unit(o, c) && (d = row_at(o, c)) != NULL && loaded(o, delta)) {
+        if ((d = row_for(e, cur, c)) != NULL && loaded(o, delta)) {
             g_delta = delta, g_who = o;
             return d;
         }
@@ -129,10 +184,18 @@ static const PortDispatch *slot_row(const PortOverlay *claim, u32 a)
     return NULL;
 }
 
-static const PortDispatch *resolve(const PortOverlay *o, u32 a)
+static const PortDispatch *resolve(const PortOverlay *o, u32 a, Cached *e)
 {
     g_who = NULL;
-    return o->slot_align ? slot_row(o, a) : loaded_row(o->group, a);
+    return o->slot_align ? slot_row(o, a, e) : loaded_row(o->group, a, e);
+}
+
+/* The glue of g_who, the unit just resolved for a, at its function there (a - g_delta depends on a and the unit only) */
+static const PortDispatch *glue_for(Cached *e, u32 a)
+{
+    u32 u = (u32)(g_who - port_overlays) + 1u;
+    if (e->glue_unit != u) e->glue = search(g_who->glue, g_who->nglue, a - g_delta), e->glue_unit = u;
+    return e->glue;
 }
 
 static u32 __cdecl no_function(void) { return 0; }
@@ -158,27 +221,51 @@ static const PortDispatch *miss(const PortOverlay *o, u32 a)
     return &g_miss;
 }
 
+/* The unit claiming a (units covering one address share a group), NULL if none */
+static const PortOverlay *claimed(u32 a, Cached **e)
+{
+    if (outside(a)) return NULL;
+    *e = cached(a);
+    return (*e)->claim == NO_UNIT ? NULL : &port_overlays[(*e)->claim - 1u];
+}
+
 const PortDispatch *overlay_find(u32 addr)
 {
     u32 a = guest_fold(addr);
-    for (int i = 0; i < port_noverlays; i++) {
-        if (!claims(&port_overlays[i], a)) continue;
-        const PortDispatch *d = resolve(&port_overlays[i], a); /* units covering one address share a group */
-        return d && d->fn ? d : miss(&port_overlays[i], a);
-    }
-    return NULL;
+    Cached *e;
+    const PortOverlay *o = claimed(a, &e);
+    const PortDispatch *d;
+    if (!o) return NULL;
+    d = resolve(o, a, e);
+    return d && d->fn ? d : miss(o, a);
 }
 
 const PortDispatch *overlay_glue(u32 addr)
 {
     u32 a = guest_fold(addr);
-    for (int i = 0; i < port_noverlays; i++) {
-        const PortOverlay *o = &port_overlays[i];
-        if (!claims(o, a)) continue;
-        if (o->group >= MAX_GROUPS || !resolve(o, a) || !g_who) return NULL;
-        return search(g_who->glue, g_who->nglue, a - g_delta);
-    }
-    return NULL;
+    Cached *e;
+    const PortOverlay *o = claimed(a, &e);
+    if (!o || o->group >= MAX_GROUPS || !resolve(o, a, e) || !g_who) return NULL;
+    return glue_for(e, a);
+}
+
+/* overlay_find, then overlay_glue, with one resolve: the second found what the first had just made active, so g_delta
+ * ends as it did then */
+const PortDispatch *overlay_find_glue(u32 addr, const PortDispatch **glue)
+{
+    u32 a = guest_fold(addr), delta;
+    Cached *e;
+    const PortOverlay *o = claimed(a, &e);
+    const PortDispatch *d, *m;
+    *glue = NULL;
+    if (!o) return NULL;
+    d = resolve(o, a, e);
+    delta = g_delta;
+    if (o->group < MAX_GROUPS && d && g_who) *glue = glue_for(e, a);
+    if (d && d->fn) return d;
+    m = miss(o, a);
+    if (o->group < MAX_GROUPS && d) g_delta = delta;
+    return m;
 }
 
 PortFn port_guest_target(u32 addr)

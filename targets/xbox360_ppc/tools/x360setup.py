@@ -1,8 +1,9 @@
 """One command from an Xbox 360 disc (or default.xex) to a workspace ready to prepare: the hand steps of the Too Human
 proof (PROOF_PLAN.md) in order, the decode audit through the Ghidra broker like every other Ghidra run.
 
-  setup <disc.iso | default.xex> <workspace> [--name NAME] [--roots FILE | --pick] [--no-ghidra]
-      1. catalog_inputs.py into the workspace: image.bin, image.json, catalog_inputs.json, code_ranges.txt;
+  setup <disc.iso | default.xex | WORKSPACE> <workspace> [--name NAME] [--roots FILE | --pick] [--no-ghidra]
+      1. catalog_inputs.py into the workspace: image.bin, image.json, catalog_inputs.json, code_ranges.txt; from an
+         existing workspace of the same title, those four files are copied (no retail key, no decrypt);
       2. the roots (--roots: a JSON {"functions": [...]} or one address per line; --pick: proof_pick.py's 50, written
          to proof_set.json and proof_set.txt) are copied to setup_roots.json; without roots the whole catalog is set up;
       3. ghidra_setup.py's list beside image.bin (ghidra_setup.txt): the roots and what they reach in 4 calls, or every
@@ -48,6 +49,9 @@ import catalog_inputs  # noqa: E402
 import decode_audit  # noqa: E402
 import ghidra_setup  # noqa: E402
 import proof_pick  # noqa: E402
+
+
+INPUTS = ("image.bin", "image.json", "catalog_inputs.json", "code_ranges.txt")  # catalog_inputs.build's output
 
 
 def sha256(path):
@@ -97,7 +101,12 @@ def setup(src, ws, name=None, roots_file=None, pick=False):
     if (ws / "project.json").exists():
         raise SystemExit(f"{ws / 'project.json'} exists: setup never overwrites a workspace")
     ws.mkdir(parents=True, exist_ok=True)
-    cat = catalog_inputs.build(src, ws)
+    if pathlib.Path(src).is_dir():  # another workspace of this title: its catalog inputs, made once
+        for n in INPUTS:
+            shutil.copyfile(pathlib.Path(src) / n, ws / n)
+        cat = json.loads((ws / "catalog_inputs.json").read_text(encoding="utf-8"))
+    else:
+        cat = catalog_inputs.build(src, ws)
     desc = json.loads((ws / "image.json").read_text(encoding="utf-8"))
     roots = None
     if pick:

@@ -14,6 +14,11 @@
 // The callee's own side (exported): a function whose rK is not NONE and that some caller reads after calling it has
 // rK compared at exit (vectors.txt "O mask", expected.txt "RO v4 v5 v6 v7"), and counts rK as read at its returns
 // (TcStrict.walk), so the strict judge's junk never lands there. Without any of this every harness byte is as before.
+// A tail jump into the function (bra/braf/jmp, which Ghidra types as a call) has no return address: the walk from
+// jump + 4 ran past the jumper's code (its literal pool, nops or the next function) and answered "all read" (the
+// mutation audit's 9 Dreamcast false exports, docs/proofs/2026-11-07/maudit-triage.md (b)). With target.json
+// "tcout_tail_exports" the function returns where its jumper returns, so the reads are the jumper's own callers',
+// followed up the tail chain (readAfter). Off, every harness byte is as before (the stamp scope tcout_tail_exports).
 import ghidra.program.model.address.*;
 import ghidra.program.model.listing.*;
 import ghidra.program.model.symbol.Reference;
@@ -22,6 +27,7 @@ import java.util.*;
 final class TcOut {
     static int exported;                                        // TcFlow masks of r4..r7 compared at exit
     static TcLive.Deltas follow;                                // the outs, the callee's own calls followed
+    static final int MAX_CHAIN = 16;                            // tail jumps followed up one chain (past it: all read)
     static final Map<Long, String> left = new TreeMap<>(), out = new TreeMap<>();  // callee -> "r4,r6" (meta)
 
     static int bit(int k) {
@@ -29,7 +35,7 @@ final class TcOut {
     }
 
     // TcPrepare, before TcLive.of: the function's own outputs some caller reads (exported).
-    static void prepare(TcBase s, boolean on) {
+    static void prepare(TcBase s, boolean on, boolean tail) {
         Program prog = s.getCurrentProgram();
         exported = TcStrict.exitLive = 0;
         left.clear();
@@ -45,9 +51,30 @@ final class TcOut {
         FunctionManager fm = prog.getFunctionManager();
         for (Reference r : prog.getReferenceManager().getReferencesTo(s.fn.getEntryPoint())) {
             Function c = r.getReferenceType().isCall() ? fm.getFunctionContaining(r.getFromAddress()) : null;
-            if (c != null) ex |= want & TcStrict.walk(prog, TcTail.extent(prog, c), r.getFromAddress().add(4));
+            if (c != null) ex |= tail ? readAfter(prog, r, c, want, new HashSet<>(), 0)
+                : want & TcStrict.walk(prog, TcTail.extent(prog, c), r.getFromAddress().add(4));
         }
         exported = TcStrict.exitLive = ex;
+    }
+
+    // The registers of want read after the reference r (in c) to a function: a call's, walked from its return address
+    // (TcStrict.walk); a tail jump's (bra, braf, jmp) are those c's own callers read, up the chain. A cycle adds
+    // nothing; a chain past MAX_CHAIN reads all of want (as the walk past the code did).
+    static int readAfter(Program prog, Reference r, Function c, int want, Set<Long> seen, int depth) {
+        Instruction ins = prog.getListing().getInstructionAt(r.getFromAddress());
+        String mn = ins == null ? "" : ins.getMnemonicString().toLowerCase().replace("_", "");
+        if (!mn.equals("bra") && !mn.equals("braf") && !mn.equals("jmp"))
+            return want & TcStrict.walk(prog, TcTail.extent(prog, c), r.getFromAddress().add(4));
+        if (depth >= MAX_CHAIN) return want;
+        if (!seen.add(c.getEntryPoint().getOffset())) return 0;
+        int ex = 0;
+        FunctionManager fm = prog.getFunctionManager();
+        for (Reference q : prog.getReferenceManager().getReferencesTo(c.getEntryPoint())) {
+            Function d = q.getReferenceType().isCall() ? fm.getFunctionContaining(q.getFromAddress()) : null;
+            if (d != null) ex |= readAfter(prog, q, d, want, seen, depth + 1);
+            if (ex == want) break;
+        }
+        return ex;
     }
 
     // TcLive.of, per callee g of the function: e[7 + k] for each rK g leaves changed that the function reads after a

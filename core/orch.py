@@ -165,7 +165,7 @@ class Orchestrator:
         self.extras = {a for a in self.functions if sc.is_extra(a)}
         self.sdk_count = len(catalog["functions"]) - len(self.functions)
         self.system_of, self.systems = systems.load()
-        self.ledger = paths.read_json(paths.LEDGER, {"loop": False, "functions": {}})
+        self.ledger, self.base = filelock.load_rows(paths.LEDGER, {"loop": False, "functions": {}})  # save merges
         keep_matched(self.functions, self.ledger, hw_ops.listed(self.cfg))
         for rec in self.ledger["functions"].values():
             if rec.get("status") in ACTIVE:
@@ -191,10 +191,10 @@ class Orchestrator:
 
     # ---------- persistence ----------
     def save(self):
-        """The server owns the ledger (tools that rewrite it refuse while it runs); the file lock still keeps an
-        offline tool's locked read-modify-write and this write from interleaving."""
-        with self.lock, filelock.locked(paths.LEDGER):
-            filelock.write_atomic(paths.LEDGER, filelock.dumps_rows(self.ledger))  # one line per function
+        """A row-by-row merge with what other processes saved since (filelock.save_rows: parallel `decomp.py
+        investigate` runs each hold the ledger), under the file lock; one line per function."""
+        with self.lock:
+            self.base = filelock.save_rows(paths.LEDGER, self.ledger, getattr(self, "base", None))
 
     def log(self, msg):
         line = f"{time.strftime('%H:%M:%S')}  {msg}"

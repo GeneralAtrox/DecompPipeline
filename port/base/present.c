@@ -8,11 +8,14 @@
 #include "present.h"
 #include "console.h"
 #include "host.h"
+#include "work_count.h"
+#include "base.h"
 
 static ID3D11RenderTargetView *g_back_rtv;
 static u32 g_border = 0xff000000u;
 
 void gfx_set_border(u32 argb) { g_border = argb; }
+u32 gfx_border(void) { return g_border; }
 
 /* The frame's shape. Not chosen (--aspect, the menu): a game that supports a wider view (game.json "widescreen")
  * follows the window in a play run, and everything else is 4:3, as is every check (headless or on the fixed clock:
@@ -44,6 +47,48 @@ const char *gfx_aspect_text(void)
 
 f32 port_widescreen(void) { return g_gfx.wide_k > 1.0f ? g_gfx.wide_k : 1.0f; }
 f32 port_tallscreen(void) { return g_gfx.tall_k > 1.0f ? g_gfx.tall_k : 1.0f; }
+/* The shape was chosen (--aspect, the menu) or follows the window: anything but a check at its original 4:3. */
+int port_shape_chosen(void) { return g_gfx.aspect_set || gfx_aspect() == 0.0f; }
+
+/* The 640x480 screen is the frame's middle, so a view centred on it (the full screen, or a wipe opening from the
+ * centre) grows by the same share: W by W * (wide - 1), H by H * (tall - 1), half to each side. A view off centre
+ * (a render target's) keeps its own. A call inside a widened one (a renderer calling its twin) leaves it as it is. */
+static int g_wide_cull_depth;
+
+static int wide_centred(f32 at, f32 size, f32 screen)
+{
+    f32 d = at + size * 0.5f - screen * 0.5f;
+    return d > -0.5f && d < 0.5f;
+}
+
+int port_wide_cull_begin(u32 viewport, f32 saved[4])
+{
+    f32 *v = (f32 *)(uintptr_t)viewport; /* W, H, X, Y */
+    f32 k = port_widescreen() - 1.0f, ky = port_tallscreen() - 1.0f;
+    f32 side, over;
+    int i;
+    if (g_wide_cull_depth || (k <= 0.0f && ky <= 0.0f) || !wide_centred(v[2], v[0], 640.0f)
+        || !wide_centred(v[3], v[1], 480.0f)) {
+        return 0;
+    }
+    for (i = 0; i < 4; i++) saved[i] = v[i];
+    side = v[0] * 0.5f * k;
+    over = v[1] * 0.5f * ky;
+    v[0] += 2.0f * side;
+    v[1] += 2.0f * over;
+    v[2] -= side;
+    v[3] -= over;
+    g_wide_cull_depth = 1;
+    return 1;
+}
+
+void port_wide_cull_end(u32 viewport, const f32 saved[4])
+{
+    f32 *v = (f32 *)(uintptr_t)viewport;
+    int i;
+    for (i = 0; i < 4; i++) v[i] = saved[i];
+    g_wide_cull_depth = 0;
+}
 
 static void release_frame(void)
 {
@@ -168,7 +213,9 @@ void gfx_clear(u32 argb)
     float c[4];
     if (!g_gfx.frame_rtv) return;
     argb_to_float(argb | 0xff000000u, c);
+    gfx_lock();
     ID3D11DeviceContext_ClearRenderTargetView(g_gfx.ctx, g_gfx.frame_rtv, c);
+    gfx_unlock();
 }
 
 /* The latency object counts frames the swap chain can take; one taken here is kept for the next gfx_show. */
@@ -180,13 +227,30 @@ int gfx_can_show(void)
     return g_can_show;
 }
 
+/* --present-thread: waits a moment for the display to take a frame, holding no lock. */
+void gfx_show_wait(void)
+{
+    if (g_gfx.latency && !g_can_show && WaitForSingleObject(g_gfx.latency, 2) == WAIT_OBJECT_0) g_can_show = 1;
+}
+
 static double g_fps;
 
 double gfx_presented_fps(void) { return g_fps; }
 
 /* The frame-rate readout in the log (full screen has no title bar to count in): every 5 s of real time, the frames
- * presented per second and the longest gap between two, where a stutter shows. The performance counter is read
+ * presented per second, the longest gap between two, where a stutter shows, and the longest Present itself: when it is
+ * near the gap, the driver or the graphics card held the frame, not the game. The performance counter is read
  * directly: host_ticks would move the virtual clock. */
+static LONGLONG g_present_worst, g_present_last;
+
+/* --present-cost (runtime/frame_cost.c): how long the last Present call took, in microseconds. */
+u64 gfx_last_present_us(void)
+{
+    LARGE_INTEGER f;
+    QueryPerformanceFrequency(&f);
+    return (u64)g_present_last * 1000000u / (u64)f.QuadPart;
+}
+
 static void note_presented(void)
 {
     static LARGE_INTEGER freq, start, last;
@@ -205,26 +269,40 @@ static void note_presented(void)
     if (now.QuadPart - start.QuadPart < 5 * freq.QuadPart) return;
     double secs = (double)(now.QuadPart - start.QuadPart) / (double)freq.QuadPart;
     g_fps = shown / secs;
-    port_log("gfx: %.1f frames a second presented over %.1f s, longest gap %.1f ms (%ux%u %s, vsync %s, vblank %u)\n",
+    port_log("gfx: %.1f frames a second presented over %.1f s, longest gap %.1f ms (%ux%u %s, vsync %s, longest Present %.1f ms, vblank %u)\n",
              shown / secs, secs, (double)worst * 1000.0 / (double)freq.QuadPart, g_gfx.out_w, g_gfx.out_h,
-             host_window_state(), g_gfx.vsync ? "on" : "off", port_vblank_count());
+             host_window_state(), g_gfx.vsync ? "on" : "off", (double)g_present_worst * 1000.0 / (double)freq.QuadPart,
+             port_vblank_count());
     start = now;
     shown = 0;
     worst = 0;
+    g_present_worst = 0;
+    static unsigned waits0;
+    static unsigned long long us0;
+    unsigned n;
+    unsigned long long us;
+    gfx_lock_waits(&n, &us);
+    if (n != waits0)
+        port_log("gfx: the game's thread waited %u time(s) for the device context in those %.1f s, %.1f ms in all\n", n - waits0,
+                 secs, (double)(us - us0) / 1000.0);
+    waits0 = n;
+    us0 = us;
 }
 
 static void show_inner(void)
 {
     float border[4];
     ID3D11Resource *back = NULL;
+    work_add(WC_PRESENTS, 1);
     if (!g_gfx.dev) return;
+    if (gfx_present_stall_us()) pace_sleep_us(gfx_present_stall_us()); /* --present-stall-us: a test's slow Present */
     /* the swap chain still holds as many frames as it may queue (a hidden or throttled window): this one is dropped,
      * since presenting it would block the game */
     if (!g_gfx.swap || !g_back_rtv || !gfx_can_show()) {
         if (g_gfx.swap && g_back_rtv && g_gfx.dropped++ % 600u == 0u)
             port_log("gfx: %u frame(s) dropped: the display is not taking them (vblank %u)\n", g_gfx.dropped,
                      port_vblank_count());
-        gfx_pump();
+        if (!gfx_on_present_thread()) gfx_pump();
         return;
     }
     g_can_show = 0;
@@ -239,8 +317,13 @@ static void show_inner(void)
      * be seen, a synced present can block far longer than a refresh, so only a test present is made then. */
     static int occluded;
     UINT flags = !g_gfx.vsync && g_gfx.tearing ? DXGI_PRESENT_ALLOW_TEARING : 0u;
+    LARGE_INTEGER before, after;
+    QueryPerformanceCounter(&before);
     HRESULT hr = IDXGISwapChain1_Present(g_gfx.swap, occluded ? 0u : g_gfx.vsync ? 1u : 0u,
                                          occluded ? DXGI_PRESENT_TEST : flags);
+    QueryPerformanceCounter(&after);
+    g_present_last = after.QuadPart - before.QuadPart;
+    if (g_present_last > g_present_worst) g_present_worst = g_present_last;
     if (FAILED(hr)) port_exit("the display device was lost", 4);
     if ((hr == DXGI_STATUS_OCCLUDED) != occluded) {
         occluded = hr == DXGI_STATUS_OCCLUDED;
@@ -248,14 +331,19 @@ static void show_inner(void)
     }
     if (!occluded) note_presented();
     host_window_frame();
-    gfx_pump();
+    if (!gfx_on_present_thread()) gfx_pump();
 }
 
 void present_show(void) { show_inner(); }
 
 void gfx_shutdown(void)
 {
+    gfx_lock(); /* kept to the end of the process: the thread that shows in-between frames draws no more */
     if (g_gfx.dropped) port_log("gfx: %u frame(s) dropped in all\n", g_gfx.dropped);
+    unsigned n;
+    unsigned long long us;
+    gfx_lock_waits(&n, &us);
+    if (n) port_log("gfx: the game's thread waited %u time(s) for the device context in all, %.1f ms\n", n, (double)us / 1000.0);
     if (g_gfx.latency) CloseHandle(g_gfx.latency);
     g_gfx.latency = NULL;
     release_frame();

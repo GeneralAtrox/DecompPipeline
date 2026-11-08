@@ -88,7 +88,7 @@ class LiveInputWiring(unittest.TestCase):
         text = self.read("base/input.c")
         body = text[text.index("u32 host_pads_read"):]
         body = body[:body.index("\n}\n")]
-        self.assertRegex(body, r"if \(input_live\(\) && sdl_ready\(\)\) \{\n\s+s\[0\] = read_keyboard")
+        self.assertRegex(body, r"if \(input_live\(\) && sdl_ready\(\)\) \{\n(\s+pad_virtual_tick\(\);[^\n]*\n)?\s+s\[0\] = read_keyboard")
         # the only place the keyboard and the devices are read
         self.assertEqual(len(re.findall(r"\bread_keyboard\(", text)), 2)  # its definition and this call
         self.assertEqual(len(re.findall(r"\bscan_devices\(", text)), 2)

@@ -13,6 +13,7 @@ import threading
 import time
 
 from . import agent, busylog, callee_drift, check, filelock, global_extents, header_snapshot, infra, paths, readable
+from . import compare, proof, raw_consts
 from . import lean_proof, readable_lean, usage, verdict_memo
 from . import readable_check as rcheck
 from .readable_context import context_md, global_hint, pool_constants  # noqa: F401 (refine.py coverage uses them)
@@ -56,7 +57,16 @@ def update(addr, drop=(), **fields):
 MACHINE_NOTE = ("\n## No agent has named this file yet\n\nIt is a machine readable file (core/rtx): its locals are "
                 "n1, x1, ... and its numbers are as the code has them. Give them the names their meaning calls for "
                 "(the headers' constants for the numbers) while you work on it.\n")
-FILE_KEPT = ("readable", "stale")  # statuses that describe an existing readable/src file (set by a pass or verify)
+# statuses that describe an existing readable/src file (set by a pass or verify; core/proof: unproven, needs_review)
+FILE_KEPT = ("readable", "stale", proof.UNPROVEN, proof.REVIEW)
+
+
+def pass_status(addr, row):
+    """What a readable PASS records (core/proof.readable_state): (status, fields to set, keys to drop). `readable`;
+    `unproven` when a store of the original runs in no valid vector (the file stays; the port takes the raw C);
+    `needs_review` when the passing agent's final message admits a gap."""
+    st, fields = proof.readable_state(paths.ROOT, addr, row)  # with its note
+    return st, fields, tuple(k for k in ("unproven", "review", "note") if k not in fields)
 
 
 def kept_status(addr, row):
@@ -84,11 +94,12 @@ def record_pass(addr, headers, tries=3):
     """Mark addr readable after its passing file was copied to readable/src. The write is tried `tries` times (each
     already retries a refused file for filelock.RETRY_S); still failing raises PassNotRecorded, which record_error
     answers with `readable` too, never `error` or the old verdict: the status must describe the file on disk."""
+    st, fields, gone = pass_status(addr, load_ledger().get(addr, {}))
     for i in range(tries):
         try:
-            update(addr, status="readable", finished=now(), headers=headers,
-                   drop=("redo_of", "redo_failed", "stale_headers", "note"))
-            return "readable"
+            update(addr, status=st, finished=now(), headers=headers, **fields,
+                   drop=("redo_of", "redo_failed", "stale_headers") + gone)
+            return st
         except (OSError, ValueError, filelock.LockTimeout) as e:
             if i == tries - 1:
                 raise PassNotRecorded(f"passed, readable/src/{addr}.c written, but the ledger write failed: "
@@ -102,9 +113,11 @@ def record_error(addr, note, passed=False):
     stays as it was (`running`) and the run log says so; `refine.py verify ADDR` sets the status from the file."""
     if passed:
         try:
-            update(addr, status="readable", finished=now(), note=note[:300],
-                   drop=("redo_of", "redo_failed", "stale_headers"))
-            return f"readable (ledger written on the second try; {note})"
+            st, fields, gone = pass_status(addr, load_ledger().get(addr, {}))
+            fields["note"] = "; ".join(x for x in (fields.get("note"), note) if x)[:400]
+            update(addr, status=st, finished=now(), **fields,
+                   drop=("redo_of", "redo_failed", "stale_headers") + tuple(k for k in gone if k != "note"))
+            return f"{st} (ledger written on the second try; {note})"
         except Exception as e:  # noqa: BLE001  (the run must go on; verify repairs the row)
             return f"readable on disk, ledger NOT written ({type(e).__name__}: {e}); run `refine.py verify {addr}`"
     kept = kept_status(addr, load_ledger().get(addr, {}))
@@ -124,6 +137,23 @@ def format_for_agent(res):
                  "except in the bytes raw.c writes there before the call: write those as raw.c does. Pass the "
                  "local raw.c passes, of the pointee type, in that argument.")
     return text
+
+
+TYPES_H = "\n".join(['#ifndef TYPES_H', '#define TYPES_H', '#include "rd_rt.h"',
+                     "/* The game's types: none yet. A fresh workspace's readable stage starts with raw names",
+                     "   (docs/NEW_GAME.md section 5 designs them). */", '#endif', ''])
+
+
+def fresh_registry(log=print):
+    """A workspace with no readable stage yet gets an empty names registry and a types.h without game types, so a
+    readable run starts (callees and globals keep raw or machine names) instead of finding nothing to do."""
+    made = [p for p in (readable.NAMES, readable.INCLUDE / "types.h") if not p.exists()]
+    readable.NAMES.mkdir(parents=True, exist_ok=True)
+    readable.INCLUDE.mkdir(parents=True, exist_ok=True)
+    if readable.INCLUDE / "types.h" in made:
+        (readable.INCLUDE / "types.h").write_text(TYPES_H, encoding="utf-8")
+    if made:
+        log("fresh readable stage: made " + ", ".join(paths.show(p) for p in made))
 
 
 def raw_missing(addr):
@@ -235,6 +265,33 @@ def preflight(cfg, reg, addr, meta):
     return f"a do-nothing stub stops at {res['stage']}: {why}"[:600]
 
 
+def lint_final(cfg, reg, addr, work, att, attempts, kept, tried):
+    """A lint FAIL is final, never retried by an agent: the session's own check.py showed it the same lint, and it
+    ended with it (x360-ref, 2026-11-06: 85 retries after one, $7.23, 17 passed, every one an RR3 number with no name).
+    An RR3 number that has a name is written as the name (raw_consts.name_literals) and judged again."""
+    image = cfg["binary_path"].read_bytes()
+    src = work.read_text(encoding="utf-8", errors="replace")
+    fixed, n, _ = raw_consts.name_literals(src, reg, global_extents.for_process(cfg, reg),
+                                           [compare.RAM, (check.IMAGE_BASE, check.IMAGE_BASE + len(image))])
+    if n:
+        fix = work.with_name("work_lintfix.c")
+        fix.write_text(fixed, encoding="utf-8")
+        with busylog.busy(busylog.slot(), "j"):
+            res = rcheck.check_readable(cfg, addr, str(fix), paths.BUILD / addr / "readable", reg=reg)
+        att["lint_fix"] = {"named": n, "verdict": res["verdict"], "stage": res["stage"], "lint": res.get("lint")}
+        update(addr, attempts=attempts)
+        if res["verdict"] == "PASS":
+            readable.SRC.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(fix, readable.SRC / f"{addr}.c")
+            update(addr, readable_by="agent", lint_fix=n)
+            return record_pass(addr, header_snapshot.active_hash())
+    note = f"lint, final (a lint failure is not retried): {'; '.join(att.get('lint') or [])}"[:400]
+    if kept:
+        return redo_not_passed(addr, kept, "failed", note, tried)
+    update(addr, status="failed", finished=now(), note=note)
+    return "failed"
+
+
 def refine(cfg, addr, model=None, max_attempts=3, log=print, stop_flag=None, effort=None, start=None):
     """Run up to max_attempts sessions on one function. Returns the final status. effort: the attempts' effort
     (refine.py run --effort); default config.json readable_effort (readable_effort_large when raw.c is over
@@ -322,6 +379,8 @@ def refine(cfg, addr, model=None, max_attempts=3, log=print, stop_flag=None, eff
                                        range(first_new, n + 1))
             update(addr, status="queued", note=f"API error: {info['api_error']}")
             return "queued"
+        if att["verdict"] == "FAIL" and att.get("stage") == "lint" and not att.get("tamper"):
+            return lint_final(cfg, reg, addr, work, att, attempts, kept, range(first_new, n + 1))
         prev_work = work
         previous = f"\n## Previous attempt (#{n}) FAILED\n\nwork.c holds that attempt. Fix it.\n" \
                    f"Result: {att.get('stage')}, {att.get('failing')}/{att.get('total')} vectors differ. " \

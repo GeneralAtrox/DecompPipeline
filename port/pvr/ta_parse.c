@@ -13,6 +13,7 @@
 #include "pvr_int.h"
 #include "platform.h"
 #include "prof.h"
+#include "work_count.h"
 
 #define PARA_END 0u
 #define PARA_CLIP 1u
@@ -236,6 +237,7 @@ static void vertex(Parse *p, const u32 *w)
         return;
     }
     if (p->rim) v.base = rim_colour(v.base, p->rim);
+    v.batch = pvr_parts_seq(); /* ta_batch.c emit keeps it for --interp-parts, then sets the batch */
     p->vertices++;
     tb_vertex(p->s, &v, (w[0] & PCW_END_OF_STRIP) != 0);
 }
@@ -304,7 +306,7 @@ static void parse_list(Parse *p, u32 start, u32 end)
             else if (p->poly.vtype >= SPRITE_TYPE)
                 sprite(p, w);
             else
-                vertex(p, w);
+                pvr_parts_vertex(p->list, (u32)(uintptr_t)w), vertex(p, w);
             break;
         default:
             p->odd = 1;
@@ -329,6 +331,8 @@ int pvr_option(const char *arg, const char *value)
         g_pvr_debug |= strstr(value, "shadowvol") ? PVR_DBG_SHADOWVOL : 0u;
         return 2;
     }
+    if (value && !strcmp(arg, "--pvr-yuv")) return pvr_yuv_option(value);
+    if (value && !strncmp(arg, "--interp-", 9) && pvr_blend_option(arg, value)) return 2; /* pvr_blend_opt.c */
     if (value && !strcmp(arg, "--dump-vram")) {
         g_vram_scene = (u32)strtoul(value, NULL, 10);
         return 2;
@@ -387,6 +391,9 @@ void ta_parse(PvrScene *s, const PvrPass *passes, u32 count)
     }
     prof_end(pt);
     prof_scene(p.headers, s->nvtx / 3u);
+    work_add(WC_SCENE_HEADERS, p.headers);
+    work_add(WC_SCENE_TRIANGLES, s->nvtx / 3u);
+    pvr_parts_from(s);
     if (scenes++ % STATS_EVERY == 0)
         port_log("ta: scene %u (vblank %u): %u pass(es), %u headers, %u vertices, %u batches, %u triangles\n",
                  scenes - 1u, port_vblank_count(), s->passes, p.headers, p.vertices, s->nbatch, s->nvtx / 3u);

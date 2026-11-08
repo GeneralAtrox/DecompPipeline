@@ -1,4 +1,4 @@
-/* Texture packs: a PNG's pixels and its mip chain (pvr_pack.c has the packs themselves). Nearest existing: pvr_pack.c,
+/* Texture packs: a PNG's pixels, its mip chain and an over line's merge (pvr_pack.c has the packs themselves). Nearest existing: pvr_pack.c,
  * split for its 400-line cap. */
 #include <stdlib.h>
 #define COBJMACROS
@@ -81,4 +81,24 @@ u32 pvr_pack_mips(u32 *px, u32 w, u32 h)
         levels++;
     }
     return levels;
+}
+
+/* An over line's image (px, iw x ih): the game's own texels into its transparent pixels; 0 if it cannot (logged). */
+int pvr_pack_put_over(u32 *px, u32 iw, u32 ih, const char *file, u32 tcw, u32 w, u32 h, u32 stride)
+{
+    u32 need = pvr_decode_texels(tcw, w, h), sx = iw / w, sy = ih / h, done = 0;
+    u32 *game;
+    if (!sx || !sy || iw % w || ih % h) {
+        port_log("pvr: texture pack: %s is %ux%u, not a multiple of the texture's %ux%u\n", file, iw, ih, w, h);
+        return 0;
+    }
+    game = malloc((size_t)need * sizeof *game);
+    if (game && pvr_decode(tcw, w, h, stride, game, need)) {
+        for (u32 y = 0; y < ih; y++)
+            for (u32 x = 0; x < iw; x++)
+                if (!(px[y * iw + x] >> 24)) px[y * iw + x] = game[(y / sy) * w + x / sx];
+        done = 1;
+    }
+    free(game);
+    return (int)done;
 }

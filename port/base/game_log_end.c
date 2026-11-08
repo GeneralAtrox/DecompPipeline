@@ -44,6 +44,16 @@ static void prune_crash_recordings(const char *dir)
     }
 }
 
+/* Where the player resumes a recording that reaches vertical blank end: 5 s before it (host_resume.cpp does the same). */
+static u32 resume_at(u32 end)
+{
+    u32 back = 5u * (port_console.tick_hz ? port_console.tick_hz : 60u);
+    return end > 2u * back ? end - back : end / 2u + 1u;
+}
+#define RESUME_TEXT \
+    "resume: in the next run, Help > Resume before the last crash; or this command line with --replay \"%s\" " \
+    "--replay-until %u --fast-until %u --live-input on"
+
 /* The recording of this run, saved, and the commands that replay it to the last frame before the end. */
 static void crash_save(void)
 {
@@ -78,6 +88,8 @@ static void crash_save(void)
         end_line("replay on through the end: the same command without --stop-at, with --seconds raised to cover the "
                  "session; it ends on the same FAULT (or exit) one frame later");
     }
+    u32 at = resume_at(port_vblank_count());
+    end_line(RESUME_TEXT, full, at, at);
     free(cmd);
     prune_crash_recordings(dir);
 }
@@ -170,6 +182,8 @@ static void previous_recording(void)
                       full, end);
         char *cmd = end ? scene_replay_command(full, rdir, end, end) : NULL;
         if (cmd) game_log_line("gamelog: replay it (the frame number is a guess; drop --dump-frames if it is not reached): %s", cmd);
+        u32 at = resume_at(end);
+        if (end) game_log_line(RESUME_TEXT, full, at, at);
         free(cmd);
     }
     fclose(f);

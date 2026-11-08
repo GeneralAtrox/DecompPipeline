@@ -10,7 +10,7 @@ import re
 import shutil
 
 from core import check as core_check
-from core import paths
+from core import paths, strict_judge
 from core.lint import lint as core_lint
 
 import x360_compare as cmp
@@ -152,11 +152,13 @@ def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harn
     act = cmp.parse_results(out)
     image = pathlib.Path(cfg["binary_path"]).read_bytes()
     result["stage"] = "compare"
+    strict = strict_judge.modes(cfg)  # report-only call snapshots or exit frame (core/strict_judge)
     for s in sets:
         ids = [i for i, v in vecs.items() if v["set"] == s]
         fails = []
         for i in ids:
-            d = cmp.compare_vector(meta, image, vecs[i], exp[i], act.get(i))
+            d = cmp.compare_vector(meta, image, vecs[i], exp[i], act.get(i), strict, report := [])
+            strict_judge.note(result, s, i, report)
             if d:
                 fails.append(i)
                 if s == "dev" and len(result["first_diffs"]) < 3:

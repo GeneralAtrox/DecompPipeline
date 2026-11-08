@@ -182,7 +182,7 @@ static void dump(const char *name)
 }
 
 /* The scene dump's picture: the frame target as drawn, a 24-bit bottom-up BMP (no WIC needed to read it back). */
-int gfx_capture_bmp(const char *path)
+static int capture_bmp_locked(const char *path)
 {
     u32 w = g_gfx.frame_w, h = g_gfx.frame_h, row = (w * 3u + 3u) & ~3u, size = 54u + row * h;
     u8 head[54] = {'B', 'M'}, pad[3] = {0};
@@ -215,6 +215,8 @@ void gfx_capture_extra(void)
     dump(name);
 }
 
+int gfx_capture_asked(void) { return g_listed_count || g_every || g_extra; }
+
 void gfx_capture_frame(u32 frame)
 {
     char path[MAX_PATH];
@@ -238,4 +240,12 @@ void gfx_capture_frame(u32 frame)
             fclose(f);
         }
     }
+}
+
+int gfx_capture_bmp(const char *path)
+{
+    gfx_lock();
+    int r = capture_bmp_locked(path);
+    gfx_unlock();
+    return r;
 }

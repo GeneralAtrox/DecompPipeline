@@ -1,7 +1,8 @@
 /* VDP2: composes the picture from the scroll planes NBG0..NBG3, the VDP1 sprite layer and the back screen into
  * sat_frame (0x00RRGGBB). Per pixel each layer gives a colour and a priority; the highest priority wins, and a layer
  * with colour calculation on blends with the one under it. Cell and bitmap planes, 1- and 2-word pattern names, the
- * colour modes, scroll and zoom, colour offset. Not yet: RBG0 (rotation), line / cell scroll, windows, mosaic.
+ * colour modes, scroll and zoom, colour offset, RBG0 (rotation parameter A, sat_vdp2_rot.c), windows and line scroll
+ * (sat_vdp2_win.c); wider than the screen (sat_wide.c). Not yet: RBG1, rotation parameter B, vertical cell scroll, the sprite window, mosaic.
  *
  * Nearest existing: pvr/ (PowerVR) - a different chip; nothing Saturn-side to extend. */
 #include <stdio.h>
@@ -10,30 +11,33 @@
 #include "sat.h"
 #include "sat_sys.h"
 #include "sat_vdp.h"
-
+#include "work_count.h"
+#include "bands.h"
 
 u32 sat_frame[SAT_MAX_W * SAT_MAX_H];
 u32 sat_frame_w = 320, sat_frame_h = 224;
-u32 sat_layer_mask = 0xffffffffu; /* --layers HEX: bit 0 the sprite layer, bits 1..4 NBG0..NBG3 (a test aid: which layer draws what) */
+u32 sat_layer_mask = 0xffffffffu; /* --layers HEX: bit 0 the sprite layer, bits 1..4 NBG0..NBG3, bit 5 RBG0 (a test aid: which layer draws what) */
 
-enum { L_SPR, L_NBG0, L_NBG1, L_NBG2, L_NBG3, L_BACK, NLAYERS };
+enum { L_SPR, L_NBG0, L_NBG1, L_NBG2, L_NBG3, L_RBG0, L_BACK, NLAYERS };
 
-typedef struct {
-    int on, bitmap, charpx, pn1w, cnsm, cc, tpon, prio, ccen, ccratio, plw, plh, bmw, bmh, craoff, splt, scn, bmpal;
-    u32 map[4], bmbase, scx, scy, zx, zy;
-} Nbg;
-
-static Nbg g_n[4];
+typedef SatPlane Nbg;
+static Nbg g_n[5]; /* NBG0..NBG3, RBG0 */
 static u32 g_hist[2048]; /* NBG1 colour indexes drawn (a test aid) */
 static u32 g_spctl, g_ccctl, g_clofen, g_clofsl, g_ramctl, g_tvmd;
 static int g_off[2][3]; /* colour offsets A and B: r, g, b */
 static u32 g_cram[2048]; /* colour memory as RGB, made once a frame: it cannot change while the picture is composed */
 static u32 g_cram_mask;
-/* the name last read from a layer's map: the rest of that cell's dots need not read it again */
-static struct {
-    u32 key, charnum, pal;
-    int hf, vf;
-} g_cell[4];
+/* each band of the picture's own scratch (bands.h): the name last read from a layer's map, so the rest of that cell's
+ * dots need not read it again; RBG0's line; the NBG1 colour indexes it drew */
+typedef struct {
+    struct { u32 key, charnum, pal; int hf, vf; } cell[5];
+    SatRotLine rot;
+    u32 hist[2048], rx[SAT_MAX_W], ry[SAT_MAX_W]; /* and RBG0's map dots on the line */
+    u8 rok[SAT_MAX_W];
+} Band;
+static Band g_band[BANDS_MAX];
+static u32 g_w, g_h, g_bklines, g_ww, g_ox; /* the screen's size and back screen mode, for the bands; the picture's width, the screen's x in it */
+static int g_act[5], g_nact; /* the planes that can show (on, a priority, not masked), in layer order */
 
 static u32 R(u32 o) { return ((u32)sat_v2_reg[o] << 8) | sat_v2_reg[o + 1]; }
 static u32 vb(u32 a) { return sat_v2_vram[a & 0x7ffffu]; }
@@ -64,12 +68,13 @@ static u32 cram_rgb(u32 idx) { return g_cram[idx & g_cram_mask]; }
 
 /* the sprite layer's registers, read once a frame */
 static const u8 *g_spr_fb;
+static u32 g_spr_sh = 9u, g_spr_ox, g_spr_mask = 0x3ffffu; /* its row shift, x offset and mask: a wide twin's (sat_wide.c) */
 static int g_spr_prio[8], g_spr_ratio[8];
 static u32 g_spr_craoff;
 
 static void spr_setup(void)
 {
-    g_spr_fb = sat_v1_display_fb();
+    g_spr_fb = sat_wide_spr(sat_v1_display_fb(), &g_spr_sh, &g_spr_ox, &g_spr_mask);
     g_spr_craoff = ((R(0xe6) >> 4) & 7u) * 256u;
     for (u32 i = 0; i < 8u; i++) {
         g_spr_prio[i] = (int)((R(0xf0 + (i & 6u)) >> (8 * (i & 1u))) & 7u);
@@ -81,16 +86,17 @@ static void nbg_setup(int n)
 {
     Nbg *g = &g_n[n];
     u32 bgon = R(0x20), chctl = n < 2 ? R(0x28) : R(0x2a), pnc = R(0x30 + 2u * (u32)n), plsz = (R(0x3a) >> (2 * n)) & 3u;
-    u32 mpofn = (R(0x3c) >> (4 * n)) & 7u, zmctl = R(0x98), sh = n == 1 ? 8u : 0u;
+    u32 mpofn = (R(0x3c) >> (4 * n)) & 7u, sh = n == 1 ? 8u : 0u;
     static const u8 prio_reg[4] = {0xf8, 0xf8, 0xfa, 0xfa};
-    if (n == 0) {
-        cram_load();
-        spr_setup();
+    if (n == 0) cram_load(), spr_setup(); /* once a frame, with the first plane */
+    if (n == 4) {
+        sat_rbg0_setup(g);
+        return;
     }
-    g_cell[n].key = 0xffffffffu;
     memset(g, 0, sizeof *g);
     g->on = (bgon >> n) & 1;
     if (!g->on) return;
+    g->maps = 2;
     g->tpon = (bgon >> (8 + n)) & 1;
     g->prio = (int)((R(prio_reg[n]) >> ((n & 1) ? 8 : 0)) & 7u);
     g->pn1w = (pnc >> 15) & 1;
@@ -119,12 +125,11 @@ static void nbg_setup(int n)
         g->bmbase = (mpofn << 17) & 0x7ffffu;
     }
     if (n < 2) {
-        u32 o = 0x70u + 0x10u * (u32)n, zm = (zmctl >> (8 * (u32)n)) & 3u;
+        u32 o = 0x70u + 0x10u * (u32)n;
         g->scx = ((R(o) & 0x7ffu) << 8) | (R(o + 2u) >> 8);
         g->scy = ((R(o + 4u) & 0x7ffu) << 8) | (R(o + 6u) >> 8);
         g->zx = ((R(o + 8u) & 7u) << 8) | (R(o + 10u) >> 8);
         g->zy = ((R(o + 12u) & 7u) << 8) | (R(o + 14u) >> 8);
-        (void)zm;
     } else {
         g->scx = (R(0x90u + 4u * (u32)(n - 2)) & 0x7ffu) << 8;
         g->scy = (R(0x92u + 4u * (u32)(n - 2)) & 0x7ffu) << 8;
@@ -137,7 +142,7 @@ static void nbg_setup(int n)
 }
 
 /* the dot at scroll-space (px, py): 1 and *rgb when it is opaque */
-static int nbg_dot(const Nbg *g, u32 px, u32 py, u32 *rgb)
+static int nbg_dot(Band *b, const Nbg *g, u32 px, u32 py, u32 *rgb)
 {
     u32 base, dot, idx, pal = 0;
     int cx, cy;
@@ -158,19 +163,19 @@ static int nbg_dot(const Nbg *g, u32 px, u32 py, u32 *rgb)
     } else {
         u32 planew = 512u * (u32)g->plw, planeh = 512u * (u32)g->plh, cs = (u32)g->charpx, csh = cs == 16u ? 4u : 3u, x, y, pn, charnum, pnaddr, plane, page, cellidx, cellbytes, cxx, cyy, key;
         int hf = 0, vf = 0, layer = (int)(g - g_n);
-        px &= planew * 2u - 1u;
-        py &= planeh * 2u - 1u;
+        px &= planew * (u32)g->maps - 1u;
+        py &= planeh * (u32)g->maps - 1u;
         key = (py >> csh) << 16 | (px >> csh);
         x = px & 511u;
         y = py & 511u;
-        if (g_cell[layer].key == key) {
-            charnum = g_cell[layer].charnum;
-            pal = g_cell[layer].pal;
-            hf = g_cell[layer].hf;
-            vf = g_cell[layer].vf;
+        if (b->cell[layer].key == key) {
+            charnum = b->cell[layer].charnum;
+            pal = b->cell[layer].pal;
+            hf = b->cell[layer].hf;
+            vf = b->cell[layer].vf;
             goto named;
         }
-        plane = (py & planeh ? 2u : 0u) + (px & planew ? 1u : 0u);
+        plane = (py >> (8 + g->plh)) * (u32)g->maps + (px >> (8 + g->plw));
         x = px & (planew - 1u);
         y = py & (planeh - 1u);
         page = (y >> 9) * (u32)g->plw + (x >> 9);
@@ -199,11 +204,11 @@ static int nbg_dot(const Nbg *g, u32 px, u32 py, u32 *rgb)
             hf = (int)((pn >> 30) & 1u);
             if (cs == 16u) charnum <<= 2;
         }
-        g_cell[layer].key = key;
-        g_cell[layer].charnum = charnum;
-        g_cell[layer].pal = pal;
-        g_cell[layer].hf = hf;
-        g_cell[layer].vf = vf;
+        b->cell[layer].key = key;
+        b->cell[layer].charnum = charnum;
+        b->cell[layer].pal = pal;
+        b->cell[layer].hf = hf;
+        b->cell[layer].vf = vf;
 named:
         cxx = x & (cs - 1u);
         cyy = y & (cs - 1u);
@@ -224,7 +229,7 @@ named:
     }
     switch (g->cc) {
     case 0: if (dot == 0 && !g->tpon) return 0; idx = ((pal & 0x7fu) << 4) | dot; *rgb = cram_rgb(idx + (u32)g->craoff); return 1;
-    case 1: if (dot == 0 && !g->tpon) return 0; idx = ((pal & 0x70u) << 4) | dot; if (g == &g_n[1]) g_hist[(idx + (u32)g->craoff) & 0x7ffu]++; *rgb = cram_rgb(idx + (u32)g->craoff); return 1;
+    case 1: if (dot == 0 && !g->tpon) return 0; idx = ((pal & 0x70u) << 4) | dot; if (g == &g_n[1]) b->hist[(idx + (u32)g->craoff) & 0x7ffu]++; *rgb = cram_rgb(idx + (u32)g->craoff); return 1;
     case 2: if ((dot & 0x7ffu) == 0 && !g->tpon) return 0; *rgb = cram_rgb((dot & 0x7ffu) + (u32)g->craoff); return 1;
     case 3: if (!(dot & 0x8000u) && !g->tpon) return 0; *rgb = rgb555(dot); return 1;
     default: if (!(dot & 0x80000000u) && !g->tpon) return 0; *rgb = ((dot & 0xffu) << 16) | (dot & 0xff00u) | ((dot >> 16) & 0xffu); return 1;
@@ -235,7 +240,7 @@ named:
 static int spr_dot(u32 x, u32 y, u32 *rgb, int *prio, int *ccen, int *ratio)
 {
     const u8 *fb = g_spr_fb;
-    u32 o = ((y * 512u + x) * 2u) & 0x3ffffu, w = ((u32)fb[o] << 8) | fb[o + 1], type = g_spctl & 15u, pr, cc, dc, code;
+    u32 o = (((y << g_spr_sh) + x + g_spr_ox) * 2u) & g_spr_mask, w = ((u32)fb[o] << 8) | fb[o + 1], type = g_spctl & 15u, pr, cc, dc, code;
     if ((g_spctl & 0x20u) && (w & 0x8000u)) { /* RGB data */
         *rgb = rgb555(w);
         pr = 0;
@@ -297,19 +302,62 @@ static void load_offsets(void)
         }
 }
 
-/* --vwatch 25f80000,25f80200,VB: at vertical blank VB, log every non-zero VDP2 register (offset:value), to read the priorities, plane enables and colour modes a screen runs with (a test aid) */
-static void dump_regs(void)
+/* the top two layers at a dot, as they come in layer order: a later one wins only with a higher priority */
+typedef struct { int best, second, pb, ps, cce, rat; u32 cb, cs; } Top;
+static __inline void top(Top *t, int l, int p, u32 c, int cce, int rat)
 {
-    char line[2048];
-    int n = 0;
-    for (u32 o = 0; o < 0x120u && n < 1900; o += 2)
-        if (R(o)) n += snprintf(line + n, sizeof line - (size_t)n, " %x:%04x", o, R(o));
-    port_log("vdp2 registers at vb %u:%s\n", sat_vblank_count(), line);
+    if (t->best < 0 || p > t->pb) t->second = t->best, t->ps = t->pb, t->cs = t->cb, t->best = l, t->pb = p, t->cb = c, t->cce = cce, t->rat = rat;
+    else if (t->second < 0 || p > t->ps) t->second = l, t->ps = p, t->cs = c;
+}
+
+/* the rows of one band (bands.h) of the picture, with that band's scratch. Per line: the layers that can show there
+ * (a window hiding one along the whole line drops it) and RBG0's map dots; per dot the top two layers */
+static void rows(void *ctx, unsigned band, unsigned bands)
+{
+    Band *b = &g_band[band];
+    u32 w = g_w, h = g_h, bklines = g_bklines, y1 = h * (band + 1u) / bands, x0 = 0u - g_ox;
+    (void)ctx;
+    for (int n = 0; n < 5; n++) b->cell[n].key = 0xffffffffu;
+    b->rot.line = 0xffffffffu;
+    memset(b->hist, 0, sizeof b->hist);
+    for (u32 y = h * band / bands; y < y1; y++) {
+        u32 back = ((R(0xac) & 7u) << 16 | R(0xae)) * 2u, *out = sat_frame + y * g_ww;
+        int act[5], each[6], na = 0, spr;
+        SatWinLine wl;
+        back = rgb555(vw(back + (bklines ? y * 2u : 0u)));
+        sat_win_line(&wl, y, g_n);
+        spr = (sat_layer_mask & 1u) && !sat_win_span(&wl, 0, x0, g_ww, &each[5]);
+        for (int i = 0; i < g_nact; i++)
+            if (!sat_win_span(&wl, g_act[i] + 1, x0, g_ww, &each[na]) && (g_act[i] < 4 || sat_rbg0_row(&b->rot, y, x0, g_ww, b->rx, b->ry, b->rok))) act[na++] = g_act[i];
+        for (u32 wx = 0, x = 0u - g_ox; wx < g_ww; wx++, x++) { /* x: the screen's, before it when widened */
+            Top t = {-1, -1, 0, 0, 0, 0, 0u, 0u};
+            u32 rgb;
+            int pr, cce, rat;
+            if (spr && !(each[5] && sat_win_hide(&wl, 0, x)) && spr_dot(w > 512u ? x / 2u : x, y, &rgb, &pr, &cce, &rat) && pr) top(&t, L_SPR, pr, rgb, cce, rat);
+            for (int i = 0; i < na; i++) {
+                int n = act[i];
+                const Nbg *g = &g_n[n];
+                u32 sx = (wl.scx[n] + x * wl.zx[n]) >> 8, sy = wl.scy[n] >> 8;
+                if (each[i] && sat_win_hide(&wl, n + 1, x)) continue;
+                if (n == 4 && !(b->rok[wx] && (sx = b->rx[wx], sy = b->ry[wx], 1))) continue; /* RBG0: its map dot, or none */
+                if (nbg_dot(b, g, sx, sy, &rgb)) top(&t, L_NBG0 + n, g->prio, rgb, g->ccen, g->ccratio);
+            }
+            if (t.best < 0) rgb = back;
+            else {
+                rgb = t.cb;
+                if (t.cce) rgb = blend(rgb, t.second >= 0 ? t.cs : back, t.rat);
+                if ((g_clofen >> (t.best == L_SPR ? 6 : t.best - 1)) & 1u) rgb = offset_color(rgb, (int)((g_clofsl >> (t.best == L_SPR ? 6 : t.best - 1)) & 1u));
+            }
+            if (t.best < 0 && ((g_clofen >> 5) & 1u)) rgb = offset_color(rgb, (int)((g_clofsl >> 5) & 1u));
+            out[wx] = rgb;
+        }
+    }
 }
 
 void sat_compose(void)
 {
-    u32 hres, vres, w, h, bklines;
+    work_add(WC_COMPOSES, 1);
+    u32 hres, vres, w, h;
     g_tvmd = R(0);
     g_ccctl = R(0xec);
     g_spctl = R(0xe0);
@@ -320,57 +368,25 @@ void sat_compose(void)
     vres = (g_tvmd >> 4) & 3u;
     w = (hres & 2u ? 640u : 320u) + ((hres & 1u) ? (hres & 2u ? 64u : 32u) : 0u);
     h = vres == 0 ? 224u : vres == 1 ? 240u : 256u;
-    sat_frame_w = w;
+    sat_frame_w = g_ww = sat_wide_width(w), g_ox = (g_ww - w) / 2u;
     sat_frame_h = h;
     if (!(g_tvmd & 0x8000u)) {
-        memset(sat_frame, 0, w * h * sizeof(u32));
+        memset(sat_frame, 0, g_ww * h * sizeof(u32));
         return;
     }
-    for (int i = 0; i < 4; i++) nbg_setup(i);
+    for (int i = 0; i < 5; i++) nbg_setup(i);
+    for (int n = g_nact = 0; n < 5; n++)
+        if (g_n[n].on && g_n[n].prio && ((sat_layer_mask >> (n + 1)) & 1u)) g_act[g_nact++] = n;
     load_offsets();
-    if (sat_vwatch_lo == 0x25f80000u && sat_vblank_count() == sat_vwatch_vb) dump_regs();
+    sat_win_setup();
+    if (sat_vwatch_lo == 0x25f80000u && sat_vblank_count() == sat_vwatch_vb) sat_v2_dump_regs();
+    g_w = w;
+    g_h = h;
+    g_bklines = (R(0xac) & 0x8000u) ? 1u : 0u; /* BKCLMD; TVMD bit 8 is the border's mode, not this */
+    bands_run(rows, NULL);
     memset(g_hist, 0, sizeof g_hist);
-    bklines = (R(0xac) & 0x8000u) ? 1u : 0u; /* BKCLMD; TVMD bit 8 is the border's mode, not this */
-    for (u32 y = 0; y < h; y++) {
-        u32 back = ((R(0xac) & 7u) << 16 | R(0xae)) * 2u;
-        back = rgb555(vw(back + (bklines ? y * 2u : 0u)));
-        for (u32 x = 0; x < w; x++) {
-            u32 col[NLAYERS], rgb;
-            int pr[NLAYERS], cce[NLAYERS], rat[NLAYERS], best = -1, second = -1;
-            memset(pr, 0, sizeof pr);
-            memset(cce, 0, sizeof cce);
-            memset(rat, 0, sizeof rat);
-            if ((sat_layer_mask & 1u) && spr_dot(w > 512u ? x / 2u : x, y, &rgb, &pr[L_SPR], &cce[L_SPR], &rat[L_SPR])) col[L_SPR] = rgb; else pr[L_SPR] = 0;
-            for (int n = 0; n < 4; n++) {
-                const Nbg *g = &g_n[n];
-                if (!g->on || !g->prio || !((sat_layer_mask >> (n + 1)) & 1u)) continue;
-                if (nbg_dot(g, (g->scx + x * g->zx) >> 8, (g->scy + y * g->zy) >> 8, &rgb)) {
-                    col[L_NBG0 + n] = rgb;
-                    pr[L_NBG0 + n] = g->prio;
-                    cce[L_NBG0 + n] = g->ccen;
-                    rat[L_NBG0 + n] = g->ccratio;
-                }
-            }
-            for (int l = 0; l < L_BACK; l++) {
-                if (!pr[l]) continue;
-                if (best < 0 || pr[l] > pr[best]) {
-                    second = best;
-                    best = l;
-                } else if (second < 0 || pr[l] > pr[second]) {
-                    second = l;
-                }
-            }
-            if (best < 0) {
-                rgb = back;
-            } else {
-                rgb = col[best];
-                if (cce[best]) rgb = blend(rgb, second >= 0 ? col[second] : back, rat[best]);
-                if ((g_clofen >> (best == L_SPR ? 6 : best - 1)) & 1u) rgb = offset_color(rgb, (int)((g_clofsl >> (best == L_SPR ? 6 : best - 1)) & 1u));
-            }
-            if (best < 0 && ((g_clofen >> 5) & 1u)) rgb = offset_color(rgb, (int)((g_clofsl >> 5) & 1u));
-            sat_frame[y * w + x] = rgb;
-        }
-    }
+    for (unsigned b = 0; b < bands_count(); b++)
+        for (u32 i = 0; i < 2048u; i++) g_hist[i] += g_band[b].hist[i];
 }
 
 void sat_v2_hist_report(void)

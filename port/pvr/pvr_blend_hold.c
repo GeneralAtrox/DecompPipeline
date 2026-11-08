@@ -48,7 +48,8 @@ const PvrState *pvr_retained_state(void) { return &g_snap; }
 
 static int clip_is_full(void)
 {
-    return g_pvr.clip[0] == 0u && g_pvr.clip[1] == 0u && g_pvr.clip[2] + 1u >= 640u && g_pvr.clip[3] + 1u >= 480u;
+    return g_pvr_drawn->clip[0] == 0u && g_pvr_drawn->clip[1] == 0u && g_pvr_drawn->clip[2] + 1u >= 640u &&
+           g_pvr_drawn->clip[3] + 1u >= 480u;
 }
 
 static void hold_copy(int save)
@@ -77,7 +78,7 @@ static void hold_copy(int save)
 /* A new scene was drawn: the target is not kept any more. */
 void pvr_hold_reset(void) { g_hold_valid = 0; }
 
-/* Before an in-between frame, with the scene's registers in g_pvr: keeps the target if the clip is not the screen. */
+/* Before an in-between frame, with the scene's registers in g_pvr_drawn: keeps the target if the clip is not the screen. */
 void pvr_hold_begin(void)
 {
     g_hold_used = !clip_is_full();

@@ -1,5 +1,5 @@
 """The readable stage on the big-endian targets (Saturn SH-2, GameCube PowerPC), without Ghidra or a workspace:
-- rd_be.h / rd_be.c: the two targets' copies agree, and (with Visual Studio) be_get/be_set store the guest's byte
+- rd_be.h / rd_be.c: the targets' copies (and the Xbox 360's) agree, and (with Visual Studio) be_get/be_set store the guest's byte
   order and a plain use of a be_ type does not compile;
 - core/readable_be: BE1 (headers, globals, prototypes), BE2 (pointers in readable C), BE3 (unmapped guest RAM);
 - core/compare's per-target readable constants (stack end, RAM, FPU argument registers) from judge_memory, the
@@ -26,6 +26,7 @@ from core import readable, readable_abi, readable_be, readable_sandbox, toolcfg 
 
 SAT = TOOL / "targets" / "saturn_sh2"
 GC = TOOL / "targets" / "gamecube_ppc"
+X360 = TOOL / "targets" / "xbox360_ppc"
 sys.path.insert(0, str(GC))
 import ppc_readable_abi as pabi  # noqa: E402
 import ppc_readable_sandbox  # noqa: E402
@@ -42,13 +43,27 @@ def reg_of(functions=None, globals_=None, typedefs=None):
 class Copies(unittest.TestCase):
     def test_rd_be_identical(self):
         for name in ("rd_be.h", "rd_be.c"):
-            self.assertEqual((SAT / "runtime_rd" / name).read_bytes(), (GC / "runtime_rd" / name).read_bytes(), name)
+            for t in (GC, X360):
+                self.assertEqual((SAT / "runtime_rd" / name).read_bytes(), (t / "runtime_rd" / name).read_bytes(),
+                                 f"{t.name} {name}")
 
     def test_rd_rt_includes_rd_be(self):
-        for t in (SAT, GC):
+        for t in (SAT, GC, X360):
             self.assertIn('#include "rd_be.h"', (t / "runtime_rd" / "rd_rt.h").read_text(encoding="utf-8"))
         sat = (SAT / "runtime_rd" / "rd_rt.h").read_text(encoding="utf-8")
         self.assertNotIn("sh4_fmac", sat)  # the SH-2 has no FPU: no float instruction helpers
+
+    def test_rd_hw_list_matches_the_raw_runtime(self):
+        """The readable runner reads a header line Y (a listed hardware register, its value, its width) as the raw
+        runner does: rd_sh4.c's tcrt_add_hw has the raw runtime's parameters (else every Saturn readable build stops
+        at C2198, as on 2026-11-06 after the 1- and 2-byte listed reads, 10d684e9)."""
+        import re
+
+        def params(rel):
+            return re.search(r"void tcrt_add_hw\(([^)]*)\)", (SAT / rel).read_text(encoding="utf-8")).group(1)
+        self.assertEqual(params("runtime_rd/rd_sh4.c"), params("runtime/tc_rt_internal.h"))
+        self.assertIn("tcrt_add_hw(reg, value, size ? size : 4);",
+                      (SAT / "runtime_rd" / "rd_runner.c").read_text(encoding="utf-8"))
 
 
 class HeaderLint(unittest.TestCase):

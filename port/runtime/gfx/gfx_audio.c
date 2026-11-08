@@ -19,6 +19,7 @@
 #include "gfx.h"
 #include "media/media.h"
 #include "prof.h"
+#include "session.h"
 
 #define TICK_BYTES (AICA_VBLANK_MAX_FRAMES * 4u)
 #define QUEUE_MAX (8u * TICK_BYTES) /* ~133 ms queued: further ticks are dropped until the device catches up */
@@ -176,11 +177,13 @@ static void tick_realtime(s16 *frames, u32 n)
         put_chunk(frames, n);
         backlog += n;
     }
-    for (int extra = 0; g_ahead && backlog < look && extra < 64 && audio_out_now_ns() - now < MIX_BUDGET_NS; extra++) {
+    int extra = 0;
+    for (; g_ahead && backlog < look && extra < 64 && audio_out_now_ns() - now < MIX_BUDGET_NS; extra++) {
         n = mix_chunk(frames);
         put_chunk(frames, n);
         backlog += n;
     }
+    session_mix_ahead((u32)extra); /* the game sees the voices move on, so a replay mixes these too */
     g_win_ticks++;
     if (now - g_win_t0 >= 10000000000ull) {
         double secs = (double)(now - g_win_t0) / 1e9;
@@ -195,7 +198,14 @@ static void tick(void *arg)
 {
     static s16 frames[2 * AICA_VBLANK_MAX_FRAMES];
     (void)arg;
-    u32 n = mix_chunk(frames);
+    u32 n = mix_chunk(frames), ahead = session_mix_ahead_replayed();
+    if (ahead) { /* a replay: the recorded run mixed these ahead of its clock here */
+        session_mix_ahead(ahead);
+        for (u32 i = 0; i < ahead; i++) {
+            u32 m = mix_chunk(frames);
+            if (g_stream && audio_out_queued(g_stream) < QUEUE_MAX) put_chunk(frames, m);
+        }
+    }
     if (!g_stream || (host_fixed_clock() && host_fast_until())) return;
     if (host_fixed_clock()) { /* deterministic runs: the audio moves only with the game's blanks */
         if (audio_out_queued(g_stream) < QUEUE_MAX) put_chunk(frames, n);

@@ -2,12 +2,17 @@
 144 fps at 2560x1600 with no emulated hardware in its default play path. Not a tool itself; it only reads.
 
 Two sources, each "unmeasured" until it exists (and an unmeasured check never turns the gate green):
-- the game log's session summary, the last line a play session writes (rule point 5 of RUNTIME_TARGET.md), read from the
-  launcher's own data folder (spec: consoles.KEY.runtime.logs, relative to the projects folder). One line:
-      play summary: shown_fps 143.9 output 2560x1600 frames 8640 tick_ms 1.10/2.30/9.10 draw_ms 2.00/3.10/12.00 frame_ms 6.90/7.20/14.00
-  the three times are median/99th percentile/worst, in milliseconds. A session counts only at the target output size and
-  with at least spec thresholds.runtime.min_frames shown frames; the gate takes the worst session of the logs kept
-  (the heaviest section is what the target names).
+- the game log's session summary and verdict, the last lines a play session writes (rule point 5 of RUNTIME_TARGET.md),
+  read from the launcher's own data folder (spec: consoles.KEY.runtime.logs, relative to the projects folder):
+      play summary: shown_fps 143.9 output 2560x1600 frames 8640 tick_ms 1.10/2.30/9.10 draw_ms 2.00/3.10/12.00 frame_ms 6.90/7.20/14.00 make_ms 1.90/5.10/12.00
+      play verdict: pass make_ms p99 5.10 (bar 6.67) late 4 of 8600 shown (0.47 per 1000, bar 1) loading 40 shown 9 late machine target_laptop
+  the times are median/99th percentile/worst, in milliseconds. The bar ("150 fps headroom") is two checks: make p99
+  (thresholds.runtime.make_p99_ms) and missed 144 slots per 1,000 shown frames (late_per_1000), loading screens left out.
+  Shown-frame spacing is not one: under the cap it can't go below 6.94 ms. A session counts only at the target output
+  size and with at least spec thresholds.runtime.min_frames shown frames; the gate takes the worst session of the logs
+  kept (the heaviest section is what the target names), and a session without the figures (a log older than the bar)
+  leaves the check unmeasured. Only sessions whose verdict names thresholds.runtime.machine (the user's laptop) count:
+  Build box A and build box B compare builds, and their sessions leave the checks unmeasured, never failed.
 - the "Emulated layers in the play path" table of RUNTIME_TARGET.md: a layer of this console (spec: runtime.layers) is
   open unless its Status starts with one of thresholds.runtime.layer_done. game.json has no per-game switch for a
   layer yet; when one exists this is where it is read.
@@ -26,12 +31,15 @@ from scorecard_data import at_least, at_most, check, unmeasured
 
 LINE = "play summary:"
 SUMMARY = re.compile(r"play summary: shown_fps ([\d.]+) output (\d+)x(\d+) frames (\d+)((?: \w+_ms [\d.]+/[\d.]+/[\d.]+)+)")
+VERDICT = re.compile(r"play verdict: (pass|fail|none) make_ms p99 ([\d.]+) \(bar [\d.]+\) late (\d+) of (\d+) shown "
+                     r"\([\d.]+ per 1000, bar [\d.]+\) loading (\d+) shown (\d+) late(?: machine (\S+))?")
 TABLE_HEAD = "## Emulated layers in the play path"
 ASPECT_HEAD = "### Aspect-ratio proof per game"
 
 
 def parse_summary(text):
-    """The last session summary in `text` as {"fps", "w", "h", "frames", "tick_ms": (median, p99, worst), ...}, or None."""
+    """The last session summary in `text` as {"fps", "w", "h", "frames", "tick_ms": (median, p99, worst), ...}, or None;
+    with the last verdict line's "verdict", "late", "judged", "shown_loading" and "late_loading" when there is one."""
     found = SUMMARY.findall(text)
     if not found:
         return None
@@ -39,6 +47,11 @@ def parse_summary(text):
     out = {"fps": float(fps), "w": int(w), "h": int(h), "frames": int(frames)}
     for name, m, p, x in re.findall(r"(\w+_ms) ([\d.]+)/([\d.]+)/([\d.]+)", times):
         out[name] = (float(m), float(p), float(x))
+    v = VERDICT.findall(text)
+    if v:
+        verdict, _, late, judged, shown_l, late_l, machine = v[-1]
+        out.update(verdict=verdict, late=int(late), judged=int(judged), shown_loading=int(shown_l), late_loading=int(late_l),
+                   machine=machine or None)
     return out
 
 
@@ -124,18 +137,26 @@ def gate_runtime(spec, con, projects_dir, tool):
     found = sessions(projects_dir, pats)
     want = f"{th['width']}x{th['height']}"
     good = [(f, s) for f, s in found if s["w"] * s["h"] >= th["width"] * th["height"] and s["frames"] >= th["min_frames"]]
-    names = ["shown frames per second (heaviest section)", "shown frame time, 99th percentile"]
+    mine = th["machine"].lower()  # the user's laptop: the only machine whose sessions pass or fail
+    elsewhere = sorted({s.get("machine") or "a machine not named" for _, s in good if (s.get("machine") or "").lower() != mine})
+    good = [(f, s) for f, s in good if (s.get("machine") or "").lower() == mine]
+    names = ["frame making time, 99th percentile", "late frames: 144 slots missed per 1,000 shown"]
     if not good:
         why = (f"no '{LINE}' line yet in {', '.join(pats) or 'any log (the spec names none for this console)'}: the kit writes it at "
                f"the end of a play session" if not found else
+               f"no session at {want} from {th['machine']} (the user's laptop, the only machine that passes or fails): "
+               f"{', '.join(elsewhere)} compare builds only" if elsewhere else
                f"{len(found)} session(s) in the logs, none at {want} with {th['min_frames']}+ frames: "
                + "; ".join(f"{s['w']}x{s['h']} {s['frames']} frames {s['fps']} fps" for _, s in found[:3]))
-        out = [unmeasured(names[0], why, f">= {th['fps']} fps"), unmeasured(names[1], why, f"<= {th['frame_p99_ms']} ms")]
+        out = [unmeasured(names[0], why, f"<= {th['make_p99_ms']} ms"),
+               unmeasured(names[1], why, f"<= {th['late_per_1000']} per 1000")]
     else:
         src = f"{ref}: {len(good)} session(s) at {want}, the worst counts"
-        out = [at_least(names[0], min(s["fps"] for _, s in good), th["fps"], src, " fps"),
-               at_most(names[1], max(s["frame_ms"][1] for _, s in good if "frame_ms" in s) if all("frame_ms" in s for _, s in good)
-                       else None, th["frame_p99_ms"], src + "; frame_ms p99", " ms")]
+        make = [s["make_ms"][1] for _, s in good if "make_ms" in s]
+        late = [1000.0 * s["late"] / s["judged"] for _, s in good if s.get("judged")]
+        out = [at_most(names[0], max(make) if len(make) == len(good) else None, th["make_p99_ms"], src + "; make_ms p99", " ms"),
+               at_most(names[1], max(late) if len(late) == len(good) else None, th["late_per_1000"],
+                       src + "; play verdict, loading screens left out", " per 1000")]
     doc = (pathlib.Path(tool) / "docs" / "RUNTIME_TARGET.md")
     text = doc.read_text(encoding="utf-8") if doc.is_file() else None
     out.append(layers_check(text, rt.get("layers") or [], th["layer_done"]) if text is not None else

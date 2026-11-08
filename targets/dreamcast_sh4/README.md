@@ -103,7 +103,8 @@ instruction text.
   (2^-126 stays), SSE's FTZ judges it after rounding to 24 bits.
 - Paired 64-bit FPU moves (`fschg` + `fmov` on DRn) in little-endian mode are not yet verified against hardware.
 - The oracle assumes FPSCR PR=0, SZ=0 at entry (true for all game code; only the SDK changes FPSCR).
-- `fsrra` and `fsca` use exact maths and a 64K-entry table, not the hardware's approximations.
+- `fsca` takes its sine and cosine from the hardware's table (`core/fsca.py`); `fsrra` uses exact maths (1/sqrtf), not
+  the hardware's approximation.
 - Ghidra's float encoder turns results with 2^-150 < |x| < 2^-149 into ±0 where IEEE (every C build) gives
   ±2^-149. TcOracle checks each fmul/fdiv/fmac/fipr/ftrv exactly and rejects such runs as test vectors.
   (Real hardware runs with FPSCR.DN=1 and flushes all subnormals; neither the oracle nor C models that.)

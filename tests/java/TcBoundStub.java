@@ -6,8 +6,10 @@
 //   "M addr size value"   the program image holds value there (a literal pool)
 //   "X c" / "Y bits"      an extra integer constant / f32 constant (the target's pattern harvest)
 //   "S seed n"            n draws of each kind with Random(seed)
+//   "E pc mnemonic"       an instruction: the O lines after it are its p-code too (TcBound.Edges)
+//   "R offset value"      a register's value; "T pc": the edges the sites at pc make with the R values so far
 // prints "I" ints, "F" floats, "D" doubles, "C" fcmp, then per S: "V1", "V2", "V4" intValue draws at
-// 1, 2 and 4 bytes, "G" floatBits(f32), "H" floatBits(f64)
+// 1, 2 and 4 bytes, "G" floatBits(f32), "H" floatBits(f64); with E lines "N" the sites and goals, "Tk" per T line
 import ghidra.program.model.address.*;
 import ghidra.program.model.pcode.*;
 import java.util.*;
@@ -41,12 +43,21 @@ public class TcBoundStub {
         Map<String, Long> image = new HashMap<>();
         List<Long> xi = new ArrayList<>(), xf = new ArrayList<>();
         int seq = 0;
+        TcBound.Edges edges = new TcBound.Edges();
+        List<Long> insPc = new ArrayList<>();
+        List<String> insMn = new ArrayList<>();
+        List<List<PcodeOp>> insOps = new ArrayList<>();
         for (String line : lines) {
             String[] t = line.trim().split("\\s+");
             if (t[0].equals("O")) {
                 Varnode[] in = new Varnode[t.length - 3];
                 for (int i = 0; i < in.length; i++) in[i] = vn(t[3 + i]);
                 ops.add(new PcodeOp(RAM.getAddress(0x1000 + seq), seq++, PcodeOp.getOpcode(t[1]), in, vn(t[2])));
+                if (!insOps.isEmpty()) insOps.get(insOps.size() - 1).add(ops.get(ops.size() - 1));
+            } else if (t[0].equals("E")) {
+                insPc.add(hex(t[1]));
+                insMn.add(t[2]);
+                insOps.add(new ArrayList<>());
             } else if (t[0].equals("M")) {
                 image.put(hex(t[1]) + ":" + Integer.parseInt(t[2]), hex(t[3]));
             } else if (t[0].equals("X")) {
@@ -57,6 +68,25 @@ public class TcBoundStub {
         }
         TcBound b = TcBound.of(ops, (a, n) -> image.get(a + ":" + n), xi, xf);
         StringBuilder out = new StringBuilder();
+        for (int i = 0; i < insPc.size(); i++)
+            edges.add(insPc.get(i), insMn.get(i), insOps.get(i).toArray(new PcodeOp[0]));
+        if (!insPc.isEmpty()) {
+            List<Long> g = new ArrayList<>();
+            for (int x : edges.goals) g.add((long) x);
+            out.append("N ").append(Long.toHexString(edges.sites)).append(join(g)).append('\n');
+            Map<Long, Long> regs = new HashMap<>();
+            int k = 0;
+            for (String line : lines) {
+                String[] t = line.trim().split("\\s+");
+                if (t[0].equals("R")) regs.put(hex(t[1]), hex(t[2]));
+                if (!t[0].equals("T")) continue;
+                Set<Integer> got = new TreeSet<>();
+                edges.hit(got, hex(t[1]), v -> regs.getOrDefault(v.getOffset(), 0L));
+                List<Long> gl = new ArrayList<>();
+                for (int x : got) gl.add((long) x);
+                out.append("T").append(++k).append(join(gl)).append('\n');
+            }
+        }
         out.append("I").append(join(b.ints)).append("\nF").append(join(b.floats)).append("\nD").append(join(b.doubles))
             .append("\nC ").append(b.fcmp).append('\n');
         for (String line : lines) {

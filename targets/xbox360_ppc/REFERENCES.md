@@ -17,3 +17,7 @@ read to learn facts and to cross-check results only.
 | XenonRecomp outputs (`External/` beside the projects), and its seed list `extra_seeds.txt` | cross-check only: the seed list was compared with DP's own catalog (7 of 182 seeds are DP entries; 171 lie inside `.pdata` functions); the extracted `default.xex` matched DP's byte for byte | no (XenonRecomp's source was not used) |
 | DP's own `targets/gamecube_ppc/` | the model for the target layout, the judge glue, the runtime API and the tests | DP's own code, adapted |
 | DP's `tests/test_saturn_sh2.py` | the pattern of the offline tests (MSVC through `vcvars`, a runner on a synthetic image) | DP's own code, adapted |
+
+Development symbols (PDB and MAP) of other Xbox 360 games, supplied by the user and kept on the main laptop only: used
+to name functions in a game's own workspace, never copied into DP. Which sets were tried, and what they named in
+Too Human, are in `RESEARCH_SYMBOLS.md`.

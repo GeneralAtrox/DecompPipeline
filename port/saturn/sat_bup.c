@@ -2,7 +2,8 @@
  * other services through the table that the word at 0x06000354 points to (SelPart, Format, Stat, Write, Read, Delete,
  * Dir, Verify, GetDate, SetDate, in that order after one slot for Init). Device 0 (unit id 1 in BUP_Init's table) is the console's internal memory (32 KB,
  * 64-byte blocks); the other units are absent. The files live in one host file (--save, default saturn_backup.bin),
- * rewritten after every change; its layout is the kit's own, the game only sees the BUP calls.
+ * rewritten after every change; its layout is the kit's own, the game only sees the BUP calls. A game that names its
+ * load path (game.json auto_load) has it driven at boot when its file is here (sat_bup_auto_load, base autoload.c).
  *
  * Nearest existing: sat_bios.c (the same native-service form for the SCU and clock services) - this is the library
  * behind another pair of those pointers, with state, so it has its own file. */
@@ -12,6 +13,8 @@
 #include <time.h>
 #include "sat.h"
 #include "sat_sys.h"
+#include "sat_game.h"
+#include "autoload.h"
 
 enum { OK = 0, NON = 1, UNFORMAT = 2, NOT_ENOUGH = 4, NOT_FOUND = 5, FOUND = 6, NO_MATCH = 7 };
 enum { UNIT_INT = 1, DEV_INT = 0, TOTAL_BLOCKS = 512, BLOCK = 64, HEADER_BLOCKS = 2, MAX_FILES = 128, DIR_SIZE = 34 };
@@ -271,4 +274,35 @@ void sat_bup_init(void)
     wr32(SLOT_INIT, ROM);
     wr32(SLOT_TABLE, TABLE);
     for (u32 i = 0; i < NSVC; i++) wr32(TABLE + 4u * i, ROM + 4u * i);
+}
+
+/* Auto-load (game.json auto_load, which gen_saturn.py turns into SAT_AUTO_LOAD_FILE and its steps): at the start, after
+ * the save's notes. The file is looked for only when the setting wants it, so a run without it reads the save as before. */
+#ifdef SAT_AUTO_LOAD_FILE
+static const AutoLoadStep k_auto[] = SAT_AUTO_LOAD_STEPS;
+static int has_file(void)
+{
+    load_all();
+    for (int i = 0; i < g_n; i++)
+        if (!memcmp(g_file[i].dir, SAT_AUTO_LOAD_FILE, 11)) return 1;
+    return 0;
+}
+static void poke16(u32 addr, u32 value) { wr16(addr, (u16)value); }
+static u32 peek16(u32 addr) { return rd16(addr); }
+static u32 call1(u32 fn, u32 arg)
+{
+    TcArgs a;
+    memset(&a, 0, sizeof a);
+    a.r[0] = arg;
+    return tc_call(fn, &a);
+}
+static const AutoLoadConsole k_con = {has_file, poke16, peek16, call1};
+#endif
+void sat_bup_auto_load(int play_run)
+{
+#ifdef SAT_AUTO_LOAD_FILE
+    autoload_start(k_auto, sizeof k_auto / sizeof k_auto[0], play_run, &k_con);
+#else
+    (void)play_run;
+#endif
 }

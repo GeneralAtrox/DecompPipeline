@@ -327,9 +327,11 @@ static void poll_frame(unsigned frame);
 
 void game_log_poll(unsigned frame)
 {
-    if (gl_fault_at && port_vblank_count() >= gl_fault_at) {
-        port_log("fault-at: writing to address 0x40 at vertical blank %u (--fault-at)\n", port_vblank_count());
-        *(volatile u32 *)0x40 = 1u;
+    static int fault_planted;
+    if (gl_fault_at && !fault_planted && port_vblank_count() >= gl_fault_at) {
+        port_log("fault-at: an integer divide by zero at vertical blank %u (--fault-at)\n", port_vblank_count());
+        fault_planted = 1;
+        port_plant_fault();
     }
     if (!gl_on || !gl_started || port_extra_drawing()) return;
     LARGE_INTEGER t0, t1;

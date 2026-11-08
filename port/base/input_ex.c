@@ -44,7 +44,7 @@ const char *port_pad_ex_name(u32 bit, int player)
         {HOST_PAD_RS_RIGHT, "Right stick right", "RS right", "R-stick right"},
     };
     int style = pad_style();
-    (void)player; /* one style for every connected pad for now (pad_style follows the first) */
+    (void)player; /* one style for every pad: the one last used */
     for (size_t i = 0; i < sizeof n / sizeof n[0]; i++)
         if (n[i].bit == bit) return style == 1 ? n[i].xbox : style == 2 ? n[i].playstation : n[i].generic;
     return "";

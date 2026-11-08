@@ -173,6 +173,11 @@ figures and the causes of the rest). How the stage works: docs/TRANSLATOR_STAGE.
   the translator's C on every harness the workspace has and finishes each PASS as a worker would. It never starts
   Ghidra; stop the server first. A harness made before a judge change has an old stamp, and `--record` records
   nothing on it: re-prepare it first.
+- **Hands-off, in one start:** `python tools/wave.py run --game WS` runs this whole round and the readable round
+  (section 6) with no one at the controls: prepare (served slots), translate and record, an agent only on each
+  translator FAIL (`decomp.py investigate`, a few at once), then `refine.py run` over the matched functions. It
+  needs `"harness_reuse": true` in project.json, resumes where it stopped, and writes
+  `state/wave_game_summary.json`; the run is one start in `state/operator_steps.jsonl` (tools/wave_game.py).
 - **Then the agents, for what is left:** `python decomp.py --project <workspace> serve` opens the monitor UI.
   Start workers (Haiku by default): each one takes a function, runs the translator, and only on a FAIL writes raw
   C against the guest-memory API until it gets a PASS. Callees are mocked, so functions are independent.

@@ -87,5 +87,11 @@
     "command": ["{python}", "{target}/translate.py", "--repo", "{repo}", "--workspace", "{workspace}", "--addr",
                 "{addr}", "--meta", "{meta}", "--target-json", "{target_json}", "--out", "{out}"],
     "timeout_s": 120
-  }
+  },
+  "stamp_scopes": [
+    {"scope": "boundary_vectors", "flags": ["boundary_vectors"],
+     "why": "the compare-edge pass (TcBound.Edges, TcBoundPass.edges) changes no harness byte while boundary_vectors is off: its edges are never recorded and the pass never runs",
+     "scripts": {
+       "TcBound.java": ["f2f05bdacf2971165552f416d43b68da032190280612ff7134273ce9b9023165", "201c711521ea78477868cdf0f5a97c4a0be78650f4311d51d0c001b963f6535c"]}}
+  ]
 }

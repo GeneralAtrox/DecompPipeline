@@ -390,7 +390,9 @@ public abstract class TcVectors extends TcOracle {
     }
 
     String describeFailure(Result r, int repairs) {
-        StringBuilder b = new StringBuilder(r.reason).append(" after ").append(repairs).append(" repair(s); last loads:");
+        StringBuilder b = new StringBuilder(r.reason);
+        if (r.faultWrite) b.append(" at ").append(hex(r.faultAddr));
+        b.append(" after ").append(repairs).append(" repair(s); last loads:");
         for (int i = Math.max(0, r.loads.size() - 4); i < r.loads.size(); i++) {
             long[] ld = r.loads.get(i);
             b.append(String.format(" [pc %s: %d bytes @%s = %s]", hex(ld[0]), ld[2], hex(ld[1]), hex(ld[3])));

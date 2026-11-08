@@ -59,3 +59,20 @@ u32 port_tx_spin_read(u32 addr, u32 value)
         if ((addr & AREA_MASK) == g_spin_word[i]) return spin_read(i, addr, value);
     return value;
 }
+
+/* Readable C's way to a spin word (gen_port.py: game.json spin_words): the word's address, after one read of it counted
+ * as translator C's rd32 counts it, so a readable loop waiting on it waits for the next vertical blank as the
+ * translated loop does. Named on first use, so the game's sources need not call port_spin_word for it. */
+volatile void *port_rd_spin(unsigned int addr)
+{
+    static u32 named[SPIN_WORDS];
+    static int nnamed;
+    int i = 0;
+    while (i < nnamed && named[i] != (addr & AREA_MASK)) i++;
+    if (i == nnamed && nnamed < SPIN_WORDS) {
+        port_spin_word(addr);
+        named[nnamed++] = addr & AREA_MASK;
+    }
+    port_tx_spin_read(addr, *(const volatile u32 *)(uintptr_t)addr);
+    return (volatile void *)(uintptr_t)addr;
+}

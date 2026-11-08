@@ -146,22 +146,67 @@ def write_json(path, data, indent=2):
     write_atomic(path, json.dumps(data, indent=indent))
 
 
-def dumps_rows(data, rows="functions"):
+def dumps_rows(data, rows="functions", texts=None):
     """JSON text of a dict with each entry of data[rows] on a line of its own (the ledger: one line per function).
     Unlike indent=2 it keeps json's C encoder: about 4x faster on a 25 MB ledger (113 ms against 480; the server
     saves it under its lock many times per function), a quarter smaller, and still one line per function for grep
     and diff. json.loads reads back the same data. rows=None: data's own entries one a line (state/readable.json:
-    an indent=2 dump of Toy Commander's 4 MB took 86 ms of each 150 ms refine.update; this one 15)."""
+    an indent=2 dump of Toy Commander's 4 MB took 86 ms of each 150 ms refine.update; this one 15). texts: each row's
+    json text already made (save_rows)."""
     if rows is None:
         return "{\n" + ",\n".join(f"  {json.dumps(k)}: {json.dumps(v)}" for k, v in data.items()) + "\n}\n"
     parts = []
     for k, v in data.items():
         if k == rows and isinstance(v, dict) and v:
-            body = ",\n".join(f"  {json.dumps(a)}: {json.dumps(r)}" for a, r in v.items())
+            body = ",\n".join(f"  {json.dumps(a)}: {texts[a] if texts else json.dumps(r)}" for a, r in v.items())
             parts.append(f"{json.dumps(k)}: {{\n{body}\n}}")
         else:
             parts.append(f"{json.dumps(k)}: {json.dumps(v)}")
     return "{\n" + ",\n".join(parts) + "\n}\n"
+
+
+def _stamp(path):
+    try:
+        st = os.stat(path)
+        return st.st_mtime_ns, st.st_size
+    except OSError:
+        return None
+
+
+def load_rows(path, default, rows="functions"):
+    """(data, base) for save_rows: the file (or a copy of default) and each row's text as loaded."""
+    with locked(path):
+        data = read_json(path, default)
+        return data, ({k: json.dumps(r) for k, r in (data.get(rows) or {}).items()}, _stamp(path))
+
+
+def save_rows(path, data, base, rows="functions"):
+    """Save a ledger that more than one process holds in memory (core/orch.Orchestrator, tools/translate_backlog's O):
+    a three-way merge per row under the file lock. base (load_rows, or the last save_rows): each row's text as this
+    process last loaded or saved it, and the file's stamp then. A row this process has not changed since is the file's
+    (another process saved it: copied into data in place, so a reference held to the row sees it); a row it changed is
+    its own; a row only the file has is added; a row one process removed and the other left alone is removed. base
+    None: rows only the file has are added, the rest are this process's. Returns the new base. Before, each process
+    wrote its whole in-memory ledger and dropped every row another one had saved since it loaded: wave.py's agent step
+    runs `decomp.py investigate` 3 at a time (14 of 21 rows lost on the Xbox 360 reference run, 2026-11-06; Saturn
+    Robo Pit: 28 of 33)."""
+    with locked(path):
+        mine = data.setdefault(rows, {})
+        texts, stamp = base if base else ({}, None)
+        if base is None or _stamp(path) != stamp:  # someone else wrote it since this process did
+            disk = (read_json(path) or {}).get(rows) or {}
+            for k, r in disk.items():
+                cur = mine.get(k)
+                if cur is None and (base is None or k not in texts):
+                    mine[k] = r
+                elif base is not None and cur is not None and json.dumps(cur) == texts.get(k):
+                    cur.clear()
+                    cur.update(r)
+            for k in [k for k in mine if base is not None and k not in disk and json.dumps(mine[k]) == texts.get(k)]:
+                del mine[k]  # another process removed it, and this one has not changed it since
+        texts = {k: json.dumps(r) for k, r in mine.items()}
+        write_atomic(path, dumps_rows(data, rows, texts))
+        return texts, _stamp(path)
 
 
 def read_json(path, default=None):

@@ -7,7 +7,10 @@ keyframe at or before it plus at most keyframe - 1 deltas.
 
 A delta frame is: u32 run count, u32 run starts[count], u32 run lengths[count] (bytes), then the runs' bytes.
 The writer keeps compressed frames in memory up to `buffer_mb` and appends them to disk past that (and at close).
+pack_stream packs RAMF records as they arrive (a pipe Flycast writes into, tools/ref_fast.py), so no raw stream is
+ever held on disk; pack_raw is the same over a finished file.
 """
+import contextlib
 import mmap
 import pathlib
 import struct
@@ -66,12 +69,33 @@ class Writer:
             kind, body = "d", b"".join(parts)
             self.stats["changed_bytes"].append(4 * changed_words(self.prev, ram))
             self.stats["block_bytes"].append(int(lengths.sum()))
+        self.prev = ram
+        self._store(kind, body, tag, t0)
+
+    def add_delta(self, ram, tag, starts, lengths, data, changed):
+        """A frame from its runs as a RAMF record holds them (data: the runs' bytes back to back; ram: the RAM after
+        them; changed: the bytes of the words that changed): the frame add() stores, without comparing or copying
+        the whole RAM except at a keyframe."""
+        t0 = time.perf_counter()
+        if self.count % self.keyframe == 0:
+            kind, body = "k", bytes(ram)
+            self.stats["keyframes"] += 1
+        else:
+            kind = "d"
+            body = b"".join([np.uint32(starts.size).tobytes(), starts.astype("<u4").tobytes(),
+                             lengths.astype("<u4").tobytes(), data])
+            self.stats["changed_bytes"].append(changed)
+            self.stats["block_bytes"].append(int(lengths.sum()))
+        self.prev = None  # add() after add_delta() starts on a keyframe
+        self._store(kind, body, tag, t0)
+
+    def _store(self, kind, body, tag, t0):
         blob = self.cctx.compress(body)
         self.pending.append(blob)
         self.held += len(blob)
         self.zidx.write(f"{self.offset} {len(blob)} {kind} {tag}\n")
         self.offset += len(blob)
-        self.prev, self.count = ram, self.count + 1
+        self.count += 1
         self.stats["frames"] += 1
         self.stats["raw_bytes"] += len(body)
         self.stats["stored_bytes"] += len(blob)
@@ -101,6 +125,10 @@ class Reader:
         self.file = open(self.path.with_suffix(".zram"), "rb")  # mapped, not read: a recording can be large
         self.data = mmap.mmap(self.file.fileno(), 0, access=mmap.ACCESS_READ)
         self.dctx = zstandard.ZstdDecompressor()
+
+    def close(self):
+        self.data.close()
+        self.file.close()
 
     def __len__(self):
         return len(self.index)
@@ -152,26 +180,62 @@ def differing_words(a, b, lo=0x8C000000, hi=0x8D000000, base=0x8C000000):
     return [lo + 4 * int(i) for i in np.flatnonzero(x != y)]
 
 
-def read_raw(path):
-    """The port's --ram-frames records: (port frame, label, emulator frame, starts, lengths, the runs' bytes)."""
-    with open(path, "rb") as f:
+def read_raw(src):
+    """The port's --ram-frames records (src: a path, or a file object such as a pipe): (port frame, label, emulator
+    frame, starts, lengths, the runs' bytes). A record cut short at the end (a writer that was killed) ends it."""
+    with (open(src, "rb") if isinstance(src, (str, pathlib.PurePath)) else contextlib.nullcontext(src)) as f:
         while len(head := f.read(20)) == 20:
             magic, frame, label, emu, n = struct.unpack("<IIIiI", head)
             if magic != RAMF:
-                raise ValueError(f"{path}: not a RAM frame record at {f.tell() - 20}")
-            runs = np.frombuffer(f.read(8 * n), dtype="<u4").reshape(-1, 2)
-            yield frame, label, emu, runs[:, 0], runs[:, 1], f.read(int(runs[:, 1].sum()))
+                raise ValueError(f"{src}: not a RAM frame record")
+            table = f.read(8 * n)
+            if len(table) < 8 * n:
+                return
+            runs = np.frombuffer(table, dtype="<u4").reshape(-1, 2)
+            size = int(runs[:, 1].sum())
+            data = f.read(size)
+            if len(data) < size:
+                return
+            yield frame, label, emu, runs[:, 0], runs[:, 1], data
 
 
-def pack_raw(raw, dest, keyframe=300, buffer_mb=256):
-    """The port's raw file into the stored format (tag "frame emu-frame label"); the raw file is removed."""
-    w, ram = Writer(dest, keyframe, buffer_mb), bytearray(RAM_SIZE)
-    for frame, label, emu, starts, lengths, data in read_raw(raw):
-        at = 0
+def pack_stream(src, dest, keyframe=300, buffer_mb=256, stop=None, writer=None):
+    """RAMF records from src (read_raw) into the stored format as they arrive (tag "frame emu-frame label"). stop():
+    a reason to stop storing (a disk cap, say), asked per record; the rest of src is then read and dropped, so its
+    writer never blocks. writer: a Writer the caller made (to watch its size). Returns the Writer's stats, with
+    "stream": the records' first and last vertical blank, "stopped" (stop's reason, or None) and the delta's make-up
+    (KB per delta frame by 64 KB region of RAM, by run start; the largest 8)."""
+    w, ram = writer or Writer(dest, keyframe, buffer_mb), bytearray(RAM_SIZE)
+    regions, vb, why = np.zeros(RAM_SIZE >> 16, dtype=np.int64), [None, None], None
+    records = read_raw(src)
+    for frame, label, emu, starts, lengths, data in records:
+        why = stop() if stop else None
+        if why:
+            for _ in records:  # drained, not stored
+                pass
+            break
+        changed, at = 0, 0
+        if w.count % w.keyframe:  # a delta frame (a keyframe stores the whole RAM)
+            old = b"".join(ram[s:s + n] for s, n in zip(starts.tolist(), lengths.tolist()))
+            changed = 4 * int(np.count_nonzero(np.frombuffer(old, dtype=np.uint32)
+                                               != np.frombuffer(data, dtype=np.uint32)))
+            np.add.at(regions, starts >> 16, lengths.astype(np.int64))
         for s, n in zip(starts.tolist(), lengths.tolist()):
             ram[s:s + n] = data[at:at + n]
             at += n
-        w.add(ram, f"{frame} {emu} {label:08x}", (starts, lengths))
+        w.add_delta(ram, f"{frame} {emu} {label:08x}", starts, lengths, data, changed)
+        vb = [emu if vb[0] is None else vb[0], emu]
     stats = w.close()
+    deltas = max(1, stats["frames"] - stats["keyframes"])
+    top = [int(k) for k in np.argsort(regions)[::-1][:8] if regions[k]]
+    stats["stream"] = {"vb_first": vb[0], "vb_last": vb[1], "stopped": why,
+                       "regions_kb_per_frame": {f"{0x8C000000 + (k << 16):08x}": round(int(regions[k]) / deltas / 1024, 1)
+                                                for k in top}}
+    return stats
+
+
+def pack_raw(raw, dest, keyframe=300, buffer_mb=256):
+    """The port's raw file into the stored format (pack_stream); the raw file is removed."""
+    stats = pack_stream(raw, dest, keyframe, buffer_mb)
     pathlib.Path(raw).unlink()
     return stats

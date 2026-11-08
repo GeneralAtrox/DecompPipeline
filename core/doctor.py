@@ -28,7 +28,8 @@ import re
 
 from . import callee_drift, filelock, locations, raw_names, retire, scope, sysassign
 
-FILE_STATUSES = ("readable", "stale", "harness_stale", "running")  # a readable/src file exists for these
+# a readable/src file exists for these (unproven, needs_review: core/proof.readable_state)
+FILE_STATUSES = ("readable", "stale", "harness_stale", "running", "unproven", "needs_review")
 
 
 def check(ws):

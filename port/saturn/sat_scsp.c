@@ -12,6 +12,7 @@
 #include "sat_sys.h"
 #include "sat_scsp.h"
 #include "sat_m68k.h"
+#include "work_count.h"
 
 #define SRAM_LO 0x05a00000u
 #define SRAM_SIZE 0x00080000u
@@ -168,7 +169,7 @@ void sat_scsp_frame(void)
     if (n > 2048) n = 2048;
     while (done < n) {
         u32 step = n - done < 16u ? n - done : 16u;
-        if (g_cpu_on) m68k_run(256u * step);
+        if (g_cpu_on) work_add(WC_SOUND_CPU, m68k_run(256u * step));
         for (u32 k = 0; k < step; k++, done++) {
             s32 l, r;
             timers();

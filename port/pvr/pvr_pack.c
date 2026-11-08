@@ -21,6 +21,9 @@
  * pvr_tex.c asks when it decodes a texture, which is only after the guest wrote its memory: an unchanged texture is
  * never hashed again. A hit's image is read once and kept with its mip chain (box-filtered, for mip-mapped guests).
  * A palettized texture (pixel formats 5 and 6) has no pack image: its texels depend on palette RAM, not hashed.
+ * A line's word over keeps the game's own texture under the image: where the image's alpha is 0 the game's texel shows
+ * (the image is any whole multiple of the texture's size), and every other pixel is the image's. So a pack can change part
+ * of a texture without holding the rest of the game's art; alpha 1 clears a pixel.
  * A line's rim=RRGGBB is for a model that draws its sides untextured right after the textured face: those vertices
  * take that colour, scaled by their strongest channel so the game's lighting stays (the button icons' lower edge).
  * Nearest existing: pvr_tex.c's decoded-texture cache (keyed by TCW, not by content; this sits under it). */
@@ -57,6 +60,7 @@ typedef struct PackEntry {
     u32 variant; /* the pad style the image is for (base/pad_style.c): 0 for every style, 1 xbox, 2 playstation */
     u32 layer;   /* whose image: LAYER_CHOSEN comes before LAYER_GAME */
     u32 rim;     /* RIM_SET | RRGGBB from the line's rim= word, or 0 */
+    u32 over;    /* the line's over word: the image goes over the game's own texture */
 } PackEntry;
 
 /* The textures decoded with a rim= image. The scene parser asks each time an untextured polygon follows a textured
@@ -119,7 +123,7 @@ static int variant_of(const char *s)
  * every style. */
 static PackEntry *find_entry(u64 key)
 {
-    u32 lo = 0, hi = g_count, style = (u32)pad_style(), layer;
+    u32 lo = 0, hi = g_count, style = (u32)pad_art_style(), layer;
     PackEntry *any = NULL;
     while (lo < hi) {
         u32 mid = (lo + hi) / 2u;
@@ -166,7 +170,7 @@ static u32 load_index(const char *dir, u32 layer)
         char *hash = strchr(line, '#'), *end, *file, *rest;
         unsigned long long key;
         int variant = 0;
-        u32 rim = 0;
+        u32 rim = 0, over = 0;
         if (hash) *hash = '\0';
         key = _strtoui64(line, &end, 16);
         file = end + strspn(end, " \t");
@@ -176,6 +180,11 @@ static u32 load_index(const char *dir, u32 layer)
             if (word) {
                 rim = RIM_SET | strtoul(word + 4, &stop, 16);
                 if (stop != word + 10 || (rim & ~(RIM_SET | 0xffffffu))) variant = -1;
+                *word = '\0';
+            }
+            word = strstr(rest + 1, "over");
+            if (word && strspn(word + 4, " \t\r\n") == strlen(word + 4)) {
+                over = 1;
                 *word = '\0';
             }
             if (!variant) variant = variant_of(rest + 1);
@@ -196,6 +205,7 @@ static u32 load_index(const char *dir, u32 layer)
         g_entry[g_count].variant = (u32)variant;
         g_entry[g_count].layer = layer;
         g_entry[g_count].rim = rim;
+        g_entry[g_count].over = over;
         g_rim_lines += rim != 0u;
         g_entry[g_count++].file = _strdup(file);
     }
@@ -273,6 +283,10 @@ u32 pvr_pack_levels(u32 tcw, u32 w, u32 h, u32 stride, const u32 **texels, u32 *
             e->failed = 1;
             return 0;
         }
+        if (e->over && !pvr_pack_put_over(e->texels, e->w, e->h, e->file, tcw, w, h, stride)) {
+            e->failed = 1;
+            return 0;
+        }
         e->levels = 1;
     }
     if (mipped && !e->mipped) {
@@ -284,6 +298,14 @@ u32 pvr_pack_levels(u32 tcw, u32 w, u32 h, u32 stride, const u32 **texels, u32 *
     *pw = e->w;
     *ph = e->h;
     return mipped ? e->levels : 1u;
+}
+
+int pvr_pack_has_style(int style)
+{
+    if (!enabled()) return 0;
+    for (u32 i = 0; i < g_count; i++)
+        if (g_entry[i].variant == (u32)style) return 1;
+    return 0;
 }
 
 u32 pvr_pack_generation(void) { return (u32)g_generation + pad_style_serial(); }
@@ -324,7 +346,7 @@ void pvr_pack_set_choice(int choice)
 /* --texture-pack NAME (a folder of packs/ beside port.exe) | DIR | on | off */
 int pvr_pack_option(const char *arg, const char *value)
 {
-    if (pvr_keys_option(arg, value) || pad_style_option(arg, value)) return 2;
+    if (pvr_keys_option(arg, value) || pad_style_option(arg, value) || pvr_tex_option(arg, value)) return 2;
     if (strcmp(arg, "--texture-pack") || !value) return 0;
     g_chosen[0] = '\0';
     if (!strcmp(value, "off") || !strcmp(value, "on")) {

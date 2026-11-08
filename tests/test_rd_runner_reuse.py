@@ -55,7 +55,7 @@ class Reuse(unittest.TestCase):
             p.start()
             self.addCleanup(p.stop)
 
-    def fake_build(self, cfg, names, build_dir, include_dirs, env, cl):
+    def fake_build(self, cfg, names, build_dir, include_dirs, env, cl, rd=None, sources=None, x64=False):
         n = len(self.builds) + 1
         self.builds.append(build_dir.name)
         (build_dir / "rd_runner.exe").write_bytes(f"runner {n}".encode())

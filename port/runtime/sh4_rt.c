@@ -8,6 +8,7 @@
 #include <emmintrin.h>
 #include <xmmintrin.h>
 #include "port.h"
+#include "work_count.h"
 #include "platform.h"
 
 #define MODE_FR 0x00200000u
@@ -105,7 +106,7 @@ static __m128d widen(f32 x) { return _mm_cvtss_sd(_mm_setzero_pd(), _mm_set_ss(x
 
 static __m128d dmul(f32 a, f32 b) { return _mm_mul_sd(widen(a), widen(b)); }
 
-f32 sh4_fipr(const f32 a[4], const f32 b[4])
+static __forceinline f32 fipr(const f32 a[4], const f32 b[4])
 {
     __m128d t = dmul(a[0], b[0]);
     t = _mm_add_sd(t, dmul(a[1], b[1]));
@@ -114,12 +115,19 @@ f32 sh4_fipr(const f32 a[4], const f32 b[4])
     return _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(), t));
 }
 
+f32 sh4_fipr(const f32 a[4], const f32 b[4])
+{
+    work_add(WC_VECTOR_OPS, 1);
+    return fipr(a, b);
+}
+
 void sh4_ftrv(f32 v[4])
 {
     f32 out[4];
+    work_add(WC_VECTOR_OPS, 1);
     for (int row = 0; row < 4; row++) { /* XMTRX is column-major: row r is xf r, r+4, r+8, r+12 */
         f32 m[4] = {u2f(port_sh4_xf[row]), u2f(port_sh4_xf[row + 4]), u2f(port_sh4_xf[row + 8]), u2f(port_sh4_xf[row + 12])};
-        out[row] = sh4_fipr(m, v);
+        out[row] = fipr(m, v);
     }
     for (int i = 0; i < 4; i++) v[i] = out[i];
 }

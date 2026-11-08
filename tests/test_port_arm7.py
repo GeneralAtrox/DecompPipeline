@@ -129,7 +129,7 @@ CHIP_MAIN_C = r"""#include <stdio.h>
 #include <stdlib.h>
 #include "game.h"
 #include "aica_arm.h"
-
+#include "work_count.h"  /* g_work_on, g_work_now: stubbed below */
 static u8 g_sound[AICA_RAM_SIZE];
 void *host_map_fixed(u32 addr, u32 size) { (void)addr, (void)size; return g_sound; }
 void port_log(const char *fmt, ...) { (void)fmt; }
@@ -139,7 +139,7 @@ static int g_waits;
 void port_wait_vblank(void) { g_waits++; }
 u32 port_vblank_count(void) { return 0; }  u32 port_vblank_phase(int look) { (void)look; return 0; }
 int g_prof_on; u64 prof_enter(int id) { (void)id; return 0; } void prof_leave(u64 token) { (void)token; }
-
+int g_work_on; u64 g_work_now[WC_N];
 int main(int argc, char **argv)
 {
     static s16 out[2 * 800];

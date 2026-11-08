@@ -21,7 +21,7 @@ import json
 import pathlib
 import threading
 
-from . import paths, ret_reg, toolcfg
+from . import callee_drift, paths, ret_reg, toolcfg
 
 _LOCK = threading.Lock()
 
@@ -99,6 +99,7 @@ def key(addr, src, stamp):
     harness = paths.HARNESS / addr
     _files(h, "harness", sorted(p for p in harness.iterdir() if p.is_file()) if harness.is_dir() else [])
     _files(h, "packet", sorted((paths.PACKETS / addr).glob("asm*.txt")))
+    h.update(f"callee signatures {callee_drift.sig_key(paths.ROOT, harness, paths.PROJECT['target'])}\n".encode())
     return h.hexdigest()
 
 

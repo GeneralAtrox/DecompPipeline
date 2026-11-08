@@ -44,6 +44,10 @@ static void dma_put(u32 *dst, u32 v, u32 add)
     }
 }
 
+/* The DMA reads with sat_dma_rd32, not rd32: a CPU's cache-through read counts as a poll of a flag, a step of --det's clock
+ * every 256 of them, so the 96 KB each Robo Pit movie frame moves inside VDP1's memory (the decoder's picture to the
+ * sprite's texture) cost the game two vertical blanks, and the movies showed a frame every 3 blanks where the original
+ * shows one every 2. The SCU moves it in about 2 ms. */
 static void dma_run(int lv)
 {
     u32 *r = g_reg + lv * 8, src, dst, cnt, ad = r[3], md = r[5];
@@ -55,14 +59,14 @@ static void dma_run(int lv)
         for (int n = 0; n < 4096; n++, tbl += 12) {
             u32 c = rd32(tbl), d = rd32(tbl + 4), s = rd32(tbl + 8), last = s >> 31;
             s &= 0x7fffffffu;
-            for (u32 i = 0; i < c; i += 4, s += src_add) dma_put(&d, rd32(s), dst_add);
+            for (u32 i = 0; i < c; i += 4, s += src_add) dma_put(&d, sat_dma_rd32(s), dst_add);
             if (last) break;
         }
     } else {
         src = r[0];
         dst = r[1];
         cnt = r[2] ? r[2] : (lv == 0 ? 0x100000u : 0x1000u);
-        for (u32 i = 0; i < cnt; i += 4, src += src_add) dma_put(&dst, rd32(src), dst_add);
+        for (u32 i = 0; i < cnt; i += 4, src += src_add) dma_put(&dst, sat_dma_rd32(src), dst_add);
         if (md & 0x10000u) r[0] = src;
         if (md & 0x100u) r[1] = dst;
     }

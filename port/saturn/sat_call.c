@@ -14,6 +14,7 @@
 #include "sat.h"
 #include "sat_cpu.h"
 #include "sat_sys.h"
+#include "work_count.h"
 
 SatCpu g_cpu[2] = {{.sr = 0xf0u}, {.sr = 0xf0u}};
 static SatCpu *cur = &g_cpu[MASTER];
@@ -31,10 +32,13 @@ static void *g_dead;
 static u32 g_slave_sp = 0x060fbc00u;
 static u32 g_watch_saved;
 void sat_set_watch_saved(u32 on) { g_watch_saved = on; }
+/* A call from a function on the guest stack gives its r15 (tc_call_sp): the callee's frame starts there, as on the CPU, so
+ * it finds every stack word the caller pushed, past a TcArgs' 8 too (Robo Pit's 06034204 passes 06054440 nine). */
+static u32 g_call_sp;
+u32 tc_call_sp(u32 target, const TcArgs *a, u32 sp) { g_call_sp = sp; return tc_call(target, a); }
 static u32 g_trace, g_trace_ret, g_trace_from, g_trace_count, g_trace_vb;
 void sat_set_trace(u32 n) { g_trace = n; g_trace_ret = n != 0; }
 void sat_set_trace_vb(u32 vb, u32 n) { g_trace_vb = vb ? vb : 0; g_trace_count = n; }
-/* --trace-from: the trace of n calls starts when the function at addr is first called */
 void sat_set_trace_from(u32 addr, u32 n) { g_trace_from = addr, g_trace_count = n; }
 
 u32 sh4_r(int index) { return cur->r[index & 15]; }
@@ -259,6 +263,8 @@ u32 sat_call(u32 sp, u32 addr, u32 a0, u32 a1, u32 a2, u32 a3)
 
 u32 tc_call(u32 target, const TcArgs *a)
 {
+    u32 csp = g_call_sp; g_call_sp = 0; /* the caller's r15 at the call, from tc_call_sp */
+    work_add(WC_GUEST_CALLS, 1);
     const SatFn *f;
     SatCpu *c = cur;
     u32 top, saved_sp = c->sp, saved_entry = sat_entry_sp, r;
@@ -279,7 +285,8 @@ u32 tc_call(u32 target, const TcArgs *a)
         stub_named(target);
         return 0;
     }
-    top = (c->sp ? c->sp : 0x060ffc00u) - 32u;
+    if (f->addr == sat_movie_fn && sat_movie_play(a, &r)) return r; /* game.json movie: the host plays it (sat_movie.c) */
+    top = csp ? csp : (c->sp ? c->sp : 0x060ffc00u) - 32u;
     if (g_trace_vb && sat_vblank_count() >= g_trace_vb) {
         g_trace_vb = 0;
         sat_set_trace(g_trace_count);
@@ -296,9 +303,11 @@ u32 tc_call(u32 target, const TcArgs *a)
         port_exit("call depth over 400", 1);
     }
     c->popped[c->depth] = 0;
-    u32 keep[7];
-    for (int k = 0; k < 7; k++) keep[k] = sh4_r(8 + k);
+    u32 keep[7]; for (int k = 0; k < 7; k++) keep[k] = sh4_r(8 + k);
+    if (f->addr == port_twin_fn) port_twin_hit(); /* the game's fight (base pad_twin.c) */ sat_wide_cull_at(f->addr); /* its culling, wide (sat_wide.c) */
+    if (f->addr == autoload_fn && !autoload_leave) autoload_hit(); /* a step of the save's auto-load (base autoload.c) */
     r = run_frame(f, top, a, 1);
+    if (f->addr == autoload_fn && autoload_leave) autoload_hit();
     if (g_watch_saved) sat_saved_note(f->addr, keep);
     cur->last_top = top;
     if (g_trace_ret && g_trace) port_log("ret %08x = %08x\n", f->addr, r);
@@ -344,12 +353,7 @@ u32 tc_tail(u32 target, const TcArgs *a)
 /* A jump made with the function's frame still open (a loop's tail, an interpreter's handler: SGL's transform routines push
  * their registers in one function and pop them in another): the target starts at the jumper's r15, not at the entry sp, so
  * what it pops is what the jumper pushed. The stack words are already in place, so the arguments' window is not copied. */
-u32 tc_tail_sp(u32 target, const TcArgs *a, u32 sp)
-{
-    u32 r = tc_tail(target, a);
-    if (cur->tail) cur->tail_sp = sp;
-    return r;
-}
+u32 tc_tail_sp(u32 target, const TcArgs *a, u32 sp) { u32 r = tc_tail(target, a); if (cur->tail) cur->tail_sp = sp; return r; }
 
 /* An interrupt handler: runs a translated function on a fresh frame with every register kept, as the CPU's
  * exception entry and rte do. The handler runs with the mask raised to the interrupt's level. */
@@ -384,12 +388,8 @@ void tc_spin(void)
     }
 }
 
-/* the game loops on a flag the vertical-blank handler sets (game.json "vblank_flags"); --vblank-wait off keeps burning */
-static int g_vblank_wait = 1;
+static int g_vblank_wait = 1; /* game.json "vblank_flags": a loop on a flag the vertical-blank handler sets; --vblank-wait off burns */
 void sat_set_vblank_wait(int on) { g_vblank_wait = on; }
-void sat_vblank_wait(void)
-{
-    if (g_vblank_wait) tc_spin();
-}
+void sat_vblank_wait(void) { if (g_vblank_wait) tc_spin(); }
 
 void sat_stub_report(void) { port_log("stubs hit: %d (STUB lines above)\n", g_nstub); }

@@ -32,6 +32,15 @@ class Ratchet(unittest.TestCase):
             got = [(n, p.name) for n, p in sizes.over_cap(sorted(pathlib.Path(d).iterdir()))]
             self.assertEqual(got, [(402, "big.md"), (401, "big.py")])
 
+    def test_vendored_third_party_is_exempt(self):
+        with tempfile.TemporaryDirectory() as d:
+            v = pathlib.Path(d) / "third_party"
+            v.mkdir()
+            (v / "stb_image.h").write_text("x\n" * 900, encoding="utf-8")
+            (pathlib.Path(d) / "ours.h").write_text("x\n" * 401, encoding="utf-8")
+            got = [p.name for _, p in sizes.over_cap([v / "stb_image.h", pathlib.Path(d) / "ours.h"])]
+            self.assertEqual(got, ["ours.h"])
+
     def test_baseline_round_trip(self):
         with tempfile.TemporaryDirectory() as d:
             f = pathlib.Path(d) / "list.txt"

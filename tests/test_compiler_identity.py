@@ -17,7 +17,7 @@
    um for the target, as INCLUDE and LIB name them: two builds of one SDK version (10.0.28000.1839 and .2114 both
    say 10.0.28000.0) differ in it, two install folders with the same files do not. A key keeps it while the folders'
    listing (sdk_scan) is unchanged; a changed file loads the cache again.
-The live check, cl and the SDK reporting what was pinned, is proof M (docs/proofs/2026-10-23/PROOFS.md): it needs
+The live check, cl and the SDK reporting what was pinned, is proof M of the second waste audit (in git history; docs/LESSONS.md): it needs
 Visual Studio.
 Run: python -W error tests/test_compiler_identity.py (also from test_tooling.py).
 """

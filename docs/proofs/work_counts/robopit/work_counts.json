@@ -1,0 +1,396 @@
+{
+ "game": "robopit",
+ "args": [
+  "--image",
+  "{exe_dir}/image.bin",
+  "--disc",
+  "<projects>/SegaSaturn/Robopit/Robo Pit (Europe)/Robo Pit (Europe)/Robo Pit (Europe).cue",
+  "--fixed-clock",
+  "1",
+  "--headless",
+  "--fast",
+  "--input",
+  "start@2900+6,up@3400+3,start@3450+4,start@3700+4,start@3900+4,start@4050+4,start@4700+4,start@5000+4,start@5300+4,start@5600+4,start@5900+4,start@6200+4,a@7000+4,a@7400+4,a@7800+4",
+  "--record",
+  "off",
+  "--save-dir",
+  "{work}",
+  "--audio-dump",
+  "{work}/audio.wav"
+ ],
+ "scenes": {
+  "logos": {
+   "args": [
+    "--frames",
+    "2900"
+   ],
+   "from": 100,
+   "to": 2900,
+   "blanks": 2800,
+   "counts": {
+    "allocs": 0,
+    "alloc_bytes": 0,
+    "draws": 2800,
+    "uploads": 2800,
+    "gpu_creates": 0,
+    "gpu_copies": 0,
+    "presents": 2800,
+    "guest_calls": 235640,
+    "guest_writes": 37175506,
+    "vector_ops": 0,
+    "sound_cpu": 633086772,
+    "scene_headers": 0,
+    "scene_triangles": 0,
+    "sprite_commands": 11154,
+    "composes": 2800,
+    "disc_bytes": 11176704
+   },
+   "peak": {
+    "allocs": 0,
+    "alloc_bytes": 0,
+    "draws": 1,
+    "uploads": 1,
+    "gpu_creates": 0,
+    "gpu_copies": 0,
+    "presents": 1,
+    "guest_calls": 3320,
+    "guest_writes": 278022,
+    "vector_ops": 0,
+    "sound_cpu": 226204,
+    "scene_headers": 0,
+    "scene_triangles": 0,
+    "sprite_commands": 4,
+    "composes": 1,
+    "disc_bytes": 7056
+   }
+  },
+  "front_end": {
+   "args": [
+    "--frames",
+    "8000"
+   ],
+   "from": 2900,
+   "to": 8000,
+   "blanks": 5100,
+   "counts": {
+    "allocs": 4,
+    "alloc_bytes": 9096,
+    "draws": 5100,
+    "uploads": 5100,
+    "gpu_creates": 1,
+    "gpu_copies": 0,
+    "presents": 5100,
+    "guest_calls": 6381738,
+    "guest_writes": 230644473,
+    "vector_ops": 0,
+    "sound_cpu": 1154650004,
+    "scene_headers": 0,
+    "scene_triangles": 0,
+    "sprite_commands": 1695745,
+    "composes": 5100,
+    "disc_bytes": 17496528
+   },
+   "peak": {
+    "allocs": 2,
+    "alloc_bytes": 4096,
+    "draws": 1,
+    "uploads": 1,
+    "gpu_creates": 1,
+    "gpu_copies": 0,
+    "presents": 1,
+    "guest_calls": 10231,
+    "guest_writes": 293725,
+    "vector_ops": 0,
+    "sound_cpu": 227174,
+    "scene_headers": 0,
+    "scene_triangles": 0,
+    "sprite_commands": 699,
+    "composes": 1,
+    "disc_bytes": 7056
+   }
+  }
+ },
+ "ledger": [
+  {
+   "date": "2026-11-01",
+   "why": "first baseline for Robo Pit, from the kit that adds the counters",
+   "changes": {
+    "front_end": {
+     "alloc_bytes": [
+      null,
+      9096
+     ],
+     "allocs": [
+      null,
+      4
+     ],
+     "blanks": [
+      null,
+      5100
+     ],
+     "composes": [
+      null,
+      5100
+     ],
+     "disc_bytes": [
+      null,
+      17496528
+     ],
+     "draws": [
+      null,
+      5100
+     ],
+     "gpu_copies": [
+      null,
+      0
+     ],
+     "gpu_creates": [
+      null,
+      1
+     ],
+     "guest_calls": [
+      null,
+      6381738
+     ],
+     "guest_writes": [
+      null,
+      230644473
+     ],
+     "peak alloc_bytes": [
+      null,
+      4096
+     ],
+     "peak allocs": [
+      null,
+      2
+     ],
+     "peak composes": [
+      null,
+      1
+     ],
+     "peak disc_bytes": [
+      null,
+      7056
+     ],
+     "peak draws": [
+      null,
+      1
+     ],
+     "peak gpu_copies": [
+      null,
+      0
+     ],
+     "peak gpu_creates": [
+      null,
+      1
+     ],
+     "peak guest_calls": [
+      null,
+      10231
+     ],
+     "peak guest_writes": [
+      null,
+      293725
+     ],
+     "peak presents": [
+      null,
+      1
+     ],
+     "peak scene_headers": [
+      null,
+      0
+     ],
+     "peak scene_triangles": [
+      null,
+      0
+     ],
+     "peak sound_cpu": [
+      null,
+      227174
+     ],
+     "peak sprite_commands": [
+      null,
+      699
+     ],
+     "peak uploads": [
+      null,
+      1
+     ],
+     "peak vector_ops": [
+      null,
+      0
+     ],
+     "presents": [
+      null,
+      5100
+     ],
+     "scene_headers": [
+      null,
+      0
+     ],
+     "scene_triangles": [
+      null,
+      0
+     ],
+     "sound_cpu": [
+      null,
+      1154650004
+     ],
+     "sprite_commands": [
+      null,
+      1695745
+     ],
+     "uploads": [
+      null,
+      5100
+     ],
+     "vector_ops": [
+      null,
+      0
+     ]
+    },
+    "logos": {
+     "alloc_bytes": [
+      null,
+      0
+     ],
+     "allocs": [
+      null,
+      0
+     ],
+     "blanks": [
+      null,
+      2800
+     ],
+     "composes": [
+      null,
+      2800
+     ],
+     "disc_bytes": [
+      null,
+      11176704
+     ],
+     "draws": [
+      null,
+      2800
+     ],
+     "gpu_copies": [
+      null,
+      0
+     ],
+     "gpu_creates": [
+      null,
+      0
+     ],
+     "guest_calls": [
+      null,
+      235640
+     ],
+     "guest_writes": [
+      null,
+      37175506
+     ],
+     "peak alloc_bytes": [
+      null,
+      0
+     ],
+     "peak allocs": [
+      null,
+      0
+     ],
+     "peak composes": [
+      null,
+      1
+     ],
+     "peak disc_bytes": [
+      null,
+      7056
+     ],
+     "peak draws": [
+      null,
+      1
+     ],
+     "peak gpu_copies": [
+      null,
+      0
+     ],
+     "peak gpu_creates": [
+      null,
+      0
+     ],
+     "peak guest_calls": [
+      null,
+      3320
+     ],
+     "peak guest_writes": [
+      null,
+      278022
+     ],
+     "peak presents": [
+      null,
+      1
+     ],
+     "peak scene_headers": [
+      null,
+      0
+     ],
+     "peak scene_triangles": [
+      null,
+      0
+     ],
+     "peak sound_cpu": [
+      null,
+      226204
+     ],
+     "peak sprite_commands": [
+      null,
+      4
+     ],
+     "peak uploads": [
+      null,
+      1
+     ],
+     "peak vector_ops": [
+      null,
+      0
+     ],
+     "presents": [
+      null,
+      2800
+     ],
+     "scene_headers": [
+      null,
+      0
+     ],
+     "scene_triangles": [
+      null,
+      0
+     ],
+     "sound_cpu": [
+      null,
+      633086772
+     ],
+     "sprite_commands": [
+      null,
+      11154
+     ],
+     "uploads": [
+      null,
+      2800
+     ],
+     "vector_ops": [
+      null,
+      0
+     ]
+    }
+   },
+   "digest": "32844f28b6ef9a93b5bead16082dad842020214243d0348c691b2b5467293ea4"
+  },
+  {
+   "date": "2026-11-01",
+   "why": "the scenes now run the mix, so the sound CPU is counted",
+   "changes": {},
+   "digest": "32844f28b6ef9a93b5bead16082dad842020214243d0348c691b2b5467293ea4"
+  }
+ ]
+}

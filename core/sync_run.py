@@ -123,8 +123,9 @@ def record(addr, new, out, res):
         atts.append({"n": len(atts) + 1, "kind": "sync", "at": refine.now(), "verdict": "PASS", "stage": res["stage"],
                      "failing": res.get("failing"), "total": res.get("total"), "tier": out["tier"],
                      "renames": out["renames"], "shims": out["shims"], "raw_left": out["raw_left"], "headers": cur})
-        row.update(status="readable", verified=refine.now(), headers=cur)
-        for k in ("stale_headers", "sync_refused"):
+        st, fields, gone = refine.pass_status(addr, row)  # unproven, needs_review (core/proof)
+        row.update(status=st, verified=refine.now(), headers=cur, **fields)
+        for k in ("stale_headers", "sync_refused") + gone:
             row.pop(k, None)
         return row
 

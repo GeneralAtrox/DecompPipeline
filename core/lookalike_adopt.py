@@ -183,9 +183,12 @@ def record(t, work, s_addr, key, res):
         atts.append({"n": len(atts) + 1, "kind": "lookalike", "at": refine.now(), "from": f"{key}:{s_addr}",
                      "verdict": "PASS", "stage": res["stage"], "failing": res.get("failing"), "total": res.get("total"),
                      "headers": cur})
-        row.update(status="readable", verified=refine.now(), finished=refine.now(), headers=cur,
-                   source=f"lookalike {key}:{s_addr}")
         for k in ("stale_headers", "note", "redo_failed", "redo_of"):
+            row.pop(k, None)
+        st, fields, gone = refine.pass_status(t, row)  # unproven (core/proof)
+        row.update(status=st, verified=refine.now(), finished=refine.now(), headers=cur,
+                   source=f"lookalike {key}:{s_addr}", **fields)
+        for k in gone:
             row.pop(k, None)
         return row
 

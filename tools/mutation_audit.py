@@ -14,14 +14,25 @@ with the matched C's hash. The gate compares a run with it mutant by mutant:
   does an empty baseline;
 - gained kills are counted: the kill rate per workspace before and after.
 A baseline only moves up: `baseline` refuses a run with a lost kill, or one that compared too little (--reason WHY
-accepts the latter, for matched C that was really redone, and is printed). Which heads need the audit: `needed` (a change
+accepts the latter, for matched C that was really redone, and is printed). A lost kill is accepted only by name
+(--accept-lost KEY:ADDR:IDS[=WHY], every lost kill named, each with a reason): the new record keeps it as
+"accepted_lost" [{"ids", "why"}], which the scorecard prints beside the rate. A function whose matched C or harness is
+known wrong is kept out of the gate by name (--exclude KEY:ADDR=WHY): its record keeps the old outcomes with
+"excluded": WHY, the gate and the rate skip it, and a later run that judges it without an error clears it. A run's
+error record (a flip) never replaces a baseline's outcomes: that would drop the function from every later gate. Which heads need the audit: `needed` (a change
 to the judge, a runtime or a target's locked oracle scripts).
 
+The kill rate the gate reports counts only logic survivors (core/mutation's score): arg_slot and stack survivors are
+equivalent by the judge's design. The raw rate, every survivor counted, is reported beside it. Records carry each
+mutant's class ("classes"); `classes` adds it to an older baseline by regenerating the same mutants.
+
 usage:
+  python tools/mutation_audit.py classes --ws KEY=DIR ... [--baseline FILE]       backfill "classes" (no judging)
   python tools/mutation_audit.py sample --ws KEY=DIR ... [--n 150] [--seed 1]       (re)draw sample.json
   python tools/bounded.py 21600 python tools/mutation_audit.py run --ws KEY=DIR ... --out RUN.json [--workers 4]
   python tools/mutation_audit.py gate RUN.json [--baseline FILE]                     exit 1 on a lost kill
-  python tools/mutation_audit.py baseline RUN.json [--reason WHY]                    RUN becomes the baseline
+  python tools/mutation_audit.py baseline RUN.json [--reason WHY] [--accept-lost KEY:ADDR:IDS[=WHY]]...
+                                     [--exclude KEY:ADDR=WHY]...                       RUN becomes the baseline
   python tools/mutation_audit.py needed BASE HEAD [--repo DIR]                       exit 0: the head needs the audit
 KEY=DIR: a workspace (a project folder) under the sample's key; for a judge change's proof, a private copy of it with
 the new harnesses. Keys not given are left out of a run (and reported as missing by the gate).
@@ -92,20 +103,72 @@ def run(wss, sample, workers, timeout_s):
                 raise SystemExit(f"{key}: mutation_check made no records (exit {r.returncode}): {r.stdout[-800:]}"
                                  f"{r.stderr[-800:]}")
         out[key] = {a: ({"error": rec["error"][:200]} if rec.get("error") else
-                        {"sha": rec["src_sha256"], "outcomes": rec.get("outcomes", "")}) for a, rec in recs.items()}
+                        dict({"sha": rec["src_sha256"], "outcomes": rec.get("outcomes", "")},
+                             **({"classes": rec["classes"]} if rec.get("classes") else {})))
+                    for a, rec in recs.items()}
     return out
+
+
+def logic_rate(recs):
+    """(killed, killed + logic survivors, rate %) over records that all carry "classes", the count core/mutation's
+    score uses: an arg_slot or stack survivor is equivalent by the judge's design (core/mutation_ops.class_of) and
+    never a weak harness. (None, None, None) when any counted record lacks classes."""
+    killed = logic = 0
+    for rec in recs:
+        if rec.get("error"):
+            continue
+        cls = rec.get("classes")
+        if cls is None or len(cls) != len(rec.get("outcomes") or ""):
+            return None, None, None
+        for o, c in zip(rec["outcomes"], cls):
+            killed += o == "K"
+            logic += o == "S" and c == "l"
+    n = killed + logic
+    return killed, n, (round(100.0 * killed / n, 1) if n else None)
+
+
+def backfill_classes(base, wss, log=print):
+    """Adds "classes" to baseline records that lack it: the same mutants regenerated (core/mutation.generate is
+    deterministic for source, address and seed) from the workspace's matched C, only when its hash is the record's
+    and the mutant count matches the outcomes. Outcomes are never touched. Returns {key: (filled, skipped)}."""
+    sys.path.insert(0, str(TOOL))
+    from core import mutation  # noqa: E402
+    import hashlib
+    done = {}
+    for key, ws in wss.items():
+        filled = skipped = 0
+        for addr, rec in (base.get(key) or {}).items():
+            if rec.get("error") or rec.get("classes"):
+                continue
+            f = ws / "matched" / f"{addr}.c"
+            src = f.read_text(encoding="utf-8", errors="replace") if f.is_file() else None
+            if src is None or hashlib.sha256(src.encode()).hexdigest() != rec.get("sha"):
+                skipped += 1
+                continue
+            muts = mutation.generate(src, addr, cap=MUTANTS, seed=1)
+            if len(muts) != len(rec.get("outcomes") or ""):
+                skipped += 1
+                continue
+            rec["classes"] = "".join(m["cls"][0] for m in muts)
+            filled += 1
+        done[key] = (filled, skipped)
+        log(f"{key}: classes added to {filled} records, {skipped} left without (matched C changed or missing)")
+    return done
 
 
 def compare(base, cur):
     """The gate's figures per key and its verdict: {"keys": {key: {...}}, "lost": [(key, addr, id)], "ok"}."""
     keys, lost, thin = {}, [], []
     for key, fs in sorted(base.items()):
-        k = {"functions": len(fs), "missing": [], "stale": [], "flips": [], "mutants": 0, "killed_base": 0,
-             "killed_run": 0, "gained": 0, "lost": 0}
+        k = {"functions": len(fs), "missing": [], "stale": [], "flips": [], "excluded": [], "mutants": 0,
+             "killed_base": 0, "killed_run": 0, "gained": 0, "lost": 0}
         got = cur.get(key) or {}
         for addr, b in sorted(fs.items()):
             r = got.get(addr)
             if b.get("error"):  # no baseline outcomes for it (its own baseline did not pass): nothing to compare
+                continue
+            if b.get("excluded"):  # kept out of the gate by name until a run judges it without an error
+                k["excluded"].append(addr)
                 continue
             if r is None:
                 k["missing"].append(addr)
@@ -128,12 +191,52 @@ def compare(base, cur):
                 k["gained"] += x != "K" and y == "K"
         for name in ("base", "run"):
             k[f"rate_{name}"] = round(100.0 * k[f"killed_{name}"] / k["mutants"], 1) if k["mutants"] else None
+        k["logic_rate_base"] = logic_rate(fs.values())[2]
+        k["logic_rate_run"] = logic_rate(got.values())[2] if got else None
         keys[key] = k
-        ran = len(fs) - len(k["missing"]) - sum(1 for b in fs.values() if b.get("error"))
+        ran = len(fs) - len(k["missing"]) - len(k["excluded"]) - sum(1 for b in fs.values() if b.get("error"))
         if ran and (len(k["flips"]) + len(k["stale"])) / ran > MAX_UNCOMPARED:
             thin.append(key)
     missing = sum(len(k["missing"]) for k in keys.values())
     return {"keys": keys, "lost": lost, "thin": thin, "ok": bool(keys) and not lost and not missing and not thin}
+
+
+def specs(items, reason, lost):
+    """{(key, addr): (ids or None, why)} from --accept-lost KEY:ADDR:IDS[=WHY] (lost) or --exclude KEY:ADDR[=WHY]
+    items; WHY defaults to --reason, and one is required."""
+    out = {}
+    for x in items or []:
+        spec, _, why = x.partition("=")
+        why = why or reason
+        parts = spec.split(":")
+        if not why or len(parts) != (3 if lost else 2):
+            raise SystemExit(f"{x!r}: " + ("--accept-lost KEY:ADDR:IDS[=WHY]" if lost else "--exclude KEY:ADDR=WHY")
+                             + ", with a reason")
+        ids = sorted({int(i.lstrip("m")) for i in parts[2].split(",")}) if lost else None
+        out[(parts[0], parts[1].lower())] = (ids, why)
+    return out
+
+
+def merge(old, cur, accept, exclude):
+    """The new baseline: each run record replaces the old one (its accepted losses noted on it), except an error
+    record (a flip), which keeps the old outcomes; a named exclusion keeps the old outcomes with "excluded"."""
+    new = {k: dict(v) for k, v in old.items()}
+    for key, fs in cur.items():
+        dst = new.setdefault(key, {})
+        for addr, rec in fs.items():
+            if rec.get("error") and dst.get(addr) and not dst[addr].get("error"):
+                continue
+            rec = dict(rec)
+            ids, why = accept.get((key, addr), (None, None))
+            if ids:
+                rec["accepted_lost"] = (dst.get(addr) or {}).get("accepted_lost", []) + [{"ids": ids, "why": why}]
+            dst[addr] = rec
+    for (key, addr), (_, why) in exclude.items():
+        base = (old.get(key) or {}).get(addr) or (cur.get(key) or {}).get(addr)
+        if base is None:
+            raise SystemExit(f"--exclude {key}:{addr}: in neither the baseline nor the run")
+        new.setdefault(key, {})[addr] = dict(base, excluded=why)
+    return new
 
 
 def report(res):
@@ -141,7 +244,9 @@ def report(res):
     for key, k in res["keys"].items():
         lines.append(f"{key}: {k['functions']} functions, {k['mutants']} mutants compared; killed {k['killed_base']} "
                      f"-> {k['killed_run']} ({k['rate_base']}% -> {k['rate_run']}%), gained {k['gained']}, lost "
-                     f"{k['lost']}; flips {len(k['flips'])}, stale {len(k['stale'])}, missing {len(k['missing'])}"
+                     f"{k['lost']}; logic-survivor rate {k['logic_rate_base']}% -> {k['logic_rate_run']}%; "
+                     f"flips {len(k['flips'])}, stale {len(k['stale'])}, missing {len(k['missing'])}"
+                     + (f", excluded {len(k['excluded'])}" if k["excluded"] else "")
                      + (f"; flips: {' '.join(k['flips'][:20])}" if k["flips"] else ""))
     lines.append("gate: " + ("PASS" if res["ok"] else "FAIL") + (f" ({len(res['lost'])} lost kills: "
                  + ", ".join(f"{k} {a} m{i:02d}" for k, a, i in res["lost"][:20]) + ")" if res["lost"] else "")
@@ -194,7 +299,14 @@ def main():
     g.add_argument("--baseline", default=str(HERE / "baseline.json"))
     b = sub.add_parser("baseline")
     b.add_argument("run")
-    b.add_argument("--reason", help="accept a run that compared too little, and why")
+    b.add_argument("--reason", help="accept a run that compared too little, and why (also the default WHY below)")
+    b.add_argument("--accept-lost", action="append", metavar="KEY:ADDR:IDS[=WHY]",
+                   help="accept these lost kills by name (ids 2 or m02, comma-separated), with a reason")
+    b.add_argument("--exclude", action="append", metavar="KEY:ADDR=WHY",
+                   help="keep this function out of the gate, with a reason, until a run judges it without an error")
+    c = sub.add_parser("classes", help="add each mutant's class to baseline records that lack it")
+    c.add_argument("--ws", action="append", required=True)
+    c.add_argument("--baseline", default=str(HERE / "baseline.json"))
     n = sub.add_parser("needed")
     n.add_argument("base")
     n.add_argument("head")
@@ -219,20 +331,38 @@ def main():
         return 0 if res["ok"] else 1
     if a.cmd == "baseline":
         cur, old = load(a.run, {}) or {}, load(HERE / "baseline.json")
+        accept, exclude = specs(a.accept_lost, a.reason, True), specs(a.exclude, a.reason, False)
         if old is not None:
-            res = compare(old, cur)
+            res = compare({k: {x: dict(r, excluded=exclude[(k, x)][1]) if (k, x) in exclude else r
+                               for x, r in fs.items()} for k, fs in old.items()}, cur)
             print(report(res))
-            if res["lost"]:
-                print("refused: the baseline only moves up (a lost kill)")
+            named = {(k, x, i) for (k, x), (ids, _) in accept.items() for i in ids}
+            lost = set(res["lost"])
+            if lost - named:
+                print("refused: the baseline only moves up (a lost kill; --accept-lost names one, with its reason): "
+                      + ", ".join(f"{k}:{x}:{i}" for k, x, i in sorted(lost - named)))
                 return 1
+            if named - lost:
+                print("refused: --accept-lost names a kill the run did not lose: "
+                      + ", ".join(f"{k}:{x}:{i}" for k, x, i in sorted(named - lost)))
+                return 1
+            for (k, x), (ids, why) in sorted(accept.items()):
+                print(f"accepted lost kills {k} {x} " + " ".join(f"m{i:02d}" for i in ids) + f": {why}")
+            for (k, x), (_, why) in sorted(exclude.items()):
+                print(f"excluded {k} {x}: {why}")
             if res["thin"] and not a.reason:
                 print(f"refused: {', '.join(res['thin'])} compared too little to replace the baseline (--reason WHY)")
                 return 1
             if res["thin"]:
                 print(f"accepted though {', '.join(res['thin'])} compared too little: {a.reason}")
-            cur = {k: dict(old.get(k) or {}, **v) for k, v in {**old, **cur}.items()}
+            cur = merge(old, cur, accept, exclude)
         (HERE / "baseline.json").write_text(json.dumps(cur, indent=1, sort_keys=True) + "\n", encoding="utf-8")
         print(f"baseline: {sum(len(v) for v in cur.values())} functions")
+        return 0
+    if a.cmd == "classes":
+        base = load(a.baseline, {}) or {}
+        backfill_classes(base, workspaces(a.ws))
+        pathlib.Path(a.baseline).write_text(json.dumps(base, indent=1, sort_keys=True) + "\n", encoding="utf-8")
         return 0
     files = needed(a.base, a.head, a.repo)
     print("\n".join(files) if files else "no judge, runtime or locked oracle change: the audit is not needed")

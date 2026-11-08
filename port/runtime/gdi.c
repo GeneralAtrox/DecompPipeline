@@ -9,6 +9,8 @@
 #include <string.h>
 #include "port.h"
 #include "platform.h"
+#include "work_count.h"
+#include "play_stats.h"
 
 #define HD_LBA 45000u
 #define RAW 2352u
@@ -300,6 +302,8 @@ int host_disc_root(u32 *lba, u32 *size) { return g_run_disc && root_dir(g_run_di
 
 int host_disc_read(u32 lba, u32 count, void *out)
 {
+    work_add(WC_DISC_BYTES, count * 2048u);
+    play_stats_disc(count * 2048u); /* a load: the play verdict leaves its frames out */
     return g_run_disc && read_sectors(g_run_disc, lba, count, (u8 *)out);
 }
 

@@ -8,6 +8,7 @@
   "fpscr_entry": "0x00040001",
   "fpscr_model": false,
   "param_summaries": true,
+  "tcout_tail_exports": true,
   "coverage_inputs": false,
   "branch_coverage": true, "targeted_vectors": true,
   "mock_junk": true, "mock_writes": true, "call_snapshots": true, "exit_frame": true,
@@ -36,6 +37,22 @@
              ["0xff000000", "0x100000000"]]
   },
   "stamp_scopes": [
+    {"scope": "tcout_tail_exports", "flags": ["tcout_tail_exports"], "finder": "regout_tail",
+     "why": "TcOut.readAfter (a tail jump into the function passes on its jumper's callers' reads, not a walk past the jumper's code) changes no harness byte while tcout_tail_exports is off, and with it on only those of a function a tail jump lands on that leaves some r4..r7 changed (finder regout_tail, core/oracle_stamp.tail_scope); first, so the scopes below still name their changes' hashes for the functions they leave out",
+     "scripts": {
+       "TcOut.java": ["2e19d3f91b344897f0ecae14af716877394e95781020d02b605daa9f0274cd8e", "d44d9e2ff82a6269b8daec05ef7a90c266ed9eb9abc0856d743e96263a5cf0b2"],
+       "TcFacts.java": ["a151c519c03479838adb9231761fc9e8e77664501baf3c4818c704303ef190a6", "38aa2ef952bcf040fd53a0c42703e140004b60c3660a9575097f78d91d4630c9"],
+       "TcPrepare.java": ["2fdf3e73ec43bd3d9bab6138a8d8ccf14bd02a65e3eb2966ac83db2a0f455bb3", "54ba01db6d4925e6a06f2707f57086fbc8680b7659ff5def42dd20fc9e0d4975"]}},
+    {"scope": "unlisted_call_args", "why": "TcTrack.of writes CA lines also at a direct call or branch to code no listed callee starts, and at a run on past the body's end (2026-11-07): only a body without a computed call or jump that has one makes other bytes (core/unchecked_args.sh_in_scope / ppc_in_scope)",
+     "scripts": {"TcTrack.java": ["503c164300099c08d04ab14b81d189ad7f77ee7c79e0cf3d67bd8db4d1c72439", "ca53361d532592fb0c685da18f963767a50afc26586b80b3047fc7d8d70107af"]}},
+    {"scope": "boundary_vectors", "flags": ["boundary_vectors"],
+     "why": "the compare-edge pass (TcBound.Edges, TcBoundPass.edges) changes no harness byte while boundary_vectors is off: its edges are never recorded and the pass never runs; first, so the scope below still names the listed_limits_or_rw change's hashes for the functions it leaves out",
+     "scripts": {
+       "TcBound.java": ["f2f05bdacf2971165552f416d43b68da032190280612ff7134273ce9b9023165", "201c711521ea78477868cdf0f5a97c4a0be78650f4311d51d0c001b963f6535c"],
+       "TcBoundPass.java": ["dfc76db283ecba04446c0b7c13e9a7045288cc7cdebde3194a446a3a547973ef", "f0cb461dc3b91180b30688e70106954e304680518cd58897edde07671d9dac0e"],
+       "TcFacts.java": ["96294dd78364cf0fabc865c1fbbe34b2922bfda846cda7fa45d4b99dbc4b1701", "38aa2ef952bcf040fd53a0c42703e140004b60c3660a9575097f78d91d4630c9"],
+       "TcOracle.java": ["a6e1b1a429981d5af05fb4ff75f6f0ac5b803b358c4442e5331c35ae208ab9bd", "805802e9ebb91fe71817af69b7a9f359dbf4bf147d4e375114cef85af4df1d28"],
+       "TcPrepare.java": ["3374a707616b02854851f7a6ef4b99270cc1af3539fc753b86df00f607914a99", "54ba01db6d4925e6a06f2707f57086fbc8680b7659ff5def42dd20fc9e0d4975"]}},
     {
       "scope": "listed_limits_or_rw",
       "scripts": {
@@ -57,11 +74,11 @@
         ],
         "TcOracle.java": [
           "80b36d800c39ebde842d492abb8324ff00eb192e59a4539c1f82ef903ae76f70",
-          "a6e1b1a429981d5af05fb4ff75f6f0ac5b803b358c4442e5331c35ae208ab9bd"
+          "805802e9ebb91fe71817af69b7a9f359dbf4bf147d4e375114cef85af4df1d28"
         ],
         "TcPrepare.java": [
           "b9b5ce3e57bd55514473af98563279fed367f6182fa0d6fe003238c664994f77",
-          "3374a707616b02854851f7a6ef4b99270cc1af3539fc753b86df00f607914a99"
+          "54ba01db6d4925e6a06f2707f57086fbc8680b7659ff5def42dd20fc9e0d4975"
         ]
       }
     }

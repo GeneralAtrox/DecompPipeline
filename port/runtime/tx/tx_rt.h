@@ -18,6 +18,7 @@ typedef struct {
     uint32_t s[8];
     uint32_t rlo[4];
 } PortTcArgs;
+const PortTcArgs *port_hook_args(void); /* in a before hook: the arguments of the call */
 
 typedef struct {
     uint32_t r0;

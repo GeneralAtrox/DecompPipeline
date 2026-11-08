@@ -63,8 +63,9 @@ def record(cfg, addr, res, rows, cur, log, readopt_reg=None):
         log(f"{res['verdict']} {addr}: {res['note']}")
         return True, None
     if res["verdict"] == "PASS":
-        refine.update(addr, status="readable", verified=refine.now(), headers=cur,
-                      drop=("stale_headers", "note"))  # an older status's note no longer describes it
+        st, fields, gone = refine.pass_status(addr, refine.load_ledger().get(addr, {}))  # unproven, needs_review
+        refine.update(addr, status=st, verified=refine.now(), headers=cur, **fields,
+                      drop=("stale_headers",) + gone)  # an older status's note no longer describes it
         return False, None
     try:
         stale_harness = refine.harness_stale(cfg, addr)

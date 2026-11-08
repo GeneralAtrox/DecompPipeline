@@ -11,7 +11,7 @@ import pathlib
 import re
 import struct
 
-from . import run_flag_set, strict_judge
+from . import callee_drift, run_flag_set, strict_judge
 
 
 def _judge_memory():
@@ -40,6 +40,9 @@ STACK_HI = int(_JM.get("stack_hi", "0x8D000000"), 16)  # the end of the stack's 
 RAM = tuple(int(v, 16) for v in _JM.get("ram", ("0x8C000000", "0x8D000000")))  # main RAM: a number in it is an address
 FLOAT_REGS = _JM.get("float_regs", True)  # FPU argument registers fr4..fr11; off (SH-2: no FPU): an f32 goes as an int
 UNMAPPED = [tuple(int(v, 16) for v in r) for r in _JM.get("unmapped", ())]  # guest RAM the readable build cannot map
+# Hardware the oracle and the runner log every store to (Saturn: TcBase.HW_WINDOWS, inclusive here). Compared in
+# every function, not only those whose original stored there: a store the C code invents is a difference.
+HW_WINDOWS = [tuple(int(v, 16) for v in r) for r in _JM.get("hw_windows", ())]
 WORD = ">I" if _JM.get("endian") == "big" else "<I"  # a guest word's bytes (W lines, image words) as a number
 MIRROR_RULE = _JM.get("word_mirror", True)  # same_word's 0x0c/0x8c RAM views (the SH-4's); off: exact words only
 FRAME_MAX = 0x1000  # deepest own-frame constant below the entry r15 measured: TC 0x640, PS2 0x334, Spawn 0x6f0
@@ -50,8 +53,10 @@ def judged(a, frame_lo=FRAME_LO, named=()):
     """Whether a written guest address is compared: anything below the original's own frame (frame_lo; the frame
     and what lies above it, stack arguments and the caller's frame, are its scratch), a word of a global the oracle
     names, or a P4 operand-cache store. [STACK_LO, frame_lo) is ordinary memory: Spawn keeps globals there (save
-    data at 0x8cff9000), so a store there the C code leaves out is a miss. QACR0/1 stores are judged too."""
-    return a < frame_lo or (a & ~3) in named or P4_OCA[0] <= a < P4_OCA[1] or P4_QACR[0] <= a < P4_QACR[1]
+    data at 0x8cff9000), so a store there the C code leaves out is a miss. QACR0/1 stores are judged too, and stores
+    to the target's hardware windows (judge_memory "hw_windows"), in every function."""
+    return (a < frame_lo or (a & ~3) in named or P4_OCA[0] <= a < P4_OCA[1] or P4_QACR[0] <= a < P4_QACR[1]
+            or any(lo <= a <= hi for lo, hi in HW_WINDOWS))
 
 
 def named_words(meta):
@@ -456,7 +461,7 @@ def compare_vector(meta, image, vec, exp, act, frame_lo=FRAME_LO, strict=None, r
         if ec[k][0] != ac[k][0]:
             diffs.append(f"call #{k + 1}: expected target 0x{ec[k][0]:08x}, got 0x{ac[k][0]:08x}")
             break
-        regs = callee_regs.get(ec[k][0], exp.get("call_args", {}).get(k, []))  # unlisted: the original's own (CA)
+        regs = callee_drift.call_regs(callee_regs, ec[k][0], exp.get("call_args", {}).get(k, []), REG_INDEX, caller=meta.get("addr"))  # unlisted
         if meta.get("fpu_state"):
             regs = regs + [r for r in FPU_REGS if r not in regs]
         for reg in regs:

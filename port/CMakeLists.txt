@@ -41,7 +41,7 @@ if(PORT_KIT_O2)
   set(PORT_KIT_OPT /O2)
 endif()
 # PORT_GAME_O2: the game's own C (readable, translator, game sources, generated glue) at /O2 too. Off by default: it is not
-# the judge's flag, so a game turns it on (-DPORT_GAME_O2=ON) only with a whole-replay proof that its frames and audio
+# the judge's flag, so a game turns it on (game.json game_o2) only with a whole-replay proof that its frames and audio
 # are identical (docs/RUNTIME_TARGET.md, "What native code must match"). /fp:strict stays.
 option(PORT_GAME_O2 "compile the game's readable and translator C at /O2 instead of the judge's /O1" OFF)
 set(PORT_GAME_OPT /O1)
@@ -113,12 +113,14 @@ endif()
 # The PowerVR renderer's shaders: fxc (Windows SDK) compiles pvr/pvr.hlsl into headers at build time.
 find_program(PORT_FXC fxc REQUIRED)
 set(PORT_SHADERS "${CMAKE_CURRENT_BINARY_DIR}/shaders")
-set(PORT_SHADER_HEADERS "${PORT_SHADERS}/pvr_vs.h" "${PORT_SHADERS}/pvr_ps.h" "${PORT_SHADERS}/pvr_gather.h"
+set(PORT_SHADER_HEADERS "${PORT_SHADERS}/pvr_vs.h" "${PORT_SHADERS}/pvr_blend_vs.h" "${PORT_SHADERS}/pvr_ps.h" "${PORT_SHADERS}/pvr_gather.h"
     "${PORT_SHADERS}/pvr_full.h" "${PORT_SHADERS}/pvr_resolve.h" "${PORT_SHADERS}/pvr_shadow.h"
     "${PORT_SHADERS}/pvr_tvolume.h" "${PORT_SHADERS}/pvr_tmerge.h" "${PORT_SHADERS}/gfx_movie_ps.h")
 add_custom_command(OUTPUT ${PORT_SHADER_HEADERS}
   COMMAND ${CMAKE_COMMAND} -E make_directory "${PORT_SHADERS}"
   COMMAND ${PORT_FXC} /nologo /O3 /WX /T vs_5_0 /E vs_main /Vn g_pvr_vs /Fh "${PORT_SHADERS}/pvr_vs.h"
+          "${CMAKE_CURRENT_SOURCE_DIR}/pvr/pvr.hlsl"
+  COMMAND ${PORT_FXC} /nologo /O3 /WX /T vs_5_0 /E vs_blend /Vn g_pvr_blend_vs /Fh "${PORT_SHADERS}/pvr_blend_vs.h"
           "${CMAKE_CURRENT_SOURCE_DIR}/pvr/pvr.hlsl"
   COMMAND ${PORT_FXC} /nologo /O3 /WX /T ps_5_0 /E ps_main /Vn g_pvr_ps /Fh "${PORT_SHADERS}/pvr_ps.h"
           "${CMAKE_CURRENT_SOURCE_DIR}/pvr/pvr.hlsl"

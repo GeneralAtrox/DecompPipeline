@@ -30,6 +30,7 @@ std::vector<std::string> settings_args(const std::filesystem::path &file)
             continue;
         }
         if (key.rfind("game.", 0) == 0) continue; // a game's own value (port_setting_*), not an option
+        if (key == "present") continue;           // saved by the In-between frames entry there used to be
         args.push_back("--" + key);
         args.push_back(trim(text.substr(eq + 1)));
     }

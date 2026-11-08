@@ -21,6 +21,10 @@ A matched function below the gate is in the state "matched_low_coverage": its C 
 vector), it is not skipped, and it is not counted as verified. It is work for the reach pass, the watcher's hints or
 more vectors (tools/coverage_gate.py --list FILE).
 
+Readable C: a readable PASS is `readable` only when every store of the original's listing runs in some valid vector
+(store_coverage; every block reached implies it, the gate's allowance does not), else `unproven`, and only when its
+agent admits no gap in its final message (ADMITS), else `needs_review` (readable_state; docs/READABLE_STAGE.md).
+
 Mutation check (config "mutation_check"): results live in state/mutation.json (tools/mutation_check.py, or the
 worker after a PASS with on_pass). mode "off" | "report" (survivors only flag the harness "weak_harness") |
 "enforce" (a function whose score is below min_score is not verified either).
@@ -33,8 +37,9 @@ import collections
 import json
 import math
 import pathlib
+import re
 
-from . import filelock, toolcfg
+from . import filelock, sh4_asm, toolcfg, unchecked_args
 
 TOOL = pathlib.Path(__file__).resolve().parents[1]
 
@@ -93,8 +98,7 @@ def unhit_blocks(summary):
 
 def unhit_text(blocks, n=6):
     """'8c010020, 8c010044 and 3 more' (the first n)."""
-    more = len(blocks) - n
-    return ", ".join(blocks[:n]) + (f" and {more} more" if more > 0 else "")
+    return ", ".join(blocks[:n]) + (f" and {len(blocks) - n} more" if len(blocks) > n else "")
 
 
 def coverage_verdict(summary, gate, addr=None):
@@ -182,8 +186,8 @@ def project_cfg(ws):
 
 
 def matched(ws):
-    led = json.loads(filelock.read_text(pathlib.Path(ws) / "state" / "ledger.json")) if (
-        pathlib.Path(ws) / "state" / "ledger.json").exists() else {}
+    p = pathlib.Path(ws) / "state" / "ledger.json"
+    led = json.loads(filelock.read_text(p)) if p.exists() else {}
     return sorted(a for a, r in (led.get("functions") or {}).items() if r.get("status") == "matched")
 
 
@@ -193,20 +197,19 @@ def scan(ws, addrs=None, cfg=None):
     ws = pathlib.Path(ws)
     cfg = cfg if cfg is not None else project_cfg(ws)
     gate, mset = coverage_settings(cfg), mutation_settings(cfg)
-    muts = read_mutation(ws)
-    out = {}
+    muts, marks, out = read_mutation(ws), unchecked_args.read(ws), {}
     for a in (addrs if addrs is not None else matched(ws)):
         cov = coverage_verdict(read_summary(ws / "harness", a), gate, a)
         m = muts.get(a)
-        out[a] = {"state": state(cov, m, mset, gate), "coverage": cov, "mutation_flag": mutation_flag(m, mset),
-                  "mutation": m}
+        out[a] = {"state": unchecked_args.state(state(cov, m, mset, gate), marks.get(a)), "coverage": cov,
+                  "mutation_flag": mutation_flag(m, mset), "mutation": m}
     return out
 
 
 def figure(rows):
-    """Counts over scan(): states, no coverage data, waived, weak harnesses (flag), mutation records."""
+    """Counts over scan(): states (and unchecked_args), no coverage data, waived, weak harnesses (flag), mutations."""
     st = collections.Counter(r["state"] for r in rows.values())
-    return {"matched": len(rows), VERIFIED: st[VERIFIED], LOW: st[LOW], WEAK: st[WEAK],
+    return {"matched": len(rows), **{s: st[s] for s in STATES + (unchecked_args.STATE,)},
             "no_coverage_data": sum(1 for r in rows.values() if r["coverage"].get("ok") is None),
             "waived": sum(1 for r in rows.values() if r["coverage"].get("waived")),
             "weak_flag": sum(1 for r in rows.values() if r["mutation_flag"] == "weak"),
@@ -225,7 +228,8 @@ def summary_line(f, gate=None):
             + (f"; fully proven {f['fully_proven']} of {f['graded']} graded (every branch direction taken)"
                if f.get("graded") else "")
             + f"; mutation records {f['mutation_records']}, weak harnesses {f['weak_flag']}"
-            + (f", {f[WEAK]} not verified (enforce)" if f[WEAK] else ""))
+            + (f", {f[WEAK]} not verified (enforce)" if f[WEAK] else "")
+            + (f"; {f[unchecked_args.STATE]} {unchecked_args.REASON}" if f.get(unchecked_args.STATE) else ""))
 
 
 def record(cfg, addr, summary, mut_row=None):
@@ -269,3 +273,127 @@ def describe(rec):
     if m and m.get("score") is not None:
         parts.append(f"mutation score {m['score']} ({m['survived']} of {m['tried']} mutants survived)")
     return "; ".join(parts) or rec.get("state", "")
+
+
+# --- Readable C: every store reached, no admitted gap (docs/READABLE_STAGE.md) ---
+UNPROVEN, REVIEW = "unproven", "needs_review"
+_LABEL = re.compile(r"^[A-Za-z_][\w.]*:\s*$")
+_SH_STORES = {"mov", "mov.b", "mov.w", "mov.l", "fmov", "fmov.s", "fmov.d", "sts.l", "stc.l", "movca.l", "tas.b"}
+_CALLS = {"bsr", "bsrf", "jsr", "bl", "bla", "bctrl", "blrl"}  # a call returns into its block
+_PPC_STORE = re.compile(r"^(?:st[bhwd]|stf[sd]|stfiwx|stmw|stsw|psq_st|dcbz)")  # stw, stwu, stwx, stwcx., psq_stx ...
+
+
+def is_store(mn, ops):
+    """An instruction that writes memory: SH-4/SH-2 a move whose destination is @..., PowerPC st*/psq_st/dcbz."""
+    mn = mn.lstrip("_").lower()
+    return bool(ops) and ops[-1].startswith("@") if mn in _SH_STORES else bool(_PPC_STORE.match(mn))
+
+
+def block_stores(asm, starts):
+    """{block start: ["ADDR mnemonic operands", ...]} for the blocks starting at starts (hex), from asm.txt's text. A
+    block runs to a label, or past a branch and its delay slot; a call does not end it (Ghidra's blocks do not split
+    there: PS2 8c0ea29a holds two calls and the stores after them). A start the listing lacks maps to None."""
+    want, out, cur, ended = {int(s, 16) for s in starts}, {}, None, False
+    for ln in asm.splitlines():
+        m = sh4_asm.LINE.match(ln.partition(";")[0])
+        if _LABEL.match(ln) or not m:
+            cur = None if _LABEL.match(ln) else cur
+            continue
+        a, mn, ops = int(m.group(1), 16), m.group(2), sh4_asm.split_ops(m.group(3))
+        if (ended and not mn.startswith("_")) or a in want:
+            cur, ended = (a if a in want else None), False
+            if a in want:
+                out[a] = []
+        if cur is None:
+            continue
+        if is_store(mn, ops):
+            out[cur].append(f"{a:08x} {mn.lstrip('_')} {','.join(ops)}")
+        b = mn.lstrip("_").lower()  # SH-4 bt/bf/bra/braf/jmp/rts (the slot follows), PowerPC b/bc/blr/bctr...
+        ended = ended or (b.startswith("b") or b in ("jmp", "rts", "rte")) and b not in _CALLS
+    return {f"{s:08x}": out.get(s) for s in sorted(want)}
+
+
+def store_coverage(summary, asm):
+    """Whether every store of the original runs in a valid vector: {"ok": True/False/None, "stores": unreached ones,
+    "blocks": the unhit blocks holding them, "why"}. ok None: no block data or no listing (nothing to judge)."""
+    if not summary or summary.get("blocks_total") is None or summary.get("blocks_hit_all") is None:
+        return {"ok": None, "stores": [], "blocks": [], "why": "no oracle summary with block counts"}
+    unhit = unhit_blocks(summary)
+    if unhit is None:
+        n = int(summary["blocks_total"]) - int(summary["blocks_hit_all"])
+        return {"ok": False, "stores": [], "blocks": [],
+                "why": f"{n} block(s) unreached, not listed (a summary from before blocks_unhit): re-prepare"}
+    if unhit and not asm:
+        return {"ok": None, "stores": [], "blocks": [], "why": "no asm.txt to find the stores of the unreached blocks"}
+    stores, blocks = [], []
+    for b, rows in (block_stores(asm, unhit) if unhit else {}).items():
+        if rows is None or rows:
+            stores += rows if rows else [f"{b} (unreached block not in asm.txt)"]
+            blocks.append(b)
+    return {"ok": not stores, "stores": stores, "blocks": blocks}
+
+
+def oracle_tried(summary):
+    """Whether the oracle's targeted passes (TcBound "bound", the reach pass "reach") ran on this harness."""
+    return bool((summary or {}).get("bound") or (summary or {}).get("reach"))
+
+
+# Conservative: an agent's own words that its passing file leaves something out. The original's behaviour ("the store
+# is skipped when r4 is 0") must not match, so each needs "dev only", "is/are missing", or a first-person verb.
+ADMITS = [re.compile(p, re.I) for p in (
+    r"\bdev[- ]only\b", r"\bPASS\b\W{0,3}\((?:partial|incomplete|unverified|not\b)",
+    r"\b(?:stores?|writes?|assignments?|stack words?)\b[^.;\n]{0,80}?\b(?:is|are|was|were)\s+(?:still\s+)?"
+    r"(?:missing|left out|omitted|dropped|not (?:written|stored|implemented))\b",
+    r"\b(?:missing|dropped|omitted)\s+(?:\w+\s+){0,3}?(?:stores?|writes?|stack words?)\b",
+    r"\b(?:I|we)\s+(?:have\s+|had\s+)?(?:dropped|skipped|omitted|left out|did not (?:write|store|keep|include))\b"
+    r"[^.;\n]{0,60}?\b(?:stores?|writes?|stack words?|assignments?|fields?)\b")]
+
+
+def admits_gap(message):
+    """The phrases of an agent's final message that admit a gap in its passing file ([] for none)."""
+    return [m.group(0) for p in ADMITS for m in [p.search(message or "")] if m]
+
+
+def passing_message(row):
+    """The final message (the ledger's tail, where RESULT stands) of the agent attempt whose file the row holds: the last
+    passing attempt, a readopt's adopted one, past sync and verify passes; None when a machine wrote it (draft, lookalike)."""
+    atts = list((row or {}).get("attempts") or [])
+    for a in reversed(atts):
+        if a.get("kind") == "readopt" and a.get("from_attempt"):
+            j = int(a["from_attempt"]) - 1
+            return (atts[j] if 0 <= j < len(atts) else {}).get("final_message")
+        if a.get("kind") in ("sync", "verify") or (not a.get("kind") and a.get("verdict") != "PASS"):
+            continue
+        return None if a.get("kind") else a.get("final_message")
+    return None
+
+
+def readable_state(ws, addr, row=None):
+    """The status a readable PASS records, and its fields: ("readable", {}), (UNPROVEN, {"unproven"}) or (REVIEW,
+    {"review"}, and "unproven" when both hold). Read-only, any workspace (no core.paths)."""
+    summary = read_summary(pathlib.Path(ws) / "harness", addr)
+    sc = store_coverage(summary, sh4_asm.read_packet(pathlib.Path(ws) / "packets" / addr))
+    if sc["ok"] is False and addr in (coverage_settings(project_cfg(ws)).get("store_waive") or {}):
+        sc = dict(sc, ok=True)  # judged by hand: project.json coverage_gate.store_waive {addr: reason}
+    fields = {} if sc["ok"] is not False else {"unproven": dict(  # ok None (no block data): counted apart
+        sc, stores=sc["stores"][:40], n=len(sc["stores"]), oracle="tried" if oracle_tried(summary) else "untried")}
+    unchecked_args.readable(fields, unchecked_args.read(ws).get(addr))  # a call whose arguments no judge compares
+    said = [] if (row or {}).get("reviewed") else admits_gap(passing_message(row))
+    fields.update({"review": {"admits": said}} if said else {})
+    if fields:  # the row's note: why the file does not count
+        fields["note"] = state_note(fields)[:400]
+    return (REVIEW if said else UNPROVEN if fields else "readable"), fields
+
+
+def state_note(fields):
+    """One line for a row's note: what keeps the file from counting as readable."""
+    u, r, parts = fields.get("unproven"), fields.get("review"), []
+    if r:
+        parts.append("the agent's final message admits a gap: " + "; ".join(repr(x) for x in r["admits"]))
+    if u:
+        s = u.get("stores") or []
+        what = (f"{u.get('n', len(s))} store(s) no vector runs: " + ", ".join(s[:4]) + (" ..." if len(s) > 4 else "")
+                if s else u.get("why", "")) + (f"; {u['why']}" if s and u.get("args") else "")
+        parts.append(what + ("; the oracle's targeted passes tried" if u.get("oracle") == "tried"
+                             else "; re-prepare (the targeted passes have not run here)"))
+    return "; ".join(parts)

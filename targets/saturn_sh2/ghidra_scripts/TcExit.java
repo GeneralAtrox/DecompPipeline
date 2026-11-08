@@ -44,10 +44,16 @@ public class TcExit {
             ws.add(o.toAddr(flo), o.toAddr(flo + rg.getLength() - 1));
         }
         if (o.sq != null) ws.add(o.sq.sent);  // store-queue sends, written between steps (untracked): TcSq
+        long hwBytes = 0;
         for (AddressRange rg : ws) {
             long lo = rg.getMinAddress().getOffset(), hi = rg.getMaxAddress().getOffset() + 1;
             if (rg.getMinAddress().getAddressSpace() != space) continue;
             if (p4(lo, hi)) { // cache address array and QACR stores: logged (tc_p4.c)
+                hwBytes += hi - lo;
+                if (hwBytes > TcHw.LOG_MAX) {  // more than the runner logs: it would fault, so this vector is no test
+                    res.reason = "more hardware bytes stored than the log holds";
+                    return;
+                }
                 res.writes.add(TcBase.hex(lo) + " " + TcBase.bytesHex(TcHw.stored(emu, o.toAddr(lo), (int) (hi - lo))));
                 continue;
             }

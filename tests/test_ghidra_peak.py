@@ -97,7 +97,7 @@ class ThroughCap(unittest.TestCase):
             n = ghidra_broker.cap(b, d, [], found, m.procs)
             ghidra_broker.cap(b, d, [], found, m.procs)  # asked again: said once
             for _ in range(50):  # the log is written on a thread of its own
-                if (d / "ram_log.jsonl").exists():
+                if (d / "ram_log.jsonl").exists() and (d / "ram_log.jsonl").read_text(encoding="utf-8").strip():
                     break
                 time.sleep(0.1)
         log = [json.loads(x) for x in (d / "ram_log.jsonl").read_text(encoding="utf-8").splitlines()]

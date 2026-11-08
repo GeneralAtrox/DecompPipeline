@@ -53,8 +53,7 @@ From tests/test_shared_prefix.py, the shared prompt prefix of raw attempts (conf
 From tests/test_ledger_rows.py, the ledger's save: one line per function, the same data read back.
 From tests/test_prefetch.py, the next function's Ghidra prepare while the current agent works (config prefetch).
 From tests/test_kill_cost.py, a killed session's spend estimated from its requests (config agent_rates).
-From tests/test_joined.py, a matched function whose body a catalog run grew over a function its C still calls is
-requeued (decomp.py setup/catalog/seed; core/joined.py).
+From tests/test_joined.py, a matched function whose body a catalog run grew over a function its C still calls is requeued (decomp.py setup/catalog/seed; core/joined.py).
 From tests/test_stale_skips.py, finished rows whose blocker kind a landing fixed after they were judged are
 requeued (target.json blocker_kinds "fixed_at"; tools/requeue.py --stale-skips and decomp.py serve).
 From tests/test_restage.py, xproject.py restage: staged imports today's relocation maps better are rewritten.
@@ -62,18 +61,15 @@ From tests/test_xmatch_prefer.py, xproject.py match tries OLD's matched twins fi
 From tests/test_fsca_rm.py, the FSCA tables (pinned SHA-256s, the state file's and the port kit's layouts).
 From tests/test_fmac.py, fmac rounded once: the C (32- and 64-bit) and the oracle against exact arithmetic.
 From tests/test_xmatch_ties.py, xmatch near matches are the same whatever the hash seed, never worse than most_common(5).
-From tests/test_checkout_state.py, two checkouts on one project can't change each other's facts, scripts or fsca
-table.
+From tests/test_checkout_state.py, two checkouts on one project can't change each other's facts, scripts or fsca table.
 From tests/test_regress_targets.py, the targeted regress gate (tools/regress.py --targeted, the harness cache).
 From tests/test_land_smoke.py, the live-prepare smoke for landings (only when needed; no slot fails, never skips).
-From tests/test_prebuilt_runtime.py, the judge's runtime objects compiled once per content, and run_bounded without a
-sleep.
+From tests/test_prebuilt_runtime.py, the judge's runtime objects compiled once per content, and run_bounded without a sleep.
 From tests/test_scorecard.py and tests/test_records.py, the definition-of-done scorecard and the records it reads
 (workers' busy/idle time, manual operator steps, readable attempts' duration_s): records only, verdicts unchanged.
 From tests/test_readable_tx.py, the readable pass's machine files (adopted at any length when they pass, else the
 agent's start) and the lift's rules that keep the raw C's meaning, per target.
-From tests/test_kit_gdfs.py, the kit's gdFs streaming calls over a fake disc (skipped without the 32-bit Visual
-Studio tools).
+From tests/test_kit_gdfs.py, the kit's gdFs streaming calls over a fake disc (skipped without the 32-bit Visual Studio tools).
 
 usage: python tests/test_tooling.py   (or python -m unittest discover -s tests -p "test_*.py")
 """
@@ -151,6 +147,9 @@ from test_harness_reuse import (Investigate as ReuseInvestigate, PrefetchReused,
 from test_port_c import FrameArgs, FrameSpans  # noqa: E402,F401  (port phase C)
 from test_port_kit import GameConfig, KitIsGameFree, LockstepCounter, LockstepTimer, RuntimeCompiles  # noqa: E402,F401  (port kit)
 from test_overlays import OverlayBuilt, OverlayGroups, OverlayWindows  # noqa: E402,F401  (overlays)
+from test_readable_stores import Planted, Stores  # noqa: E402,F401  (readable C: every store reached, admitted gaps)
+from test_divergence import (Coverage as DivCoverage, First as DivFirst, Requeue as DivRequeue, Wiring as DivWiring,  # noqa: E402,F401
+                             Writer as DivWriter)  # (decomp.py divergence)
 from test_reach import AuditCheck, DoctorAnyWorkspace, Figure, Seed, Verdict, Wiring as ReachWiring  # noqa: E402,F401  (call-site coverage)
 from test_scope import Bytes, CrossProject, Doctor as ScopeDoctor, ExtraSystems, InScope  # noqa: E402,F401  (scope)
 from test_scope_runs import Audit as ScopeAudit, FinalAuditExtras, Orchestrator  # noqa: E402,F401  (scope list, runs)
@@ -199,7 +198,8 @@ from test_xbox360_glue import Glue as XGlue, Runtime as XRuntime, Scan as XScan,
 from test_xbox360_helpers import Helpers as XHelpers  # noqa: E402,F401
 from test_xbox360_scripts import Scripts as XScripts, Target as XTarget  # noqa: E402,F401  (its Ghidra scripts)
 from test_x360_judge_gaps import Judge as XJgJudge, Runtime as XJgRuntime, Track as XJgTrack, Translator as XJgTx, Wiring as XJgWiring  # noqa: E402,F401
-from test_scorecard import Gates as ScGates, Readers as ScReaders, Records as ScRecords  # noqa: E402,F401  (scorecard)
+from test_scorecard import Gates as ScGates, Readers as ScReaders  # noqa: E402,F401  (scorecard)
+from test_scorecard_records import Records as ScRecords  # noqa: E402,F401  (the records it reads)
 from test_records import (BusyLog, Hooks as RecHooks, OpLog, RawJudge as RecRawJudge,  # noqa: E402,F401
                           Readable as RecReadable)  # (the scorecard's records: busy/idle, operator steps, duration_s)
 from test_own_translators import (Dreamcast as OwnTxDc, Regress as OwnTxRegress, Small as OwnTxSmall,  # noqa: E402,F401

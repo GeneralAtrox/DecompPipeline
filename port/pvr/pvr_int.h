@@ -63,10 +63,15 @@ typedef struct PvrScene {
     u32 range[PVRX_MAX_PASSES][PVRX_LISTS][2]; /* [first, end) batches of each pass's list */
     u32 passes;
     f32 max_z; /* the largest 1/w drawn: the depth buffer's scale */
+    int beyond; /* a triangle reaches past the 640x480 screen: the world is drawn there, so a wider frame shows it */
     /* the strip being assembled */
     PvrVtx strip[2];
     u32 strip_n;
     int open; /* a batch is open (the last one), so polygons with the same state join it */
+    u32 *seq, seq_cap; /* --interp-parts: each vertex's polygon vertex in pvr_parts.c (1-based, 0 none) */
+    f32 (*from)[3];    /* --interp-parts: where each vertex was a tick before (x, y, 1/w), when has_from */
+    u32 from_cap;
+    int has_from;
 } PvrScene;
 
 /* ta_batch.c */
@@ -77,9 +82,37 @@ void tb_quad(PvrScene *s, const PvrVtx v[4]); /* a sprite: a, b, c, d around the
 void tb_tri(PvrScene *s, const PvrVtx v[3]);  /* a modifier volume triangle */
 
 /* pvr_blend.c: in-between frames from the scene before this one (--interp-scene) */
+/* The registers the drawing reads: g_pvr, or for an in-between frame the ones its scene was drawn with. */
+extern const PvrState *g_pvr_drawn;
 void pvr_blend_keep(const PvrScene *s);
+void pvr_blend_new_scene(void);
 int pvr_blend_have(void);
 const PvrVtx *pvr_blend_vertices(const PvrScene *cur, f32 t, u32 *blended);
+u32 pvr_blend_scene(void); /* changes with the scene: the blend at t = 0 changes only with it */
+/* pvr_blend_gpu.c: --interp-gpu, in-between frames blended by the GPU */
+int pvr_blend_gpu_option(const char *value);
+int pvr_blend_gpu_ready(const PvrScene *cur, f32 t); /* 1: this frame blends on the GPU; 0: on the CPU */
+void pvr_blend_gpu_bind(ID3D11DeviceContext *cx, ID3D11Buffer *scene_vb);
+/* pvr_blend_early.c: --interp-early, the next scene parsed and paired before the renderer's lock (pvr_blend.c pairs) */
+int pvr_blend_early_option(const char *value);
+int pvr_blend_option(const char *arg, const char *value); /* pvr_blend_opt.c: the --interp-* options of scene blending */
+/* pvr_parts.c (game.json part_draw): --interp-parts-log; for ta_parse.c, the part (1-based, 0 none) that wrote a vertex */
+int pvr_parts_option(const char *value);
+u32 pvr_parts_vertex(u32 list, u32 addr);
+extern int g_parts_blend; /* --interp-parts on */
+int pvr_parts_blend_option(const char *value);
+u32 pvr_parts_seq(void);           /* ta_parse.c vertex: the polygon vertex just tagged (1-based, 0 none) */
+void pvr_parts_from(PvrScene *s);  /* ta_parse.c, a scene parsed: where its vertices were a tick before */
+const PvrVtx *pvr_parts_blend(const PvrScene *cur, f32 t, u32 *blended); /* pvr_blend_vertices, has_from */
+int pvr_parts_hold_frame(void); /* the scene just parsed gets no in-between frames; _holds: some parts are held */
+int pvr_parts_holds(void);
+int pvr_blend_truth_skip(void);
+f32 pvr_blend_truth_t(f32 t);
+extern int g_blend_persp; /* --interp-persp on */
+int pvr_blend_early_parse(const PvrScene *cur, const PvrPass *passes, u32 count);
+void pvr_blend_early_take(PvrScene *cur);
+void pvr_blend_pair_next(const PvrScene *cur, const PvrScene *next);
+void pvr_blend_take(const PvrScene *old);
 /* pvr_screen.c: a screen coordinate of the 640x480 screen in the draw target (full: the clip spans that axis) */
 LONG pvr_draw_x(u32 x, int full);
 LONG pvr_draw_y(u32 y, int full);
@@ -100,6 +133,7 @@ void pvr_hold_end(void);
 int pack_widen(const char *path, WCHAR *out, int cap);
 u32 *pvr_pack_read_png(const char *path, u32 *w, u32 *h);
 u32 pvr_pack_mips(u32 *px, u32 w, u32 h);
+int pvr_pack_put_over(u32 *px, u32 iw, u32 ih, const char *file, u32 tcw, u32 w, u32 h, u32 stride);
 void pack_bundled_dir(const char *name, char *out, size_t cap);
 int pack_has_index(const char *dir);
 u32 pack_read_choices(int has_game, const char *game_folder, const char *const **labels, const char *const **values);
@@ -143,8 +177,10 @@ u32 pad_style_serial(void);
 void pvr_vram_dump(u32 scene);
 
 /* pvr_tex.c */
+int pvr_yuv_option(const char *value); /* --pvr-yuv simd|table|check (pvr_twiddle.c) */
 void pvr_tex_invalidate(u32 offset, u32 size);
 ID3D11ShaderResourceView *pvr_tex_get(u32 tcw, u32 tsp); /* NULL: draw untextured (logged) */
+int pvr_tex_option(const char *arg, const char *value); /* --tex-recheck on|off */
 
 /* pvr_states.c: D3D11 state objects, created once per distinct state */
 ID3D11BlendState *pvr_blend_state(u32 list, u32 tsp);

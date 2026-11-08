@@ -56,6 +56,7 @@ void pace_nap_until(u64 deadline_us, int extra); /* pace.c: a short sleep toward
 int pace_option(const char *arg, const char *value); /* pace.c: --catch-up on|off; returns the arguments used */
 void pace_next_tick(u32 hz, PaceIdle idle);      /* to the next 1/hz s boundary of the real clock; then host_tick_real */
 void pace_wait_us(u64 us);                       /* this long on the real clock */
+void pace_sleep_us(u64 us);                      /* a high-resolution sleep of about this long, no spin */
 u32 host_tick_phase(int look);   /* how far into the tick the clock is, 0..65535 (65536: late) */
 void host_set_args(int argc, char **argv); /* the command line, for host_arg */
 char *const *host_args(int *argc);         /* that list (the host's: defaults, settings, command line) */
@@ -108,6 +109,12 @@ int pad_style_option(const char *arg, const char *value);
 int pad_style(void); /* 0 dreamcast (the game's own art), 1 xbox, 2 playstation */
 u32 pad_style_serial(void);
 void pad_style_poll(void);
+void pad_style_tick(void); /* every read, live or not: a test's --pad-style swaps, and the game's log */
+void pad_style_used(u32 device); /* a press on this SDL device (0: the keyboard) */
+int pad_art_on(void);          /* --pad-art, the Input menu's Controller pictures */
+void pad_art_set(int on);
+int pvr_pack_has_style(int style); /* pvr/pvr_pack.c: a pack in use has pictures for this style */
+int pad_art_style(void);       /* the style a texture pack shows: pad_style, or 0 with the pictures off */
 int input_live(void); /* live.c: --live-input: the real pads are read (a replay or a check reads none) */
 int input_option(const char *arg, const char *value);      /* --input, --bind-NAME; 0 if not ours */
 int input_live_option(const char *arg, const char *value); /* --live-input on|off; 0 if not ours */
@@ -120,6 +127,57 @@ u32 port_pad_ex_pressed(int player);
 u32 port_pad_ex_present(int player);
 const char *port_pad_ex_name(u32 bit, int player);
 void input_ex_note(const HostPad pad[HOST_PADS]); /* host_pads_read only */
+/* input_ex_assign.c: a game's own key screen gives these buttons the game's actions (numbered from 1 by the game; 0 is
+ * unassigned, as every row starts). Rows: LB, RB, the stick clicks, Back, Guide, the right stick's four directions.
+ * load: once at start, from the settings or the recording being replayed. set: stays saved at once. codes: the action
+ * codes (codes[i] is action i + 1's) of the rows this player holds now, ORed; 0 when none is held or assigned. */
+#define PORT_PAD_EX_ROWS 10u
+#define PORT_PAD_EX_STICK_ROW PORT_PAD_EX_ROWS /* _get and _set: 1, the left stick moves (pad_stick.c) */
+u32 port_pad_ex_row_bit(unsigned row);
+const char *port_pad_ex_row_name(unsigned row, int player); /* for a key screen; good until the next call */
+void port_pad_ex_assign_load(unsigned actions);
+int port_pad_ex_assign_get(int player, unsigned row);
+void port_pad_ex_assign_set(int player, unsigned row, int action);
+u32 port_pad_ex_assign_codes(int player, const u32 *codes, unsigned actions);
+/* pad_stick.c: the left stick as a second d-pad, by the row above. */
+u32 port_pad_stick_dirs(int x, int y, u32 last);
+void port_pad_stick_apply(HostPad pad[HOST_PADS]); /* host_pads_read only */
+/* pad_twin.c: in a game's fights the right stick turns and the left stick sidesteps (Input > Controls > Twin-stick). The
+ * game's fight function and its turn and sidestep buttons (console action names, left then right): game.json twin_stick. */
+typedef struct PortTwinStick {
+    u32 fn;
+    const char *turn[2], *strafe[2];
+} PortTwinStick;
+extern u32 port_twin_fn;        /* the console calls port_twin_hit when the game enters it (0: none) */
+void port_twin_start(const PortTwinStick *t); /* at the start; NULL: the game has none */
+void port_twin_hit(void);
+void port_twin_apply(HostPad pad[HOST_PADS]); /* input_binds_apply only */
+int port_twin_option(const char *arg, const char *value); /* --twin-stick on|off; 0 if not ours */
+/* pad_virtual.c: --virtual-pad NAME, a test driver's SDL virtual gamepad pressed through shared memory (tests only). */
+int pad_virtual_option(const char *arg, const char *value); /* 0 if not ours */
+void pad_virtual_tick(void); /* host_pads_read only, in a live run */
+int port_twin_available(void);  /* the game names a fight (the menu entry) */
+int port_twin_get(void);        /* the setting, for the menu */
+void port_twin_set(int on);
+/* pad_ex_page.c: the page of a game's key screen holding those rows. */
+#define PORT_PAD_PAGE_UP 1u
+#define PORT_PAD_PAGE_DOWN 2u
+#define PORT_PAD_PAGE_LEFT 4u
+#define PORT_PAD_PAGE_RIGHT 8u
+#define PORT_PAD_PAGE_OK 16u
+#define PORT_PAD_PAGE_BACK 32u
+void port_pad_page_init(const char *const *choices, unsigned actions); /* loads what is kept */
+void port_pad_page_enter(void);                                        /* the screen opens */
+int port_pad_page_showing(int player);
+void port_pad_page_open(int player);
+int port_pad_page_press(int player, u32 press);
+unsigned port_pad_page_rows(void);
+unsigned port_pad_page_cursor(int player);
+const char *port_pad_page_row_name(int player, unsigned row);
+const char *port_pad_page_row_value(int player, unsigned row, int *set);
+void port_pad_page_reset(int player);  /* the screen's RESET, CANCEL and leaving with OK */
+void port_pad_page_cancel(int player);
+void port_pad_page_keep(void);
 /* host_settings.cpp: a small per-game store in the port's settings file, apart from the game's save. Keys start with "game."
  * (others are refused); unset, or in a run that reads no settings, you get `def`. */
 int port_setting_get_int(const char *key, int def);

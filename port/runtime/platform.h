@@ -13,9 +13,23 @@
 /* base/present.c: a frame wider or taller than 4:3 (--aspect fit|4:3|16:9|21:9|W:H; game.json "widescreen": a play run
  * follows the window's shape): the 640x480 screen is its middle, so 2D stays 4:3. port_widescreen is the frame's width over
  * the screen's, port_tallscreen its height over the screen's (each 1 at 4:3, otherwise one of them is above 1): a game
- * that supports it widens its culling by them, horizontally and vertically. */
+ * that supports it widens its culling by them, horizontally and vertically. port_shape_chosen is 0 only in a check at its
+ * original 4:3 (not --aspect, the menu or a play run following the window): a picture upgrade that also applies to a
+ * chosen 4:3, where the two above are 1, asks it. */
 f32 port_widescreen(void);
 f32 port_tallscreen(void);
+/* base/present.c, for game.json "wide_cull" (gen_port's WideCull_ wrappers): a renderer that drops what falls outside
+ * the viewport (four floats W, H, X, Y at guest address viewport) sees it grown by the frame's share for one call when
+ * it is centred on the 640x480 screen (the full screen, a wipe) and the frame is not 4:3. begin returns 1 if it
+ * widened them (saved holds the four); end puts them back. A view off centre, a nested call or a 4:3 frame is left
+ * alone. */
+int port_wide_cull_begin(u32 viewport, f32 saved[4]);
+void port_wide_cull_end(u32 viewport, const f32 saved[4]);
+/* pvr/pvr_parts.c: game.json part_draw's wrapper brackets each call of the game's per-part 3D draw */
+void port_part_begin(const void *obj, const void *part, u32 stamp_at, u32 world_at);
+void port_part_end(void);
+int port_shape_chosen(void);
+void port_read_whole_frame(int on); /* pvr_read.c: while on, reading the frame buffer gives the whole frame, squeezed to the size read, not the 640x480 screen in its middle */
 #define PORT_VBLANK_HZ 60u
 void port_wait_vblank(void); /* waits for the next vertical blank (the host clock at 60 Hz) and counts it */
 typedef void (*PortVblankFn)(void *arg);
@@ -30,6 +44,10 @@ void port_spin_word(u32 addr); /* tx/tx_rt.c: a word the game spins on until an 
  * and puts it back, or that notes a call happened. A call the translator made direct, inside one function, is not seen. */
 typedef void (*PortCallHookFn)(u32 target, void *arg);
 void port_hook_call(u32 addr, PortCallHookFn before, PortCallHookFn after, void *arg);
+/* From a before hook: this one call does not happen; it returns 0 and the after hooks still run. Registers the callee would
+ * have kept stay as they are. The next call made takes it, so a hook that makes calls of its own says so last. For a screen a
+ * game draws itself part of the time. */
+void port_hook_skip_call(void);
 void port_add_vblank_task(PortVblankFn fn, void *arg); /* also called at each vertical blank, after the hook
                                                          * (a library's server, such as the memory cards') */
 
@@ -43,10 +61,43 @@ void port_set_extra_draw(PortExtraDrawFn draw, PortExtraReadyFn ready);
 /* --interp-scene: a game with no draw function still gets in-between frames, from the scene before this one: the
  * renderer (pvr/pvr_blend.c) blends this scene's vertices toward where they were a tick ago. Nothing runs of the
  * game, so nothing is undone. extra_scene: it is on (the renderer keeps the old scene); pvr_blend_draw draws and shows
- * one at alpha; pvr_blend_ready: whether one can be drawn now. */
+ * one at alpha; pvr_blend_ready: whether one can be drawn now. extra_scene_mode: --interp-scene for the menu, 0 off,
+ * 1 on, 2 only; -1 when the game's own draw function makes them. */
 int extra_scene(void);
+int extra_scene_mode(void);
 int pvr_blend_draw(f32 alpha);
 int pvr_blend_ready(void);
+/* frame_copy.c: guest RAM copied in slices by helper threads (--interp-copy-threads) */
+void extra_copy_init(void);
+void extra_copy_ram(u8 *dst, const u8 *src);
+void extra_copy_threads(u32 threads);
+u32 extra_copy_thread_count(void);
+/* --present-thread: in-between frames of a blended scene are drawn and shown by a thread of their own, so a tick takes no
+ * time from them. hold: none until the next go; the renderer and gfx_present call it, holding gfx_lock, while the frame
+ * target has a frame not yet counted or shown. go: from a vertical blank's wait: they may go on; returns whether that
+ * thread is running. */
+void port_extra_thread_hold(void);
+void port_extra_thread_early(int on);  /* --present-thread on: hold does nothing, and rendered starts them */
+void port_extra_thread_rendered(void); /* the renderer, holding gfx_lock, at a render's end */
+void port_extra_thread_tick(void);   /* the host, as a tick starts */
+int port_extra_thread_shows(void);    /* --present-pace on: the thread shows the tick's own frames too */
+void port_extra_thread_counted(void);  /* gfx_frame_done: the frame is counted; the thread may take the device again */
+int gfx_present_paced(void);           /* base/present.h: --present-pace */
+u64 port_extra_thread_period(void);    /* --present-thread on: microseconds between the last two renders' ends, 0 unknown */
+int port_extra_thread_is_early(void);
+void port_extra_shown(void);           /* gfx_present, holding gfx_lock: a frame was shown by the tick */
+int gfx_capture_asked(void);           /* a dump of the frame target is asked for */
+int port_extra_thread_go(void);
+void gfx_lock_on(void); /* base/present.h */
+void gfx_lock(void);
+void gfx_unlock(void);
+void gfx_lock_present_thread(void);
+int gfx_lock_wanted(void);
+void port_extra_thread_begin(int wanted); /* a frame was rendered; starts the thread the first time it is wanted */
+int port_extra_thread_on(void);
+int port_extra_thread_show(u64 now_us, u64 start_us, int *finished);
+u64 port_extra_cap_wait(u64 now_us, u32 fps, u64 cost_us); /* --fps N: 0 if one started now is in its slot */
+void port_extra_cap_shown(u64 at_us, u32 fps);              /* one was shown at at_us: the next slot */
 /* A flip that does not wait (the game waited for the blank itself, as a Kamui 1 game's loop does) holds its frame instead:
  * port_extra_flip starts the in-between frames for it (1: held, counted and dumped, not shown); the next wait for a
  * vertical blank (port_extra_pending) draws them, then port_extra_land shows the frame if none was drawn. */
@@ -67,6 +118,7 @@ u32 port_extra_count(void);               /* in-between frames shown since port_
 int port_extra_idle(u64 deadline_us);     /* host.c, while it waits: draws one if there is time (1 if it did) */
 void port_wait_vblank_extra(void);        /* port_wait_vblank, drawing in-between frames while it waits */
 void port_extra_report(void);             /* logs how many were drawn (at exit) */
+void pvr_tex_report(void); /* pvr/pvr_tex.c: textures decoded, kept and decoded again (at exit) */
 void pvr_oit_report(void); /* pvr/pvr_oit.c: the autosort pool, its largest pass and any overflow (at exit) */
 void *host_map_fixed(u32 addr, u32 size); /* commits read/write host memory at a fixed address; NULL if taken */
 /* Save files: host_save_read / host_save_write (base.h). A --fixed-clock run keeps none unless --save-dir is
@@ -107,7 +159,10 @@ void gfx_frame_done(void); /* counts the frame and dumps it if asked, without sh
 void gfx_show(void);       /* shows the frame without counting it (an in-between frame) */
 void gfx_capture_extra(void); /* an in-between frame: dumps it if --dump-extra asks for it */
 int gfx_can_show(void);    /* 1 if the display would take a frame now without blocking (gfx_show drops it if not) */
+void gfx_show_wait(void);  /* --present-thread: waits a moment for that */
+u64 gfx_last_present_us(void); /* the last Present call's duration, microseconds */
 void gfx_set_border(u32 argb); /* the colour around the 4:3 picture */
+u32 gfx_border(void);          /* that colour */
 /* pvr_read.c: one pixel of the displayed 640x480 frame buffer as the console's video memory holds it (RGB565, the
  * mean of the frame pixels under it when the frame is bigger). 0 if x or y is off the screen or no frame was drawn. */
 int gfx_read_pixel(u32 x, u32 y, u16 *rgb565_out);

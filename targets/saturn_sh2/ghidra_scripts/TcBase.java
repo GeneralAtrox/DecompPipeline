@@ -44,6 +44,15 @@ public abstract class TcBase extends GhidraScript {
     // QACR0/1, the store queues' area registers (Spawn 8c05fec2 sets them from a TA list pointer before its sends):
     // a store there is logged and compared as the OCA's are; the window still maps onto RAM (TcSq, port.h).
     static final long P4_QACR_LO = 0L, P4_QACR_HI = 0L;
+    // Saturn hardware a store may reach: SMPC, CD block, sound RAM to VDP1 registers, VDP2 RAM to VDP2 registers, SCU,
+    // and the SH-2's on-chip registers. A store there is no RAM write and no fault; it is logged as a W line and
+    // compared (TcExit.p4, tc_rt_internal.h tcrt_p4_logged, meta "hw_windows"). No value is chosen: a load there is
+    // still a fault unless the function lists the register (TcHw). Evidence: Yabause yabause/src/memory.c,
+    // MappedMemoryInit's FillMemoryArea pages (0x010-0x017, 0x580-0x58F, 0x5A0-0x5D7, 0x5E0-0x5FB, 0x5FE; bits 31:28
+    // dropped, so 0x2xxxxxxx is the same table) and the accessors' addr >= 0xFFFFFE00 test for the on-chip registers.
+    static final long[][] HW_WINDOWS = {{0x20100000L, 0x20180000L}, {0x25800000L, 0x25900000L},
+        {0x25a00000L, 0x25d80000L}, {0x25e00000L, 0x25fc0000L}, {0x25fe0000L, 0x25ff0000L},
+        {0xfffffe00L, 0x100000000L}};
     static final int STEP_LIMIT = 500000;
 
     Memory mem;
@@ -78,6 +87,11 @@ public abstract class TcBase extends GhidraScript {
     }
 
     // [a, a+size) lies in one of the two work RAM banks (after fold).
+    static boolean hwWindow(long lo, long hi) {
+        for (long[] w : HW_WINDOWS) if (lo >= w[0] && hi <= w[1]) return true;
+        return false;
+    }
+
     static boolean inRam(long a, long size) {
         return (a >= RAM_LO && a + size <= RAM_HI) || (a >= LOW_LO && a + size <= LOW_HI);
     }

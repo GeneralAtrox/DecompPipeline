@@ -32,7 +32,7 @@ public abstract class TcOracle extends TcInputs {
         long mode; TcTrack.Run tr;        // the FPSCR mode bits at exit (modeWord); pointer-call arguments (TcTrack)
         List<String> writes = new ArrayList<>();
         List<String> calls = new ArrayList<>();
-        Set<Integer> cov = new TreeSet<>(), dirs = new TreeSet<>();  // blocks; branch directions (TcDirs)
+        Set<Integer> cov = new TreeSet<>(), dirs = new TreeSet<>(), edges = new TreeSet<>();  // blocks; branch directions (TcDirs); compare edges (TcBound.Edges)
         Set<Long> sites = new TreeSet<>();  // the call sites (call or tail-jump instructions) whose mocked callee ran
         long faultAddr = -1;              // first address outside RAM that was read or written (or code read: R8)
         boolean faultWrite;
@@ -57,7 +57,7 @@ public abstract class TcOracle extends TcInputs {
     // Scripted call results per vector (line C: Vec.rets, then entryLate); a later call returns 0.
     static final int RETS = 64;  // tc_rt_internal.h's TCRT_RETS must equal it
 
-    TreeMap<Long, Integer> blockIndex = new TreeMap<>(); TcDirs dirs;  // null unless branch_coverage (TcDirs)
+    TreeMap<Long, Integer> blockIndex = new TreeMap<>(); TcDirs dirs; TcBound.Edges edges;  // null unless branch_coverage (TcDirs); boundary_vectors
     // Entry values the next runOracle sets beyond TcInputs' Vec (TcVectors decides them; null: left as the emulator
     // starts them, zero): fr12..fr15 and r8..r14 for runtime state (Proto.frState, giState), r0..r3 for parameters there.
     int[] entryFh = null;
@@ -280,7 +280,7 @@ public abstract class TcOracle extends TcInputs {
                     pc = fold(pc);
                     emu.writeRegister(emu.getPCRegister(), u(pc));
                 }
-                if (dirs != null) dirs.hit(res.dirs, prev, pc);  // the direction the branch at prev took
+                if (dirs != null) dirs.hit(res.dirs, prev, pc); if (edges != null) edges.hit(res.edges, pc, ms::getValue);  // the direction the branch at prev took; the compare edges at pc
                 if (pc == SENTINEL) break;
                 Address pca = toAddr(pc);
                 if (!body.contains(pca)) {
@@ -374,7 +374,7 @@ public abstract class TcOracle extends TcInputs {
                 boolean stepped = emu.step(monitor);
                 TcPair.swap(emu, drs);
                 if (bank.p4Read >= 0 && fault[0] == null) {  // cache state, not the bytes stored (TcFold.p4Read)
-                    fault[0] = "read " + toAddr(bank.p4Read) + " (cache address array)";
+                    fault[0] = "read " + toAddr(bank.p4Read) + " (hardware window)";
                     faultAt[0] = bank.p4Read;
                 }
                 String fpuWhy = fpu.after(emu, pca, zeroed); TcTrack.step(loadView, pca);

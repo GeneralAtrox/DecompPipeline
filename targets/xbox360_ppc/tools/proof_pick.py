@@ -7,6 +7,11 @@ one-call wrappers), and the picks are spread evenly over the group's size order 
 from its smallest functions to 400-byte ones.
 
 usage: python proof_pick.py <catalog_dir> [out.json]   (catalog_dir: catalog_inputs.py's out_dir)
+       python proof_pick.py sample <catalog_dir> N out.txt [--seed S] [--max-closure K]
+  sample: the roots of a reference workspace of about N functions (x360setup.py setup --roots out.txt): roots drawn
+  in turn from five size bands of every catalogued, not refused function (any shape: callers, indirect calls, jump
+  tables), seeded, each kept while its closure (ghidra_setup.closure, 4 calls, what the setup adds) has at most K
+  functions and the whole stays within N. Big call trees cannot fit, so the roots lean to the lower levels.
 """
 import hashlib
 import json
@@ -68,7 +73,50 @@ def pick(cat, image, base):
     return out
 
 
+def sample(cat, budget, seed=1, max_closure=40, bands=5):
+    """(roots, the set setup makes of them) for about `budget` functions (the usage's `sample`)."""
+    import random
+    from ghidra_setup import closure
+    funcs = {f["addr"]: f for f in cat["functions"]}
+    pool = sorted((f for f in cat["functions"] if f["source"] == "pdata" and f["kind"] == "function"
+                   and not f["refuse"]), key=lambda f: (f["size"], f["addr"]))
+    strata = [pool[i * len(pool) // bands:(i + 1) * len(pool) // bands] for i in range(bands)]
+    rng = random.Random(seed)
+    for s in strata:
+        rng.shuffle(s)
+    roots, chosen, turn, misses = [], set(), 0, 0
+    while len(chosen) < budget and any(strata) and misses < 20000:
+        s = strata[turn % bands]
+        turn += 1
+        if not s:
+            continue
+        root = s.pop()["addr"]
+        c = closure(funcs, [root], 4)
+        if root in chosen or len(c) > max_closure or len(chosen | c) > budget:
+            misses += 1
+            continue
+        roots.append(root)
+        chosen |= c
+    return roots, chosen
+
+
 def main(argv):
+    if len(argv) > 1 and argv[1] == "sample":
+        import argparse
+        ap = argparse.ArgumentParser(prog="proof_pick.py sample")
+        ap.add_argument("catalog_dir")
+        ap.add_argument("n", type=int)
+        ap.add_argument("out")
+        ap.add_argument("--seed", type=int, default=1)
+        ap.add_argument("--max-closure", type=int, default=40)
+        a = ap.parse_args(argv[2:])
+        cat = json.loads((pathlib.Path(a.catalog_dir) / "catalog_inputs.json").read_text(encoding="utf-8"))
+        roots, chosen = sample(cat, a.n, a.seed, a.max_closure)
+        pathlib.Path(a.out).write_text("".join(r + "\n" for r in roots), encoding="utf-8")
+        size = sorted(f["size"] for f in cat["functions"] if f["addr"] in chosen)
+        print(f"{len(roots)} roots, {len(chosen)} functions with their closure; sizes: min {size[0]}, quartiles "
+              f"{size[len(size) // 4]} {size[len(size) // 2]} {size[3 * len(size) // 4]}, max {size[-1]}")
+        return 0
     if len(argv) < 2:
         print(__doc__.strip().splitlines()[-1].strip())
         return 2

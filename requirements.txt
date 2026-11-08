@@ -8,7 +8,7 @@ pycparser  # 3.00: core/stack_overread
 
 # The port kit (port/tools: frames, emu_capture, ram_delta, reference)
 numpy      # 2.4.6
-Pillow     # 12.2.0
+Pillow     # 12.2.0: older tools only; new ones use port/tools/dpimg.py (docs/IMGTOOL.md)
 zstandard  # 0.25.0
 
 # The tests (tests/)

@@ -56,7 +56,7 @@ be given more than once when the harnesses were stamped at different times (TC: 
 112 more on 10-17), and a folder can be a baseline: ghidra_scripts/ with the *.java, and the project's catalog.json
 and code_ranges.txt of that time beside it when those changed since (both are stamp inputs; keep their bytes,
 CRLF included). --list FILE adds the addresses in FILE (first word of a line) to the candidates: a combined
-re-stamp's own set (docs/restamp_r15/<game>/restamp.txt).
+re-stamp's own set (docs/LESSONS.md, "Re-stamps after the harness changes").
 
 Phases (each resumable; run under tools/bounded.py, servers stopped):
   --phase sample  re-prepare --sample N refreshable non-candidates (seeded), each harness saved first under

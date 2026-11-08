@@ -45,6 +45,7 @@ void lockstep_rtc_date(u32 seconds, HostTime *t);            /* the AICA's RTC a
 
 /* lockstep_watch.c */
 void lockstep_watch(volatile u32 *at, u32 frame); /* watches writes to at from here (on this thread); NULL stops */
+void lockstep_watch_words(volatile u32 *const *at, u32 n, u32 frame); /* up to four words; n 0 stops */
 /* logs each call of the host functions fn[0..count) (guest addresses guest[]) from here (on this thread; count 0
  * stops): words words at its first argument and n at the pointer at argument + off, with the frames word;
  * lockstep_entry_frame labels the calls that follow */

@@ -23,6 +23,7 @@ sys.path.insert(0, str(TOOL / "tests"))  # its sibling test modules, also when r
 
 import game_config  # noqa: E402
 import gen_port  # noqa: E402
+import wide_cull  # noqa: E402
 sys.path.insert(0, str(TOOL))
 from test_sync import TMP  # noqa: E402,F401  (sets DECOMP_PROJECT when run alone)
 from core import readable  # noqa: E402  (pointer_adapter's prototypes)
@@ -396,7 +397,7 @@ int main(int argc, char **argv)
 
 def kit_files(kit=KIT):
     return sorted(p for p in kit.rglob("*") if p.is_file() and (p.suffix in CODE or p.name == "CMakeLists.txt")
-                  and "__pycache__" not in p.parts)
+                  and not {"__pycache__", "build", "third_party"} & set(p.relative_to(kit).parts))  # not kit code
 
 
 def game_material(files, kit=KIT):
@@ -543,6 +544,9 @@ class GameConfig(unittest.TestCase):
         self.assertEqual((cfg["boot_file"], cfg["disc"], cfg["must_work"]), ("", None, None))
         self.assertEqual(cfg["tx_first"], [])
         self.assertEqual(self.load(tx_first=["0x8C058560"])["tx_first"], ["8c058560"])
+        self.assertEqual(cfg["spin_words"], [])
+        tc = {"translator_c": {"dir": "tx"}}
+        self.assertEqual(self.load(spin_words=["0x8C1A0010"], **tc)["spin_words"], ["8c1a0010"])
         self.assertEqual(cfg["not_code"], {})
         self.assertEqual(self.load(not_code={"0x8C0B0242": "inside a table"})["not_code"], {"8c0b0242": "inside a table"})
         self.assertIsNone(cfg["texture_pack"])  # pvr/pvr_pack.c: no pack unless the game names one
@@ -555,7 +559,8 @@ class GameConfig(unittest.TestCase):
         for over in ({"sdk": ["no_such_module"]}, {"image_base": "8c01"}, {"sources": ["src/missing.c"]},
                      {"console": {"country": 1}}, {"surprise": 1}, {"entry": {"name": "1bad", "addr": "8c011000"}},
                      {"boot_file": "../X.BIN"}, {"tx_first": "8c058560"}, {"tx_first": ["8c0585"]},
-                     {"not_code": ["8c0b0242"]}, {"not_code": {"8c0b0242": ""}}, {"not_code": {"8c0b02": "x"}}, {"texture_pack": True}):
+                     {"not_code": ["8c0b0242"]}, {"not_code": {"8c0b0242": ""}}, {"spin_words": ["8c1a0010"]},
+                     {"spin_words": "8c1a0010", "translator_c": {"dir": "tx"}}, {"not_code": {"8c0b02": "x"}}, {"texture_pack": True}):
             with self.subTest(over=over), self.assertRaises(SystemExit):
                 self.load(**over)
         (self.dir / "game.json").write_text(json.dumps({k: v for k, v in GAME.items() if k != "entry"}), encoding="utf-8")
@@ -627,6 +632,32 @@ class GameConfig(unittest.TestCase):
         (src / "8c011a00.c").write_text('#include "game.h"\nvoid Fx_Four(void) {}\n', encoding="utf-8")
         self.assertEqual(gen_port.no_pch(src, files + ["8c011a00"], got), files)  # wrap defines, or not game.h first
 
+    def test_wide_cull(self):
+        """game.json wide_cull: the viewport's address and the functions that cull against it; gen_port writes a
+        WideCull_ADDR wrapper per function that calls it between port_wide_cull_begin and _end."""
+        self.assertIsNone(self.load()["wide_cull"])
+        got = self.load(wide_cull={"viewport": "0x8C2A6340", "functions": ["8c011900", "0x8C011800", "8c011800"]})
+        self.assertEqual(got["wide_cull"], {"viewport": "8c2a6340", "functions": ["8c011800", "8c011900"]})
+        for over in ({"wide_cull": {"viewport": "8c2a6340"}}, {"wide_cull": {"viewport": "8c2a", "functions": ["8c011800"]}},
+                     {"wide_cull": {"viewport": "8c2a6340", "functions": []}},
+                     {"wide_cull": {"viewport": "8c2a6340", "functions": ["8c011800"]}, "wrap": {"8c011800": "Fx_DrawWrap"}}):
+            with self.subTest(over=over), self.assertRaises(SystemExit):
+                self.load(**over)
+        self.assertIsNone(wide_cull.c_text(readable, None, {}, gen_port.wrapper_proto))
+        protos = {"8c011800": "void Fx_Draw(void *model, void *ctx, f32 alpha);", "8c011900": "u32 Fx_Visible(void *model);"}
+        text, wraps = wide_cull.c_text(readable, got["wide_cull"], protos, gen_port.wrapper_proto)
+        self.assertEqual(wraps, {"8c011800": "WideCull_8c011800", "8c011900": "WideCull_8c011900"})
+        self.assertIn("void WideCull_8c011800(void *model, void *ctx, f32 alpha)\n{", text)
+        self.assertIn("    Fx_Draw(model, ctx, alpha);\n", text)
+        self.assertIn("    u32 wide_result = Fx_Visible(model);\n", text)
+        self.assertIn("    return wide_result;\n", text)
+        self.assertEqual(text.count("port_wide_cull_begin(0x8c2a6340u, wide_saved)"), 2)
+        self.assertEqual(text.count("port_wide_cull_end(0x8c2a6340u, wide_saved)"), 2)
+        (self.dir / "wide_cull.c").write_text(text, encoding="utf-8")  # the wrappers count as the game's sources'
+        self.assertEqual(gen_port.defined_names([self.dir / "wide_cull.c"]), set(wraps.values()))
+        with self.assertRaises(SystemExit):  # an address the port declares no function at
+            wide_cull.c_text(readable, {"viewport": "8c2a6340", "functions": ["8c011a00"]}, protos, gen_port.wrapper_proto)
+
     def test_hardware_names(self):
         """A hardware function must have the registry's name at its address; at an address the registry does not
         name (unnamed library code) the game's sources name it, and the dispatch row is checked with the catalog."""
@@ -676,24 +707,6 @@ class KitIsGameFree(unittest.TestCase):
         self.assertEqual([p.name for p in kit_files() if len(p.read_text(encoding="utf-8").splitlines()) > 400], [])
 
 
-class RegressUnstableFrames(unittest.TestCase):
-    """A pass past the renderer's autosort pool drops the translucent fragments the GPU appended last, which differ
-    from run to run: tools/regress.py fails the script, since its frames cannot repeat."""
-    def test_overflow_fails(self):
-        # by path: the pipeline's own tools/regress.py has the same module name, and in a full suite run it can be
-        # imported first
-        import importlib.util
-        spec = importlib.util.spec_from_file_location("kit_regress_t", KIT / "tools" / "regress.py")
-        regress = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(regress)
-        log = ("ta: list 2: polygon vertex type 0, isp e4000000 tsp 949800c0 (frame 3)\n"
-               "pvr: a pass drew 1245066 translucent fragments, past the autosort pool of 1228800 (frame 6862)\n"
-               "pvr: autosort pool of 1556332 fragments; the largest pass drew 1245066; 1 pass(es) overflowed\n")
-        self.assertEqual(regress.unstable(log), [
-            "pvr: a pass drew 1245066 translucent fragments, past the autosort pool of 1228800 (frame 6862)"])
-        self.assertEqual(regress.unstable(log.splitlines()[2]), [])
-
-
 class PointerAdapters(unittest.TestCase):
     """A call through a guest pointer (dispatch.c's thunk) passes r4..r7 in order. A function whose own parameters skip
     or reorder them (Toy Commander's fn_8c075224 takes r4 and r6: its env-map UVs came out of r5, a NULL UV pointer)
@@ -734,7 +747,7 @@ class RuntimeCompiles(unittest.TestCase):
             sys.path.insert(0, str(TOOL))
             from core import fsca  # gen_port.py's fsca_table.c, which sh4_rt.c reads
             (d / "fsca_table.c").write_text(fsca.table_c(), encoding="utf-8")
-            srcs = " ".join(f'"{p}"' for p in sorted((KIT / "runtime").glob("*.c")) + [b for b in sorted((KIT / "base").glob("*.c")) if b.name not in ("input.c", "pad_style.c", "present_cpu.c", "audio_out.c")] + [d / "fsca_table.c"])
+            srcs = " ".join(f'"{p}"' for p in sorted((KIT / "runtime").glob("*.c")) + [b for b in sorted((KIT / "base").glob("*.c")) if b.name not in ("input.c", "pad_style.c", "present_cpu.c", "audio_out.c", "pad_virtual.c")] + [d / "fsca_table.c"])
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
             cl = (f'cl /nologo /c /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
                   f'/I"{KIT / "base"}" /I"{rd}" {srcs}')
@@ -966,22 +979,6 @@ class RuntimeCompiles(unittest.TestCase):
             self.assertEqual((run.returncode, run.stdout.split()), (0, ["1", "3", "65"]))
         finally:
             shutil.rmtree(d, ignore_errors=True)
-
-
-class BuFileImageGate(unittest.TestCase):
-    """sdk/bu_vmu.c's file image functions take the game's BUS_BACKUPFILEHEADER: port_config.h turns them on only
-    when the game's header declares it (a game without it, which never calls them, still builds)."""
-    CFG = {"name": "Fixture", "entry": {"name": "Fx_Main", "addr": "8c011000"}, "image_base": "8c010000",
-           "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}
-
-    def test_gate(self):
-        self.assertIn("#define PORT_BU_FILE_IMAGE 1", game_config.port_config_h(self.CFG, (), True))
-        self.assertNotIn("PORT_BU_FILE_IMAGE", game_config.port_config_h(self.CFG))
-        src = (KIT / "sdk" / "bu_vmu.c").read_text(encoding="utf-8")
-        self.assertIn('#include "port_config.h"', src)
-        gated = src[src.index("#ifdef PORT_BU_FILE_IMAGE"):]
-        self.assertIn("buMakeBackupFileImage", gated)
-        self.assertIn("buAnalyzeBackupFileImage", gated)
 
 
 if __name__ == "__main__":

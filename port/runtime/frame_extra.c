@@ -5,18 +5,29 @@
  * what the tick left, so the next tick runs exactly as it would have. A frame with no in-between frame (no time, or
  * none ready) is shown after the wait, as --present tick does.
  *
- *   --present tick|interp   one shown frame per rendered one (the kit's default; the checks use it), or in-between
- *                           frames too (a play run's default, base/host_main.cpp)
+ *   --present tick|interp|auto  one shown frame per rendered one (the kit's default; the checks use it), or in-between
+ *                           frames too, or (a play run's default, base/host_main.cpp) in-between frames while the
+ *                           frame-rate cap is above the rate the game is rendering at now, measured in vertical blanks:
+ *                           a game's rate can change from screen to screen. No cap counts as above it
  *   --interp-frames N       --fixed-clock runs: in-between frames per vertical blank waited for (default 1)
  *   --interp-verify 1       logs what in-between frames wrote in guest RAM, and checks that it all went back
- *   --fps N                 real time: at most N in-between frames a second (default 0: as many as the display takes
- *                           and the time allows; with VSync on, the display's refresh is the limit)
+ *   --fps N                 real time: in-between frames shown one per 1/N s slot (frame_thread.c; a play run's default
+ *                           144, base/host_main.cpp; 0: as many as the display takes and the time allows)
  *   --interp-copy-threads N threads that copy guest RAM (default 4; 1: this thread alone)
  *   --interp-scene on|only|off  a game with no draw function gets in-between frames anyway: the renderer blends the
  *                           scene it drew with the one before (pvr/pvr_blend.c). No game code runs, so there is no
  *                           copy of guest RAM and nothing to undo. With on a game's own draw function takes
  *                           precedence; with only it is not used; off uses the draw function alone. Default off,
  *                           or only for a game with game.json interp_scene
+ *   --present-thread on|off|fixed|hold  on: a scene-blended game's in-between frames are drawn and shown by a thread of
+ *                           their own on the real clock, so a tick of any length costs only the scene it has not
+ *                           delivered; a frame of its own is shown by the tick only when that thread showed none. The
+ *                           thread goes on from the end of a render, so a game that renders early in its tick shows no
+ *                           long gap, and while nothing can be blended (a movie) it shows the last picture again, the
+ *                           same pixels (with a fixed clock or frame dumps it works as hold). hold: the thread stops
+ *                           from a render until the vertical blank's wait, and a movie's pictures are shown once each.
+ *                           fixed: hold with a fixed clock too, for the proof that ticks do not change. Default off, or
+ *                           on for a game with game.json present_thread
  *
  * Guest RAM is copied when the first in-between frame after a vertical blank is drawn (the vertical blank's hook
  * may write it) and copied back after each one. */
@@ -28,13 +39,15 @@
 #include "host.h"
 #include "prof.h"
 #include "play_stats.h"
+#include "frame_cost.h"
 
 #define EXTRA_STATES 16
 #define PAGE 4096u
 #define VERIFY_RANGES 6
+#define RESHOW_US 1500u /* --present-thread on: a movie's picture is shown again this often */
 
 static int g_scene_mode = PORT_INTERP_SCENE ? 2 : 0;
-static int g_interp, g_verify, g_inited, g_held, g_noted; /* g_held: the frame of a flip waits for its in-between frames */
+static int g_interp, g_auto, g_verify, g_inited, g_held, g_noted, g_drawing; /* g_held: the frame of a flip waits for its in-between frames */
 static u32 g_fixed_frames = 1u;
 static PortExtraDrawFn g_draw;
 static PortExtraReadyFn g_ready;
@@ -54,88 +67,33 @@ typedef struct Undo {
 static Undo *g_undo;
 static u8 *g_ram;                 /* guest RAM as the tick left it */
 static u32 g_ram_vblank = ~0u;    /* the vertical blank g_ram was copied at */
-static int g_drawing;
 static u32 g_wait;                /* vertical blanks the rendered frame waits for */
 static u32 g_count, g_fixed_done; /* in-between frames since port_extra_begin; --fixed-clock: drawn so far */
 static u64 g_start_us, g_cost_us; /* when the frame was rendered; what an in-between frame costs, recently */
 static u32 g_fps;                 /* --fps N: in-between frames at most N per second (0: as many as fit) */
 static u64 g_shown_us;            /* when the last in-between frame started */
-static u32 g_total;
-static u32 g_begun, g_no_time, g_not_shown; /* rendered frames that allowed in-between ones; waits skipped, why */
+static u32 g_total, g_reshown, g_begun, g_no_time, g_not_shown; /* begun: renders that allowed them; skipped, why */
 static int g_starved;                       /* this rendered frame's wait skipped one for want of time */
-
-/* Guest RAM copies are memory-bound, and one core does not saturate the memory: a copy is split into slices, one
- * for this thread and one for each helper thread (--interp-copy-threads N: N - 1 helpers). Four threads copy 16 MB
- * in about 0.4 ms where one takes 1.5 to 2. */
-#define COPY_HELPERS_MAX 7
-static u32 g_copy_threads = 4;
-static struct {
-    HANDLE go;
-    u8 *dst;
-    const u8 *src;
-    u32 size;
-} g_slice[COPY_HELPERS_MAX];
-static HANDLE g_copied;
-static volatile LONG g_copy_left;
-
-static DWORD WINAPI copy_helper(void *arg)
-{
-    u32 i = (u32)(uintptr_t)arg;
-    for (;;) {
-        WaitForSingleObject(g_slice[i].go, INFINITE); /* idle until the next copy */
-        memcpy(g_slice[i].dst, g_slice[i].src, g_slice[i].size);
-        if (InterlockedDecrement(&g_copy_left) == 0) SetEvent(g_copied);
-    }
-}
-
-static void copy_init(void)
-{
-    if (g_copy_threads < 1u) g_copy_threads = 1u;
-    if (g_copy_threads > COPY_HELPERS_MAX + 1u) g_copy_threads = COPY_HELPERS_MAX + 1u;
-    g_copied = CreateEventW(NULL, FALSE, FALSE, NULL);
-    for (u32 i = 0; i + 1u < g_copy_threads; i++) {
-        g_slice[i].go = CreateEventW(NULL, FALSE, FALSE, NULL);
-        HANDLE t = g_copied && g_slice[i].go ? CreateThread(NULL, 0, copy_helper, (void *)(uintptr_t)i, 0, NULL) : NULL;
-        if (!t) {
-            g_copy_threads = i + 1u;
-            break;
-        }
-        SetThreadPriority(t, THREAD_PRIORITY_ABOVE_NORMAL);
-        CloseHandle(t);
-    }
-}
-
-static void copy_ram(u8 *dst, const u8 *src)
-{
-    u32 helpers = g_copy_threads - 1u, slice = GUEST_RAM_SIZE / g_copy_threads & ~(PAGE - 1u);
-    g_copy_left = (LONG)helpers;
-    for (u32 i = 0; i < helpers; i++) {
-        u32 at = slice * (i + 1u);
-        g_slice[i].dst = dst + at;
-        g_slice[i].src = src + at;
-        g_slice[i].size = i + 1u == helpers ? GUEST_RAM_SIZE - at : slice;
-        SetEvent(g_slice[i].go);
-    }
-    memcpy(dst, src, helpers ? slice : GUEST_RAM_SIZE);
-    if (helpers && WaitForSingleObject(g_copied, 5000) != WAIT_OBJECT_0)
-        port_exit("frame_extra: a guest RAM copy helper did not finish", 1);
-}
+static int g_thread_mode = PORT_PRESENT_THREAD ? 3 : 0; /* --present-thread: 0 off, 1 hold, 2 fixed, 3 on */
 
 int extra_option(const char *arg, const char *value)
 {
     if (!value) return 0;
-    if (!strcmp(arg, "--present")) g_interp = !strcmp(value, "interp");
+    if (!strcmp(arg, "--present")) {
+        g_auto = !strcmp(value, "auto");
+        g_interp = g_auto || !strcmp(value, "interp");
+    }
     else if (!strcmp(arg, "--interp-frames")) g_fixed_frames = (u32)atoi(value);
     else if (!strcmp(arg, "--interp-verify")) g_verify = atoi(value) != 0;
     else if (!strcmp(arg, "--fps")) g_fps = (u32)atoi(value);
-    else if (!strcmp(arg, "--interp-copy-threads")) g_copy_threads = (u32)atoi(value);
+    else if (!strcmp(arg, "--interp-copy-threads")) extra_copy_threads((u32)atoi(value));
     else if (!strcmp(arg, "--interp-scene")) g_scene_mode = !strcmp(value, "only") ? 2 : !strcmp(value, "on");
+    else if (!strcmp(arg, "--present-thread")) g_thread_mode = !strcmp(value, "fixed") ? 2 : !strcmp(value, "hold") ? 1 : !strcmp(value, "on") ? 3 : 0;
     else return 0;
     return 2;
 }
 
 /* The host's menu (base/host_menu.cpp): the same as the options, at any time */
-void extra_set_interp(int on) { g_interp = on != 0; }
 int extra_interp(void) { return g_interp; }
 void extra_set_fps(unsigned fps) { g_fps = fps; }
 unsigned extra_fps(void) { return g_fps; }
@@ -184,7 +142,9 @@ static void undo_all(void)
 }
 
 int port_extra_drawing(void) { return g_drawing; }
-int extra_scene(void) { return g_interp && g_scene_mode && !g_draw; }
+/* --present auto keeps the scene before while blending is off, so that turning it on does not blend with an old one */
+int extra_scene(void) { return (g_interp || g_auto) && g_scene_mode && !g_draw; }
+int extra_scene_mode(void) { return g_draw ? -1 : g_scene_mode; }
 u32 port_extra_count(void) { return g_count; }
 
 static int init(void)
@@ -195,17 +155,35 @@ static int init(void)
         g_interp = 0;
         return 0;
     }
-    copy_init();
+    extra_copy_init();
     sh4_rt_extra_state();
     port_libm_extra_state();
     host_extra_state();
     port_log("frame_extra: in-between frames on%s%s; guest RAM copied by %u thread(s)\n",
-             host_fixed_clock() ? " (a fixed number per vertical blank)" : "", g_verify ? ", checked" : "", g_copy_threads);
+             host_fixed_clock() ? " (a fixed number per vertical blank)" : "", g_verify ? ", checked" : "", extra_copy_thread_count());
     return g_inited = 1;
+}
+
+/* --present auto, for each rendered frame: half a second of them gives the game's rate. A cap has to clear it by an
+ * eighth, so that a 60 Hz game's dropped frame does not turn blending on under a cap of 60. */
+static void auto_decide(void)
+{
+    static u32 from, frames, logged;
+    u32 blanks = port_vblank_count() - from;
+    frames++;
+    if (!g_auto || blanks < PORT_VBLANK_HZ / 2u) return;
+    u32 rate = frames * PORT_VBLANK_HZ / blanks;
+    int on = !g_fps || g_fps > rate + rate / 8u;
+    if (on != g_interp && logged++ < 32u)
+        port_log("frame_extra: the game renders %u a second, cap %u: in-between frames %s\n", rate, g_fps, on ? "on" : "off");
+    g_interp = on;
+    from += blanks;
+    frames = 0;
 }
 
 int port_extra_begin(u32 vblanks)
 {
+    auto_decide();
     if (!g_interp || g_drawing || (!g_draw && !(g_scene_mode && pvr_blend_ready()))) return 0;
     if (host_fixed_clock() && host_fast_until()) return 0; /* --fast-until: ticks only until real time starts */
     if (g_draw && g_ready && !g_ready()) return 0;
@@ -223,6 +201,10 @@ int port_extra_begin(u32 vblanks)
     g_count = g_fixed_done = 0;
     g_begun++;
     if (!host_fixed_clock()) g_start_us = host_ticks(1000000u);
+    if (!g_draw) {
+        port_extra_thread_early(g_thread_mode == 3 && !host_fixed_clock() && !gfx_capture_asked());
+        port_extra_thread_begin(g_thread_mode == 2 || (g_thread_mode && g_thread_mode != 2 && !host_fixed_clock()));
+    }
     return 1;
 }
 
@@ -270,7 +252,7 @@ static u64 draw_scene_one(f32 alpha)
     LARGE_INTEGER f;
     u64 t0 = qpc(), pt = prof_begin(PROF_X_DRAW);
     play_stats_draw(1);
-    g_drawing = 1;
+    g_drawing = !port_extra_thread_on(); /* the game's thread asks port_extra_drawing about its own render */
     g_count += pvr_blend_draw(alpha) != 0;
     g_drawing = 0;
     play_stats_draw(0);
@@ -289,7 +271,7 @@ static u64 draw_one(f32 alpha)
     LARGE_INTEGER f;
     u64 t0 = qpc(), t1, t2, t3, t4, pt = prof_begin(PROF_X_COPY);
     if (g_ram_vblank != port_vblank_count()) {
-        copy_ram(g_ram, ram);
+        extra_copy_ram(g_ram, ram);
         g_ram_vblank = port_vblank_count();
     }
     for (i = 0; i < g_nstates; i++) memcpy(g_states[i].saved, g_states[i].p, g_states[i].size);
@@ -306,7 +288,7 @@ static u64 draw_one(f32 alpha)
     if (g_verify) verify(1);
     t3 = qpc();
     pt = prof_begin(PROF_X_COPY);
-    copy_ram(ram, g_ram);
+    extra_copy_ram(ram, g_ram);
     for (i = 0; i < g_nstates; i++) memcpy(g_states[i].p, g_states[i].saved, g_states[i].size);
     undo_all();
     prof_end(pt);
@@ -326,6 +308,51 @@ static u64 draw_one(f32 alpha)
     return (t4 - t0 - (t3 - t2)) * 1000000u / (u64)f.QuadPart;
 }
 
+/* --present-thread (frame_thread.c), holding gfx_lock: one in-between frame, if one is due. 1 drawn, 2 the display would not
+ * take it, 3 not its --fps slot yet, 0 none. */
+int port_extra_thread_show(u64 now_us, u64 start_us, int *finished)
+{
+    u64 tick_us = (u64)g_wait * 1000000u / PORT_VBLANK_HZ, period = port_extra_thread_period(), cost;
+    f32 alpha;
+    u32 drawn = g_count;
+    /* A game can render every other blank while its flip waits for one (a movie that waits on its sound clock for
+     * the other): blended over one blank, the in-between frames were done half way and nothing was shown for
+     * the rest, a 12-18 ms gap every render. They span the time between the last two renders instead, unless that was a
+     * pause (a load), when the frame waited for stands. */
+    if (period > tick_us && period < 4u * tick_us) tick_us = period;
+    if (g_draw) return 0; /* the game's own draw function came after the thread started (--interp-scene on): the tick draws them */
+    if (g_interp && !gfx_held() && !pvr_blend_ready() && port_extra_thread_is_early()) { /* the same picture again */
+        if (now_us - g_shown_us < RESHOW_US) return 0;
+        if (port_extra_cap_wait(now_us, g_fps, 0u)) return 3; /* in an --fps slot too: shown frames stay under the cap */
+        if (!gfx_can_show()) return g_not_shown++, 2;
+        gfx_show();
+        port_extra_cap_shown(g_shown_us = now_us, g_fps);
+        return g_reshown++, 1;
+    }
+    if (!g_interp || gfx_held() || !pvr_blend_ready()) return 0;
+    if (port_extra_cap_wait(now_us, g_fps, g_cost_us)) return 3; /* --fps: not yet; the thread waits for its slot */
+    if (!gfx_can_show()) return g_not_shown++, 2;
+    alpha = now_us - start_us >= tick_us ? 1.0f : (f32)(now_us - start_us) / (f32)tick_us;
+    cost = draw_scene_one(alpha);
+    if (g_count != drawn) xcost_frame(cost);
+    if (cost >= 100000u) port_log("frame_extra: an in-between frame took %llu ms\n", cost / 1000u);
+    g_cost_us = g_cost_us ? (g_cost_us * 7u + cost) / 8u : cost;
+    port_extra_cap_shown((g_shown_us = now_us) + cost, g_fps);
+    *finished = alpha >= 1.0f;
+    return 1;
+}
+
+/* gfx_present, holding gfx_lock: a frame with no in-between frames was shown. Under --present-thread on the thread may
+ * show it again until the next one. */
+void port_extra_shown(void)
+{
+    int early = g_thread_mode == 3 && g_interp && g_scene_mode && !g_draw && !host_fixed_clock() && !gfx_capture_asked();
+    if (!early) return;
+    port_extra_thread_early(1);
+    port_extra_thread_begin(1);
+    port_extra_thread_go();
+}
+
 int port_extra_flip(u32 vblanks)
 {
     if (gfx_held() || !port_extra_begin(vblanks)) return 0; /* a held frame is not counted: gfx_present drops it */
@@ -339,7 +366,7 @@ void port_extra_land(void)
 {
     if (!g_held) return;
     g_held = 0;
-    if (!g_count) gfx_show();
+    if (!g_count) port_extra_thread_shows() ? (void)port_extra_thread_go() : gfx_show(); /* that thread shows it: the tick never Presents */
 }
 
 int port_extra_idle(u64 deadline_us)
@@ -352,7 +379,7 @@ int port_extra_idle(u64 deadline_us)
     }
     u64 now = host_ticks(1000000u), tick_us = (u64)g_wait * 1000000u / PORT_VBLANK_HZ;
     if (now + g_cost_us + g_cost_us / 4u >= deadline_us) return g_no_time++, g_starved = 1, 0;
-    if (g_fps && now - g_shown_us < 1000000u / g_fps) return 0; /* --fps: not yet */
+    if (port_extra_cap_wait(now, g_fps, g_cost_us)) return 0; /* --fps: not yet */
     if (!gfx_can_show()) return g_not_shown++, 0;               /* the display would not take it */
     f32 alpha = now - g_start_us >= tick_us ? 1.0f : (f32)(now - g_start_us) / (f32)tick_us;
     u64 cost = draw_one(alpha);
@@ -360,7 +387,7 @@ int port_extra_idle(u64 deadline_us)
      * sample counts at most twice the estimate, so one hitch moves it little and a lasting change still comes through */
     if (g_cost_us && cost > 2u * g_cost_us) cost = 2u * g_cost_us;
     if (g_total > 1u) g_cost_us = g_cost_us ? (g_cost_us * 7u + cost) / 8u : cost;
-    g_shown_us = now;
+    port_extra_cap_shown((g_shown_us = now) + cost, g_fps);
     return 1;
 }
 
@@ -368,6 +395,6 @@ void port_extra_report(void)
 {
     if (g_inited || g_noted)
         port_log("frame_extra: %u in-between frames after %u rendered frames; %u time(s) too little time left, %u time(s) "
-                 "the display not taking one; one costs about %llu us\n", g_total, g_begun, g_no_time, g_not_shown,
-                 g_cost_us);
+                 "the display not taking one; one costs about %llu us; %u shown again\n", g_total, g_begun, g_no_time, g_not_shown,
+                 g_cost_us, g_reshown);
 }

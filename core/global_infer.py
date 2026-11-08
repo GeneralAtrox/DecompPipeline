@@ -224,9 +224,10 @@ def element(uses):
     return "u8", True
 
 
-def propose(unnamed, acc, bounds, limit, evidence, taken):
+def propose(unnamed, acc, bounds, limit, evidence, taken, be=False):
     """{address: (decl, name, why, evidence word or None)} for the unnamed addresses in address order. taken: names in
-    use (registry, headers); a clash gets _2, _3, ..."""
+    use (registry, headers); a clash gets _2, _3, ... be: a big-endian target, whose multi-byte globals are declared
+    with rd_be.h's be_ types (BE1 refuses a plain one)."""
     out, used = {}, set(taken)
     for lo, hi, members in clusters(sorted(unnamed), acc, bounds, limit):
         uses = [(o + m - lo, w, k, ix, st) for m in members for (o, w, k, ix, st) in acc.get(m, ())]
@@ -245,7 +246,7 @@ def propose(unnamed, acc, bounds, limit, evidence, taken):
         while name in used:
             name, k = f"{base}_{k}", k + 1
         used.add(name)
-        decl = f"{typ} {name}" + (f"[{n}]" if n > 1 else "")
+        decl = f"{'be_' if be and typ != 'u8' else ''}{typ} {name}" + (f"[{n}]" if n > 1 else "")
         why = "accessed " + ", ".join(sorted({f"+0x{o:x} u{w * 8}" if kd == "int" else f"+0x{o:x} f32"
                                               for o, w, kd, *_ in uses})[:8]) if known else "address passed only"
         out[lo] = (decl, name, why, word)
@@ -318,7 +319,8 @@ def command(cfg, targets, write=False, log=print):
     taken = {readable.parse_proto(e["proto"])[1] for e in reg.functions.values()}
     taken |= {readable.global_name(e["decl"]) for e in reg.globals.values()}
     taken |= {n.split(":", 1)[-1] for it in hs.items for n in it.names}
-    prop = propose(unnamed, acc, bounds, limit, ev, taken)
+    from .compare import WORD
+    prop = propose(unnamed, acc, bounds, limit, ev, taken, be=WORD == ">I")
     kinds = {"evidence": 0, "accessed": 0, "value": 0}
     for lo, (decl, name, why, word) in sorted(prop.items()):
         kinds["evidence" if word else "accessed" if why.startswith("accessed") else "value"] += 1

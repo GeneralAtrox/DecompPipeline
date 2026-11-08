@@ -15,8 +15,13 @@ int sat_sys_virtual(void);                 /* --fixed-clock: the machine runs on
 u64 sat_clock_ticks(u32 rate);        /* time since start-up in 1/rate second */
 void sat_sys_set(u32 hz, int fast); /* the frame rate and the test-only no-wait mode */
 int sat_sys_det(void);           /* --det: vertical blanks and the timer follow the machine's progress, not the real clock */
+long long sat_inb_due(void);     /* sat_inb.c: when the next in-between frame is due (QueryPerformanceCounter), 0 none */
+void sat_inb_poll(long long now, long long next); /* sat_inb.c: draws it if it is due and there is time */
 void sat_sys_set_det(int on);
 u32 sat_det_frt(u32 shift);
+int sat_black_possible(void);    /* a play run with fast loads: black screens may run without waiting */
+void sat_black_frame(int black); /* sat_video.c, each composed picture: black or not */
+int sat_black_fast(void);        /* this blank's picture is black and silent: the next blank comes without waiting */
 int sat_sys_fast(void);          /* the no-wait test mode: frames are not paced by the real clock */
 void sat_vblank_counted(void);
 void sat_frame_limit_check(void);
@@ -48,8 +53,10 @@ void sat_video_init(void);
 int sat_video_dump_option(const char *arg, const char *value); /* --dump-frames, --dump-dir (sat_video.c) */
 int sat_video_headless(void);
 void sat_video_options(int headless, u32 shot_vb, const char *shot_path, u32 every); /* --headless, --shot VB FILE [--shot-every N] */
+extern u32 sat_shot_max;                                                             /* --shot-max N (60) */
 void sat_scu_init(void);
 void sat_smpc_init(void);
+void sat_smpc_clock_start(int play_run); /* the clock: the host's in a play run, else 1997-01-01 (sat_smpc.c) */
 void sat_cd_init(const char *cue);
 void sat_vdp_init(void);
 void sat_scu_state(u32 *ims, u32 *ist); /* the mask and pending registers, for the watchdog's report */

@@ -1,6 +1,7 @@
 """sizes.py: the files over the 400-line cap (AGENTS.md "Layout"), and the ratchet that keeps it from drifting again.
 
-The cap counts the kinds an agent reads whole (.py .java .c .h .html .md); data and proof json are exempt. DP had 65
+The cap counts the kinds an agent reads whole (.py .java .c .h .html .md); data and proof json are exempt, and so is
+vendored code (any path through a third_party/ folder, e.g. port/imgtool's stb headers: not ours to split). DP had 65
 such files over the cap when this landed (the four translators' translate.py the largest), so the cap is a ratchet:
 tests/sizes_over_400.txt lists each file over it with its line count, and tests/test_sizes.py fails when a file not in
 the list goes over the cap or a listed file grows. A split shrinks the list: run --ratchet to record it.
@@ -29,7 +30,8 @@ def lines(p):
 
 def over_cap(files, cap=CAP):
     """[(line count, path)] of the files over the cap, largest first."""
-    return sorted(((n, p) for p in files if pathlib.Path(p).suffix in EXTS and (n := lines(p)) > cap), reverse=True)
+    return sorted(((n, p) for p in files if pathlib.Path(p).suffix in EXTS and "third_party" not in pathlib.Path(p).parts
+                   and (n := lines(p)) > cap), reverse=True)
 
 
 def tracked(root=TOOL):

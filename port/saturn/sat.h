@@ -12,6 +12,7 @@
 
 /* port_log is the base's (base.h); port_exit ends the run: the base's reports, then this kit's (sat_main.c) */
 #include "base.h"
+#include "autoload.h"
 void port_exit(const char *why, int code);
 
 /* sat_mem.c: the SH-2's bus. Memory is big-endian; a hardware address goes to the region that claims it */
@@ -23,6 +24,7 @@ void sat_map_regs(u32 lo, u32 hi, const char *name); /* a plain register file th
 u8 *sat_ram_h(void);
 u8 *sat_ram_l(void);
 void sat_load(u32 addr, const u8 *data, u32 size); /* into work RAM (high or low) */
+u32 sat_dma_rd32(u32 addr);                         /* a word read by the SCU's DMA: not a CPU's poll */
 u32 sat_peek32(u32 addr);                           /* a word without side effects (RAM only, else 0) */
 void sat_mem_report(void);                          /* hardware regions touched, at exit */
 u32 sat_frt_count(void);
@@ -40,9 +42,11 @@ extern const int sat_nfns;
 extern u32 sat_entry_sp; /* the sp a translated function takes as its own on entry (the bring-up form's r15) */
 void sat_call_init(void);
 u32 tc_tail(u32 target, const TcArgs *args);   /* a jump to another function as the last thing a function does */
+u32 tc_call_sp(u32 target, const TcArgs *args, u32 sp);   /* a call from a translated function at r15 = sp: the callee starts there, as on the CPU */
 u32 tc_tail_sp(u32 target, const TcArgs *args, u32 sp);   /* the same, from a frame that is still open: the target runs with r15 = sp */
 u32 sat_in_r(int i); /* r0..r3 as the caller held them at this call: a function that never writes r0 returns it unchanged; SGL's inner routines read r1..r3 */
 void sat_pr_popped(void);                         /* the running function restored pr from its stack */
+void sat_wide_cull_at(u32 fn);                  /* sat_wide.c: a function entered: the game's culling widened when it reads it */
 void sat_window_back(u32 sp);                      /* the call that came back to a label hands the caller its stack words back */
 int sat_pr_took(void);                            /* the function just called did (and clears the mark) */
 u32 sat_call(u32 sp, u32 addr, u32 a0, u32 a1, u32 a2, u32 a3); /* runs a guest function on a stack at sp */
@@ -57,6 +61,13 @@ void sat_bios_init(void);            /* the BIOS' service pointers in work RAM (
 SatNative sat_bup_native(u32 addr);  /* sat_bup.c: the backup-RAM library's services, or 0 */
 void sat_bup_init(void);             /* its pointers in work RAM (called by sat_bios_init) */
 void sat_bup_path(const char *path); /* --save: the host file that holds the console's backup memory */
+extern u32 sat_movie_fn; /* sat_movie.c: the game's movie routine the host plays instead (0: none, or emulated in this run) */
+int sat_movie_play(const TcArgs *a, u32 *ret); /* 1 and the routine's result when the host played it */
+void sat_movie_start(int play_run, int audio_on);
+int sat_movie_option(const char *arg, const char *value); /* --movie-native on|off|always, --movie-dump DIR[,N] */
+int sat_movie_get(void);
+void sat_movie_set(int on);
+void sat_bup_auto_load(int play_run); /* at the start: the game's load path driven when its file is in the save (autoload.c) */
 void sat_scsp_init(void);                                       /* sound RAM and the SCSP's registers */
 u8 *sat_sound_ram(void);
 void sat_scsp_cpu(int on);                                      /* SMPC SNDON / SNDOFF */

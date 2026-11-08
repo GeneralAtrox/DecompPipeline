@@ -173,10 +173,56 @@ static void log_call(u32 target, const TcArgs *args)
     for (int i = 0; i < TCRT_CALL_FLOATS; i++) memcpy(&c->f[i], &args->f[i], 8);
 }
 
+/* The stricter judge (tc_strict.h): any of the four regions, wholly in one (TcBase.mapped); a write only where no
+ * byte is an instruction's (TcStrict.writable), logged like the C's own. Its reads are the judge's, never the
+ * function's: no R8. The Xbox 360 runtime models no register: no fr junk. */
+static Region *span(u32 p, u32 n)
+{
+    for (int i = 0; i < NREGIONS; i++) {
+        Region *r = &g_reg[i];
+        if (p - r->lo < r->size && r->size - (p - r->lo) >= n) return r;
+    }
+    return NULL;
+}
+
+static int tcs_read(u32 p, u32 n, u8 *out)
+{
+    Region *r = span(p, n);
+    if (!r) return 0;
+    memcpy(out, r->mem + (p - r->lo), n);
+    return 1;
+}
+
+static void tcs_write(u32 p, u32 n, const u8 *in)
+{
+    Region *r = span(p, n);
+    if (!r) return;
+    for (u32 k = 0; r == &g_reg[0] && k < n; k++)
+        if (bit_get(g_code, p + k - r->lo)) return;
+    memcpy(r->mem + (p - r->lo), in, n);
+    mark(r, p, n);
+}
+
+static void tcs_scratch(int i, u32 bits) { (void)i, (void)bits; }
+
+#include "tc_strict.h"
+
+/* The call just logged, in tc_strict.h's fields (TcStrict.field): target, r3..r10's low words 1..8, s0..s7's
+ * 17..24 (the GameCube's layout: the CALL record's f1..f13 between are no pointer). */
+static void strict_call(u32 target, const TcArgs *args)
+{
+    u32 rec[TCS_FIELDS] = {0};
+    rec[0] = target;
+    for (int i = 0; args && i < 8; i++) rec[1 + i] = (u32)args->r[i];
+    for (int i = 0; args && i < 8; i++) rec[17 + i] = (u32)args->s[i];
+    tcs_call(g_ncalls, target, rec);
+}
+
 u64 tc_call(u32 target, const TcArgs *args)
 {
     u64 rv = g_ncalls < 16 ? g_rets[g_ncalls] : 0;
     log_call(target, args);
+    strict_call(target, args);
     g_ncalls++;
     return rv;
 }
@@ -185,6 +231,7 @@ f64 tc_callf(u32 target, const TcArgs *args)
 {
     u64 b = g_ncalls < 16 ? g_frets[g_ncalls] : 0;
     log_call(target, args);
+    strict_call(target, args);
     g_ncalls++;
     f64 d;
     memcpy(&d, &b, 8);
@@ -295,6 +342,7 @@ void tcrt_reset(void)
     g_ncalls = 0;
     g_nfaults = 0;
     g_code_read = 0;
+    tcrt_strict_reset();
     memset(g_rets, 0, sizeof g_rets);
     memset(g_frets, 0, sizeof g_frets);
 }
@@ -353,6 +401,12 @@ void tcrt_report(FILE *out, u64 r3, u64 f1_bits)
         fputc('\n', out);
     }
     if (g_ncalls > MAX_CALLS) fprintf(out, "FAULT too-many-calls\n");
+    tcrt_strict_report(out); /* CS lines; XR: the exit frame (tc_strict.h) */
+    if (tcrt_strict_flags() & 8) { /* r1; r14..r31 and f14..f31: their entry values, 0 (TcOracle.setEntry) */
+        fprintf(out, "XR %08x", TCRT_SP);
+        for (int k = 0; k < 36; k++) fprintf(out, " %016llx", 0ull);
+        fputc('\n', out);
+    }
     for (u32 k = 0; k < g_nfaults && k < MAX_FAULTS; k++) fprintf(out, "FAULT %s\n", g_faults[k]);
     if (g_code_read) fprintf(out, "CODEREAD %08x\n", g_code_read);
 }

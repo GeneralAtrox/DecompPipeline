@@ -1,11 +1,15 @@
 // The menu bar, after Lodoss's desktop_stage_menu (MIT, the user's own): a native Win32 menu on the SDL window,
 // reached through a window subclass. Every choice applies at once and goes into the settings file (as the option it
 // stands for), so the next run starts the same way. The menu shows while windowed; full screen hides it.
-//   Display: full screen, window size, aspect (fit the window, 4:3, 16:9, 21:9), VSync, in-between frames,
+//   Display: full screen, window size, aspect (fit the window, 4:3, 16:9, 21:9), VSync,
 //            frame-rate cap, frame-rate counter, then the console's own entries (console_menu_extra: the
 //            Dreamcast's VMU screen and texture pack)
 //   Audio:   volume, mute when unfocused, then the console's
-//   Input:   rumble, pause when unfocused, then the console's
+//   Input:   rumble, pause when unfocused, controls (twin-stick, pad_twin.c; each of the console's buttons), then the
+//            console's
+//   Game:    auto-load save (autoload.c; greyed for a game that names no load path)
+//   Online:  a console with online play (host_online.cpp): play alone, host, join; while a match is on, the entries that
+//            would change the game for both players are greyed and refused (Pause when unfocused, Auto-load, Resume)
 //   Help:    copy agent prompt (F9; the bar's copy icon is the same command: host_copy_button.cpp)
 #include <cctype>
 #include <cstring>
@@ -17,6 +21,7 @@
 #include "game_log.h"
 #include "host.h"
 #include "host_internal.hpp"
+#include "autoload.h"
 
 namespace {
 
@@ -26,7 +31,6 @@ enum : UINT {
     kSize4 = 114,
     kFpsCounter = 120,
     kVsync,
-    kInterp = 130,
     kAspect = 170, // kAspect + N: kAspects[N]
     kBind = 4000,  // kBind + 32 * action + source: Input > Controls
     kFpsCap = 140, // kFpsCap + N: kFpsCaps[N]
@@ -34,8 +38,11 @@ enum : UINT {
     kVolume0 = 200, // kVolume0 + N: N x 25 %
     kVolume100 = 204,
     kMuteUnfocused = 210,
-    kRumble = 300,
-    kPauseUnfocused,
+    kRumble = 300, kPadArt = 301,
+    kPauseUnfocused, kTwinStick,
+    kResume = 310,
+    kAutoLoad = 311,
+    kOnline = 320, // kOnline + N: host_online.cpp's entries
 };
 
 HWND g_hwnd;
@@ -110,8 +117,6 @@ HMENU display_menu()
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(aspect), L"&Aspect");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, kVsync, L"&VSync");
-    AppendMenuW(m, MF_STRING | (port_console.flags & PORT_CONSOLE_INTERP ? 0u : MF_GRAYED), kInterp,
-                L"&In-between frames (the game keeps its own rate)");
     AppendMenuW(m, MF_POPUP | (port_console.flags & PORT_CONSOLE_FPSCAP ? 0u : MF_GRAYED), reinterpret_cast<UINT_PTR>(cap),
                 L"Frame-rate c&ap");
     AppendMenuW(m, MF_STRING, kFpsCounter, L"Frame-rate &counter");
@@ -137,10 +142,13 @@ HMENU input_menu()
     HMENU m = CreatePopupMenu();
     AppendMenuW(m, MF_STRING, kRumble, L"&Rumble");
     AppendMenuW(m, MF_STRING, kPauseUnfocused, L"&Pause when unfocused");
+    AppendMenuW(m, MF_STRING, kPadArt, L"Controller p&ictures");
     // Controls: each button of the console's own pad (console_actions) takes any host button
     unsigned n = 0;
     const PortAction *actions = console_actions(&n);
     HMENU controls = CreatePopupMenu();
+    AppendMenuW(controls, MF_STRING, kTwinStick, L"&Twin-stick (in fights: right stick turns, left stick sidesteps)");
+    AppendMenuW(controls, MF_SEPARATOR, 0, nullptr);
     for (unsigned i = 0; actions && i < n && i < 32; i++) {
         HMENU one = CreatePopupMenu();
         for (unsigned s = 0; s < input_source_count(); s++)
@@ -152,10 +160,18 @@ HMENU input_menu()
     return m;
 }
 
+HMENU game_menu()
+{
+    HMENU m = CreatePopupMenu();
+    AppendMenuW(m, MF_STRING, kAutoLoad, L"&Auto-load save (from the next start)");
+    return m;
+}
+
 HMENU help_menu()
 {
     HMENU m = CreatePopupMenu();
     AppendMenuW(m, MF_STRING, host::kCopyAgentPrompt, L"&Copy agent prompt\tF9");
+    AppendMenuW(m, MF_STRING, kResume, L"&Resume before the last crash...");
     return m;
 }
 
@@ -170,7 +186,6 @@ void sync()
     for (UINT n = 0; n <= 4; n++) check(kSizeFit + n, scale == static_cast<int>(n));
     for (UINT n = 0; n < kAspectCount; n++) check(kAspect + n, gfx_aspect_text() == std::string(kAspects[n].setting));
     check(kVsync, gfx_vsync() != 0);
-    check(kInterp, extra_interp() != 0);
     for (UINT n = 0; n < kFpsCapCount; n++) check(kFpsCap + n, extra_fps() == kFpsCaps[n]);
     check(kFpsCounter, p.fps_counter);
     for (unsigned i = 0; i < g_extra_count; i++) {
@@ -185,6 +200,16 @@ void sync()
     check(kMuteUnfocused, p.mute_unfocused);
     check(kRumble, input_rumble() != 0);
     check(kPauseUnfocused, p.pause_unfocused);
+    check(kPadArt, pad_art_on() != 0);
+    check(kTwinStick, port_twin_get() != 0);
+    EnableMenuItem(g_menu, kTwinStick, MF_BYCOMMAND | (port_twin_available() ? MF_ENABLED : MF_GRAYED));
+    std::filesystem::path rec;
+    unsigned end = 0;
+    EnableMenuItem(g_menu, kResume, MF_BYCOMMAND | (host::resume_find(&rec, &end) && !host::online_locked() ? MF_ENABLED : MF_GRAYED));
+    EnableMenuItem(g_menu, kPauseUnfocused, MF_BYCOMMAND | (host::online_locked() ? MF_GRAYED : MF_ENABLED));
+    if (port_console.flags & PORT_CONSOLE_ONLINE) host::online_sync(g_menu);
+    check(kAutoLoad, autoload_get() != 0);
+    EnableMenuItem(g_menu, kAutoLoad, MF_BYCOMMAND | (autoload_available() && !host::online_locked() ? MF_ENABLED : MF_GRAYED));
     unsigned na = 0;
     console_actions(&na);
     for (unsigned i = 0; i < na && i < 32; i++)
@@ -216,6 +241,11 @@ void command(UINT id)
 {
     host::Prefs &p = host::prefs();
     game_log_line("menu: %s", menu_words(id).c_str());
+    if (host::online_command(g_hwnd, id)) return;
+    if (host::online_locked() && (id == kPauseUnfocused || id == kAutoLoad || id == kResume)) {
+        game_log_line("menu: not applied: %s", host::online_locked());
+        return;
+    }
     if (id == kFullScreen) {
         host::window_set_fullscreen(!host::window_fullscreen());
     } else if (id >= kSizeFit && id <= kSize4) {
@@ -226,9 +256,6 @@ void command(UINT id)
     } else if (id == kVsync) {
         gfx_set_vsync(!gfx_vsync());
         host::settings_set("vsync", on_off(gfx_vsync() != 0));
-    } else if (id == kInterp) {
-        extra_set_interp(!extra_interp());
-        host::settings_set("present", extra_interp() ? "interp" : "tick");
     } else if (id >= kFpsCap && id < kFpsCap + kFpsCapCount) {
         extra_set_fps(kFpsCaps[id - kFpsCap]);
         host::settings_set("fps", std::to_string(extra_fps()));
@@ -237,7 +264,10 @@ void command(UINT id)
         host::settings_set("fps-counter", on_off(p.fps_counter));
     } else if (id >= kExtra && (id - kExtra) / 16 < g_extra_count) {
         const PortMenuItem &e = g_extra[(id - kExtra) / 16];
-        if (e.available && !e.available()) return;
+        if (e.available && !e.available()) {
+            game_log_line("menu: not applied: %s", host::online_locked() ? host::online_locked() : "the game cannot apply it now");
+            return;
+        }
         if (e.kind == PORT_MENU_CHOICE) {
             e.set(static_cast<int>((id - kExtra) % 16));
             host::settings_set(e.setting, e.values[e.get()]);
@@ -254,9 +284,21 @@ void command(UINT id)
     } else if (id == kRumble) {
         input_set_rumble(!input_rumble());
         host::settings_set("rumble", on_off(input_rumble() != 0));
+    } else if (id == kPadArt) {
+        pad_art_set(!pad_art_on());
+        host::settings_set("pad-art", on_off(pad_art_on() != 0));
+    } else if (id == kAutoLoad) {
+        if (!autoload_available()) return;
+        autoload_set(!autoload_get());
+        host::settings_set("auto-load", on_off(autoload_get() != 0));
     } else if (id == kPauseUnfocused) {
         p.pause_unfocused = !p.pause_unfocused;
         host::settings_set("pause-unfocused", on_off(p.pause_unfocused));
+    } else if (id == kTwinStick) {
+        port_twin_set(!port_twin_get());
+        host::settings_set("twin-stick", on_off(port_twin_get() != 0));
+    } else if (id == kResume) {
+        host::resume_start(g_hwnd);
     } else if (id >= kBind) {
         unsigned na = 0, i = (id - kBind) / 32, s = (id - kBind) % 32;
         const PortAction *actions = console_actions(&na);
@@ -273,7 +315,7 @@ void command(UINT id)
 LRESULT CALLBACK subclass(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR)
 {
     intptr_t handled = 0;
-    if (host::copy_button_message(hwnd, msg, wp, lp, &handled)) return handled;
+    if (host::copy_button_message(hwnd, msg, wp, lp, &handled) || host::counter_message(hwnd, msg, wp, lp, &handled)) return handled;
     if (msg == WM_INITMENUPOPUP) {
         sync();
     } else if (msg == WM_SYSKEYDOWN && wp >= 'A' && wp <= 'Z' && !(lp & (1 << 30)) && GetMenu(hwnd)) {
@@ -300,7 +342,11 @@ void menu_attach(void *hwnd)
     AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(display_menu()), L"&Display");
     AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(audio_menu()), L"&Audio");
     AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(input_menu()), L"&Input");
+    AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(game_menu()), L"&Game");
+    if (port_console.flags & PORT_CONSOLE_ONLINE)
+        AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(host::online_menu(kOnline)), L"&Online");
     AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(help_menu()), L"&Help");
+    host::counter_attach(g_hwnd, g_menu);
     host::copy_button_attach(g_hwnd, g_menu);
     if (!SetWindowSubclass(g_hwnd, subclass, 1, 0)) port_log("host: no menu (the window subclass failed)\n");
 }

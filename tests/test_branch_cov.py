@@ -31,8 +31,8 @@ from test_strict_judge import ON_TARGETS  # noqa: E402  (the targets the proven 
 
 from core import ghidra, paths, proof  # noqa: E402
 
-TARGETS = [ROOT / "targets" / t for t in ("dreamcast_sh4", "saturn_sh2", "gamecube_ppc")]
-LINES = {"dreamcast_sh4": 400, "saturn_sh2": 413, "gamecube_ppc": 325}  # each TcOracle's line count (DC's cap: 400)
+TARGETS = [ROOT / "targets" / t for t in ("dreamcast_sh4", "saturn_sh2", "gamecube_ppc", "xbox360_ppc")]
+LINES = {"dreamcast_sh4": 400, "saturn_sh2": 413, "gamecube_ppc": 325, "xbox360_ppc": 365}  # each TcOracle's line count (DC's cap: 400)
 
 
 def text(p):
@@ -131,8 +131,11 @@ class Wiring(unittest.TestCase):
             hook = "if (dirs != null) dirs.hit(res.dirs, prev, pc);"
             self.assertEqual(oracle.count(hook), 1, t.name)
             self.assertLess(oracle.index(hook), oracle.index("if (pc == SENTINEL) break;"), t.name)
-            self.assertLess(oracle.index("if (fold(pc) != pc) {"), oracle.index(hook), t.name)
-            self.assertIn("Set<Integer> cov = new TreeSet<>(), dirs = new TreeSet<>();", oracle)
+            if t.name != "xbox360_ppc":  # its PC is folded as it is read
+                self.assertLess(oracle.index("if (fold(pc) != pc) {"), oracle.index(hook), t.name)
+            # Dreamcast and Saturn declare the compare-edge set after them (2463faa3, boundary_vectors)
+            self.assertRegex(oracle, r"Set<Integer> cov = new TreeSet<>\(\), dirs = new TreeSet<>\(\)"
+                                     r"(;|, edges = new TreeSet<>\(\);)", t.name)
             vec = text(g / "TcVectors.java")
             self.assertIn("if (s == 0) { covDev.addAll(r.cov); dirsDev.addAll(r.dirs); }", vec)
             self.assertIn("covAll.addAll(r.cov); dirsAll.addAll(r.dirs);", vec)
@@ -141,7 +144,7 @@ class Wiring(unittest.TestCase):
             self.assertIn("dirs.summary(dirsDev, dirsAll)", prep)
             self.assertIn("            dirsDev.clear();\n            dirsAll.clear();\n", prep)
             self.assertIn('case "branch_coverage": f.branchCoverage = ', text(g / "TcFacts.java"))
-            if t.name != "gamecube_ppc":  # GameCube has no reach or rescue pass
+            if t.name not in ("gamecube_ppc", "xbox360_ppc"):  # the PowerPC targets have no reach or rescue pass
                 self.assertIn("g.covAll.addAll(e.r.cov); g.dirsAll.addAll(e.r.dirs);", text(g / "TcReach.java"))
                 resc = text(g / "TcRescue.java")
                 for line in ("s.dirsDev = t.dirsDev;", "t.dirsAll = new TreeSet<>();", "t.dirsAll = dirsAll;"):

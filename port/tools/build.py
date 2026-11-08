@@ -174,6 +174,12 @@ def msvc_env(cache):
     return env
 
 
+def cached_game_o2(bdir):
+    """Whether this build folder was set up with the game's C at /O2: the launcher's folder outlives a game.json change."""
+    cache = bdir / "CMakeCache.txt"
+    return cache.is_file() and "PORT_GAME_O2:BOOL=ON" in cache.read_text(encoding="utf-8", errors="replace").splitlines()
+
+
 def configured_from_kit(bdir):
     """True when bdir is a configured build of this kit's CMakeLists.txt with the vcpkg toolchain; a build folder
     configured otherwise (an older layout) loses its cache so that it is configured afresh."""
@@ -204,7 +210,7 @@ def main():
     ap.add_argument("--build-dir", default=None, help="a build of its own in build/NAME (agents: not build/x86)")
     ap.add_argument("--progress", action="store_true", help="the launcher's view: a live count")
     ap.add_argument("--game-o2", action="store_true", help="the game's readable and translator C at /O2, not the judge's /O1 "
-                    "(set when the build folder is first configured; for the proof runs of docs/RUNTIME_TARGET.md)")
+                    "(game.json game_o2 does the same; a build folder set up the other way is set up again)")
     ap.add_argument("--sq-fast", action="store_true", help="the store-queue helpers a block at a time (game.json sq_fast, tx_sqfast.py)")
     ap.add_argument("--no-build-gc", action="store_true", help="keep old --build-dir builds (else removed after 5 days)")
     ap.add_argument("--tx", default=None, help="translator C: tools/dp_judge.py --sp-input's --out folder")
@@ -252,7 +258,8 @@ def main():
     if not vcpkg:
         raise SystemExit("no vcpkg for the kit's host libraries (vcpkg.json): set VCPKG_ROOT, or \"vcpkg\" in "
                          "DecompPipeline/config.local.json (a vcpkg checkout)")
-    if not configured_from_kit(bdir):
+    game_o2 = a.game_o2 or cfg["game_o2"]
+    if not configured_from_kit(bdir) or cached_game_o2(bdir) != game_o2:
         if a.progress:
             print("Setting up the build folder (the first time takes a few minutes)...", flush=True)
         # vcpkg installs vcpkg.json's libraries for x86-windows into the build folder at the first configure
@@ -261,7 +268,7 @@ def main():
                        "-DVCPKG_TARGET_TRIPLET=x86-windows", f"-DVCPKG_MANIFEST_DIR={KIT.as_posix()}", f"-DCMAKE_MAKE_PROGRAM={NINJA}", "-DCMAKE_BUILD_TYPE=Release",
                        "-DCMAKE_C_FLAGS_RELEASE=/DNDEBUG",
                        f"-DPORT_CHECKED={'ON' if a.checked else 'OFF'}", f"-DPORT_GEN={gen.as_posix()}",
-                       f"-DPORT_GAME_O2={'ON' if a.game_o2 else 'OFF'}",
+                       f"-DPORT_GAME_O2={'ON' if game_o2 else 'OFF'}",
                        "-S", str(KIT), "-B", str(bdir)],
                       2400, env=env)
         if not a.progress or rc:

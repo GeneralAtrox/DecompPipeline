@@ -19,7 +19,9 @@ usage: python tools/prepare_list.py --project DIR ADDR|@FILE... [--slots N] [--s
   --dry      list which functions would be prepared, prepare nothing
 Servers stopped: it refuses while the project's server answers (prepare uses the master Ghidra project and writes
 harness/). Resumable: a prepared harness is current, so a run cut short (tools/bounded.py) leaves only the rest.
-Exit 0 when every function has a current harness, 1 otherwise.
+Exit 0 when every function has a current harness, 1 otherwise. A served Ghidra that fails to start
+(core/ghidra_server.StartError: a project path Ghidra refuses, a project owned by another user) stops the run: the
+functions not yet started are listed as errors, not tried, instead of each starting a JVM that fails the same way.
 """
 import argparse
 import concurrent.futures
@@ -57,11 +59,20 @@ def run(cfg, addrs, prepare, reusable, workers, log=print):
             todo.append(a)
     log(f"{len(addrs)} function(s): {len(addrs) - len(todo)} current, {len(todo)} to prepare ({workers} slot(s))")
 
+    halt = []  # the first server start failure (core/ghidra_server.StartError): the rest are not tried
+
     def one(a):
+        if halt:
+            return row(a, "error", detail=f"not tried: {halt[0]}")
         try:
             meta, summary = prepare(a)
         except Exception as e:  # noqa: BLE001  (one bad prepare must not stop the others)
-            return row(a, "error", detail=f"{type(e).__name__}: {str(e).splitlines()[0][:200] if str(e) else ''}")
+            from core.ghidra_server import StartError
+            detail = f"{type(e).__name__}: {str(e).splitlines()[0][:200] if str(e) else ''}"
+            if isinstance(e, StartError) and not halt:
+                halt.append(detail)
+                log(f"stopping: the Ghidra server failed to start ({detail}); the rest are not tried")
+            return row(a, "error", detail=detail)
         return row(a, "prepared", meta, summary)
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max(1, workers)) as ex:

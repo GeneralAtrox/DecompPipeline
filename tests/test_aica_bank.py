@@ -137,6 +137,25 @@ class Dtpk(unittest.TestCase):
         with self.assertRaises(ValueError):
             aica_bank.dtpk_samples(b"RIFF" + bytes(100))
 
+    def test_keep(self):
+        third = struct.pack("<7h", *range(7))
+        blob = make_dtpk([(3, encode(self.x)), (0, self.pcm), (0, third)], [-24, -12, -12])
+        filler = {"form": 1, "loop_start": 0, "loop_end": 5, "data": bytes(6)}
+        cut = aica_bank.dtpk_keep(blob, {1, 2}, filler)
+        self.assertEqual(struct.unpack_from("<I", cut, 8)[0], len(cut))
+        self.assertLess(len(cut), len(blob))
+        s = aica_bank.dtpk_samples(cut)
+        self.assertEqual([r["form"] for r in s], ["pcm8", "pcm16", "pcm16"])
+        self.assertEqual(aica_bank.dtpk_sample_pcm(cut, s[1]), list(range(100)))
+        self.assertEqual(aica_bank.dtpk_sample_pcm(cut, s[2]), list(range(7)))
+        self.assertEqual((s[0]["size"], s[0]["loop_end"]), (6, 5))
+        self.assertEqual(cut[s[0]["offset"]:s[0]["offset"] + 6], bytes(6))
+        self.assertTrue(all(r["offset"] % 4 == 0 for r in s))
+        self.assertEqual(cut[:0x60], blob[:8] + cut[8:12] + blob[12:0x60])  # the header and tables kept
+        self.assertEqual(aica_bank.dtpk_programs(cut), aica_bank.dtpk_programs(blob))
+        with self.assertRaises(ValueError):
+            aica_bank.dtpk_keep(b"RIFF" + bytes(100), {0}, filler)
+
     def test_dump(self):
         d = tempfile.mkdtemp()
         try:

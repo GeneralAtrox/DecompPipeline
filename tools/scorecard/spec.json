@@ -6,7 +6,7 @@
                 "own_translator": null,
                 "runtime": {"reference": "Power Stone 2", "logs": ["DreamCast/play/PowerStone2/data/logs/port*.log"],
                             "layers": ["Sound CPU", "Guest memory", "SH-4", "Store-queue", "PowerVR"]}},
-  "saturn": {"name": "Saturn", "target": "saturn_sh2", "cpu": "sh2", "roots": ["SegaSaturn/Dragon Force", "SegaSaturn/Dragon Force 2",
+  "saturn": {"name": "Saturn", "target": "saturn_sh2", "cpu": "sh2", "kit": "saturn", "roots": ["SegaSaturn/Dragon Force", "SegaSaturn/Dragon Force 2",
                                                                      "SegaSaturn/SaturnBomberman", "SegaSaturn/Robopit"],
              "own_translator": null,
              "runtime": {"reference": "Robo Pit", "logs": ["DreamCast/play/Robopit/data/logs/port*.log"], "layers": ["Saturn"]}},
@@ -31,7 +31,7 @@
   {"id": "agent_on_fail", "name": "agent only on translator FAIL",
    "all": ["core/translate_stage.py"], "json_key": ["targets/{target}/target.json", "translator"]},
   {"id": "readable", "name": "readable C", "all": ["targets/{target}/runtime_rd/rd_runner.c"]},
-  {"id": "port", "name": "port build", "any": ["port/runtime/{cpu}_rt.c", "targets/{target}/port/*"]},
+  {"id": "port", "name": "port build", "any": ["port/runtime/{cpu}_rt.c", "port/{kit}/*", "targets/{target}/port/*"]},
   {"id": "lockstep", "name": "lockstep divergence finder",
    "all": ["port/tools/lockstep.py", "port/tools/divergence.py"], "requires": "port"}
  ],
@@ -42,7 +42,7 @@
    "all": ["targets/{target}/ghidra_scripts/TcDirs.java", "tools/mutation_audit.py", "tools/mutation_audit/baseline.json"]}
  ],
  "mutation_keys": {"tc": "dreamcast", "spawn-main": "dreamcast", "ps2": "dreamcast",
-                   "skies": "gamecube"},
+                   "skies": "gamecube", "th": "xbox360", "robopit": "saturn"},
  "thresholds": {
   "verified_pct": 100.0,
   "readable_pct": 100.0,
@@ -53,7 +53,8 @@
   "idle_share_pct": 10.0,
   "mutation_kill_pct": 85.0,
   "divergent_scenarios": 0,
-  "runtime": {"fps": 144, "frame_p99_ms": 6.94, "width": 2560, "height": 1600, "min_frames": 600,
+  "readable_in_game_pct": 100.0,
+  "runtime": {"make_p99_ms": 6.67, "late_per_1000": 1, "machine": "target_laptop", "width": 2560, "height": 1600, "min_frames": 600,
               "layer_done": ["Replaced", "Switched", "Native"],
               "aspect_shapes": ["4:3", "16:10", "16:9", "21:9", "32:9", "narrower"]}
  },

@@ -5,14 +5,18 @@ Nearest existing: gen_port.py / tx_port.py - they build the SH-4 (Dreamcast) por
 registry of readable C; the SH-2 translator has neither yet, so this one takes the judge-form C as it is. The one
 change made to the text is the entry stack: the judge form starts each function at a fixed r15 (`r15 = 0x060fe000u`);
 here it starts at the sp tc_call gives it (sat_entry_sp), so a function's stack arguments and its pushes sit where the
-caller left room. Nothing else in a function is touched, and the stub/verdict state is reported at run time.
+caller left room, and each call passes the caller's r15 (tc_call_sp), so a callee that takes more stack words than a
+TcArgs holds reads the rest from the caller's stack. Nothing else in a function is touched, and the stub/verdict state is
+reported at run time.
 
   gen_saturn.py --game game.json --tx DIR_OF_ADDR.C --out OUTDIR
 """
 import argparse
+import base64
 import json
 import pathlib
 import re
+import struct
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -40,6 +44,7 @@ RETURN = re.compile(r"\breturn\s+(?!tc_call\(|tc_tail(?:_sp)?\()([^;{}]*);")
 CALL = re.compile(r"(\br0\s*=\s*tc_call\([^;]*\);)")
 TAIL_CALL = re.compile(r"\br0\s*=\s*tc_call\([^;]*\);\s*$")
 JUMP = re.compile(r"\br0\s*=\s*tc_call\(([^;]*)\);\s*return r0;")
+CALL_SP = re.compile(r"\btc_call\(([^;]*?), &a\)")  # a call from a frame whose r15 is the real sp: the callee's 9th+ stack words
 PARAM = {4: "a0", 5: "a1", 6: "a2", 7: "a3"}
 
 
@@ -163,6 +168,8 @@ def main(argv=None):
         text = vblank_waits(text, cfg.get("vblank_flags", ()))
         if f"0x{addr:08x}" in cfg.get("main_loops", ()):
             text = re.sub(r"(u32 fn_[0-9a-f]+\([^)]*\)\s*\{)", lambda m: m.group(1) + " sat_idle_turn();", text, count=1)
+        if "r15 = sat_entry_sp;" in text and "body(" not in text:
+            text = CALL_SP.sub(r"tc_call_sp(\1, &a, r15)", text)
         rows.append((addr, fb, computed))
         if addr in more:
             extra_texts.append(text)
@@ -199,6 +206,18 @@ def main(argv=None):
         hdr.append(f"#define SAT_SLAVE_SP 0x{int(cfg['slave_sp'], 0):08x}u")
     if cfg.get("sound_cpu"):  # the 68000 runs the game's own sound driver (sat_scsp.c); the stand-ins below are then unused
         hdr.append("#define SAT_SOUND_CPU 1")
+    ws = cfg.get("widescreen")
+    if ws:  # the picture composed wider in play runs (sat_wide.c); "rbg0": only pictures that show RBG0 (3D), not 2D screens
+        if ws not in (True, "rbg0"):
+            sys.exit(f"game.json widescreen: {ws!r} is not true or \"rbg0\"")
+        hdr.append(f"#define SAT_WIDESCREEN {1 if ws is True else 2}")
+    wc = cfg.get("wide_cull")
+    if wc:  # SGL's work area and the functions that read its window: the culling widened with the picture (sat_wide.c)
+        hdr += [f"#define SAT_WIDE_SGL 0x{int(wc['sgl'], 0):08x}u",
+                "#define SAT_WIDE_CULL_AT {" + ", ".join(f"0x{int(x, 0):08x}u" for x in wc["at"]) + "}"]
+    gs = cfg.get("ground_shadows")
+    if gs:  # the game's floor-shadow quads, drawn before the rest of VDP1's list in play runs (sat_vdp1_list.c)
+        hdr += [f"#define SAT_GROUND_SHADOW_PMOD 0x{int(gs['pmod'], 0):04x}u", f"#define SAT_GROUND_SHADOW_SRCA 0x{int(gs['srca'], 0):04x}u"]
     ss = cfg.get("sound_stream")
     if ss:  # the 68K driver's stream-progress report (sat_scsp.c): off when the game names none
         hdr += [
@@ -211,12 +230,115 @@ def main(argv=None):
             f"#define SAT_SS_BLOCK {int(ss['block'])}u",
             f"#define SAT_SS_RATE {int(ss['rate'])}u",
         ]
+    hdr += twin_stick_h(cfg.get("twin_stick"))
+    hdr += auto_load_h(cfg.get("auto_load"))
+    hdr += movie_h(cfg.get("movie"))
+    hdr += netplay_h(cfg.get("netplay"))
     hdr.append("")
     (out / "sat_game.h").write_text("\n".join(hdr), encoding="utf-8")
+    (out / "sat_part_data.h").write_text(part_choice_h(cfg.get("part_choice")), encoding="utf-8")
     game_dir = pathlib.Path(a.game).resolve().parent  # scene_dump.json sits beside game.json; without it the dump has the kit's fields only
     (out / "scene_map.c").write_text(scene_map.scene_map_c({"dir": game_dir}, "", "", header=""), encoding="utf-8")
     (out / "sat_chunks.txt").write_text("\n".join(f"txchunk_{i:02d}.c" for i in range(idx)) + "\n", encoding="utf-8")
     print(f"{len(rows)} functions, {idx} chunks, {sum(1 for _, _, c in rows if c)} with a computed frame")
+
+
+def twin_stick_h(ts):
+    """game.json twin_stick, the right stick turning in the game's fights (port/base/pad_twin.c), as the PortTwinStick
+    sat_game.h gives: {"fight": a function the game runs only in a fight, "turn": [left, right], "strafe": [left, right]},
+    the buttons by the console's action names."""
+    if not ts:
+        return []
+    names = [json.dumps(n) for n in list(ts["turn"]) + list(ts["strafe"])]
+    if len(names) != 4:
+        sys.exit("gen_saturn: twin_stick turn and strafe each take two buttons, left then right")
+    return [f"#define SAT_TWIN_STICK {{0x{int(ts['fight'], 0):08x}u, {{{names[0]}, {names[1]}}}, {{{names[2]}, {names[3]}}}}}"]
+def netplay_h(np):
+    """game.json netplay, online play for two (port/saturn/sat_net.c): {"pad": the game's pad the other player takes (1, the
+    second, is the only one so far), "delay": frames of input delay (default 3), "hash_every": frames between desync checks
+    (default 50), "port": the UDP port a host waits on (default 29720), "test_byte": a work-RAM address --net-test-desync
+    flips}. Absent: the build has no online play."""
+    if not np:
+        return []
+    if int(np.get("pad", 1)) != 1:
+        sys.exit("gen_saturn: netplay pad: only 1 (the second pad) is supported")
+    return ["#define SAT_NETPLAY 1", f"#define SAT_NET_DELAY {int(np.get('delay', 3))}",
+            f"#define SAT_NET_HASH_EVERY {int(np.get('hash_every', 50))}", f"#define SAT_NET_PORT {int(np.get('port', 29720))}",
+            f"#define SAT_NET_TEST_BYTE 0x{int(str(np.get('test_byte', '0')), 0):08x}u"]
+
+
+def movie_h(mv):
+    """game.json movie, the native movie player (port/saturn/sat_movie.c): {"call": the game's movie routine, "name_arg": the
+    argument (0..3) holding the file's name, "skip_after_arg": the one holding how many pictures pass before START skips
+    (absent: at once), "skipped": what the routine returns when skipped (0 when played out), "screen": [w, h] the screen
+    the picture is centred in (absent: the last composed picture's), "open_blanks": the original's blanks from the call to
+    the file's first read, "close_blanks": from the picture that took a skip to the return, "reset_call": the game's routine
+    the original calls on A+B+C+START at that picture}."""
+    if not mv:
+        return []
+    out = [f"#define SAT_MOVIE_FN 0x{int(mv['call'], 0):08x}u", f"#define SAT_MOVIE_NAME_ARG {int(mv.get('name_arg', 0))}",
+           f"#define SAT_MOVIE_SKIPPED 0x{int(mv.get('skipped', -1)) & 0xffffffff:08x}u"]
+    if "skip_after_arg" in mv:
+        out.append(f"#define SAT_MOVIE_SKIP_AFTER_ARG {int(mv['skip_after_arg'])}")
+    if "screen" in mv:
+        out += [f"#define SAT_MOVIE_SCREEN_W {int(mv['screen'][0])}u", f"#define SAT_MOVIE_SCREEN_H {int(mv['screen'][1])}u"]
+    for key in ("open_blanks", "close_blanks"):
+        if key in mv:
+            out.append(f"#define SAT_MOVIE_{key.upper()} {int(mv[key])}u")
+    if "reset_call" in mv:
+        out.append(f"#define SAT_MOVIE_RESET_CALL 0x{int(mv['reset_call'], 0):08x}u")
+    return out
+
+
+def auto_load_h(al):
+    """game.json auto_load, the game's own load path driven at boot when its save file is there (port/base/autoload.c,
+    port/saturn/sat_bup.c), as the defines sat_game.h gives: the file's 11-character name and one AutoLoadStep per step,
+    {"enter" or "leave": function, "press": button or "UP+A", "poke": [address, 16-bit value], "call": [function,
+    argument]}: a step with call runs the game's own function once when it ends (its poke is set only for the call)."""
+    if not al:
+        return []
+    name = al["file"]
+    if len(name) != 11:
+        sys.exit(f"gen_saturn: auto_load file {name!r} is not the 11 characters a backup file name has")
+    steps = []
+    for st in al["steps"]:
+        fn, leave = (st["leave"], 1) if "leave" in st else (st["enter"], 0)
+        poke = st.get("poke", [0, 0])
+        press = json.dumps(st["press"]) if st.get("press") else "NULL"
+        call = st.get("call", [0, 0])
+        steps.append(f"{{0x{int(fn, 0):08x}u, {leave}, {press}, 0x{int(str(poke[0]), 0):08x}u, {int(str(poke[1]), 0)}u, "
+                     f"0x{int(str(call[0]), 0):08x}u, {int(str(call[1]), 0)}u}}")
+    return [f"#define SAT_AUTO_LOAD_FILE {json.dumps(name)}", "#define SAT_AUTO_LOAD_STEPS {" + ", ".join(steps) + "}"]
+
+
+def part_choice_h(pc):
+    """game.json part_choice, a model part the player picks (port/saturn/sat_part.c), as C: index 0 is the original."""
+    lines = ["/* generated by gen_saturn.py from game.json part_choice: the versions of a model part (sat_part.c) */"]
+    if not pc:
+        return "\n".join(lines + ["#define SAT_PART_N 0", ""])
+    ch = pc["choices"]
+    lines += [
+        f"#define SAT_PART_N {len(ch) + 1}",
+        f"#define SAT_PART_TITLE {json.dumps(pc['title'])}",
+        f"#define SAT_PART_OBJECT 0x{int(pc['object'], 0):08x}u",
+        f"#define SAT_PART_PDATA 0x{int(pc['pdata'], 0):08x}u",
+        f"#define SAT_PART_POINTS {int(pc['points'])}u",
+        f"#define SAT_PART_POLYS {int(pc['polygons'])}u",
+        f"#define SAT_PART_DROP {int(pc['drop_points'])}u",
+        "static const char *const sat_part_labels[] = {" + ", ".join(json.dumps(x) for x in [pc["original"]] + [c[1] for c in ch]) + "};",
+        "static const char *const sat_part_values[] = {" + ", ".join(json.dumps(x) for x in ["original"] + [c[0] for c in ch]) + "};",
+    ]
+    for i, (name, _, b64) in enumerate(ch, 1):
+        data = base64.b64decode(b64)
+        # the game copies and transforms every point of a part, and too many overrun it (Robo Pit: 450 crashed, 354
+        # runs); max_points is the most a game has been shown to take
+        points = int(pc["points"]) - int(pc["drop_points"]) + struct.unpack_from(">H", data, 2)[0]
+        if "max_points" in pc and points > int(pc["max_points"]):
+            sys.exit(f"gen_saturn: part_choice {name} has {points} points, more than max_points {pc['max_points']}")
+        rows = [",".join(str(x) for x in data[k:k + 32]) for k in range(0, len(data), 32)]
+        lines.append(f"static const unsigned char sat_part_e{i}[] = {{\n" + ",\n".join(rows) + "};")
+    lines.append("static const unsigned char *const sat_part_edits[] = {0, " + ", ".join(f"sat_part_e{i}" for i in range(1, len(ch) + 1)) + "};")
+    return "\n".join(lines + [""])
 
 
 def unit(out, name, texts):

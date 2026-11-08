@@ -113,7 +113,6 @@ int console_present_option(const char *arg, const char *value)
 void console_present_over(void *back_buffer) { (void)back_buffer; }
 void console_present_release(void) {}
 int console_widens(void) { return 0; }
-void extra_set_interp(int on) { (void)on; }
 int extra_interp(void) { return 0; }
 void extra_set_fps(unsigned fps) { (void)fps; }
 unsigned extra_fps(void) { return 0; }
@@ -132,8 +131,9 @@ int port_main(int argc, char **argv)
 {
     host_set_args(argc, argv);
     /* TODO: take the console's own options, then the base's in a chain as saturn/sat_main.c does (input_option,
-     * session_option, scene_dump_option, game_log_option, play_stats_option, host_window_option, cpu_present_option),
-     * port_log_open, game_log_start, host_phangrade_start; then boot the machine and run it. Each tick ends by
+     * session_option, scene_dump_option, game_log_option, play_stats_option, work_count_option, host_window_option, cpu_present_option),
+     * port_log_open, game_log_start, host_phangrade_start; then boot the machine and run it. Each blank calls
+     * work_count_tick(blank) and the exit work_count_report(). Each tick ends by
      * presenting: cpu_present(frame, w, h) unless headless, game_log_poll(port_vblank_count()), scene_dump_poll(...),
      * play_stats_shown(). */
     (void)g_headless;

@@ -18,6 +18,7 @@ import argparse
 import concurrent.futures as cf
 import hashlib
 import importlib
+import importlib.util
 import json
 import pathlib
 import sys
@@ -50,10 +51,14 @@ def shas(mod, ws, addrs, tj, entries):
     proj = json.loads((ws / "project.json").read_text(encoding="utf-8"))
     img = mod.Image((ws / proj["binary"]).read_bytes(), facts.image_base)
     out = {}
+    spec = importlib.util.spec_from_file_location("sat_translate", TARGET / "translate.py")
+    tx = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(tx)
+    ranges = tx.body_ranges(ws / "state" / "function_bodies.txt")
     for x in addrs:
         t0 = time.time()
         meta = json.loads((ws / "harness" / x / "meta.json").read_text(encoding="utf-8"))
-        body = [(int(lo, 16), int(hi, 16)) for lo, hi in meta.get("blocks") or []]
+        body = tx.body_of(meta, int(x, 16), ranges)
         try:
             src = mod.translate_function(img, int(x, 16), mod.Signature.from_meta(meta), facts, body or None,
                                          entries=entries)

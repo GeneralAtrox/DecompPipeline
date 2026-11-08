@@ -8,12 +8,16 @@
 #include "sat.h"
 #include "sat_cd.h"
 #include "audio_out.h"
+#include "sat_sys.h"
 
 enum { QUEUE_SECTORS = 48 }; /* the most held: a sector past that is lost, as a late one is on a real drive */
 enum { LEAD_SECTORS = 6 };   /* silence before a sector that finds the output empty: 80 ms for a late frame to use up */
 
 static AudioOut *g_out;
-static u32 g_sectors;
+static u32 g_sectors, g_last_vb;
+
+/* a disc track is playing: a sector came in the last few blanks (a black screen with music does not run fast) */
+int sat_cdda_playing(void) { return g_sectors && sat_vblank_count() - g_last_vb < 8u; }
 
 void sat_cdda_enable(int on)
 {
@@ -36,7 +40,10 @@ void sat_cdda_push(const u8 *raw)
 {
     static u32 lost, dry; /* the output full, or empty when the next sector came: a gap in the music (the first of a track counts too) */
     u32 queued = g_out ? (u32)audio_out_queued(g_out) : 0u;
-    if (g_sectors++ % 750u == 0) port_log("cdda: audio sector %u played so far (a window run plays it), %u sectors lost, ran dry %u times\n", g_sectors, lost, dry);
+    g_last_vb = sat_vblank_count();
+    if (g_sectors++ % 750u == 0)
+        port_log("cdda: audio sector %u played so far (a window run plays it), %u sectors lost, ran dry %u times, the device played silence mid-music %u times\n",
+                 g_sectors, lost, dry, g_out ? audio_out_gaps(g_out, NULL) : 0u);
     if (!g_out) return;
     if (queued >= QUEUE_SECTORS * SAT_SECTOR) {
         lost++;

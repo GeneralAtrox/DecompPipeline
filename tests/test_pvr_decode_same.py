@@ -113,6 +113,12 @@ int main(void)
                 one(RECT | STRIDE | FMT(f) | addr, w, h, stride | 1u, "stride odd");
             }
     }
+    for (u32 f = 0; f < 8u; f++) { /* a movie frame's shape, and rows over the end of texture memory (the address wraps) */
+        u32 end = PVRX_VRAM_SIZE / 8u - 1u - f * 3u;
+        one(RECT | STRIDE | FMT(3) | (rnd() & 0xfffffu) / 8u, 1024, 512, 640 + f * 2u, "yuv movie");
+        one(RECT | STRIDE | FMT(3) | end, 64, 16, 64 + f, "yuv wrap");
+        one(RECT | FMT(3) | end, 64, 16, 0, "yuv rect wrap");
+    }
     printf("cases %u mismatches %u\n", cases, bad);
     return bad != 0;
 }

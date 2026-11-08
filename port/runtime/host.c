@@ -10,6 +10,7 @@
 #include "lockstep.h"
 #include "prof.h"
 #include "play_stats.h"
+#include "work_count.h"
 
 #define VBLANK_TASKS 8
 static u32 g_vblanks;
@@ -44,6 +45,7 @@ static void wait_vblank(int extra)
 {
     u64 pt;
     extra |= port_extra_pending(); /* a frame held at a flip: its in-between frames are drawn in this wait */
+    if (extra && port_extra_thread_go()) extra = 0; /* or by their own thread, from now on (--present-thread) */
     gfx_pump();
     play_stats_wait(1);
     pt = prof_begin(PROF_WAIT);
@@ -55,8 +57,10 @@ static void wait_vblank(int extra)
     }
     prof_end(pt);
     play_stats_wait(0);
+    port_extra_thread_tick(); /* a slow in-between frame keeps out of this tick's render */
     port_extra_land();
     g_vblanks++;
+    work_count_tick(g_vblanks);
     if (host_fixed_clock() && host_fast_until() && g_vblanks >= host_fast_until()) {
         host_clear_fixed();
         port_log("host: real time from vertical blank %u (--fast-until)\n", g_vblanks);

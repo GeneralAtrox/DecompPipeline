@@ -22,6 +22,7 @@ u32 sat_mix_call_address(u32 slot); /* CA: the 4096-sample page a voice is readi
 void sat_audio_enable(int on);
 void sat_audio_wav(const char *path);
 void sat_audio_push(const s16 *stereo, u32 frames);
+int sat_audio_silent(void); /* sat_audio.c: the last frame of mixed sound was all zero */
 void sat_audio_close(void);
 
 #endif

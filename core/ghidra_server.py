@@ -11,7 +11,9 @@ change in any (a script sync, a slot copy refresh after a catalog change) restar
 every failed request (a script that threw may leave a decompiler or emulator behind), after `max_requests`
 requests, and stopped after `idle_s` seconds unused, so its memory comes back. Each request has a watchdog: past
 kill_timeout (or a stop) the server's whole process tree is killed and the request fails as a fresh prepare
-would ("Ghidra timeout").
+would ("Ghidra timeout"). A server that fails before TcServe is ready (it exited, its launcher waits on a key, or
+Ghidra aborted: a project path it refuses, a project owned by another user) raises StartError: every request on that
+project would fail the same way, so a caller with a list stops (tools/prepare_list.py).
 
 The machine-wide queue (core/ghidra_broker): a server takes one Lease when it starts and holds it until it closes, so
 its requests neither queue nor start a JVM (ghidra.slot takes no token for a served slot). Between requests the
@@ -37,7 +39,12 @@ DEFAULTS = {"enabled": False, "staged": False, "max_requests": 200, "idle_s": 12
             "yield_idle_s": 2}
 SERVE_DIR = pathlib.Path(__file__).resolve().parent / "ghidra_serve"
 DONE = re.compile(r"TcServe: done (\d+) (ok|error) ?(.*?)\s*(\(GhidraScript\))?\s*$")
+ABORT = "Abort due to Headless analyzer error"  # HeadlessAnalyzer's fatal line: the JVM ends without TcServe
 _servers = {}  # slot index -> Server
+
+
+class StartError(RuntimeError):
+    """The server failed before TcServe was ready: its project, path or launcher is wrong, not one function."""
 _LOCK = threading.RLock()
 _reaper = []
 
@@ -99,8 +106,10 @@ class Server:
     def alive(self):
         return self.proc.poll() is None
 
-    def _until(self, done, timeout, on_line, stop_flag, out):
-        """Read lines (to on_line and out) until done(line) is true; raises on exit, timeout or stop."""
+    def _until(self, done, timeout, on_line, stop_flag, out, starting=False):
+        """Read lines (to on_line and out) until done(line) is true; raises on exit, timeout or stop. starting (ready):
+        an exit, a launcher waiting on a key or Ghidra's abort line raises StartError, at once."""
+        fail = StartError if starting else RuntimeError
         deadline = time.monotonic() + timeout
         while True:
             try:
@@ -108,7 +117,7 @@ class Server:
             except queue.Empty:
                 line = ""
             if line is None:
-                raise RuntimeError(f"Ghidra server (slot {self.slot}) exited:\n" + "".join(out[-25:]))
+                raise fail(f"Ghidra server (slot {self.slot}) exited:\n" + "".join(out[-25:]))
             if line:
                 out.append(line)
                 if on_line:
@@ -118,14 +127,17 @@ class Server:
                 if done(line):
                     return line
                 if "Press any key to continue" in line:  # the launcher failed and waits on our stdin
-                    raise RuntimeError(f"Ghidra server (slot {self.slot}) failed to start:\n" + "".join(out[-25:]))
+                    raise fail(f"Ghidra server (slot {self.slot}) failed to start:\n" + "".join(out[-25:]))
+                if starting and ABORT in line:  # e.g. "Path element starting with '.' is not permitted"
+                    raise StartError(f"Ghidra server (slot {self.slot}) aborted: {line.split(ABORT, 1)[1].strip()}")
             if time.monotonic() > deadline:
                 raise RuntimeError("Ghidra timeout")
             if stop_flag is not None and stop_flag.is_set():
                 raise RuntimeError("Ghidra stopped")
 
     def ready(self, timeout, on_line=None, stop_flag=None, out=None):
-        self._until(lambda line: "TcServe: ready" in line, timeout, on_line, stop_flag, out if out is not None else [])
+        self._until(lambda line: "TcServe: ready" in line, timeout, on_line, stop_flag, out if out is not None else [],
+                    starting=True)
 
     def request(self, args, timeout, on_line=None, stop_flag=None):
         """TcPrepare with args: returns its output lines; raises RuntimeError on its failure, a timeout or a stop."""

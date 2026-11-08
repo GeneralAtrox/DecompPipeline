@@ -83,8 +83,11 @@ def adopt(addr, n, path, res):
         atts.append({"n": len(atts) + 1, "kind": "readopt", "at": refine.now(), "from_attempt": n, "verdict": "PASS",
                      "stage": res["stage"], "failing": res.get("failing"), "total": res.get("total"), "headers": cur,
                      "backup": backup and paths.show(backup)})
-        row.update(status="readable", verified=refine.now(), finished=refine.now(), headers=cur, source=source)
         for k in ("stale_headers", "note", "redo_failed", "redo_of", "sync_refused"):
+            row.pop(k, None)
+        st, fields, gone = refine.pass_status(addr, row)  # unproven, needs_review (core/proof)
+        row.update(status=st, verified=refine.now(), finished=refine.now(), headers=cur, source=source, **fields)
+        for k in gone:
             row.pop(k, None)
         return row
 

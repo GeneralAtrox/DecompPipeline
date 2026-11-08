@@ -33,6 +33,7 @@ u32 cdb_actual_size(u32 part, u32 pos, u32 num);  /* bytes */
 /* sat_cdda.c: the audio tracks, played as the drive turns */
 void sat_cdda_enable(int on);
 void sat_cdda_flush(void);
+int sat_cdda_playing(void);                     /* sat_cdda.c: a disc track played in the last few blanks */
 void sat_cdda_push(const u8 *raw);                /* one audio sector (2352 bytes) */
 
 /* the data port (0x05818000) */
@@ -43,5 +44,7 @@ u32 xfer_end(void);                               /* bytes moved; deletes sector
 int xfer_active(void);
 
 extern u32 sat_cd_data_rate; /* sat_cd.c */
+void sat_cd_played(u32 start, u32 at, u32 end); /* sat_movie.c: a movie the host played leaves the drive paused at `at` */
+extern int sat_cd_fast_loads; /* sat_cd.c: 1 a load fills the buffer at once, 0 the drive's rate, -1 not set */
 
 #endif

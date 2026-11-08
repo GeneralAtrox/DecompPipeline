@@ -10,8 +10,26 @@
   "harness_reuse": false,
   "fsca_table": false,
   "fma": "fused",
-  "stamp_scopes": [],
+  "stamp_scopes": [
+    {"scope": "unlisted_call_args", "why": "TcTrack.of writes CA lines also at a direct call or branch to code no listed callee starts, and at a run on past the body's end (2026-11-07): only a body without a computed call or jump that has one makes other bytes (core/unchecked_args.sh_in_scope / ppc_in_scope)",
+     "scripts": {"TcTrack.java": ["d7c5ee2fd2089948bda0206e4e666caf0cd3bf2c485648b955eff83a1a174556", "68aec5e5ed0eb7d5ee0643b65e7793eb33456ff1a394621a28877716dedda974"]}},
+    {"scope": "boundary_vectors", "flags": ["boundary_vectors"], "why": "the compare-edge pass (TcBound.Edges) is not wired on this target: TcBound.java's edit changes no harness byte; first, so the pre-wave scope below still stands for its functions",
+     "scripts": {"TcBound.java": ["f2f05bdacf2971165552f416d43b68da032190280612ff7134273ce9b9023165", "201c711521ea78477868cdf0f5a97c4a0be78650f4311d51d0c001b963f6535c"]}},
+    {"scope": "prewave_flags", "why": "the pre-wave trust items (TcDirs, TcBound, TcStrict) change no harness byte while their six flags are off; TcBound.Edges (boundary_vectors, 2026-11-06) is not wired on this target",
+     "scripts": {
+       "TcFacts.java": ["645a27aebc0ee15ab6f6c1eca159f0e462a387e4743072e790bccf7c1b5c8ab6", "83bd2a08fec3212bc47c802e2c81d9d3bcb7b15ac7ac27991c8fbe921fd73c3a"],
+       "TcOracle.java": ["b8b4f60db901f55888a6260e7bb9b79e7597632ac0992f72922e0fb3f5c80704", "26ace622857ddc12739ba3535250bb60f3e2215cad1b65f3c459083420717c17"],
+       "TcPrepare.java": ["684f740bc356d5459e6d8fb78a3b478dbcc76373432fe54191fc57897cbe18e8", "bfdb9bf299ce5d7e60f272ac5967cd1ae05a0902dda34dacf8759090b7ebdaea"],
+       "TcVectors.java": ["a391f48fa4717f5ed8e0b91a9c0dcbd7c4cd0370a1e697c0d6c31cd18ad1d70c", "c981aa195a89fbb41e8646b8d5400f74a8444a1429e259a2c713e372aff057d8"],
+       "TcBound.java": [null, "201c711521ea78477868cdf0f5a97c4a0be78650f4311d51d0c001b963f6535c"],
+       "TcBoundPass.java": [null, "4bf2b11f1279f932dfc43e8f4b735feb62bf6c3fe2ae7d00ffa75747723e16fc"],
+       "TcDirs.java": [null, "a5249826a1e0cdf9e86928ab6a816ca6fe880690b0b44677e298f69fb59b59d5"],
+       "TcJunk.java": [null, "b7612543d12e38bfd2e6b7b09fddb9d692c86a597abbb6cb98abfb06496c58f8"],
+       "TcStrict.java": [null, "86b8ac2a255ab03b83588d8a43a98a870646b20934f55e35af8aec1062532bb1"]}}
+  ],
   "phase": 1,
+  "branch_coverage": true, "targeted_vectors": true,
+  "mock_junk": true, "mock_writes": true, "call_snapshots": true, "exit_frame": true,
   "translator": {
     "name": "xenon-translate",
     "command": ["{python}", "{target}/translate.py", "--repo", "{repo}", "--workspace", "{workspace}", "--addr",
@@ -77,7 +95,12 @@
     "TcVmxInt.java",
     "TcVmxLanes.java",
     "TcVmxOp.java",
-    "TcVmxTables.java"
+    "TcVmxTables.java",
+    "TcDirs.java",
+    "TcBound.java",
+    "TcBoundPass.java",
+    "TcJunk.java",
+    "TcStrict.java"
   ],
   "shared_scripts": ["ppc"],
   "known_blockers": [],

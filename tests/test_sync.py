@@ -9,6 +9,7 @@ import atexit
 import json
 import os
 import pathlib
+import shutil
 import sys
 import tempfile
 import unittest
@@ -312,6 +313,12 @@ class SyncAudit(unittest.TestCase):
 
 class SyncCompile(SyncCase):
     def test_synced_file_builds_at_w4(self):
+        try:  # a machine without Visual Studio (build box A): nothing to build game.h with
+            env = rcheck.msvc_env_x86(self.cfg)
+        except (RuntimeError, OSError) as e:
+            self.skipTest(f"no Visual Studio found: the 32-bit environment game.h builds in did not load ({e})")
+        if not shutil.which("cl.exe", path=next((v for k, v in env.items() if k.upper() == "PATH"), "")):
+            self.skipTest("no Visual Studio found: cl.exe is not in the 32-bit environment")
         self.name_them()
         sync_run.sync(self.cfg, [A], workers=1, log=lambda m: None)
         inc = self.ws / "build" / "inc"  # the port header (prototypes) followed by the synced function

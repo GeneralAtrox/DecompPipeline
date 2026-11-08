@@ -1,4 +1,4 @@
-# The readable stage on the Saturn and the GameCube
+# The readable stage on the Saturn, the GameCube and the Xbox 360
 
 The Dreamcast's readable stage (core/readable_check, runtime_rd, core/refine) turns proven raw C into readable C and
 judges it on the same test vectors as the raw C. This note says what the Saturn (SH-2) and GameCube (PowerPC) versions
@@ -56,6 +56,32 @@ Both consoles store values most significant byte first; the host (x86) stores th
   readable_task.md.
 - Variadic functions under test are refused for now (none among Skies of Arcadia's matched functions).
 
+## Xbox 360 (Xenon PowerPC, 64-bit registers)
+
+Built on the GameCube's: targets/xbox360_ppc/x360_readable.py imports ppc_readable for the parts that are the same
+(running the runner, the host-stack pairing, lint_ppc, data_functions, each taking this target's record, raw API and
+address pattern) and keeps only what differs.
+
+- A 64-bit readable runtime (core/readable_check.build x64: the raw judge's Visual Studio environment). The runner's
+  own image is at target.json readable_image_base (0x5a000000, /DYNAMICBASE:NO /FIXED:NO, LNK4281 ignored) and the
+  guest regions are mapped at their own addresses: heap 0x40000000, stack 0x70000000 (not compared), r13's kernel
+  page 0x7fff0000, image 0x82000000. game.h's guest addresses go through uintptr_t (core/readable.game_h wide). A
+  written page is found with MEM_WRITE_WATCH and only written or poked pages are restored between vectors.
+- Calls: a call to a guest address faults with the address equal to rip; the x64 trap (runtime_rd/rd_veh.c) reads
+  argument k from rcx/rdx/r8/r9 or xmm0..xmm3 by position, then [rsp+8+8k], places it where the Xenon passes it
+  (RdProto regs: r3..r10, f1..f13, s0..s7), logs the 30-field call record and returns the scripted rax and xmm0.
+  Calls through function pointers take their prototype from expected.txt's CA lines.
+- Placement (x360_readable_abi): integers r3..r10 (64-bit), floats f1..f13 counted apart, then stack doublewords at
+  r1+0x50+8N. A raw signature's gaps keep their registers (param_rN / param_fN), the function under test's parameters
+  keep the harness's storage while they keep raw.c's names, an integer reaches its register extended as its type
+  says, and the result fills r3 the same way (compared in all 64 bits).
+- A callee known only by its raw signature takes u64 for every integer narrower than a register
+  (register_sig): the original passes, and the raw judge compares, all 64 bits, and Ghidra's s32 is a guess.
+- Floats as on the GameCube; fmadd is fused (TC_FMA_FUSED, target.json "fma": "fused", else the build is refused).
+- Not carried over (each makes a correct function fail, never a wrong one pass): variadic callees, vector arguments
+  across a call (the oracle refuses them too), out-pointers into the caller's frame, stack addresses stored to memory,
+  lean sandboxes. core/global_infer names globals with plain types; on this target they must be be_ types (BE1).
+
 ## Shared files changed (overlaps for merging)
 
 - core/compare.py: STACK_HI, RAM, FLOAT_REGS, UNMAPPED from judge_memory (Dreamcast defaults).
@@ -65,3 +91,6 @@ Both consoles store values most significant byte first; the host (x86) stores th
   readable_context.py: the Dreamcast constants read from compare; no-FPU placement.
 - core/readable_sandbox.py: rd_be.h copied when present, the target's readable_task.md, the two GameCube hooks, and
   a do-nothing return of `0` for any result type.
+- Xbox 360: core/readable_check.build x64 (and link_flags' /IGNORE:4281), core/readable.game_h wide;
+  targets/gamecube_ppc/ppc_readable.py's map_stack_args, lint_ppc and data_functions take the record, raw API and
+  address pattern (GameCube defaults unchanged).

@@ -13,6 +13,7 @@
 #include "sat.h"
 #include "sat_sys.h"
 #include "console.h"
+#include "sat_net.h"
 
 /* Saturn button bits in the order of the pad's two data bytes (1 = pressed here; the SMPC inverts) */
 enum {
@@ -32,17 +33,24 @@ const PortAction *console_actions(unsigned *count)
     return k_actions;
 }
 
+/* the Saturn buttons held on one pad (1 = pressed) */
+u32 sat_pad_word(const HostPad *pad)
+{
+    u32 held = host_actions(pad), b = 0;
+    for (unsigned i = 0; i < sizeof k_bits / sizeof k_bits[0]; i++)
+        if (held & (1u << i)) b |= k_bits[i];
+    return b;
+}
+
 /* the pads as the SMPC reports them: byte 0 (R L D U Start A C B) then byte 1 (R X Y Z L 1 1 1), a pressed button reading 0.
- * Returns bit p: port p + 1 has a pad (port 1 always). Robo Pit opens VS MODE only with a pad in port 2. */
+ * Returns bit p: port p + 1 has a pad (port 1 always). Robo Pit opens VS MODE only with a pad in port 2. In online play
+ * both come from sat_net.c: this frame's pads as the host decided them, port 2 the other player's. */
 u32 sat_pad_data(u32 data[2])
 {
     HostPad pad[HOST_PADS];
-    u32 there = host_pads_read(pad) | 1u;
-    for (u32 p = 0; p < 2; p++) {
-        u32 held = host_actions(&pad[p]), b = 0;
-        for (unsigned i = 0; i < sizeof k_bits / sizeof k_bits[0]; i++)
-            if (held & (1u << i)) b |= k_bits[i];
-        data[p] = (~b & 0xffffu) | 0x0700u;
-    }
+    u32 there;
+    if (sat_net_on()) return sat_net_pads(data);
+    there = host_pads_read(pad) | 1u;
+    for (u32 p = 0; p < 2; p++) data[p] = (~sat_pad_word(&pad[p]) & 0xffffu) | 0x0700u;
     return there;
 }

@@ -32,7 +32,7 @@ public abstract class TcOracle extends TcInputs {
         long mode; TcFpscr.Run fs; TcTrack.Run tr;  // FPSCR mode bits at exit (modeWord); FPSCR as state; TcTrack's
         List<String> writes = new ArrayList<>();
         List<String> calls = new ArrayList<>();
-        Set<Integer> cov = new TreeSet<>(), dirs = new TreeSet<>();  // blocks; branch directions (TcDirs)
+        Set<Integer> cov = new TreeSet<>(), dirs = new TreeSet<>(), edges = new TreeSet<>();  // blocks; branch directions (TcDirs); compare edges (TcBound.Edges)
         Set<Long> sites = new TreeSet<>();  // the call sites (call or tail-jump instructions) whose mocked callee ran
         long faultAddr = -1;              // first address outside RAM that was read or written (or code read: R8)
         boolean faultWrite;
@@ -57,7 +57,7 @@ public abstract class TcOracle extends TcInputs {
     // Scripted call results per vector (line C: Vec.rets, then entryLate); a later call returns 0.
     static int RETS = 256;  // tc_rt_internal.h's TCRT_RETS is the most core/oracle_limits allows
 
-    TreeMap<Long, Integer> blockIndex = new TreeMap<>(); TcDirs dirs;  // null unless branch_coverage (TcDirs)
+    TreeMap<Long, Integer> blockIndex = new TreeMap<>(); TcDirs dirs; TcBound.Edges edges;  // null unless branch_coverage (TcDirs); boundary_vectors
     // Entry values the next runOracle sets beyond TcInputs' Vec (TcVectors decides them; null: left as the emulator
     // starts them, zero): fr12..fr15 and r8..r14 for runtime state (Proto.frState, giState), r0..r3 for parameters there.
     int[] entryFh = null;
@@ -267,7 +267,7 @@ public abstract class TcOracle extends TcInputs {
                     pc = fold(pc);
                     emu.writeRegister(emu.getPCRegister(), u(pc));
                 }
-                if (dirs != null) dirs.hit(res.dirs, prev, pc);  // the direction the branch at prev took
+                if (dirs != null) dirs.hit(res.dirs, prev, pc); if (edges != null) edges.hit(res.edges, pc, ms::getValue);  // the direction the branch at prev took; the compare edges at pc
                 if (pc == SENTINEL) break;
                 Address pca = toAddr(pc);
                 if (!body.contains(pca)) {

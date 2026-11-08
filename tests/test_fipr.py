@@ -38,6 +38,14 @@ N = int(os.environ.get("FIPR_N", "20000"))
 MIN = Fraction(1, 2 ** 126)
 
 
+def fipr_core(p):
+    """fipr_source up to the end of the dot product, its signature line dropped: the arithmetic every side shares. The
+    port's sh4_rt.c wraps it (a forced-inline fipr, the work counters of 66d6dd5e, port_sh4_xf in ftrv)."""
+    head, rest = re.split(r"\n(?:static __forceinline )?f32 (?:sh4_)?fipr\(const f32 a\[4\], const f32 b\[4\]\)\n",
+                          fipr_source(p), maxsplit=1)
+    return head + rest.split("\n}\n")[0]
+
+
 def fipr_source(p):
     """The fipr/ftrv block with its comment, as the file has it."""
     return re.search(r"/\* fipr FVm,FVn and ftrv XMTRX,FVn:.*?\nvoid sh4_ftrv\(f32 v\[4\]\)\n\{\n.*?\n\}\n", text(p),
@@ -267,7 +275,7 @@ class Reference(unittest.TestCase):
 class C(unittest.TestCase):
     def test_same_text(self):
         """One sh4_fipr/sh4_ftrv in all three runtimes (tested once below), and the declarations agents see."""
-        self.assertEqual(len({fipr_source(p) for p in SIDES}), 1)
+        self.assertEqual(len({fipr_core(p) for p in SIDES}), 1)
         for h in (SH4 / "runtime" / "tc_rt.h", SH4 / "runtime_rd" / "rd_rt.h"):
             self.assertIn("f32 sh4_fipr(const f32 a[4], const f32 b[4]);", text(h))
         self.assertIn("x->fr[vn + 3] = U(sh4_fipr(a, b));", text(SH4 / "xemu" / "xe_fpu.c"))

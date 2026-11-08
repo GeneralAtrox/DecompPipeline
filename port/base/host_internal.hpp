@@ -48,6 +48,29 @@ constexpr unsigned kCopyAgentPrompt = 0x7207;
 void copy_button_attach(void *hwnd, void *bar);
 bool copy_button_message(void *hwnd, unsigned msg, uintptr_t wp, intptr_t lp, intptr_t *result);
 
+// host_counter.cpp: the bar's frame-rate counter (Display > Frame-rate counter): frames shown a second and the game's
+// own rate against its target, the game's figure red under 98% of it. counter_show may be called from any thread
+// (host_window.cpp's frame_counter, once a second); on false the counter is hidden.
+constexpr unsigned kFrameCounter = 0x7208;
+void counter_attach(void *hwnd, void *bar);
+void counter_show(bool on, double shown_fps, double game_hz, unsigned target_hz);
+bool counter_message(void *hwnd, unsigned msg, uintptr_t wp, intptr_t lp, intptr_t *result);
+
+// host_resume.cpp: Help > Resume before the last crash. find: the newest crash or killed recording in the logs folder
+// and the vertical blank it reaches (false if none); start: asks, starts the game again on it and closes this window;
+// wait: at start, the new run waits for the one that started it to end (it moves that run's log aside).
+bool resume_find(std::filesystem::path *rec, unsigned *end);
+void resume_start(void *hwnd);
+void resume_wait();
+std::wstring arg_text(const std::wstring &a); // an argument as CommandLineToArgvW reads it back
+
+// host_online.cpp: the Online menu of a console with online play (PORT_CONSOLE_ONLINE): what this run is, play alone, host
+// a game, join a game (an address asked for). Saved as net=off|on|ADDRESS; each offers to start the game again at once.
+void *online_menu(unsigned first_id);
+bool online_command(void *hwnd, unsigned id); // true if id was the Online menu's
+void online_sync(void *bar);
+const char *online_locked(); // why the entries that change the game are locked (a match is on), or nullptr
+
 // host_crash.cpp: an unhandled exception writes data\logs\crash-<time>.dmp and a log line, and (when interactive)
 // tells the user where the dump is.
 void crash_install(bool interactive);

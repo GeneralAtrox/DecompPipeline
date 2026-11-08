@@ -12,13 +12,15 @@ original uses as a constant, so its text says how each one is used:
   through. Readable C needs a name for it: a named function, or a named global whose declared extent holds it.
 Constants are 0x... words inside the image [IMAGE_BASE, IMAGE_BASE + image size); comments are ignored. A word in a
 mirror of the image (target.json address_mirrors: PS2 raw.c writes 0x0c206130 for 0x8c206130) is its canonical address.
+A word sign-extended to 64 bits (Xbox 360 raw.c: `0xffffffff8215fbd8ull`, as lis leaves it) is its low 32 bits: before,
+none was seen, so no .rdata address the Too Human sample passes was named and 30 of its 32 lint failures were RR3.
 """
 import bisect
 import re
 
 from .compare import IMAGE_BASE, WORD
 
-HEX = re.compile(r"\b0[xX]([0-9a-fA-F]{8})[uU]?\b")
+HEX = re.compile(r"\b0[xX](?:[fF]{8})?([0-9a-fA-F]{8})(?:[uU][lL]{0,2}|[lL]{1,2}[uU]?)?\b")
 ACCESS = re.compile(r"\b(?:rd|wr)(?:8|16|32|f32)\s*\(\s*$")
 CALL = re.compile(r"\btc_callf?\s*\(\s*$")
 
@@ -72,6 +74,33 @@ def resolve(reg, ext, v):
     elif a in reg.globals:  # no extents: a named global's own address only
         return ("global", a, reg.globals[a]["decl"], 0)
     return None
+
+
+# An address written as a number in readable C: 8 hex digits, or 16 that are one sign-extended to 64 bits (Xbox 360)
+LITERAL = re.compile(r"\b0[xX]([0-9a-fA-F]{8}|[fF]{8}[0-9a-fA-F]{8})(?:[uU][lL]{0,2}|[lL]{1,2}[uU]?)?\b")
+
+
+def name_literals(src, reg, ext, ranges):
+    """(src with each address number in ranges that resolves to a name written as that name, how many, [unnamed
+    addresses]): refine's mechanical fix of an RR3 lint failure, which an agent is never asked to retry. A function is
+    `(u32)(uintptr_t)name`, a global `(u32)(uintptr_t)&name` (+ its offset); a sign-extended number keeps its 64 bits."""
+    from .readable import global_name, parse_proto
+    count, left = [0], []
+
+    def sub(m):
+        v = int(m.group(1), 16)
+        a = v & 0xFFFFFFFF
+        if not any(lo <= a < hi for lo, hi in ranges):
+            return m.group(0)
+        res = resolve(reg, ext, a)
+        if not res:
+            left.append(a)
+            return m.group(0)
+        count[0] += 1
+        ptr = f"(uintptr_t){parse_proto(res[2])[1]}" if res[0] == "function" else f"(uintptr_t)&{global_name(res[2])}"
+        ptr = f"({ptr} + 0x{res[3]:x}u)" if res[0] == "global" and res[3] else ptr
+        return f"((u64)(s64)(s32)(u32){ptr})" if v >> 32 else f"((u32){ptr})"
+    return LITERAL.sub(sub, src), count[0], sorted(set(left))
 
 
 def describe(res):

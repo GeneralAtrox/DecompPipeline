@@ -55,8 +55,10 @@ void port_extra_undo(void *p, u32 size, PortUndoFn after) { (void)p, (void)size,
 int host_fixed_clock(void) { return getenv("PACK_FIXED") != NULL; } /* a check run, for the test */
 int pvr_keys_option(const char *arg, const char *value) { (void)arg, (void)value; return 0; }
 int pad_style_option(const char *arg, const char *value) { (void)arg, (void)value; return 0; }
+int pvr_tex_option(const char *arg, const char *value) { (void)arg, (void)value; return 0; }
 int pad_style(void) { return getenv("PACK_STYLE") ? atoi(getenv("PACK_STYLE")) : 0; } /* the pad in use, for the test */
 u32 pad_style_serial(void) { return 0; }
+int pad_art_style(void) { return pad_style(); }
 static void save(const char *dir, int n, const char *what, const u32 *px, u32 count)
 {
     char path[512];

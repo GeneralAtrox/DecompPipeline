@@ -99,6 +99,9 @@ def agent_env(cfg=None):
     keeps every hit and writes cost 1.25x the input price instead of 2x: -20% per verified function ($0.0139 ->
     $0.0112), attempt-1 pass rate unchanged (60/60 in both arms; r15 A/B on 60 Toy Commander functions)."""
     env = dict(os.environ, **AGENT_ENV)
+    # `python check.py`, the one command a session may run, finds the Python running the pipeline first: build box A's PATH
+    # has only the py launcher, and all 174 readable attempts there on 2026-11-06 ended "python: command not found".
+    env["PATH"] = os.path.dirname(sys.executable) + os.pathsep + env.get("PATH", "")
     ttl = (cfg or {}).get("cache_ttl")
     if ttl:
         if ttl not in CACHE_TTLS:

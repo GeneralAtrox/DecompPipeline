@@ -108,7 +108,7 @@ void xb_net_test_stall(void)
     if (frame < 0 || xb_frame_number() < (u32)frame) return;
     frame = -2;
     port_log("network: TEST: stopping for %d ms\n", ms);
-    Sleep((DWORD)ms);
+    Sleep((DWORD)ms); /* not the tick: a test aid's stop */
 }
 
 static void carrier(void *ctx, const uint8_t *p, int len)

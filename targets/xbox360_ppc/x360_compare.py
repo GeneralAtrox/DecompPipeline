@@ -5,10 +5,13 @@ vectors.txt (the oracle's TcVectors): V id set, R r3..r10 (64-bit hex), F f1..f1
 call (64-bit, up to 16), D f1 per mocked call (double bits), M addr bytes, E.
 expected.txt / runner output: V, RET r3 f1 (64-bit hex each), W addr bytes (outside the stack region), CALL target
 r3..r10 f1..f13 s0..s7 (30 fields; sN = the doubleword at r1+0x50+8N at the call; expected.txt: a CA line after one
-through a function pointer), FN (expected.txt: the words a float store left a NaN in), COV, FAULT, CODEREAD, CRASH, E.
+through a function pointer), FN (expected.txt: the words a float store left a NaN in), CJ, CS and XR
+(core/strict_judge; CS fields are STRICT_INDEX's), COV, FAULT, CODEREAD, CRASH, E.
 """
 import os
 import struct
+
+from core import callee_drift, strict_judge
 
 IMAGE_BASE = 0x82000000
 HEAP = (0x40000000, 0x40100000)
@@ -21,6 +24,8 @@ CALL_FIELDS = 1 + 8 + CALL_FLOATS + 8
 # Index of each compared callee register in a CALL record (after the target at 0).
 REG_INDEX = {f"r{i}": i - 2 for i in range(3, 11)} | {f"f{i}": 8 + i for i in range(1, CALL_FLOATS + 1)} | {
     f"s{i}": 9 + CALL_FLOATS + i for i in range(8)}
+# A pointer argument's field in the stricter judge's lines (TcStrict.field, tc_strict.h: the GameCube's layout).
+STRICT_INDEX = {f"r{i}": i - 2 for i in range(3, 11)} | {f"s{i}": 17 + i for i in range(8)}
 
 
 def _lines(path):
@@ -85,6 +90,8 @@ def parse_results(path):
             cur["cov"] = {int(x) for x in t[1:]}
         elif k == "FAULT":
             cur["faults"].append(" ".join(t[1:]))
+        elif k in ("CJ", "CS", "XR"):  # leftover junk, call snapshots, the exit frame (core/strict_judge)
+            strict_judge.parse(cur, t)
         elif k == "CODEREAD":
             cur["coderead"] = t[1]
         elif k == "CRASH":
@@ -192,22 +199,27 @@ def compare_calls(meta, exp, act):
         if ec[k][0] != ac[k][0]:
             diffs.append(f"call #{k + 1}: expected target 0x{ec[k][0]:08x}, got 0x{ac[k][0]:08x}")
             break
-        for reg in callee_regs.get(ec[k][0], exp.get("call_args", {}).get(k, [])):  # unlisted: the original's (CA)
+        # unlisted: the original's (CA) and, at a direct call, the callee's proven signature's (core/unchecked_args)
+        for reg in callee_drift.call_regs(callee_regs, ec[k][0], exp.get("call_args", {}).get(k, []), REG_INDEX,
+                                          caller=meta.get("addr")):
             if reg[0] == "f" and k in exp.get("nofp", ()):
                 continue
             i = REG_INDEX[reg]
-            e, a = ec[k][i], ac[k][i]
+            e, a, alt = ec[k][i], ac[k][i], strict_judge.alternative(exp, k, i)
+            same = same_f64 if reg[0] == "f" else int.__eq__
+            if same(e, a) or (alt is not None and same(alt, a)):
+                continue
+            junk = "" if alt is None else " (junk a callee left there: the original never set it) or 0"
             if reg[0] == "f":
-                if not same_f64(e, a):
-                    diffs.append(f"call #{k + 1} to 0x{ec[k][0]:08x}: argument {arg_name(reg)} expected 0x{e:016x} "
-                                 f"({_d(e)}), got 0x{a:016x} ({_d(a)})")
-            elif e != a:
-                diffs.append(f"call #{k + 1} to 0x{ec[k][0]:08x}: argument {arg_name(reg)} expected 0x{e:016x}, "
+                diffs.append(f"call #{k + 1} to 0x{ec[k][0]:08x}: argument {arg_name(reg)} expected 0x{e:016x} "
+                             f"({_d(e)}){junk}, got 0x{a:016x} ({_d(a)})")
+            else:
+                diffs.append(f"call #{k + 1} to 0x{ec[k][0]:08x}: argument {arg_name(reg)} expected 0x{e:016x}{junk}, "
                              f"got 0x{a:016x}")
     return diffs
 
 
-def compare_vector(meta, image, vec, exp, act):
+def compare_vector(meta, image, vec, exp, act, strict=None, report=None):
     if act is None or not act["done"]:
         return ["no result for this vector (the C code crashed, hung or timed out)"]
     diffs = []
@@ -217,7 +229,9 @@ def compare_vector(meta, image, vec, exp, act):
         diffs.append(f"R8: read machine code at {act['coderead']}")
     for f in act["faults"]:
         diffs.append(f"invalid guest memory access: {f}")
-    return diffs + compare_return(meta, exp, act) + compare_memory(image, vec, exp, act) + compare_calls(meta, exp, act)
+    diffs += compare_return(meta, exp, act) + compare_memory(image, vec, exp, act) + compare_calls(meta, exp, act)
+    return diffs + strict_judge.compare(meta, exp, act, STRICT_INDEX, strict_judge.XR_PPC, int.__eq__, strict, report,
+                                        ">I")
 
 
 def describe_inputs(meta, vec):

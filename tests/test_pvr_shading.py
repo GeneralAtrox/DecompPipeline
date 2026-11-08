@@ -34,8 +34,17 @@ DRIVER_C = r"""#include <stdio.h>
 #include <string.h>
 #include "pvr_int.h"
 #include "platform.h"
+#include "work_count.h"
 u32 g_pvr_debug;
+int g_work_on;
+u64 g_work_now[WC_N];
+int pvr_yuv_option(const char *value) { (void)value; return 0; }
+int pvr_blend_option(const char *arg, const char *value) { (void)arg; (void)value; return 2; }
 void pvr_vram_dump(u32 scene) { (void)scene; }
+u32 pvr_parts_vertex(u32 list, u32 addr) { (void)list, (void)addr; return 0; }
+u32 pvr_parts_seq(void) { return 0; }
+void pvr_parts_from(PvrScene *s) { (void)s; }
+int g_parts_blend;
 u32 pvr_pack_rim(u32 tcw, u32 tsp) { (void)tcw; (void)tsp; return 0; }
 int g_prof_on;
 u64 prof_enter(int id) { (void)id; return 0; }

@@ -11,7 +11,14 @@
 // get TcBound's values: they steered its picks off the flag-off ones and lost kills (Power Stone 2 8c06a2e8,
 // 8c16d394, Toy Commander 8c046402). Deterministic: a generator per (seed, set, try), ordered
 // collections, a try cap and a work budget (TcBudget). The oracle_summary.json fragment: "bound":{open, runs, added
-// [dev, hidden], hit (directions newly taken), note}. LOCKED: the watcher agent may not change this file. Not a script.
+// [dev, hidden], hit (directions newly taken), note}.
+// The edge pass (target.json "boundary_vectors", TcBound.Edges; it needs the seeds the reach or this pass keeps): the
+// last vectors a prepare adds. The same copies, with one kind more (two equal integers: an integer parameter or a
+// loaded word set to another one's value, or one off it), each kept when it makes a compare edge (a site's operands
+// equal or one apart) no first-pass vector made and no vector yet added to its set, up to TcBound.MAX_ADDED per
+// set under a budget of its own. Their ids come after every other vector's, so the harness without them is the flag-off one. Its fragment:
+// "edges":{sites, goals, open (edges no first-pass vector made), runs, added [dev, hidden], hit, first (the first
+// added vector's id), note}. LOCKED: the watcher agent may not change this file. Not a script.
 import java.util.*;
 
 final class TcBoundPass {
@@ -20,6 +27,8 @@ final class TcBoundPass {
     final TcCfg flow;
     final List<Integer> ints = new ArrayList<>(), lows = new ArrayList<>(), flts = new ArrayList<>();
     final List<Long> globals;
+    boolean eq;  // the edge pass: place may also make two integers equal (kind 8)
+    int nextId = -1;  // the edge pass: its vectors' ids, after the highest one written (else the valid count)
 
     private TcBoundPass(TcVectors g, TcBase.Proto proto, List<Long> globals) throws Exception {
         this.g = g;
@@ -46,15 +55,31 @@ final class TcBoundPass {
         Set<Integer> open = TcBound.open(g.dirs.total(), g.dirsAll);
         if (open.isEmpty()) return TcBound.summary(0, 0, new int[2], 0, "");
         if (g.seeds.isEmpty()) return TcBound.summary(open.size(), 0, new int[2], 0, "no valid vector to start from");
-        return new TcBoundPass(g, proto, globals).pass(seed, open);
+        return new TcBoundPass(g, proto, globals).pass(seed, open, false);
     }
 
-    String pass(long seed, Set<Integer> open) {
+    // The edge pass's oracle_summary.json fragment ("edges":{...}), or null when it is off.
+    static String edges(TcVectors g, TcBase.Proto proto, long seed, List<Long> globals) throws Exception {
+        if (!g.facts.boundaryVectors || g.edges == null) return null;
+        Set<Integer> open = new TreeSet<>(g.edges.goals);
+        for (TcReach.Entry e : g.seeds) open.removeAll(e.r.edges);
+        String head = String.format("\"edges\":{\"sites\":%d,\"goals\":%d,\"open\":%d", g.edges.sites,
+            g.edges.goals.size(), open.size());
+        if (open.isEmpty()) return head + "}";
+        if (g.seeds.isEmpty()) return head + ",\"note\":\"no valid vector to start from\"}";
+        TcBoundPass p = new TcBoundPass(g, proto, globals);
+        p.eq = true;
+        p.nextId = nextId(g.vout);
+        return head + "," + p.pass(seed, open, true) + "}";
+    }
+
+    // edge: the edge pass (goals are compare edges, Result.edges), else the directions (Result.dirs).
+    String pass(long seed, Set<Integer> open, boolean edge) {
         long all = g.facts.oracleBudgetS <= 0 ? Long.MAX_VALUE : TcBudget.of(g.facts, g.facts.oracleBudgetS - 30);
         long end = Math.min(all, g.work() + TcBudget.of(g.facts, TcBound.BUDGET_S));
         List<Long> consts = TcGuide.constants(g.listing, g.body, g::poolValue);
         int[] added = new int[2];
-        int runs = 0;
+        int runs = 0, first = -1;
         Set<Integer> hit = new TreeSet<>();
         String note = "";
         sets:
@@ -66,7 +91,7 @@ final class TcBoundPass {
                     break sets;
                 }
                 Random h = new Random(seed * 0x9e3779b97f4a7c15L + s * 0x632be59bd9b4e019L + t * 0x85ebca6bL
-                    + 0x626f756e64L);
+                    + (edge ? 0x6564676573L : 0x626f756e64L));
                 TcReach.Entry e = copy(g.seeds.get(h.nextInt(g.seeds.size())));
                 for (int k = 1 + h.nextInt(3); k > 0; k--) place(e, h);
                 g.entryFh = e.fh;
@@ -78,12 +103,14 @@ final class TcBoundPass {
                 TcInputs.Vec[] box = {e.v};
                 TcOracle.Result r = g.runRepaired(box, h, consts, g.rescued, new int[1]);
                 runs++;
-                Set<Integer> got = new TreeSet<>(r.dirs);
+                Set<Integer> got = new TreeSet<>(edge ? r.edges : r.dirs);
                 got.retainAll(want);
                 if (!r.ok || got.isEmpty()) continue;
                 want.removeAll(got);
                 hit.addAll(got);
-                g.writeVector(g.valid[0] + g.valid[1], s == 0 ? "dev" : "hidden", box[0], r);
+                int id = nextId >= 0 ? nextId++ : g.valid[0] + g.valid[1];
+                if (first < 0) first = id;
+                g.writeVector(id, s == 0 ? "dev" : "hidden", box[0], r);
                 g.valid[s]++;
                 added[s]++;
                 if (s == 0) { g.covDev.addAll(r.cov); g.dirsDev.addAll(r.dirs); }
@@ -92,7 +119,18 @@ final class TcBoundPass {
                 for (long site : r.sites) g.siteHits.merge(site, 1, Integer::sum);
             }
         }
-        return TcBound.summary(open.size(), runs, added, hit.size(), note);
+        if (!edge) return TcBound.summary(open.size(), runs, added, hit.size(), note);
+        return String.format("\"runs\":%d,\"added\":[%d,%d],\"hit\":%d", runs, added[0], added[1], hit.size())
+            + (first >= 0 ? ",\"first\":" + first : "") + (note.isEmpty() ? "" : ",\"note\":\"" + note + "\"");
+    }
+
+    // One past the highest vector id written so far: earlier passes can write ids past the valid count (TcAlign's
+    // replacements), so the edge pass's ids come after every id, and the harness without them is the flag-off one.
+    static int nextId(CharSequence vout) {
+        int next = 0;
+        for (String line : vout.toString().split("\n"))
+            if (line.startsWith("V ")) next = Math.max(next, Integer.parseInt(line.split(" ")[1]) + 1);
+        return next;
     }
 
     static TcReach.Entry copy(TcReach.Entry base) {
@@ -137,6 +175,7 @@ final class TcBoundPass {
         if (!globals.isEmpty()) kinds.add(5);
         if (!flts.isEmpty()) kinds.add(6);
         if (flts.size() > 1) kinds.add(7);
+        if (eq && (!ints.isEmpty() || !lds.isEmpty())) kinds.add(8);
         if (kinds.isEmpty()) return;
         switch (kinds.get(h.nextInt(kinds.size()))) {
             case 0: e.v.r[ints.get(h.nextInt(ints.size()))] = b.intValue(h, 4); break;
@@ -156,6 +195,21 @@ final class TcBoundPass {
                 break;
             }
             case 6: e.v.fr[flts.get(h.nextInt(flts.size()))] = (int) b.floatBits(h, false); break;
+            case 8: {  // two equal integers, or one apart (the edge pass): an input set to another input's value
+                List<long[]> src = new ArrayList<>();
+                for (List<long[]> log : List.of(e.r.firstLoads, e.r.loads))
+                    for (long[] ld : log) if (ld[2] == 1 || ld[2] == 2 || ld[2] == 4) src.add(ld);
+                boolean reg = !ints.isEmpty() && (src.isEmpty() || h.nextBoolean());
+                long v = (reg ? e.v.r[ints.get(h.nextInt(ints.size()))] : src.get(h.nextInt(src.size()))[3])
+                    + h.nextInt(3) - 1;
+                if (!lds.isEmpty() && (ints.isEmpty() || h.nextBoolean())) {
+                    long[] ld = lds.get(h.nextInt(lds.size()));
+                    TcReach.patch(e.v, ld, v & TcBound.mask((int) ld[2]));
+                } else {
+                    e.v.r[ints.get(h.nextInt(ints.size()))] = v & 0xffffffffL;
+                }
+                break;
+            }
             default: {  // two equal floats
                 int i = flts.get(h.nextInt(flts.size())), j = flts.get(h.nextInt(flts.size()));
                 e.v.fr[j] = e.v.fr[i];

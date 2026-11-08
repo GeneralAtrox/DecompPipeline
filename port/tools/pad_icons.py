@@ -13,9 +13,21 @@ mirrored letters), so the pad is drawn upside down in the box. The rest of the t
 replaces the whole texture, so this is for a texture that holds nothing else (compose() takes a base image for one
 that does).
 
+    python pad_icons.py PACK_DIR --art SPEC.json --art-dir DIR
+
+--art places images someone else made, from a game project's own art, instead of drawing: for each texture of the spec,
+each style's picture is fitted into the top box, the front box is cleared (no art source has that view) and the spec's
+cells are painted, and the result goes in the pack as a `KEY FILE xbox over` line: the game's own texture stays under
+what isn't painted, so the pack holds none of the game's art. It takes Pillow. These images are not free to commit to the
+kit: they stay in the game's pack, whose folder should hold a NOT_FOR_RELEASE.txt until the user settles a release
+(tools/package_release.py refuses one). The spec:
+    {"scale": 4, "flip_v": true, "art": {"xbox": "xboxone.png", "playstation": "dualsense.png"},
+     "textures": [{"key": "266c..", "size": 256, "top": [X, Y, W, H], "front": [X, Y, W, H], "align": "top", "cells": "face_rows"}]}
+
 Nearest existing: tools/texture_pack.py (the pack writer, PNG encoder and key; this only draws pictures for it).
 """
 import argparse
+import json
 import math
 import pathlib
 import struct
@@ -185,6 +197,102 @@ def compose(size, placements, scale=1, flip_v=False, base=None):
     return bytes(out), n
 
 
+# Dreamcast button: Xbox's letter and colour, the PlayStation's shape and colour. Texture cells of a game's button icons.
+XBOX_FACE = {"A": ("A", (16, 124, 16)), "B": ("B", (214, 38, 38)), "X": ("X", (30, 96, 214)), "Y": ("Y", (232, 180, 16))}
+PS_FACE = {"A": ("cross", (88, 138, 232)), "B": ("circle", (232, 76, 72)), "X": ("square", (226, 120, 184)), "Y": ("triangle", (70, 196, 150))}
+TRIGGER = {"xbox": {"L": "LT", "R": "RT"}, "playstation": {"L": "L2", "R": "R2"}}
+FONT = "C:/Windows/Fonts/arialbd.ttf"
+
+
+def paint_face(draw, font, style, button, size):
+    """One round icon, size pixels square, on an ImageDraw at the origin."""
+    mid, r = size / 2, size * 0.46
+    if style == "xbox":
+        label, col = XBOX_FACE[button]
+        draw.ellipse((mid - r, mid - r, mid + r, mid + r), fill=col + (255,))
+        draw.text((mid, mid), label, font=font, fill=(255, 255, 255, 255), anchor="mm")
+        return
+    shape, col = PS_FACE[button]
+    draw.ellipse((mid - r, mid - r, mid + r, mid + r), fill=(24, 24, 28, 255))
+    ink, w, q = col + (255,), max(1, round(size * 0.09)), size * 0.21
+    if shape == "cross":
+        draw.line((mid - q, mid - q, mid + q, mid + q), fill=ink, width=w)
+        draw.line((mid - q, mid + q, mid + q, mid - q), fill=ink, width=w)
+    elif shape == "circle":
+        draw.ellipse((mid - q, mid - q, mid + q, mid + q), outline=ink, width=w)
+    elif shape == "square":
+        draw.rectangle((mid - q, mid - q, mid + q, mid + q), outline=ink, width=w)
+    else:
+        draw.polygon(((mid, mid - q * 1.2), (mid + q * 1.15, mid + q * 0.8), (mid - q * 1.15, mid + q * 0.8)), outline=ink, width=w)
+
+
+def face_rows(style, scale):
+    """The cells of a screen's column of button icons: (x, y, w, h, paint). The order on the page is the game's."""
+    from PIL import ImageFont
+    size = 17 * scale * 4
+    font = ImageFont.truetype(FONT, int(size * 0.6))
+    small = ImageFont.truetype(FONT, int(size * 0.5))
+    cells = []
+    for y, button in ((36, "Y"), (54, "X"), (72, "B"), (90, "A")):
+        cells.append((221, y, 17, 17, lambda d, b=button: paint_face(d, font, style, b, size)))
+    for y, trigger in ((0, "R"), (18, "L")):
+        def rect(d, t=trigger):
+            d.rounded_rectangle((size * 0.04, size * 0.04, size * 0.96, size * 0.96), size * 0.14, fill=(150, 150, 154, 255))
+            d.text((size / 2, size / 2), TRIGGER[style][t], font=small, fill=(255, 255, 255, 255), anchor="mm")
+        cells.append((221, y, 17, 17, rect))
+    return cells
+
+
+def art_image(spec, tex, style, art_dir):
+    """The over image of one texture for one style, as a Pillow image."""
+    from PIL import Image, ImageDraw
+    scale, flip = spec.get("scale", 4), spec.get("flip_v", False)
+    n = tex["size"] * scale
+    out = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    clear = Image.new("RGBA", (1, 1), (0, 0, 0, 1))
+    for name in ("top", "front"):
+        if name in tex:
+            x, y, w, h = tex[name]
+            out.paste(clear.resize((w * scale, h * scale)), (x * scale, y * scale))
+    x, y, w, h = tex["top"]
+    art = Image.open(pathlib.Path(art_dir) / spec["art"][style]).convert("RGBA")
+    art = art.crop(art.getbbox())
+    fit = min(w * scale / art.width, h * scale / art.height)
+    art = art.resize((max(1, round(art.width * fit)), max(1, round(art.height * fit))), Image.LANCZOS)
+    if flip:
+        art = art.transpose(Image.FLIP_TOP_BOTTOM)
+    at = (x * scale + (w * scale - art.width) // 2, y * scale + (h * scale - art.height) // 2)
+    if tex.get("align") == "top":  # the screen's top: the box's bottom in a texture stored upside down
+        at = (at[0], y * scale + h * scale - art.height if flip else y * scale)
+    out.alpha_composite(art, at)
+    if tex.get("cells") == "face_rows":
+        for cx, cy, cw, ch, paint in face_rows(style, scale):
+            big = Image.new("RGBA", (cw * scale * 4, ch * scale * 4), (0, 0, 0, 0))
+            paint(ImageDraw.Draw(big))
+            big = big.resize((cw * scale, ch * scale), Image.LANCZOS)
+            if flip:
+                big = big.transpose(Image.FLIP_TOP_BOTTOM)
+            out.paste(clear.resize((cw * scale, ch * scale)), (cx * scale, cy * scale))
+            out.alpha_composite(big, (cx * scale, cy * scale))
+    return out, n
+
+
+def art_pack(folder, spec_path, art_dir):
+    spec = json.loads(pathlib.Path(spec_path).read_text(encoding="utf-8"))
+    pack = tp.Pack(folder, "")
+    index = pathlib.Path(folder) / "index.txt"
+    if index.is_file():
+        for (k, v), name in tp.read_index(folder).items():
+            pack.rows[(k, v)] = (name, "", "", False)
+    for tex in spec["textures"]:
+        key = int(tex["key"], 16)
+        for style in spec["art"]:
+            image, n = art_image(spec, tex, style, art_dir)
+            pack.rows.pop((key, style), None)
+            pack.add(key, image.tobytes(), n, n, variant=style, over=True, note=f"{spec['art'][style]} (tools/pad_icons.py --art)")
+    return pack.close()
+
+
 def box(text):
     x, y, w, h = (int(v) for v in text.split(","))
     return x, y, w, h
@@ -193,19 +301,26 @@ def box(text):
 def main(argv):
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("pack")
-    ap.add_argument("key")
-    ap.add_argument("--size", type=int, required=True)
-    ap.add_argument("--top", type=box, required=True)
+    ap.add_argument("key", nargs="?")
+    ap.add_argument("--size", type=int)
+    ap.add_argument("--top", type=box)
+    ap.add_argument("--art", help="a spec: place art instead of drawing")
+    ap.add_argument("--art-dir", help="the folder --art's images are in")
     ap.add_argument("--front", type=box)
     ap.add_argument("--scale", type=int, default=2)
     ap.add_argument("--flip-v", action="store_true")
     a = ap.parse_args(argv)
+    if a.art:
+        print(f"{art_pack(a.pack, a.art, a.art_dir)} images in {a.pack}")
+        return 0
+    if not (a.key and a.size and a.top):
+        ap.error("KEY, --size and --top, unless --art")
     key = int(a.key, 16)
     pack = tp.Pack(a.pack, "")
     index = pathlib.Path(a.pack) / "index.txt"
     if index.is_file():
         for (k, v), name in tp.read_index(a.pack).items():
-            pack.rows[(k, v)] = (name, "")
+            pack.rows[(k, v)] = (name, "", "", False)
     for style in ("xbox", "playstation"):
         boxes = [("top", style) + a.top] + ([("front", style) + a.front] if a.front else [])
         rgba, n = compose(a.size, boxes, a.scale, a.flip_v)

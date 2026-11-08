@@ -11,6 +11,8 @@
 #include "sat_sys.h"
 #include "sat_vdp.h"
 #include "sat_walk.h"
+#include "work_count.h"
+#include "bands.h"
 
 enum { CM_BANK16, CM_LUT16, CM_BANK64, CM_BANK128, CM_BANK256, CM_RGB };
 
@@ -27,21 +29,26 @@ typedef struct {
     int tw, th, hflip, vflip;
 } Draw;
 
-static int g_sysx, g_sysy, g_ux0, g_uy0, g_ux1, g_uy1, g_lx, g_ly;
-static u8 *g_fb;
+/* The list's state as one band walks it: each band (base/bands.h) walks the whole list in order and writes only its own
+ * rows of the framebuffer (sat_v1_draw), so every pixel sees the same writes in the same order at any band count. */
+static __declspec(thread) int g_sysx, g_sysy, g_ux0, g_uy0, g_ux1, g_uy1, g_lx, g_ly, g_ox, g_sh = 9, g_sw1; /* g_ox: a wide twin's x offset (sat_wide.c) */
+static __declspec(thread) int g_by0, g_by1 = 255; /* the framebuffer rows this band writes */
+static __declspec(thread) u8 *g_fb;
+static int g_v1_bands = 1; /* --v1-bands on|off */
 
 static u32 v1w(u32 a) { return ((u32)sat_v1_vram[a & 0x7fffeu] << 8) | sat_v1_vram[(a & 0x7fffeu) + 1]; }
 static int sx13(u32 v) { return (int)((s32)(v << 19) >> 19); }
+static int wl(int v) { return g_ox && v <= 0 ? v - g_ox : v; } static int wr(int v) { return g_ox && v >= g_sw1 ? v + g_ox : v; } /* a clip edge at the screen's: the wide edge */
 
 static u16 fbget(u32 x, u32 y)
 {
-    u32 o = ((y * 512u + x) * 2u) & 0x3ffffu;
+    u32 o = (((y << g_sh) + x + (u32)g_ox) * 2u) & (g_ox ? 0x7ffffu : 0x3ffffu);
     return (u16)((g_fb[o] << 8) | g_fb[o + 1]);
 }
 
 static void fbput(u32 x, u32 y, u16 v)
 {
-    u32 o = ((y * 512u + x) * 2u) & 0x3ffffu;
+    u32 o = (((y << g_sh) + x + (u32)g_ox) * 2u) & (g_ox ? 0x7ffffu : 0x3ffffu);
     g_fb[o] = (u8)(v >> 8);
     g_fb[o + 1] = (u8)v;
 }
@@ -52,16 +59,21 @@ static u16 shade(u16 c, u16 g)
     r += d_r;
     gr += d_g;
     b += d_b;
-    r = r < 0 ? 0 : r > 31 ? 31 : r;
-    gr = gr < 0 ? 0 : gr > 31 ? 31 : gr;
-    b = b < 0 ? 0 : b > 31 ? 31 : b;
+    r = r < 0 ? 0 : r > 31 ? 31 : r, gr = gr < 0 ? 0 : gr > 31 ? 31 : gr, b = b < 0 ? 0 : b > 31 ? 31 : b;
     return (u16)((c & 0x8000u) | (u32)(b << 10) | (u32)(gr << 5) | (u32)r);
+}
+
+/* (x, y) lands in this band's rows: the framebuffer is 512 words a row and wraps at 256 rows, as fbput writes it */
+static int mine(int x, int y)
+{
+    int r = (y + ((x + g_ox) >> g_sh)) & 255;
+    return x >= -g_ox && y >= 0 && r >= g_by0 && r <= g_by1;
 }
 
 static void plot(int x, int y, u16 c, const Draw *d, u16 g)
 {
     u32 cc = d->pmod & 7u, clipm = (d->pmod >> 9) & 3u;
-    if (x < 0 || y < 0 || x > g_sysx || y > g_sysy) return;
+    if (x < -g_ox || y < 0 || x > g_sysx || y > g_sysy || !mine(x, y)) return;
     if (clipm & 1u) { /* bit 9: user clipping on; bit 10 set: draw outside the window only, clear: inside only */
         int inside = x >= g_ux0 && x <= g_ux1 && y >= g_uy0 && y <= g_uy1;
         if ((clipm & 2u) ? inside : !inside) return;
@@ -123,7 +135,9 @@ static int imin(int a, int b) { return a < b ? a : b; }
 static int outside(const Draw *d, int x0, int y0, int x1, int y1)
 {
     u32 clipm = (d->pmod >> 9) & 3u;
-    if (x1 < 0 || y1 < 0 || x0 > g_sysx || y0 > g_sysy) return 1;
+    if (x1 < -g_ox || y1 < 0 || x0 > g_sysx || y0 > g_sysy) return 1;
+    /* none of this band's rows (no wrap): a polygon line's no-hole pixel can land one past its box, so one row more */
+    if (x1 + 1 + g_ox <= (g_ox ? 1023 : 511) && y1 + 1 <= 255 && (y1 + 1 < g_by0 || y0 - 1 > g_by1)) return 1;
     return clipm == 1u && (x1 < g_ux0 || y1 < g_uy0 || x0 > g_ux1 || y0 > g_uy1);
 }
 
@@ -138,8 +152,14 @@ static void span(const Draw *d, int x0, int y0, int x1, int y1, int v, u16 g0, u
     walk_start(&wx, x0, x1 - x0, den);
     walk_start(&wy, y0, y1 - y0, den);
     walk_start(&wu, 0, d->tw, steps);
+    int no_end = (d->pmod >> 7) & 1; /* end codes off: a texel cannot end the line, so another band's can be passed by */
     for (int i = 0; i < steps; i++, walk_next(&wx), walk_next(&wy), walk_next(&wu)) {
         int x = wx.at, y = wy.at, c;
+        if ((!d->tex || no_end) && !mine(x, y) && !mine(last_x, y) && !mine(x, last_y)) { /* plots nothing here */
+            last_x = x;
+            last_y = y;
+            continue;
+        }
         if (d->tex) {
             int u = wu.at;
             if (d->hflip) u = d->tw - 1 - u;
@@ -177,7 +197,7 @@ static void poly_line(const Draw *d, int x0, int y0, int x1, int y1, u16 g0, u16
     u16 c = d->colr;
     if (outside(d, imin(x0, x1), imin(y0, y1), imax(x0, x1), imax(y0, y1))) return;
     for (int i = 0; i <= major; i++) {
-        u16 g = d->gouraud ? gmix(g0, g1, i, den) : 0x8210u;
+        u16 g = d->gouraud && (mine(x, y) || mine(x, y + yi) || mine(x + xi, y)) ? gmix(g0, g1, i, den) : 0x8210u;
         err += minor2;
         plot(x, y, c, d, g);
         if (err >= 0) {
@@ -244,13 +264,13 @@ static void draw_cmd(u32 cmd, u32 ctrl)
     Pt p[4];
     Draw d;
     u32 comm = ctrl & 15u;
+    if (!g_by0) work_add(WC_SPRITE_COMMANDS, 1);
     memset(&d, 0, sizeof d);
     d.pmod = v1w(cmd + 4u);
     d.colr = (u16)v1w(cmd + 6u);
     switch (comm) {
     case 0: /* normal sprite */
         verts(cmd, p, 4);
-        d.colr = (u16)v1w(cmd + 6u);
         d.tex = &sat_v1_vram[(v1w(cmd + 8u) * 8u) & 0x7ffffu];
         {
             u32 size = v1w(cmd + 0xau);
@@ -323,13 +343,13 @@ static void draw_cmd(u32 cmd, u32 ctrl)
         }
         break;
     case 8: /* user clipping */
-        g_ux0 = sx13(v1w(cmd + 0x0c));
+        g_ux0 = wl(sx13(v1w(cmd + 0x0c)));
         g_uy0 = sx13(v1w(cmd + 0x0e));
-        g_ux1 = sx13(v1w(cmd + 0x14));
+        g_ux1 = wr(sx13(v1w(cmd + 0x14)));
         g_uy1 = sx13(v1w(cmd + 0x16));
         break;
     case 9: /* system clipping */
-        g_sysx = sx13(v1w(cmd + 0x14));
+        g_sysx = wr(sx13(v1w(cmd + 0x14)));
         g_sysy = sx13(v1w(cmd + 0x16));
         break;
     case 10: /* local coordinate */
@@ -341,49 +361,28 @@ static void draw_cmd(u32 cmd, u32 ctrl)
 }
 
 
-u32 sat_v1_dump_every; /* --v1dump N: the command list of every Nth vertical blank goes to the log */
-
-static void dump_cmd(u32 cmd, u32 ctrl)
+/* The list's state at its top (sat_vdp1_list.c walks it): the whole screen, no user clip, the origin at 0,0. */
+void sat_v1_begin(u8 *fb)
 {
-    port_log("v1: %05x ctrl %04x pmod %04x colr %04x srca %04x size %04x v0 %d,%d v1 %d,%d v2 %d,%d v3 %d,%d grda %04x\n", cmd, ctrl, v1w(cmd + 4u),
-             v1w(cmd + 6u), v1w(cmd + 8u), v1w(cmd + 0xau), sx13(v1w(cmd + 0xcu)), sx13(v1w(cmd + 0xeu)), sx13(v1w(cmd + 0x10u)),
-             sx13(v1w(cmd + 0x12u)), sx13(v1w(cmd + 0x14u)), sx13(v1w(cmd + 0x16u)), sx13(v1w(cmd + 0x18u)), sx13(v1w(cmd + 0x1au)), v1w(cmd + 0x1cu));
-}
-
-/* Runs the list from the top of VRAM. Returns the number of commands drawn. */
-int sat_v1_run(u8 *fb)
-{
-    u32 cmd = 0, ret = 0;
-    int n = 0, called = 0, dump = sat_v1_dump_every && sat_vblank_count() % sat_v1_dump_every == 0;
-    g_fb = fb;
-    g_sysx = 511;
+    g_fb = fb, g_ox = sat_wide_fb_ox(fb), g_sh = g_ox ? 10 : 9, g_sw1 = (int)sat_wide_sw - 1;
+    g_sysx = wr(511);
     g_sysy = 255;
-    g_ux0 = g_uy0 = 0;
-    g_ux1 = 511;
+    g_ux0 = wl(0), g_uy0 = 0;
+    g_ux1 = wr(511);
     g_uy1 = 255;
     g_lx = g_ly = 0;
-    while (n < 20000) {
-        u32 ctrl = v1w(cmd), link = v1w(cmd + 2u) * 8u;
-        if (ctrl & 0x8000u) break;
-        n++;
-        if (dump && n <= 300) dump_cmd(cmd, ctrl);
-        if (!(ctrl & 0x4000u)) draw_cmd(cmd, ctrl);
-        switch ((ctrl >> 12) & 3u) {
-        case 0: cmd += 0x20u; break;
-        case 1: cmd = link; break;
-        case 2: /* call */
-            if (!called) ret = cmd + 0x20u;
-            called = 1;
-            cmd = link;
-            break;
-        default: /* return */
-            cmd = called ? ret : cmd + 0x20u;
-            called = 0;
-            break;
-        }
-        cmd &= 0x7ffe0u;
-    }
-    return n;
+}
+
+/* one command: a drawing, or a clip or local-coordinate command that sets the state for the ones after it */
+void sat_v1_cmd(u32 cmd, u32 ctrl) { draw_cmd(cmd, ctrl); }
+
+int sat_v1_first_band(void) { return !g_by0; }
+void sat_v1_bands_set(int on) { g_v1_bands = on; }
+
+static void v1_band(void *fb, unsigned band, unsigned bands)
+{
+    g_by0 = (int)(256u * band / bands), g_by1 = (int)(256u * (band + 1u) / bands) - 1;
+    (void)sat_v1_run((u8 *)fb);
 }
 
 void sat_v1_draw(void)
@@ -391,7 +390,10 @@ void sat_v1_draw(void)
     LARGE_INTEGER t0, t1;
     QueryPerformanceCounter(&t0);
     sat_perf_phase(2);
-    (void)sat_v1_run(sat_v1_draw_fb());
+    u8 *fb = sat_v1_draw_fb(), *wfb = sat_wide_fb(fb); /* wider than the screen: into its twin, then the middle back */
+    if (g_v1_bands) bands_run(v1_band, wfb ? wfb : fb);
+    else g_by0 = 0, g_by1 = 255, (void)sat_v1_run(wfb ? wfb : fb);
+    if (wfb) sat_wide_back(fb);
     sat_perf_phase(0);
     QueryPerformanceCounter(&t1);
     sat_perf_v1(t1.QuadPart - t0.QuadPart);

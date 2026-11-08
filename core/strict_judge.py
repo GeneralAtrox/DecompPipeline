@@ -194,7 +194,9 @@ def _snaps(meta, exp, act, reg_index, word):
 
 def _exit(exp, act, spec, same_word, sp_report):
     want, have = exp.get("xr"), act.get("xr")
-    if want is None:
+    if want is None:  # nothing to compare against: said, so a missing record is not taken for a match
+        if have is not None:
+            sp_report.append("the exit frame: the original's run recorded none, so it was not compared")
         return []
     if have is None:
         return ["the exit frame (the stack pointer and callee-saved registers): expected it, got nothing"]
@@ -206,7 +208,10 @@ def _exit(exp, act, spec, same_word, sp_report):
                 sp_report.append(f"{name} at exit: the original's is 0x{e:08x}, the C's 0x{a:08x} (the C keeps no "
                                  "stack pointer: a frame the original leaves to a callee or pops for its caller)")
             continue
-        e, a = want[i] if i < len(want) else 0, have[i] if i < len(have) else None
+        e, a = want[i] if i < len(want) else None, have[i] if i < len(have) else None
+        if e is None:  # a shorter record: no value to match, so not a pass (it was taken as 0)
+            out.append(f"{name} at exit: the original's record has no value for it, so the C's can't be checked")
+            continue
         if a is not None and (same_word(e, a) if kind == "w" else e == a or (_nan(e, kind) and _nan(a, kind))):
             continue
         w = 16 if kind == "f64" else 8

@@ -1,1 +1,6 @@
 # Commits since the Fails-before rule whose subject reads as a bug fix and carry no trailer, landed anyway: sha why
+3ed463053695 landed 2026-11-06 with test fixes but no Fails-before line; history is not rewritten (coordinator, 2026-11-06)
+4bb4e56b6784 landed 2026-11-06 without a Fails-before line; history is not rewritten (coordinator, 2026-11-06)
+539731823ab0 landed 2026-11-06 without a Fails-before line; history is not rewritten (coordinator, 2026-11-06)
+449c13091b60 landed 2026-11-06 without a Fails-before line; history is not rewritten (coordinator's ruling for 3ed46305, 4bb4e56b, 539731823)
+31001afe9100 landed 2026-11-08: "fixed 1997 in checks" is a fixed clock date, not a bug fix; history is not rewritten

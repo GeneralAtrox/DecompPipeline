@@ -1,6 +1,6 @@
 """Which functions a scoped oracle change reaches (core/oracle_stamp, target.json "stamp_scopes").
 
-A scope names a test on an instruction word. A function is in scope when a word of its own body (Ghidra's bodies,
+A scope names a test on an instruction word, or (FLAG_SCOPES) config flags. A function is in scope when a word of its own body (Ghidra's bodies,
 state/function_bodies.txt) passes the test: the oracle mocks callees and never runs them (TcOracle), so their code
 does not matter. An unknown scope, or a function with no recorded body, counts as in scope: its stamp follows the
 change, which only costs a re-prepare.
@@ -32,6 +32,11 @@ SCOPES = {
     "single_fp": lambda w: w >> 26 == 59 or (w >> 26 == 63 and (w >> 1) & 0x3FF == 12),
 }
 
+# A change that does nothing while these flags are all off (each function's harness byte for byte): with them
+# off no function is in scope, with any on every one is. The pre-wave trust items (TcDirs, TcBound, TcStrict).
+FLAG_SCOPES = {"prewave_flags": ("branch_coverage", "targeted_vectors", "mock_junk", "mock_writes",
+                                  "call_snapshots", "exit_frame")}
+
 _cache = {}
 
 
@@ -57,6 +62,11 @@ def _image(cfg):
 
 
 def in_scope(cfg, addr, scope):
+    if scope == "unlisted_call_args":  # TcTrack.of: CA lines at calls no callee record lists (core/unchecked_args)
+        from core import unchecked_args
+        return unchecked_args.hook(cfg, addr, paths.FUNCTION_BODIES, 4, True, paths.ROOT / "catalog_inputs.json")
+    if scope in FLAG_SCOPES:
+        return any(cfg.get(f) for f in FLAG_SCOPES[scope])
     test = SCOPES.get(scope)
     spans = _bodies().get(addr.lower())
     if test is None or not spans:

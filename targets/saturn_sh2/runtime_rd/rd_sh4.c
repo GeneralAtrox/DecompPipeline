@@ -197,15 +197,16 @@ void tcrt_report_sr(FILE *out)
  * each vector's entry, reported at exit as GB). A read of any other register is a fault, as in tc_rt.c (the
  * load itself: no mapping serves it). */
 #define TCRT_MAX_HW 16
-static struct { u32 reg, value; } g_hw[TCRT_MAX_HW];
+static struct { u32 reg, value, size; } g_hw[TCRT_MAX_HW];
 static u32 g_nhw;
 static u32 g_gbr;
 static int g_has_gbr;
 
-void tcrt_add_hw(u32 reg, u32 value)
+void tcrt_add_hw(u32 reg, u32 value, u32 size)
 {
     if (g_nhw < TCRT_MAX_HW) {
         g_hw[g_nhw].reg = reg;
+        g_hw[g_nhw].size = size;
         g_hw[g_nhw++].value = value;
     }
 }
@@ -214,8 +215,9 @@ void tcrt_set_gbr_state(void) { g_has_gbr = 1; }
 
 u32 tc_hw_read32(u32 reg)
 {
-    for (u32 i = 0; i < g_nhw; i++)
-        if (g_hw[i].reg == reg) return g_hw[i].value;
+    for (u32 i = 0; i < g_nhw; i++)  /* a 4-byte load inside one listed register, big endian, as runtime/tc_rt.c */
+        if (reg >= g_hw[i].reg && reg - g_hw[i].reg + 4 <= g_hw[i].size)
+            return g_hw[i].value >> (8 * (g_hw[i].size - 4 - (reg - g_hw[i].reg)));
     return *(volatile u32 *)(uintptr_t)reg;
 }
 
@@ -331,6 +333,12 @@ void rd_sh4_report_fq(FILE *out)
 
 void rd_sh4_report(FILE *out)
 {
+    if ((tcrt_strict_flags() & 8) && !tcrt_halted) { /* XR: the exit frame, as tc_rt.c (tc_strict.h) */
+        fprintf(out, "XR %08x", TCRT_SP); /* r15: the C keeps no stack pointer, its frames balance */
+        for (int k = 0; k < 7; k++) fprintf(out, " %08x", g_gs[k]);
+        fprintf(out, " 00000000 00000000 00000000 00000000"); /* fr12..fr15: the SH-2 has none */
+        fputc('\n', out);
+    }
     fprintf(out, "XF");
     for (int k = 0; k < 16; k++) fprintf(out, " %08x", g_xf[k]);
     fputc('\n', out);

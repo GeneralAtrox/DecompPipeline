@@ -60,6 +60,36 @@ PSIn vs_main(VSIn i)
     return o;
 }
 
+// An in-between frame blended on the GPU (pvr_blend_gpu.c, --interp-gpu on): each vertex t of the way from where the
+// scene before had it (stream 1, pvr_blend_from) to where it is now, as the CPU's pvr_blend_vertices puts it.
+cbuffer Blend : register(b1)
+{
+    float4 blend_t; // x: t; y: 1 to blend positions in (x w, y w, w), w = 1/z (--interp-parts, pvr_parts_blend)
+};
+
+struct VSFrom
+{
+    float3 pos : POSITION1;
+    float2 uv : TEXCOORD1;
+    float4 base : COLOR2;
+    float4 off : COLOR3;
+};
+
+PSIn vs_blend(VSIn i, VSFrom f)
+{
+    float t = blend_t.x;
+    if (blend_t.y != 0.0) {
+        float3 a = float3(f.pos.xy, 1.0) / f.pos.z, b = float3(i.pos.xy, 1.0) / i.pos.z, h = lerp(a, b, t);
+        i.pos = float3(h.xy / h.z, 1.0 / h.z);
+    } else {
+        i.pos = lerp(f.pos, i.pos, t);
+    }
+    i.uv = lerp(f.uv, i.uv, t);
+    i.base = lerp(f.base, i.base, t);
+    i.off = lerp(f.off, i.off, t);
+    return vs_main(i);
+}
+
 // The table's entry for 1/w * density: its float exponent picks 16 entries, the top mantissa bits one of them, and
 // the rest of the mantissa blends towards the next.
 float fog_lookup(float invw)

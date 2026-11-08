@@ -10,6 +10,7 @@
 #include "overlay.h"
 #include "tx_rt.h"
 #include "prof.h"
+#include "work_count.h"
 
 /* The original's stack: the boot ROM starts the game with r15 at RAM + 0xf400, below the boot file at RAM + 0x10000
  * (the heap runs from the boot file's end to the top of RAM, so the judge's entry r15 is no place for it here). The
@@ -196,6 +197,11 @@ static struct {
     void *arg;
 } g_call_hooks[MAX_CALL_HOOKS];
 static u32 g_ncall_hooks;
+static const PortTcArgs *g_call_args;
+static int g_call_skip; /* a before hook said the call this time does not happen */
+
+void port_hook_skip_call(void) { g_call_skip = 1; }
+const PortTcArgs *port_hook_args(void) { return g_call_args; }
 
 void port_hook_call(u32 addr, PortCallHookFn before, PortCallHookFn after, void *arg)
 {
@@ -203,6 +209,7 @@ void port_hook_call(u32 addr, PortCallHookFn before, PortCallHookFn after, void 
         port_log("tx: call hook for %08x refused: %u hooks already\n", addr, MAX_CALL_HOOKS);
         return;
     }
+    if (addr && !guest_is_ram(addr) && guest_of_host(addr)) addr = guest_of_host(addr); /* a host function pointer */
     g_call_hooks[g_ncall_hooks].addr = guest_fold(addr);
     g_call_hooks[g_ncall_hooks].before = before;
     g_call_hooks[g_ncall_hooks].after = after;
@@ -249,7 +256,7 @@ static int first_call(int words, u32 target)
 static void call_unhooked(u32 target, const PortTcArgs *a, PortTcRet *o, int want_f, const void *site)
 {
     PortTcGlue g;
-    const PortDispatch *d = NULL;
+    const PortDispatch *d = NULL, *og = NULL;
     PortFn fn = NULL;
     u32 delta = 0;
     const char *name = "a host function";
@@ -268,9 +275,8 @@ static void call_unhooked(u32 target, const PortTcArgs *a, PortTcRet *o, int wan
         if (guest) target = guest;
     }
     /* overlay RAM: the loaded unit's glue (its translator C), else its function by words; never main's glue there */
-    d = fn ? NULL : overlay_find(target);
+    if (!fn) d = overlay_find_glue(target, &og);
     if (d) {
-        const PortDispatch *og = overlay_glue(target);
         g = og ? (PortTcGlue)og->fn : NULL;
         delta = overlay_delta();
     } else
@@ -313,13 +319,20 @@ static void call(u32 target, const PortTcArgs *a, PortTcRet *o, int want_f, cons
 {
     u32 at = target;
     if (g_prof_on) prof_call(target);
+    work_add(WC_GUEST_CALLS, 1);
     if (!g_ncall_hooks) {
         call_unhooked(target, a, o, want_f, site);
         return;
     }
     if (at && !guest_is_ram(at) && guest_of_host(at)) at = guest_of_host(at); /* a host function pointer */
+    g_call_args = a;
     call_hooks(at, 0);
-    call_unhooked(target, a, o, want_f, site);
+    if (g_call_skip) {
+        g_call_skip = 0;
+        memset(o, 0, sizeof *o);
+    } else {
+        call_unhooked(target, a, o, want_f, site);
+    }
     call_hooks(at, 1);
 }
 

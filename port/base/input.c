@@ -12,7 +12,8 @@
  *   d-pad does something else than steering sets game.json "arrows": "stick" (PORT_ARROWS_STICK): the arrows
  *   then move only the stick.
  *   --input [Pn.]NAME@VBLANK[+N],..   NAME: A B X Y START UP DOWN LEFT RIGHT L R LB RB L3 R3 BACK GUIDE RSUP RSDOWN
- *                                RSLEFT RSRIGHT, or a name of the console's own pad (console_actions: C and Z on a
+ *                                RSLEFT RSRIGHT LSUP LSDOWN LSLEFT LSRIGHT (the left stick alone, no button),
+ *                                or a name of the console's own pad (console_actions: C and Z on a
  *                                Saturn: the action's default host button), held from that vertical blank
  *                                for N (default 6); scripted directions move the stick like the arrows. L=V and R=V
  *                                press a trigger part of the way (V 1..255; plain L and R are 255). Pn. (P1..P4)
@@ -74,7 +75,6 @@ typedef struct PadState {
     int x, y, l, r;
 } PadState;
 
-
 static const struct {
     SDL_GamepadButton button;
     u32 bit;
@@ -117,6 +117,10 @@ int input_option(const char *arg, const char *value)
         g_rumble = strcmp(value, "off") != 0;
         return 2;
     }
+    if (!strcmp(arg, "--pad-art") && value) {
+        pad_art_set(strcmp(value, "off") != 0);
+        return 2;
+    }
     if (!strcmp(arg, "--pads") && value) {
         int n = atoi(value);
         if (n >= 1 && n <= HOST_PADS) g_pads_max = n;
@@ -124,7 +128,7 @@ int input_option(const char *arg, const char *value)
         return 2;
     }
     if (!strncmp(arg, "--bind-", 7)) return input_bind_option(arg, value);
-    return input_script_option(arg, value);
+    return port_twin_option(arg, value) || pad_virtual_option(arg, value) ? 2 : input_script_option(arg, value); /* pad_twin.c, pad_virtual.c */
 }
 
 static int sdl_ready(void)
@@ -321,30 +325,40 @@ static void make_pad(u32 p, const PadState *s, u32 keys, HostPad *pad)
     if (keys & HOST_PAD_RIGHT) x = 127;
     if (keys & HOST_PAD_UP) y = -128;
     if (keys & HOST_PAD_DOWN) y = 127;
+    if (b & SCRIPT_LS_LEFT) x = -128;
+    if (b & SCRIPT_LS_RIGHT) x = 127;
+    if (b & SCRIPT_LS_UP) y = -128;
+    if (b & SCRIPT_LS_DOWN) y = 127;
     pad->x = (s8)x;
     pad->y = (s8)y;
-    pad->buttons = b & ~(SCRIPT_L | SCRIPT_R);
+    pad->buttons = b & ~(SCRIPT_L | SCRIPT_R | SCRIPT_LS);
 }
 
 u32 host_pads_read(HostPad pad[HOST_PADS])
 {
     PadState s[HOST_PADS] = {0};
-    u32 keys = 0, connected = input_script_players();
+    u32 keys = 0, connected = input_script_players(), own = 0, load = autoload_buttons(&own); /* autoload.c: a load it drives */
+    pad_style_tick();
     if (input_live() && sdl_ready()) {
+        pad_virtual_tick(); /* --virtual-pad: a test driver's SDL gamepad, pressed before the devices are read */
         s[0] = read_keyboard(&keys);
+        if (s[0].b || keys) pad_style_used(0u);
         scan_devices(), console_pads_changed();
         for (int i = 0; i < g_dev_n; i++) {
             PadState one = read_device(&g_dev[i]);
             if (!device_in_use(&g_dev[i], &one)) one = (PadState){0};
             claim_player(&g_dev[i], &one);
             if (g_dev[i].player == NO_PLAYER) continue;
+            if (one.b || abs(one.x) >= RS_ON || abs(one.y) >= RS_ON || one.l >= TRIGGER_USED || one.r >= TRIGGER_USED) pad_style_used(g_dev[i].id);
             merge(&s[g_dev[i].player], &one);
             connected |= 1u << g_dev[i].player;
         }
     }
+    if (own) s[0] = (PadState){.b = load}, keys = 0; else s[0].b |= load; /* while it holds the pad, the player waits */
     for (u32 p = 0; p < HOST_PADS; p++) make_pad(p, &s[p], p == 0 ? keys : 0u, &pad[p]);
     input_binds_apply(pad);
     session_pad(&pad[0]); /* recorded, or the replay's */
+    port_pad_stick_apply(pad);
     input_ex_note(pad);
     game_log_pads(pad, connected & ((1u << g_pads_max) - 1u));
     return connected & ((1u << g_pads_max) - 1u);

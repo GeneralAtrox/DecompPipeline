@@ -35,7 +35,7 @@ public abstract class TcOracle extends TcInputs {
         long f1;                          // f1's 64 bits at exit
         List<String> writes = new ArrayList<>();
         List<String> calls = new ArrayList<>();
-        Set<Integer> cov = new TreeSet<>();
+        Set<Integer> cov = new TreeSet<>(), dirs = new TreeSet<>();  // blocks; branch directions (TcDirs)
         Set<Long> sites = new TreeSet<>();
         long faultAddr = -1;
         boolean faultWrite;
@@ -44,6 +44,7 @@ public abstract class TcOracle extends TcInputs {
         boolean stepLimited;
         int steps;                        // of a run that reached the sentinel
         TcTrack.Run tr;                   // pointer-call arguments, float NaN words (TcTrack)
+        TcStrict strict;                  // the stricter judge's records (TcStrict), null with its flags off
 
         // What the checker compares: equal results give equal expected.txt lines.
         String observable() {
@@ -60,6 +61,7 @@ public abstract class TcOracle extends TcInputs {
     TcFixups fix = new TcFixups();
     String refused = null;                 // TcFixups.refuse of an instruction a run executed
     TcRun.StepBudget budget = new TcRun.StepBudget(STEP_LIMIT);
+    TcDirs dirs;                           // null unless branch_coverage or targeted_vectors (TcDirs)
 
     BigInteger u64(long v) {
         return new BigInteger(Long.toUnsignedString(v));
@@ -228,12 +230,14 @@ public abstract class TcOracle extends TcInputs {
             dms.setMemoryBank(bank);
             setEntry(emu, v);
             bank.track = true;
+            res.strict = TcStrict.of(this, bank);
             TcVmx vm = new TcVmx();
             vecError = null;
             int steps = 0, calls = 0;
             long prev = -1;
             while (true) {
                 long pc = emu.getExecutionAddress().getOffset() & 0xffffffffL;
+                if (dirs != null) dirs.hit(res.dirs, prev, pc);  // the direction the branch at prev took
                 if (pc == SENTINEL) break;
                 Address pca = toAddr(pc);
                 boolean self = pca.equals(fn.getEntryPoint()) && callAt(prev);
@@ -262,7 +266,7 @@ public abstract class TcOracle extends TcInputs {
                     if (prev >= 0) res.sites.add(prev);
                     emu.writeRegister("r3", u64(calls < 16 ? v.rets[calls] : 0));
                     emu.writeRegister("f1", u64(calls < 16 ? v.frets[calls] : 0));
-                    clobber(emu, zeroed);
+                    if (!TcStrict.call(res, emu, calls, zeroed)) clobber(emu, zeroed);  // mock_junk: junk instead
                     calls++;
                     if (past) break;
                     emu.writeRegister(emu.getPCRegister(), u64(reg(emu, "LR")));
@@ -327,6 +331,7 @@ public abstract class TcOracle extends TcInputs {
             bank.pc = -1;
             res.steps = steps;
             collect(emu, res, bank.written);
+            TcStrict.exit(res, emu);
             return res;
         } catch (Exception e) {
             res.reason = "exception: " + e;

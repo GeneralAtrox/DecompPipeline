@@ -23,6 +23,8 @@ sys.path.insert(0, str(KIT / "tools"))
 
 import base_drift  # noqa: E402
 import game_config  # noqa: E402,F401
+sys.path.insert(0, str(TOOL / "tests"))
+from test_port_buttons import BuildRun  # noqa: E402  (ExButtons' build-and-run helper)
 
 
 class RealTree(unittest.TestCase):
@@ -130,7 +132,7 @@ class MenuList(unittest.TestCase):
 REQUIRED = ("port_vblank_count", "port_extra_drawing", "console_guest_ptr", "console_scene_extra", "console_replay_args",
             "console_capture_bmp", "console_view", "console_watch", "console_lockstep_pad", "console_lockstep_timer",
             "console_lockstep_time", "console_menu_extra", "console_pads_changed", "console_actions", "console_check_image",
-            "console_present_option", "console_present_over", "console_present_release", "console_widens", "extra_set_interp",
+            "console_present_option", "console_present_over", "console_present_release", "console_widens", 
             "extra_interp", "extra_set_fps", "extra_fps", "port_main")
 
 
@@ -190,96 +192,85 @@ class NewConsole(unittest.TestCase):
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
 
-class ExButtons(unittest.TestCase):
-    """base.h port_pad_ex_*: held / pressed / name (input_ex.c) and the per-game settings store (host_settings.cpp), built
-    with a stub beside them and run."""
+class SessionAhead(BuildRun, unittest.TestCase):
+    """session.c: the sound mixed ahead of a real clock goes into the recording at its blank and comes back at that blank
+    on replay; a save read after it still finds its own entry, and one the replay has passed is dropped."""
 
-    @classmethod
-    def setUpClass(cls):
-        import game_config
-        cls.vc = game_config.vcvars32()
-        cls.d = Path(tempfile.mkdtemp(prefix="exbuttons_"))
-
-    @classmethod
-    def tearDownClass(cls):
-        shutil.rmtree(cls.d, ignore_errors=True)
-
-    def build_run(self, name, source, files, std):
-        import subprocess
-        if not self.vc:
-            self.skipTest("no 32-bit Visual Studio environment")
-        src = self.d / (name + (".cpp" if std == "c++20" else ".c"))
-        src.write_text(source)
-        bat = self.d / (name + ".bat")
-        srcs = " ".join('"%s"' % f for f in [src] + files)
-        bat.write_text('@echo off\r\ncall "%s" >nul\r\ncd /d "%s"\r\ncl /nologo /W4 /WX %s /I"%s" %s /Fe%s.exe /Fo"%s/" && "%s\\%s.exe"\r\n' %
-                       (self.vc, self.d, "/std:c++20 /EHsc" if std == "c++20" else "/TC", KIT / "base", srcs, name, self.d, self.d, name), encoding="ascii")
-        r = subprocess.run(["cmd", "/c", str(bat)], capture_output=True, text=True, timeout=300)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-
-    def test_held_pressed_and_names(self):
-        self.build_run("ex", r'''
+    def test_mixed_ahead_round_trip(self):
+        self.build_run("ahead", r'''
 #include <stdio.h>
 #include <string.h>
 #include "base.h"
-static int g_style;
-int pad_style(void) { return g_style; }
+#include "session.h"
+static u32 g_vb;
+u32 port_vblank_count(void) { return g_vb; }
+int port_extra_drawing(void) { return 0; }
+int console_lockstep_pad(HostPad *pad) { (void)pad; return 0; }
+s32 console_lockstep_timer(s32 live) { return live; }
+int console_lockstep_time(HostTime *t) { (void)t; return 0; }
+int input_live(void) { return 0; }
+void port_log(const char *fmt, ...) { (void)fmt; }
 #define CHECK(c) do { if (!(c)) { printf("fail line %d: %s\n", __LINE__, #c); return 1; } } while (0)
 int main(void)
 {
-    HostPad pad[HOST_PADS] = {0};
-    CHECK(port_pad_ex_held(0) == 0 && port_pad_ex_pressed(0) == 0 && port_pad_ex_held(9) == 0);
-    pad[1].buttons = HOST_PAD_LB | HOST_PAD_RS_UP | HOST_PAD_A; /* a Dreamcast bit is not a modern one */
-    input_ex_note(pad);
-    CHECK(port_pad_ex_held(1) == (HOST_PAD_LB | HOST_PAD_RS_UP));
-    CHECK(port_pad_ex_held(0) == 0);
-    pad[1].buttons = HOST_PAD_LB; /* RS_UP released, LB still held: only the new press is "pressed" */
-    input_ex_note(pad);
-    CHECK(port_pad_ex_pressed(1) == (HOST_PAD_LB | HOST_PAD_RS_UP)); /* both were new since the last call */
-    CHECK(port_pad_ex_pressed(1) == 0);
-    pad[1].buttons = 0;
-    input_ex_note(pad);
-    pad[1].buttons = HOST_PAD_RB;
-    input_ex_note(pad);
-    CHECK(port_pad_ex_pressed(1) == HOST_PAD_RB && port_pad_ex_held(1) == HOST_PAD_RB);
-    g_style = 1;
-    CHECK(!strcmp(port_pad_ex_name(HOST_PAD_BACK, 0), "View"));
-    g_style = 2;
-    CHECK(!strcmp(port_pad_ex_name(HOST_PAD_LB, 0), "L1") && !strcmp(port_pad_ex_name(HOST_PAD_GUIDE, 0), "PS"));
-    g_style = 0;
-    CHECK(!strcmp(port_pad_ex_name(HOST_PAD_L3, 0), "Left stick click") && !strcmp(port_pad_ex_name(0x1, 0), ""));
+    u32 save = 0x12345678, got = 0;
+    g_vb = 5, session_mix_ahead(3);
+    g_vb = 6, session_mix_ahead(0); /* nothing kept */
+    g_vb = 7, session_save_read("a.sav", &save, 4, 1);
+    g_vb = 9, session_mix_ahead(2);
+    g_vb = 11, session_mix_ahead(4);
+    g_vb = 12, session_save_read("b.sav", &save, 4, 1);
+    CHECK(session_write("ahead.ptrec", "test\n"));
+    CHECK(session_option("--replay", "ahead.ptrec") == 2 && session_replaying());
+    g_vb = 4;
+    CHECK(session_mix_ahead_replayed() == 0);
+    g_vb = 5;
+    CHECK(session_mix_ahead_replayed() == 3);
+    CHECK(session_mix_ahead_replayed() == 0); /* taken */
+    g_vb = 7;
+    CHECK(session_save_replayed("a.sav", &got, 4) == 1 && got == save);
+    g_vb = 10;
+    CHECK(session_mix_ahead_replayed() == 0); /* blank 9's is passed: dropped, not given late */
+    g_vb = 11;
+    CHECK(session_mix_ahead_replayed() == 4);
+    got = 0;
+    g_vb = 12;
+    CHECK(session_save_replayed("b.sav", &got, 4) == 1 && got == save);
+    CHECK(session_save_replayed("c.sav", &got, 4) == -2); /* the recording has no more */
     puts("ok");
     return 0;
 }
-''', [KIT / "base" / "input_ex.c"], "c")
+''', [KIT / "base" / "session.c"], "c")
 
-    def test_settings_store(self):
-        self.build_run("st", r'''
-#include <cstdio>
-#include <fstream>
-#include <string>
+    def test_a_save_read_skips_a_note_it_meets(self):
+        self.build_run("ahead2", r'''
+#include <stdio.h>
+#include <string.h>
 #include "base.h"
-#include "host_internal.hpp"
-extern "C" void port_log(const char *, ...) {}
-#define CHECK(c) do { if (!(c)) { std::printf("fail line %d: %s\n", __LINE__, #c); return 1; } } while (0)
-int main()
+#include "session.h"
+static u32 g_vb;
+u32 port_vblank_count(void) { return g_vb; }
+int port_extra_drawing(void) { return 0; }
+int console_lockstep_pad(HostPad *pad) { (void)pad; return 0; }
+s32 console_lockstep_timer(s32 live) { return live; }
+int console_lockstep_time(HostTime *t) { (void)t; return 0; }
+int input_live(void) { return 0; }
+void port_log(const char *fmt, ...) { (void)fmt; }
+#define CHECK(c) do { if (!(c)) { printf("fail line %d: %s\n", __LINE__, #c); return 1; } } while (0)
+int main(void)
 {
-    CHECK(port_setting_get_int("game.a", 7) == 7); // no settings file: the default
-    port_setting_set_int("game.a", 3);             // and nothing is written
-    CHECK(port_setting_get_int("game.a", 7) == 7);
-    host::settings_use("st_settings.txt");
-    { std::ofstream o("st_settings.txt"); o << "window=800x600\ngame.b=5 # a comment\n"; }
-    CHECK(port_setting_get_int("game.b", 0) == 5 && port_setting_get_int("game.c", 9) == 9);
-    port_setting_set_int("game.c", -4);
-    port_setting_set_int("game.b", 6);
-    port_setting_set_int("bind-A", 1); // not a game key: refused
-    CHECK(port_setting_get_int("game.c", 9) == -4 && port_setting_get_int("game.b", 0) == 6);
-    std::vector<std::string> args = host::settings_args("st_settings.txt");
-    CHECK(args.size() == 2 && args[0] == "--window"); // game.* are not options
-    std::puts("ok");
+    u32 save = 7, got = 0;
+    g_vb = 2, session_mix_ahead(1);
+    g_vb = 3, session_save_read("a.sav", &save, 4, 1);
+    CHECK(session_write("ahead2.ptrec", "test\n"));
+    CHECK(session_option("--replay", "ahead2.ptrec") == 2);
+    g_vb = 1; /* out of step: the save read comes first */
+    CHECK(session_save_replayed("a.sav", &got, 4) == 1 && got == save);
+    CHECK(session_mix_ahead_replayed() == 0);
+    puts("ok");
     return 0;
 }
-''', [KIT / "base" / "host_settings.cpp"], "c++20")
+''', [KIT / "base" / "session.c"], "c")
 
 
 if __name__ == "__main__":

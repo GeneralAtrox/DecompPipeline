@@ -120,10 +120,12 @@ class Enhancements(unittest.TestCase):
         self.assertRegex(text, r'bool scripted = \(fixed && [^;]*has_flag\(argc, argv, "--headless"\)')
         block = re.search(r"if \(!scripted\) \{\n(.*?)\n    \}\n", text, re.S)
         self.assertIsNotNone(block)
-        self.assertIn('"--present", "interp"', block.group(1))
+        self.assertIn('"--present", "auto"', block.group(1))
         self.assertIn("settings_args", block.group(1))  # settings.txt (the menu's choices) is read in play runs only
         self.assertEqual(text.count("settings_args("), 1)
-        self.assertEqual(text.count('"interp"'), 1)
+        self.assertEqual(text.count('"auto"'), 1)
+        # no saved choice turns in-between frames off: they follow the frame-rate cap
+        self.assertIn('key == "present"', (KIT / "base" / "host_settings.cpp").read_text(encoding="utf-8"))
 
     def test_wider_view_off_in_checks(self):
         """A check run stays 4:3 unless --aspect is given: not chosen, the shape follows the window only in a play run
@@ -131,6 +133,7 @@ class Enhancements(unittest.TestCase):
         text = (KIT / "base" / "present.c").read_text(encoding="utf-8")
         self.assertIn("console_widens() && !g_gfx.headless && !host_fixed_clock() ? 0.0f : 4.0f / 3.0f", text)
         self.assertIn("if (g_gfx.aspect_set) return g_gfx.aspect;", text)
+        self.assertIn("int port_shape_chosen(void) { return g_gfx.aspect_set || gfx_aspect() == 0.0f; }", text)
 
     def test_given_only(self):
         """ssaa, aniso, vmu_screen, fps_counter: zero until their option sets them."""

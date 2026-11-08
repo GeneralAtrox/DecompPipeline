@@ -30,6 +30,7 @@ DRIVER_C = r"""#define _CRT_SECURE_NO_WARNINGS
 #include "pvr_int.h"
 #include "platform.h"
 #include "lockstep.h"
+#include "work_count.h"
 int pvr_option(const char *arg, const char *value);
 static PvrScene g_scene;
 void tb_reset(PvrScene *s) { (void)s; }
@@ -42,6 +43,18 @@ void pvr_tex_invalidate(u32 offset, u32 size) { (void)offset, (void)size; }
 void hw_check_vram(u32 offset, u32 size) { (void)offset, (void)size; }
 void port_extra_undo(void *p, u32 size, PortUndoFn after) { (void)p, (void)size, (void)after; }
 void gfx_set_border(u32 argb) { (void)argb; }
+u32 pvr_parts_vertex(u32 list, u32 addr) { (void)list, (void)addr; return 0; }
+u32 pvr_parts_seq(void) { return 0; }
+void pvr_parts_from(PvrScene *s) { (void)s; }
+int g_work_on;
+u64 g_work_now[WC_N];
+int pvr_yuv_option(const char *value) { (void)value; return 0; }
+u32 pvr_pack_rim(u32 tcw, u32 tsp) { (void)tcw; (void)tsp; return 0; }
+int g_prof_on;
+u64 prof_enter(int id) { (void)id; return 0; }
+void prof_leave(u64 token) { (void)token; }
+void prof_scene(u32 headers, u32 triangles) { (void)headers; (void)triangles; }
+int pvr_blend_option(const char *arg, const char *value) { (void)arg; (void)value; return 2; }
 u32 port_vblank_count(void) { return 4242u; }
 void port_log(const char *fmt, ...)
 {

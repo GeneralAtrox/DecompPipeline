@@ -30,6 +30,8 @@ import java.util.*;
 
 final class TcHw {
     static TcHw on;  // the function being prepared, or null
+    static boolean windowHit;  // a run stored to TcBase.HW_WINDOWS: meta "hw_windows" (TcPrepare)
+    static final int LOG_MAX = 8192;  // bytes the runner's store log holds (tc_p4.c MAX_P4)
     final TreeMap<Long, Long> reads = new TreeMap<>();  // listed register -> the target's value
     final Map<Long, Integer> widths = new HashMap<>();  // listed register -> its width in bytes (4 unless narrower)
     final TreeSet<Long> writes = new TreeSet<>();  // listed registers stored to
@@ -130,7 +132,10 @@ final class TcHw {
     // TcExit.p4, TcLoads.storeOutside: a written range [lo, hi) inside one listed register (its 4 bytes).
     static boolean written(long lo, long hi) {
         Long r = on == null ? null : on.writes.floor(lo);
-        return r != null && hi <= r + 4;
+        if (r != null && hi <= r + 4) return true;
+        if (!TcBase.hwWindow(lo, hi)) return false;
+        windowHit = true;
+        return true;
     }
 
     // TcOracle: listed cache ops do nothing (the SLEIGH's pcodeops; without a callback the emulator stops there).

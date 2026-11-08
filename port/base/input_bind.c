@@ -137,14 +137,13 @@ static void press(HostPad *p, const char *name, int down)
     }
 }
 
-/* From host_pads_read, before the recording: nothing to do (and no cost) until the player assigns a button. */
+/* From host_pads_read, before the recording: nothing to do (and no cost) until the player assigns a button. Then
+ * twin-stick (pad_twin.c), on the buttons as assigned. */
 void input_binds_apply(HostPad pad[HOST_PADS])
 {
     unsigned n;
-    const PortAction *a;
-    if (!g_bound || input_scripted()) return;
-    a = console_actions(&n);
-    for (u32 p = 0; p < HOST_PADS; p++) {
+    const PortAction *a = console_actions(&n);
+    for (u32 p = 0; g_bound && !input_scripted() && p < HOST_PADS; p++) {
         const HostPad raw = pad[p];
         for (unsigned i = 0; i < n && i < MAX_ACTIONS; i++)
             if (g_bound >> i & 1u && !(g_bind[i] & default_mask(&a[i]))) press(&pad[p], a[i].dflt, 0);
@@ -154,6 +153,7 @@ void input_binds_apply(HostPad pad[HOST_PADS])
                 if (g_bind[i] >> s & 1u && source_held(&raw, (int)s)) press(&pad[p], a[i].dflt, 1);
         }
     }
+    port_twin_apply(pad);
 }
 
 /* Which of the console's actions this pad holds: each action's default button (an assignment has already pressed it). */

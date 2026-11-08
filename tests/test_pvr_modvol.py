@@ -115,7 +115,7 @@ int main(void)
     for (int i = polys; i < n; i++) v[i].base = 0;
 
     memset(&fr, 0, sizeof fr);
-    fr.depth_scale = 0.5f; fr.punch_ref = 1.0f; fr.shadow_alpha = 0.5f; fr.wide[0] = 1.0f;
+    fr.depth_scale = 0.5f; fr.punch_ref = 1.0f; fr.shadow_alpha = 0.5f; fr.wide[0] = 1.0f; fr.wide[1] = 1.0f;
     vb = buffer(D3D11_BIND_VERTEX_BUFFER, 0, 0, (UINT)(n * sizeof(Vtx)), v);
     bb = buffer(D3D11_BIND_SHADER_RESOURCE, D3D11_RESOURCE_MISC_BUFFER_STRUCTURED, sizeof(Batch), sizeof batches,
                 batches);

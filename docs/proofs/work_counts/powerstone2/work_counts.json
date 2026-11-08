@@ -1,0 +1,422 @@
+{
+ "game": "powerstone2",
+ "args": [
+  "--disc",
+  "<projects>/DreamCast/PowerStone2/Power Stone 2 (Europe)/Power Stone 2 (Europe)/Power Stone 2 (Europe).cue",
+  "--fixed-clock",
+  "1",
+  "--headless",
+  "--present",
+  "tick",
+  "--size",
+  "2560x1464",
+  "--record",
+  "off",
+  "--save-dir",
+  "{work}",
+  "--seconds",
+  "480",
+  "--audio-dump",
+  "{work}/audio.wav"
+ ],
+ "scenes": {
+  "front_end": {
+   "args": [
+    "--replay",
+    "{here}/20261031-232451.ptrec",
+    "--stop-at",
+    "2800"
+   ],
+   "from": 300,
+   "to": 2800,
+   "blanks": 2500,
+   "counts": {
+    "allocs": 61,
+    "alloc_bytes": 7847184,
+    "draws": 208469,
+    "uploads": 7499,
+    "gpu_creates": 67,
+    "gpu_copies": 2391,
+    "presents": 2482,
+    "guest_calls": 19841214,
+    "guest_writes": 0,
+    "vector_ops": 31308437,
+    "sound_cpu": 510315418,
+    "scene_headers": 277155,
+    "scene_triangles": 5854086,
+    "sprite_commands": 0,
+    "composes": 0,
+    "disc_bytes": 12947456
+   },
+   "peak": {
+    "allocs": 3,
+    "alloc_bytes": 3672064,
+    "draws": 247,
+    "uploads": 14,
+    "gpu_creates": 11,
+    "gpu_copies": 1,
+    "presents": 1,
+    "guest_calls": 67805,
+    "guest_writes": 0,
+    "vector_ops": 35161,
+    "sound_cpu": 223037,
+    "scene_headers": 323,
+    "scene_triangles": 6699,
+    "sprite_commands": 0,
+    "composes": 0,
+    "disc_bytes": 3649536
+   }
+  },
+  "play": {
+   "args": [
+    "--replay",
+    "{here}/20261031-232451.ptrec",
+    "--stop-at",
+    "5855"
+   ],
+   "from": 3000,
+   "to": 5855,
+   "blanks": 2855,
+   "counts": {
+    "allocs": 92,
+    "alloc_bytes": 290940,
+    "draws": 845230,
+    "uploads": 8610,
+    "gpu_creates": 45,
+    "gpu_copies": 2855,
+    "presents": 2855,
+    "guest_calls": 67332114,
+    "guest_writes": 0,
+    "vector_ops": 102457137,
+    "sound_cpu": 534323010,
+    "scene_headers": 1158773,
+    "scene_triangles": 20728360,
+    "sprite_commands": 0,
+    "composes": 0,
+    "disc_bytes": 0
+   },
+   "peak": {
+    "allocs": 2,
+    "alloc_bytes": 7720,
+    "draws": 390,
+    "uploads": 5,
+    "gpu_creates": 2,
+    "gpu_copies": 1,
+    "presents": 1,
+    "guest_calls": 30474,
+    "guest_writes": 0,
+    "vector_ops": 43197,
+    "sound_cpu": 192240,
+    "scene_headers": 582,
+    "scene_triangles": 9853,
+    "sprite_commands": 0,
+    "composes": 0,
+    "disc_bytes": 0
+   }
+  }
+ },
+ "ledger": [
+  {
+   "date": "2026-11-01",
+   "why": "first baseline for Power Stone 2, from the kit that adds the counters",
+   "changes": {
+    "front_end": {
+     "alloc_bytes": [
+      null,
+      7847184
+     ],
+     "allocs": [
+      null,
+      61
+     ],
+     "blanks": [
+      null,
+      2500
+     ],
+     "composes": [
+      null,
+      0
+     ],
+     "disc_bytes": [
+      null,
+      12947456
+     ],
+     "draws": [
+      null,
+      208469
+     ],
+     "gpu_copies": [
+      null,
+      2391
+     ],
+     "gpu_creates": [
+      null,
+      67
+     ],
+     "guest_calls": [
+      null,
+      19841214
+     ],
+     "guest_writes": [
+      null,
+      0
+     ],
+     "peak alloc_bytes": [
+      null,
+      3672064
+     ],
+     "peak allocs": [
+      null,
+      3
+     ],
+     "peak composes": [
+      null,
+      0
+     ],
+     "peak disc_bytes": [
+      null,
+      3649536
+     ],
+     "peak draws": [
+      null,
+      247
+     ],
+     "peak gpu_copies": [
+      null,
+      1
+     ],
+     "peak gpu_creates": [
+      null,
+      11
+     ],
+     "peak guest_calls": [
+      null,
+      67805
+     ],
+     "peak guest_writes": [
+      null,
+      0
+     ],
+     "peak presents": [
+      null,
+      1
+     ],
+     "peak scene_headers": [
+      null,
+      323
+     ],
+     "peak scene_triangles": [
+      null,
+      6699
+     ],
+     "peak sound_cpu": [
+      null,
+      223037
+     ],
+     "peak sprite_commands": [
+      null,
+      0
+     ],
+     "peak uploads": [
+      null,
+      14
+     ],
+     "peak vector_ops": [
+      null,
+      94282
+     ],
+     "presents": [
+      null,
+      2482
+     ],
+     "scene_headers": [
+      null,
+      277155
+     ],
+     "scene_triangles": [
+      null,
+      5854086
+     ],
+     "sound_cpu": [
+      null,
+      510315418
+     ],
+     "sprite_commands": [
+      null,
+      0
+     ],
+     "uploads": [
+      null,
+      7499
+     ],
+     "vector_ops": [
+      null,
+      91027169
+     ]
+    },
+    "play": {
+     "alloc_bytes": [
+      null,
+      290940
+     ],
+     "allocs": [
+      null,
+      92
+     ],
+     "blanks": [
+      null,
+      2855
+     ],
+     "composes": [
+      null,
+      0
+     ],
+     "disc_bytes": [
+      null,
+      0
+     ],
+     "draws": [
+      null,
+      845230
+     ],
+     "gpu_copies": [
+      null,
+      2855
+     ],
+     "gpu_creates": [
+      null,
+      45
+     ],
+     "guest_calls": [
+      null,
+      67332114
+     ],
+     "guest_writes": [
+      null,
+      0
+     ],
+     "peak alloc_bytes": [
+      null,
+      7720
+     ],
+     "peak allocs": [
+      null,
+      2
+     ],
+     "peak composes": [
+      null,
+      0
+     ],
+     "peak disc_bytes": [
+      null,
+      0
+     ],
+     "peak draws": [
+      null,
+      390
+     ],
+     "peak gpu_copies": [
+      null,
+      1
+     ],
+     "peak gpu_creates": [
+      null,
+      2
+     ],
+     "peak guest_calls": [
+      null,
+      30474
+     ],
+     "peak guest_writes": [
+      null,
+      0
+     ],
+     "peak presents": [
+      null,
+      1
+     ],
+     "peak scene_headers": [
+      null,
+      582
+     ],
+     "peak scene_triangles": [
+      null,
+      9853
+     ],
+     "peak sound_cpu": [
+      null,
+      192240
+     ],
+     "peak sprite_commands": [
+      null,
+      0
+     ],
+     "peak uploads": [
+      null,
+      5
+     ],
+     "peak vector_ops": [
+      null,
+      133248
+     ],
+     "presents": [
+      null,
+      2855
+     ],
+     "scene_headers": [
+      null,
+      1158773
+     ],
+     "scene_triangles": [
+      null,
+      20728360
+     ],
+     "sound_cpu": [
+      null,
+      534323010
+     ],
+     "sprite_commands": [
+      null,
+      0
+     ],
+     "uploads": [
+      null,
+      8610
+     ],
+     "vector_ops": [
+      null,
+      311197722
+     ]
+    }
+   },
+   "digest": "bb55b54e31e458e264eb16d27fea093d7aeec02cfd76ffb2e67c0c7304f00482"
+  },
+  {
+   "date": "2026-11-01",
+   "why": "the vector helpers now count once per helper call, so that a matrix times a vector tests the flag once rather than five times",
+   "changes": {
+    "front_end": {
+     "peak vector_ops": [
+      94282,
+      35161
+     ],
+     "vector_ops": [
+      91027169,
+      31308437
+     ]
+    },
+    "play": {
+     "peak vector_ops": [
+      133248,
+      43197
+     ],
+     "vector_ops": [
+      311197722,
+      102457137
+     ]
+    }
+   },
+   "digest": "3c9c0efa63675462b2c1fc993e1e9b796522007347c4b2ee226b4814f6ad763c"
+  }
+ ]
+}

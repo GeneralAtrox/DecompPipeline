@@ -47,6 +47,8 @@ PortFn port_guest_target(u32 addr); /* what a call to guest addr runs (overlay t
 /* tc_call's glue (fn: a tx_rt.h PortTcGlue) for the function at addr of the unit loaded there, NULL if that function
  * has none (readable C, a stub) or no loaded unit has one */
 const PortDispatch *overlay_glue(u32 addr);
+/* overlay_find, with overlay_glue's answer in *glue, resolving once (tc_call); overlay_delta() is as after both */
+const PortDispatch *overlay_find_glue(u32 addr, const PortDispatch **glue);
 /* The delta of the unit overlay_find / overlay_glue resolved last (0 for a fixed unit): tc_call sets tx_ovl_delta to it
  * for the length of the call */
 u32 overlay_delta(void);
