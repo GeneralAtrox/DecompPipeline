@@ -22,7 +22,28 @@ HELPERS = {
     "px_f2b": "static u64 px_f2b(f64 x)\n{\n    union { f64 d; u64 b; } v;\n    v.d = x;\n    return v.b;\n}",
     "px_b2f": "static f64 px_b2f(u64 x)\n{\n    union { f64 d; u64 b; } v;\n    v.b = x;\n    return v.d;\n}",
     "px_w2f": "static f32 px_w2f(u32 x)\n{\n    union { f32 f; u32 w; } v;\n    v.w = x;\n    return v.f;\n}",
-    "px_fdiv": "static f64 px_fdiv(f64 a, f64 b)\n{\n    return a / b;\n}",
+    # lfs / psq_l: the 750CL widens a single exactly, a signalling NaN too (C's conversion would quiet it)
+    "px_lfs": "static f64 px_lfs(f32 f)\n{\n    union { f32 f; u32 w; } v;\n    v.f = f;\n"
+              "    if ((v.w & 0x7f800000u) == 0x7f800000u && (v.w & 0x7fffffu) != 0u)\n"
+              "        return px_b2f(((u64)(v.w >> 31) << 63) | 0x7ff0000000000000ull | ((u64)(v.w & 0x7fffffu) << 29));\n"
+              "    return (f64)f;\n}",
+    # fdiv / fdivs: an invalid division (0/0, inf/inf) gives the 750CL's default NaN, +0x7ff8000000000000; x86's is
+    # negative (0xfff8...). A NaN operand propagates with its sign on both. No Skies verdict turned on it: a
+    # general-correctness fix that the unit test holds (DefaultNaN).
+    "px_fdiv": "static f64 px_fdiv(f64 a, f64 b)\n{\n    f64 r = a / b;\n"
+               "    if (r != r && a == a && b == b) return px_b2f(0x7ff8000000000000ull);\n    return r;\n}",
+    # fadd / fsub / fmul and the fused ops: an invalid operation (inf - inf, 0 * inf) gives the 750CL's default NaN,
+    # +0x7ff8...; x86's is negative. Skies 801231f8: frsqrte(inf) = 0, then inf * 0 in the Newton steps reached a call
+    # as 0xffc00000 where the original passes 0x7fc00000. A NaN operand propagates with its sign on both.
+    "px_fadd": "static f64 px_fadd(f64 a, f64 b)\n{\n    f64 r = a + b;\n    return r != r && a == a && b == b ? px_b2f(0x7ff8000000000000ull) : r;\n}",
+    "px_fsub": "static f64 px_fsub(f64 a, f64 b)\n{\n    f64 r = a - b;\n    return r != r && a == a && b == b ? px_b2f(0x7ff8000000000000ull) : r;\n}",
+    "px_fmul": "static f64 px_fmul(f64 a, f64 b)\n{\n    f64 r = a * b;\n    return r != r && a == a && b == b ? px_b2f(0x7ff8000000000000ull) : r;\n}",
+    "px_fmadd": "static f64 px_fmadd(f64 a, f64 c, f64 b)\n{\n    f64 r = a * c + b;\n"
+                "    return r != r && a == a && b == b && c == c ? px_b2f(0x7ff8000000000000ull) : r;\n}",
+    "px_fmsub": "static f64 px_fmsub(f64 a, f64 c, f64 b)\n{\n    f64 r = a * c - b;\n"
+                "    return r != r && a == a && b == b && c == c ? px_b2f(0x7ff8000000000000ull) : r;\n}",
+    # fnmadd / fnmsub: the 750CL negates the fused result unless it is a NaN, which keeps its sign
+    "px_fnm": "static f64 px_fnm(f64 x)\n{\n    return x != x ? x : -x;\n}",
     # fctiw / fctiwz leave the 750CL's upper word: 0xfff80000, or 0xfff80001 for a negative operand giving 0
     "px_ctiw": "static f64 px_ctiw(f64 b, s32 w)\n{\n    u64 r = 0xfff8000000000000ull | (u32)w;\n"
                "    if (w == 0 && (px_f2b(b) >> 63) != 0) r |= 0x100000000ull;\n    return px_b2f(r);\n}",
@@ -43,7 +64,7 @@ HELPERS = {
     "px_dq": "static f64 px_dq(u32 g, u32 ea)\n{\n    u32 t = (g >> 16) & 7u;\n    f64 m = px_qscale(g >> 24);\n"
              "    if (t == 4u) return (f64)(f32)((f64)rd8(ea) / m);\n    if (t == 5u) return (f64)(f32)((f64)rd16(ea) / m);\n"
              "    if (t == 6u) return (f64)(f32)((f64)(s8)rd8(ea) / m);\n    if (t == 7u) return (f64)(f32)((f64)(s16)rd16(ea) / m);\n"
-             "    return (f64)rdf32(ea);\n}",
+             "    return px_lfs(rdf32(ea));\n}",
     # psq_st through a GQR known only at run time (type in bits 0..2, scale in 8..13)
     "px_q": "static void px_q(u32 g, u32 ea, f64 v)\n{\n    u32 t = g & 7u;\n    f64 m = px_qscale(g >> 8);\n"
             "    if (t == 4u) wr8(ea, (u8)px_quant(v, m, 0, 255));\n    else if (t == 5u) wr16(ea, (u16)px_quant(v, m, 0, 65535));\n"
@@ -58,10 +79,20 @@ for _k in range(4):
         HELPERS[f"{_n}{_k}"] = f"static {_t} {_n}{_k}(u32 t{_ps})\n{{\n    TcArgs a = {{0}};{_set}\n    return {_f}(t, &a);\n}}"
 HELPERS["px_l2"] = "static u32 px_l2(u32 p, u32 a, u32 b)\n{\n    return rd32(rd32(p + a) + b);\n}"
 HELPERS["px_l3"] = "static u32 px_l3(u32 p, u32 a, u32 b, u32 c)\n{\n    return rd32(rd32(rd32(p + a) + b) + c);\n}"
-DEPS = {"px_ctiw": ["px_f2b", "px_b2f"], "px_rsqrt": ["px_f2b", "px_b2f"], "px_dq": ["px_qscale"],
+DEPS = {"px_fdiv": ["px_b2f"], **{f"px_f{k}": ["px_b2f"] for k in ("add", "sub", "mul", "madd", "msub")},
+        "px_ctiw": ["px_f2b", "px_b2f"], "px_rsqrt": ["px_f2b", "px_b2f"], "px_lfs": ["px_b2f"],
+        "px_dq": ["px_qscale", "px_lfs", "px_b2f"],
         "px_q": ["px_qscale", "px_quant"]}
-ORDER = ["px_fr", "px_f2b", "px_b2f", "px_w2f", "px_fdiv", "px_ctiw", "px_rsqrt", "px_quant", "px_qsize", "px_qscale", "px_dq",
+ORDER = ["px_fr", "px_f2b", "px_b2f", "px_lfs", "px_w2f", "px_fdiv", "px_fadd", "px_fsub", "px_fmul", "px_fmadd", "px_fmsub",
+         "px_fnm", "px_ctiw", "px_rsqrt", "px_quant", "px_qsize", "px_qscale", "px_dq",
          "px_q", "px_l2", "px_l3"] + [f"px_c{k}" for k in range(4)] + [f"px_cf{k}" for k in range(4)]
+
+
+def widen_single(e):
+    """(f64) of an rdf32 load (lfs, psq_l) as px_lfs: bit-exact for signalling NaNs."""
+    if isinstance(e, X.Cast) and e.ty == "f64" and isinstance(e.a, X.Call) and e.a.fn == "rdf32":
+        return X.Call("px_lfs", [e.a], "f64")
+    return e
 
 
 def coerce(e, ty):
@@ -97,7 +128,7 @@ class Emitter:
         self.dense = dense          # and a call with only r3.. arguments (up to 3) goes through px_c / px_cf
 
     def r(self, e):
-        return render(e)
+        return render(e.map(widen_single))
 
     def stmt(self, s, out, ind="    "):
         if isinstance(s, Comment):
@@ -175,14 +206,23 @@ class Emitter:
                 out.append("    }")
                 for s in t.default:
                     if isinstance(s, Ret):
-                        out.append(f"    {self.ret(s)}")
+                        out += self.ret_lines(s)
                     else:
                         self.stmt(s, out)
                 out.append("    }")
             elif isinstance(t, Ret):
-                out.append(f"    {self.ret(t)}")
+                out += self.ret_lines(t)
         named = {m for x in out for m in GOTO_TARGET.findall(x)}
         return [x for x in out if not (x.endswith(":;") and x[:-2] not in named)]
+
+    def ret_lines(self, t):
+        """The exit-register reports (a value of 0 is the runtime's default) and the return."""
+        out = []
+        for k, kind, x in t.xr:
+            if not zero_const(x):
+                out.append(f"    tc_xr({k}u, {self.r(coerce(x, 'u32'))});" if kind == "r" else
+                           f"    tc_xrf({k}u, {self.r(coerce(x, 'f64'))});")
+        return out + [f"    {self.ret(t)}"]
 
     def ret(self, t):
         if t.e is None:

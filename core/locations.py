@@ -6,9 +6,13 @@ an existing file, and core/doctor notes a missing one; missing is not a failure,
 Nearest existing: tools/dashboard.py add - writes a game folder's progress.json, which says where the work stands, not
 where things are, and only when someone adds the game to a machine's page.
 """
+import json
+import os
 import pathlib
 
-MACHINES = ("Main laptop", "Build box B", "Build box A")
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+MACHINES = ("Main laptop", "build box A", "build box B")  # published names; machines() gives this checkout's own
+MACHINES_ENV = "DP_MACHINES"
 HEADINGS = ("Disc and game files", "BIOS and firmware", "Emulators", "Extracted data", "Workspaces and clones",
             "Launcher mirror and live line", "Logs", "Not allowed here", "Known absent")
 
@@ -22,11 +26,24 @@ def file_for(ws):
     return ws / "LOCATIONS.md"
 
 
-def skeleton(game):
+def machines(tool=ROOT):
+    """The machine headings of a new LOCATIONS.md, the machines' own names when this machine has them: DP_MACHINES
+    (separated by ;), else the git-ignored machines.local.json "machines", else MACHINES. Not config.local.json: the
+    judge's stamp hashes the whole config (core/verdict_memo)."""
+    got = [m.strip() for m in os.environ.get(MACHINES_ENV, "").split(";") if m.strip()]
+    if not got:
+        try:
+            got = json.loads((pathlib.Path(tool) / "machines.local.json").read_text(encoding="utf-8")).get("machines")
+        except (OSError, ValueError, AttributeError):
+            got = None
+    return tuple(str(m) for m in got) if isinstance(got, list) and got else MACHINES
+
+
+def skeleton(game, tool=ROOT):
     lines = [f"# {game}: where things are", "",
              "Actual paths only, checked on that machine. Something looked for and not there goes under Known absent.",
              "Keep this current when something moves; what every game of a console shares can point at the console's file."]
-    for machine in MACHINES:
+    for machine in machines(tool):
         lines += ["", f"## {machine}"]
         for h in HEADINGS:
             lines += ["", f"### {h}", "", "Not filled in yet."]

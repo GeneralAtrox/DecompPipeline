@@ -137,11 +137,25 @@ lines, `play summary: shown_fps F output WxH frames N tick_ms M/P/X draw_ms M/P/
 percentile, worst, in milliseconds) and `play verdict: pass|fail|none make_ms p99 P (bar 6.67) late L of N shown (R per 1000,
 bar 1) loading S shown K late machine M`, read from the launcher's data folder for the console's reference game. Shown-frame spacing
 (`frame_ms`) is not a check: under the 144 cap it can't go below 6.94 ms. A log from before the bar has no figures and
-reads unmeasured. Only sessions from the user's laptop (`target_laptop`, spec `thresholds.runtime.machine`, named on
-the verdict line) pass or fail the gate. Build box A and build box B sessions compare builds side by side and leave the checks
+reads unmeasured. Only sessions from the user's laptop (spec label `thresholds.runtime.machine`; its computer name, named on the
+verdict line, is DP_TARGET_MACHINE or machines.local.json `target_machine`) pass or fail the gate. Build box A and build box B sessions compare builds side by side and leave the checks
 unmeasured, never failed: "Build box A might not be able to do it and that is OK" (the user, 2026-11-05). Only sessions at 2560x1600 with 600 or
 more frames count, and the worst session of the logs kept is the number. A layer in the `RUNTIME_TARGET.md` table is open unless
 its status starts "Replaced", "Switched" or "Native"; a console with no port kit reads unmeasured.
+
+## Landing a kit change: AddressSanitizer (approved by the user, 2026-11-09)
+
+Every landing that changes the port kit's host C (`port/runtime`, `pvr`, `sdk`, `base`, `saturn`) carries an ASan result, beside
+the other proofs a landing owes (its tests, replays identical, the plant caught, `Fails-before` for a fix):
+- one ASan build per console the change touches (`pvr` and `sdk`: Dreamcast; `saturn`: Saturn; `runtime` and `base`: both);
+- each build first reports the planted overflow (`DP_ASAN_PLANT=1`): a build that can't catch it proves nothing;
+- then one short replay per core game of that console, with no ASan error: Toy Commander, Power Stone 2 and Spawn on
+  Dreamcast, Robo Pit on Saturn.
+
+The landing's last commit carries a line per console, made by `tools/asan_landing.py trailer` from the runs; the line names the
+tree the builds were made from, so it holds only on that tree. `tests/test_asan_landing.py` fails on any kit host-C commit
+since the rule that no line covers (AGENTS.md "Test rules", rule 3). The first runs (2026-11-09) and their runner are in
+`docs/proofs/asan/`.
 
 ## The targets (approved by the user, 2026-10-22)
 

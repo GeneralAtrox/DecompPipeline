@@ -98,52 +98,18 @@ void sat_movie_start(int play_run, int audio_on)
 }
 
 #ifdef SAT_MOVIE_FN
-/* bytes of the file at fad, from off: the data track's 2048-byte user data (mode 2 form 1 has 8 more header bytes) */
-static int file_bytes(u32 fad, u32 off, u32 len, u8 *dst)
-{
-    u8 raw[SAT_SECTOR];
-    while (len) {
-        u32 o = off % 2048u, n = 2048u - o < len ? 2048u - o : len;
-        if (!sat_disc_read(fad + off / 2048u, raw)) return 0;
-        memcpy(dst, raw + (raw[15] == 2 ? 24 : 16) + o, n);
-        dst += n, off += n, len -= n;
-    }
-    return 1;
-}
-
-/* the file by its path from the root ("KOKO.CPK", "RP/MV.BIN"): its first frame and *sectors, 0 if it is not on the disc */
-static u32 find_file(const char *path, u32 *sectors)
-{
-    static SatFile dir[SAT_MAX_FILES];
-    SatFile root;
-    int n;
-    if (sat_disc_root(&root)) return 0;
-    n = sat_disc_dir(root.dir_lba, root.size, dir, SAT_MAX_FILES);
-    while (*path == '/') path++;
-    for (;;) {
-        const char *slash = strchr(path, '/');
-        size_t len = slash ? (size_t)(slash - path) : strlen(path);
-        int i;
-        for (i = 0; i < n; i++)
-            if (!_strnicmp(dir[i].name, path, len) && (dir[i].name[len] == 0 || dir[i].name[len] == ';')) break;
-        if (i == n) return 0;
-        if (!slash) return *sectors = (dir[i].size + 2047u) / 2048u, dir[i].fad;
-        root = dir[i];
-        n = sat_disc_dir(root.dir_lba, root.size, dir, SAT_MAX_FILES);
-        path = slash + 1;
-    }
-}
+u32 sat_movie_find(const char *path, u32 *sectors) { return sat_disc_find(path, sectors, NULL); }
 
 static int movie_open(Movie *m, const char *name)
 {
     u8 head[16], *h;
     u32 at;
     memset(m, 0, sizeof *m);
-    m->fad = find_file(name, &m->sectors);
-    if (!m->fad || !file_bytes(m->fad, 0, 16, head) || memcmp(head, "FILM", 4)) return 0;
+    m->fad = sat_disc_find(name, &m->sectors, NULL);
+    if (!m->fad || !sat_disc_file_bytes(m->fad, 0, 16, head) || memcmp(head, "FILM", 4)) return 0;
     m->hl = be32(head + 4);
     if (m->hl < 16 || m->hl > (1u << 20) || !(h = (u8 *)malloc(m->hl))) return 0;
-    if (!file_bytes(m->fad, 0, m->hl, h)) return free(h), 0;
+    if (!sat_disc_file_bytes(m->fad, 0, m->hl, h)) return free(h), 0;
     for (at = 16; at + 8 <= m->hl;) {
         u32 len = be32(h + at + 4);
         if (len < 8 || at + len > m->hl) break;
@@ -181,7 +147,7 @@ static u8 *entry_data(Movie *m, const Entry *e)
         m->cap = e->len;
         m->buf = (u8 *)malloc(m->cap);
     }
-    return m->buf && file_bytes(m->fad, m->hl + e->off, e->len, m->buf) ? m->buf : NULL;
+    return m->buf && sat_disc_file_bytes(m->fad, m->hl + e->off, e->len, m->buf) ? m->buf : NULL;
 }
 
 /* the sound up to `until` frames pushed: each chunk is signed PCM, 16-bit big-endian or 8-bit, a stereo chunk all its
@@ -386,4 +352,5 @@ int sat_movie_play(const TcArgs *a, u32 *ret)
     (void)a, (void)ret;
     return 0;
 }
+u32 sat_movie_find(const char *path, u32 *sectors) { (void)path, (void)sectors; return 0; }
 #endif

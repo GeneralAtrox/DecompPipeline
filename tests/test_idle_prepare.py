@@ -85,6 +85,17 @@ class Guard(unittest.TestCase):
         self.assertFalse((st / idle_guard.STOP).exists())
         self.assertIn("asked it to stop", logs[0])
 
+    def test_release_while_read(self):  # end_job's holder() has the hold file open as the job releases it (Windows:
+        st = folder()                     # the unlink raised PermissionError, the hold stayed, end_job timed out)
+        idle_guard.acquire(st)
+        f = open(st / idle_guard.HOLD, encoding="utf-8")
+        threading.Timer(0.3, f.close).start()
+        try:
+            idle_guard.release(st)
+        finally:
+            time.sleep(0.4)
+        self.assertFalse((st / idle_guard.HOLD).exists())
+
     def test_end_job_timeout(self):  # a job that does not stop: False, and it is logged
         st = folder()
         idle_guard.acquire(st)

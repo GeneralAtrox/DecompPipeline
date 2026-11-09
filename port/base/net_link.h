@@ -17,7 +17,7 @@
 #define NET_DGRAM_QUEUE 32
 #define NET_DIGEST 32
 #define NET_VERSION 1
-#define NET_TIMEOUT_MS 8000      /* nothing heard for this long: the other player is gone */
+#define NET_TIMEOUT_MS 8000      /* nothing heard for this long: the other player is gone (the default; net_udp_drop) */
 
 typedef enum {
     NET_IDLE,
@@ -40,6 +40,7 @@ typedef void (*NetCarrier)(void *ctx, const uint8_t *packet, int len);
 typedef struct {
     uint32_t sent, received, retransmits, duplicates, bad, dropped_dgrams;
     uint32_t rtt_ms;             /* smoothed round trip, 0 until measured */
+    uint32_t refused;            /* a host's callers turned away for another version (it goes on listening) */
 } NetStats;
 
 typedef struct {
@@ -63,6 +64,7 @@ typedef struct {
     uint8_t digest[NET_DIGEST];
     uint32_t nonce, peer_nonce, token;
     uint32_t last_rx, last_tx, last_ping, last_hello;
+    uint32_t timeout_ms;         /* nothing heard for this long: the other player is gone */
     uint16_t next_rel, read_rel, next_dgram, ping_id;
     uint16_t dgram_top;
     uint64_t dgram_seen;

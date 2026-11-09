@@ -260,6 +260,10 @@ void wrf32(u32 a, f32 v)
 
 void wrf32d(u32 a, f64 v) { wr32(a, ppc_single_bits(v)); }
 
+/* raw C's exit-register reports: the readable runtime has no exit frame to fill */
+void tc_xr(u32 k, u32 v) { (void)k; (void)v; }
+void tc_xrf(u32 k, f64 v) { (void)k; (void)v; }
+
 void wrf64(u32 a, f64 v)
 {
     u64 u;

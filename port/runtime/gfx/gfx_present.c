@@ -48,9 +48,10 @@ void gfx_show(void)
     u64 pt = prof_begin(PROF_PRESENT);
     gfx_lock();
     present_show();
+    port_extra_thread_shown(); /* --present-thread with the game's own draw function: it may be shown again */
+    play_stats_shown();        /* under the lock: that thread shows frames too */
     gfx_unlock();
     prof_end(pt);
-    play_stats_shown();
 }
 
 /* ---- the base's hooks (base/console.h "the presenter") ---- */

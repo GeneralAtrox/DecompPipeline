@@ -19,6 +19,8 @@ static u8 *g_code;    /* 1 bit per guest byte that belongs to an instruction */
 static u32 *g_wlist;
 static u32 g_wcount;
 static int g_woverflow;
+static u32 g_xr[18];  /* r14..r31 at exit, as the function reported them (tc_xr); 0 when it did not */
+static u64 g_xrf[18]; /* f14..f31's bits (tc_xrf) */
 static u32 g_rets[16];
 static u64 g_frets[16];
 static u32 g_ncalls;
@@ -323,7 +325,12 @@ void tcrt_reset(void)
     tcrt_strict_reset();
     memset(g_rets, 0, sizeof g_rets);
     memset(g_frets, 0, sizeof g_frets);
+    memset(g_xr, 0, sizeof g_xr);
+    memset(g_xrf, 0, sizeof g_xrf);
 }
+
+void tc_xr(u32 k, u32 v) { if (k >= 14 && k < 32) g_xr[k - 14] = v; }
+void tc_xrf(u32 k, f64 v) { if (k >= 14 && k < 32) memcpy(&g_xrf[k - 14], &v, 8); }
 
 void tcrt_poke(u32 addr, const u8 *data, u32 len)
 {
@@ -378,10 +385,10 @@ void tcrt_report(FILE *out, u32 r3, u64 f1_bits, u32 r4)
     }
     if (g_ncalls > MAX_CALLS) fprintf(out, "FAULT too-many-calls\n");
     tcrt_strict_report(out); /* CS lines; XR: the exit frame (tc_strict.h) */
-    if (tcrt_strict_flags() & 8) { /* r1; r14..r31 and f14..f31: their entry values, 0 (TcOracle.setEntry) */
+    if (tcrt_strict_flags() & 8) { /* r1; r14..r31 and f14..f31: entry values 0 (TcOracle.setEntry) unless reported */
         fprintf(out, "XR %08x", TCRT_SP);
-        for (int k = 14; k < 32; k++) fprintf(out, " %08x", 0u);
-        for (int k = 14; k < 32; k++) fprintf(out, " %016llx", 0ull);
+        for (int k = 14; k < 32; k++) fprintf(out, " %08x", g_xr[k - 14]);
+        for (int k = 14; k < 32; k++) fprintf(out, " %016llx", (unsigned long long)g_xrf[k - 14]);
         fputc('\n', out);
     }
     for (u32 k = 0; k < g_nfaults && k < MAX_FAULTS; k++) fprintf(out, "FAULT %s\n", g_faults[k]);

@@ -31,12 +31,21 @@ void gfx_lock_waits(unsigned *n, unsigned long long *us); /* the game's thread's
 int gfx_lock_wanted(void);          /* the game's thread is waiting for the lock: that thread lets it have it */
 void *host_window_hwnd(void);
 void host_window_frame(void);                                /* a frame was presented (the frame-rate counter) */
+void host_window_title_extra(const char *extra);             /* the title bar's " - extra" (a game's screen, the level editor); any thread */
 const char *host_window_state(void); /* "full screen", "focused", "not focused", "covered" or "minimized" (for the log) */
 
 /* host_online.cpp: a console with online play (PORT_CONSOLE_ONLINE) says a match is on (hosting 1: this copy hosts) and what
  * the Online menu's first line shows; until the run ends the base's entries that would change the game for both players
  * are locked (the console's own through their available()). */
 void host_online_match(int hosting, const char *status);
+/* a console whose online play is in the game's own menus: the game again with --net value and the extra arguments
+ * (space-separated), at once; 1 when it started (the console then ends this run). The saved --net choice back to off. */
+int host_online_restart(const char *value, const char *extra);
+void host_online_forget(void);
+
+/* host_online.cpp: this program again with args (space-separated "--option value" pairs) in place of its own, the new
+ * run waiting for this one to end; this one closes. 0 if it could not start (logged). */
+int port_start_again(const char *args);
 
 /* host_data.cpp: the data folder (settings, saves, logs, scene dumps) */
 const char *host_data_folder(void);
@@ -64,6 +73,13 @@ u32 input_bind_get(unsigned action);            /* the sources action takes now 
 void input_bind_toggle(unsigned action, unsigned source); /* a source on or off it; 0 ("none") clears it */
 const char *input_bind_text(unsigned action, char *buf, size_t cap); /* the settings file's words */
 void input_binds_apply(HostPad pad[HOST_PADS]); /* the assignments, before the pad is recorded */
+
+/* host_text.cpp: typing and pasting into a console's own text field (digits . : - Backspace Enter Esc; Ctrl+V, Shift+Insert) */
+void host_text_capture(int on);             /* the field is open (keys are queued) or shut */
+void host_text_key(int key, int mod);       /* host_window.cpp: an SDL key went down */
+int host_text_take(void);                   /* the next key: a character, '\b', '\n', 27 (Esc), 22 (paste); -1 none */
+int host_text_clipboard(char *out, int cap); /* the clipboard's text (or --clipboard-test's next part); 0 if none */
+void host_text_test(const char *clip);      /* --clipboard-test TEXT ('|' between pastes): the real clipboard is not read */
 
 /* scene_dump.c: "Copy agent prompt" (the menu bar's icon, Help menu, F9) after the next presented frame */
 void scene_dump_request(void);

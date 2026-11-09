@@ -20,6 +20,7 @@ from collections import defaultdict
 from . import expr as X
 from .expr import Bin, Call, Cast, Cond, Const, Un, Var
 from .ir import Assign, CallS, Comment, Goto, If, Ret, Store, Switch
+from .volatile import has_call, hw_loads, in_arm, reads_last  # noqa: F401 (has_call: passes.has_call)
 
 FLOAT_REG = "f64"
 
@@ -391,6 +392,8 @@ class Propagator:
             elif isinstance(s, CallS):
                 for w in s.writes():
                     st.kill(w)
+                for k in [k for k, v in st.v.items() if reads_last(v)]:  # the last call's other result moves on
+                    st.kill(k)
 
     def run(self):
         fn = self.fn
@@ -492,7 +495,7 @@ def dce(fn):
         live = live_out(fn, live_in, b)
         keep = []
         for s in reversed(b.stmts):
-            if isinstance(s, Assign) and s.dst not in live and s.dst not in fn.protect:
+            if isinstance(s, Assign) and s.dst not in live and s.dst not in fn.protect and not hw_loads(s.e):
                 changed = True
                 continue
             if isinstance(s, Comment):
@@ -618,12 +621,6 @@ def defs(fn):
     return d
 
 
-def has_call(e):
-    if isinstance(e, Call) and not e.load and e.fn.startswith("tc_"):
-        return True
-    return any(has_call(c) for c in children(e))
-
-
 def occurrences(e, name):
     if isinstance(e, Var):
         return int(e.name == name)
@@ -662,7 +659,7 @@ def substitute(fn, max_size=40):
                 i += 1
                 continue
             reads = s.e.vars()
-            loads = s.e.has_load()
+            loads, vol = s.e.has_load() or reads_last(s.e), bool(hw_loads(s.e))
             target = None
             for j in range(i + 1, len(sts) + 1):
                 cand = sts[j] if j < len(sts) else b.term
@@ -674,13 +671,14 @@ def substitute(fn, max_size=40):
                 w = cand.writes()
                 if w & reads or s.dst in w:
                     break
-                if loads and isinstance(cand, (Store, CallS)):
+                if (loads and isinstance(cand, (Store, CallS))) or (vol and any(hw_loads(x) for x in cand.exprs())):
                     break
             if target is None:
                 i += 1
                 continue
             cand = sts[target] if target < len(sts) else b.term
-            if target == len(sts) and isinstance(cand, Switch):
+            if (target == len(sts) and isinstance(cand, Switch)) or (
+                    vol and any(hw_loads(e) or in_arm(e, s.dst) for e in cand.exprs())):
                 i += 1
                 continue
             if sum(occurrences(e, s.dst) for e in cand.exprs()) != 1 or not dead_after(sts, target, b.term, s.dst,

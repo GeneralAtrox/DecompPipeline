@@ -177,6 +177,7 @@ int sat_net_msg(void *ctx, const u8 *m, int len, int reliable)
     case M_DESYNC:
         if (len >= 5 && !S.desync) S.desync = sat_net_get32(m + 1), S.desync_theirs = 1;
         break;
+    case M_LEAVE: S.left = 1; break;
     default:
         if (!S.host) sat_net_setup_msg(m, len);
     }
@@ -214,7 +215,7 @@ static void host_service(void)
 
 static int waited_enough(u32 f, int what)
 {
-    if (S.desync) return 1;
+    if (S.desync || S.left) return 1;
     if (what == W_FIRST) return S.ready_from != 0;
     if (what == W_JOINER) return !S.j0 || !S.link_up || (rec(f)->flags & R_JHAVE);
     return !S.link_up || (rec(f)->flags & R_HAVE);
@@ -232,7 +233,9 @@ static void wait_for(u32 f, int what)
         sat_net_idle(0); /* the window, then an in-between frame that is due or a slice of the wait (sat_net_setup.c) */
         net_udp_lock();
         if (!told && now() - t0 > g_freq.QuadPart) told = 1, game_log_line("netplay: frame %u: waiting for %s", f, words[what]);
+        if (what == W_FIRST && now() - t0 > 60 * g_freq.QuadPart) net_udp_unlock(), sat_lobby_back("no-player"), net_udp_lock();
     }
+    sat_online_watch(f, SAT_NET_NO_PAD);
     w = now() - t0;
     g_waited += w, g_wait_frames++, g_wait_ms += ms(w);
     if (ms(w) > g_wait_max) g_wait_max = ms(w);
@@ -241,6 +244,7 @@ static void wait_for(u32 f, int what)
 static void stop(const char *why, int code) /* lock held */
 {
     net_udp_unlock();
+    sat_lobby_back(code == 6 ? "out-of-step" : "link-lost"); /* a match the game's own menu started goes back to it */
     port_exit(why, code);
     for (;;) pace_wait_us(1000000); /* another thread is ending the run */
 }
@@ -336,6 +340,7 @@ void sat_net_vblank(void)
     host_pads_read(pad);
     w = (u16)sat_pad_word(&pad[0]);
     net_udp_lock();
+    sat_online_watch(f, w);
     if (S.link_lost) {
         S.link_lost = 0;
         if (S.host && (S.j0 || S.ready_from)) game_log_line("netplay: player 2 left at frame %u", f);
@@ -348,6 +353,7 @@ void sat_net_vblank(void)
     net_udp_unlock();
     if (S.hash_every > 0 && f % (u32)S.hash_every == 0) ram_hash(f);
     if (S.test_frame && f == (u32)S.test_frame) sat_net_plant(f);
+    sat_online_frame(f, (g_flags & R_P1) != 0);
     cost = ms(now() - t0 - g_waited);
     bin = (u32)(cost * 100.0);
     g_bins[bin < BINS ? bin : BINS]++, g_frames++;

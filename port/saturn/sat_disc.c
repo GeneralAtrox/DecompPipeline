@@ -127,6 +127,47 @@ int sat_disc_root(SatFile *root)
     return 0;
 }
 
+/* bytes of the file at fad, from off: the data track's 2048-byte user data (mode 2 form 1 has 8 more header bytes) */
+int sat_disc_file_bytes(u32 fad, u32 off, u32 len, u8 *dst)
+{
+    u8 raw[SAT_SECTOR];
+    while (len) {
+        u32 o = off % 2048u, n = 2048u - o < len ? 2048u - o : len;
+        if (!sat_disc_read(fad + off / 2048u, raw)) return 0;
+        memcpy(dst, raw + (raw[15] == 2 ? 24 : 16) + o, n);
+        dst += n, off += n, len -= n;
+    }
+    return 1;
+}
+
+/* the file by its path from the root ("KOKO.CPK", "RP/MV.BIN"): its first frame, *sectors and *bytes (either may be
+ * NULL), 0 if it is not on the disc (the movie player's and the level editor's) */
+u32 sat_disc_find(const char *path, u32 *sectors, u32 *bytes)
+{
+    static SatFile dir[SAT_MAX_FILES];
+    SatFile root;
+    int n;
+    if (sat_disc_root(&root)) return 0;
+    n = sat_disc_dir(root.dir_lba, root.size, dir, SAT_MAX_FILES);
+    while (*path == '/') path++;
+    for (;;) {
+        const char *slash = strchr(path, '/');
+        size_t len = slash ? (size_t)(slash - path) : strlen(path);
+        int i;
+        for (i = 0; i < n; i++)
+            if (!_strnicmp(dir[i].name, path, len) && (dir[i].name[len] == 0 || dir[i].name[len] == ';')) break;
+        if (i == n) return 0;
+        if (!slash) {
+            if (sectors) *sectors = (dir[i].size + 2047u) / 2048u;
+            if (bytes) *bytes = dir[i].size;
+            return dir[i].fad;
+        }
+        root = dir[i];
+        n = sat_disc_dir(root.dir_lba, root.size, dir, SAT_MAX_FILES);
+        path = slash + 1;
+    }
+}
+
 int sat_disc_dir(u32 dir_lba, u32 size, SatFile *out, int max)
 {
     int n = 0;

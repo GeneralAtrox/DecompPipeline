@@ -77,12 +77,12 @@ s32 console_lockstep_timer(s32 live);
 int console_lockstep_time(HostTime *t);
 
 /* ---- the menu bar ---- */
-/* A console-only entry: a check (on/off) or a choice (one of a set), at the end of the named menu ("Display", "Audio"
- * or "Input"), after a separator. The base builds every other entry, so the menus, their order, names and shortcuts
+/* A console-only entry: a check (on/off) or a choice (one of a set), at the end of the named menu ("Display", "Audio",
+ * "Input" or "Game"), after a separator. The base builds every other entry, so the menus, their order, names and shortcuts
  * are the same on every console. The setting is the key in the settings file (a check saves on/off, a choice its
  * values[] word); get/set give and take the value; available() greys the entry when the game cannot apply it. */
 typedef struct PortMenuItem {
-    const char *menu;            /* "Display", "Audio" or "Input" */
+    const char *menu;            /* "Display", "Audio", "Input" or "Game" */
     const char *label;           /* with & for the mnemonic */
     int kind;                    /* PORT_MENU_CHECK or PORT_MENU_CHOICE */
     const char *setting;         /* the settings.txt key */

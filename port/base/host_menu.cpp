@@ -7,7 +7,7 @@
 //   Audio:   volume, mute when unfocused, then the console's
 //   Input:   rumble, pause when unfocused, controls (twin-stick, pad_twin.c; each of the console's buttons), then the
 //            console's
-//   Game:    auto-load save (autoload.c; greyed for a game that names no load path)
+//   Game:    auto-load save (autoload.c; greyed for a game that names no load path), then the console's
 //   Online:  a console with online play (host_online.cpp): play alone, host, join; while a match is on, the entries that
 //            would change the game for both players are greyed and refused (Pause when unfocused, Auto-load, Resume)
 //   Help:    copy agent prompt (F9; the bar's copy icon is the same command: host_copy_button.cpp)
@@ -22,6 +22,7 @@
 #include "host.h"
 #include "host_internal.hpp"
 #include "autoload.h"
+#include "level_edit.h"
 
 namespace {
 
@@ -42,6 +43,7 @@ enum : UINT {
     kPauseUnfocused, kTwinStick,
     kResume = 310,
     kAutoLoad = 311,
+    kLevelEdit = 312,
     kOnline = 320, // kOnline + N: host_online.cpp's entries
 };
 
@@ -164,6 +166,9 @@ HMENU game_menu()
 {
     HMENU m = CreatePopupMenu();
     AppendMenuW(m, MF_STRING, kAutoLoad, L"&Auto-load save (from the next start)");
+    append_extras(m, "Game");
+    AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(m, MF_STRING, kLevelEdit, L"&Level editor..."); // level_edit.cpp: greyed for a console with no level to edit
     return m;
 }
 
@@ -210,6 +215,7 @@ void sync()
     if (port_console.flags & PORT_CONSOLE_ONLINE) host::online_sync(g_menu);
     check(kAutoLoad, autoload_get() != 0);
     EnableMenuItem(g_menu, kAutoLoad, MF_BYCOMMAND | (autoload_available() && !host::online_locked() ? MF_ENABLED : MF_GRAYED));
+    EnableMenuItem(g_menu, kLevelEdit, MF_BYCOMMAND | (level_edit_provider() && !host::online_locked() ? MF_ENABLED : MF_GRAYED));
     unsigned na = 0;
     console_actions(&na);
     for (unsigned i = 0; i < na && i < 32; i++)
@@ -297,6 +303,8 @@ void command(UINT id)
     } else if (id == kTwinStick) {
         port_twin_set(!port_twin_get());
         host::settings_set("twin-stick", on_off(port_twin_get() != 0));
+    } else if (id == kLevelEdit) {
+        if (level_edit_provider() && !host::online_locked()) level_edit_request();
     } else if (id == kResume) {
         host::resume_start(g_hwnd);
     } else if (id >= kBind) {

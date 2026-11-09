@@ -19,6 +19,7 @@ static struct {
 } g_s[SERIES];
 static u64 g_freq, g_frames, g_first, g_last, g_wait_end, g_draw_start, g_draw_acc, g_xdraw_acc;
 static u64 g_late, g_late_loading, g_shown_loading, g_disc_start, g_disc_bytes;
+static u64 g_repeat; /* the frame-rate cap's slots (144 uncapped) that showed no new frame, loading screens left out */
 static volatile LONG g_tick_pending;    /* the last tick's work in us + 1, until a shown frame takes it; 0 none */
 static volatile LONG64 g_loading_until; /* clock ticks: a gap that starts before this is a loading screen's */
 static DWORD g_game_tid;                /* the thread of the wait and tick hooks */
@@ -154,6 +155,8 @@ void play_stats_shown_slow(void)
         add(FRAME, gap);
         slots = (gap * 144u + 500000u) / 1000000u; /* the 144 slots the gap spans, to the nearest: one is on time */
         if (slots > 1u) *(loading ? &g_late_loading : &g_late) += slots - 1u;
+        u64 cap = extra_fps() ? extra_fps() : 144u, at_cap = (gap * cap + 500000u) / 1000000u;
+        if (at_cap > 1u && !loading) g_repeat += at_cap - 1u;
     } else {
         g_first = t;
     }
@@ -182,7 +185,7 @@ void play_stats_restart(void)
     if (g_play_stats <= 0) return;
     memset(g_s, 0, sizeof g_s);
     g_frames = g_first = g_last = g_wait_end = g_draw_start = g_draw_acc = g_xdraw_acc = 0;
-    g_late = g_late_loading = g_shown_loading = 0;
+    g_late = g_late_loading = g_shown_loading = g_repeat = 0;
     InterlockedExchange(&g_tick_pending, 0);
 }
 
@@ -220,4 +223,8 @@ void play_stats_report(void)
              "%llu late machine %s\n", !judged ? "none" : make99 <= PS_MAKE_BAR_MS + 1e-9 && g_late * 1000u <= judged ? "pass" : "fail",
              make99, PS_MAKE_BAR_MS, g_late, judged, judged ? (double)g_late * 1000.0 / (double)judged : 0.0,
              g_shown_loading, g_late_loading, host);
+    /* at any cap, not only 144: a slot of the cap with no new frame is a repeated one (the user, 2026-11-09: "It should
+     * be compatible at any fps") */
+    port_log("play smoothness: cap %u, %llu repeated slot(s) in %llu shown (%.2f per 1000, bar 1)\n", extra_fps(), g_repeat,
+             judged, judged ? (double)g_repeat * 1000.0 / (double)judged : 0.0);
 }

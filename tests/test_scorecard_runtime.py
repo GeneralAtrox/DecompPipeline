@@ -9,10 +9,13 @@
 4. the aspect-ratio check reads the proof table of RUNTIME_TARGET.md: no table or no row for the reference game is
    unmeasured, a row short of any shape, default on, identical gameplay or existing evidence fails, and only a full
    evidenced row passes, so the gate is never green without one;
-5. the real spec and the real RUNTIME_TARGET.md give a dreamcast gate that is red (layers open) and a gate-6 entry per console.
+5. the laptop's computer name is not in the spec (a label): DP_TARGET_MACHINE, else machines.local.json
+   "target_machine", names it; with neither only the label counts;
+6. the real spec and the real RUNTIME_TARGET.md give a dreamcast gate that is red (layers open) and a gate-6 entry per console.
 Run: python -W error tests/test_scorecard_runtime.py
 """
 import json
+import os
 import pathlib
 import sys
 import tempfile
@@ -68,10 +71,17 @@ class Summary(unittest.TestCase):
 
 
 class Gate(unittest.TestCase):
-    def run_gate(self, logs, doc=DOC, c=None):
+    def setUp(self):  # this machine's own DP_TARGET_MACHINE must not decide the cases
+        saved = os.environ.pop(sr.MACHINE_ENV, None)
+        if saved is not None:
+            self.addCleanup(os.environ.__setitem__, sr.MACHINE_ENV, saved)
+
+    def run_gate(self, logs, doc=DOC, c=None, local=None):
         with tempfile.TemporaryDirectory() as d:
             d = pathlib.Path(d)
             (d / "docs").mkdir()
+            if local is not None:
+                (d / "machines.local.json").write_text(json.dumps(local), encoding="utf-8")
             if doc is not None:
                 (d / "docs" / "RUNTIME_TARGET.md").write_text(doc, encoding="utf-8")
             for name, text in logs.items():
@@ -114,14 +124,35 @@ class Gate(unittest.TestCase):
         self.assertEqual([c["status"] for c in old[:2]], ["unmeasured", "unmeasured"])
 
     def test_only_the_users_laptop_passes_or_fails(self):
-        slow = OK.replace("3.00/5.10/12.00", "4.00/15.00/20.00").replace("target_laptop", "Build box A")
+        slow = OK.replace("3.00/5.10/12.00", "4.00/15.00/20.00").replace("target_laptop", "BUILD_BOX_A")
         out = self.run_gate({"logs/port.log": slow})
-        self.assertEqual([c["status"] for c in out[:2]], ["unmeasured", "unmeasured"])  # Build box A: never a fail
-        self.assertIn("Build box A", out[0]["missing"])
+        self.assertEqual([c["status"] for c in out[:2]], ["unmeasured", "unmeasured"])  # BUILD_BOX_A: never a fail
+        self.assertIn("BUILD_BOX_A", out[0]["missing"])
         both = self.run_gate({"logs/port.log": slow, "logs/port.1.log": OK.replace("target_laptop", "TARGET_LAPTOP")})
-        self.assertEqual([c["status"] for c in both[:2]], ["pass", "pass"])  # the laptop's counts, build box A's does not
+        self.assertEqual([c["status"] for c in both[:2]], ["pass", "pass"])  # the laptop's counts, BUILD_BOX_A's does not
         unnamed = self.run_gate({"logs/port.log": OK.replace(" machine target_laptop", "")})
         self.assertEqual([c["status"] for c in unnamed[:2]], ["unmeasured", "unmeasured"])
+
+    def test_the_laptops_name_comes_from_local_config(self):
+        self.assertEqual(SPEC["thresholds"]["runtime"]["machine"], "target_laptop")  # a label, no computer name
+        named = OK.replace("target_laptop", "Example_Laptop")
+        statuses = lambda out: [c["status"] for c in out[:2]]  # noqa: E731
+        self.assertEqual(statuses(self.run_gate({"logs/port.log": named})), ["unmeasured", "unmeasured"])  # not configured
+        local = {"target_machine": "Example_Laptop"}
+        self.assertEqual(statuses(self.run_gate({"logs/port.log": named}, local=local)), ["pass", "pass"])
+        self.assertEqual(statuses(self.run_gate({"logs/port.log": named.replace("Example_Laptop", "EXAMPLE_LAPTOP")},
+                                                local=local)), ["pass", "pass"])  # computer names ignore case
+        for other in (OK, OK.replace("target_laptop", "BUILD_BOX_A"), OK.replace(" machine target_laptop", "")):
+            out = self.run_gate({"logs/port.log": other}, local=local)  # the label, a build box or no name: refused
+            self.assertEqual(statuses(out), ["unmeasured", "unmeasured"])
+            self.assertNotIn("Example_Laptop", out[0]["missing"])  # the messages name the label only
+        failing = named.replace("3.00/5.10/12.00", "4.00/15.00/20.00")
+        self.assertEqual(statuses(self.run_gate({"logs/port.log": failing}, local=local))[0], "fail")  # it is judged
+        os.environ[sr.MACHINE_ENV] = "Other_Laptop"  # the environment wins over the file (setUp restores it)
+        self.addCleanup(os.environ.pop, sr.MACHINE_ENV, None)
+        self.assertEqual(statuses(self.run_gate({"logs/port.log": named}, local=local)), ["unmeasured", "unmeasured"])
+        self.assertEqual(statuses(self.run_gate({"logs/port.log": named.replace("Example_Laptop", "Other_Laptop")},
+                                                local=local)), ["pass", "pass"])
 
     def test_layers(self):
         out = self.run_gate({"logs/port.log": OK})

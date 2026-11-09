@@ -197,7 +197,7 @@ def sh_in_scope(word, spans, entries):
 
 
 def ppc_in_scope(word, spans, entries, helpers=()):
-    """Xbox 360: word(a) the 32-bit instruction at a; helpers the frame helpers' entries (they run inline)."""
+    """Xbox 360, GameCube: word(a) the 32-bit instruction at a; helpers the frame helpers' entries (run inline)."""
     return _scoped(ppc_scan(word, spans), entries, helpers)
 
 
@@ -243,11 +243,18 @@ def _scan(cfg, addr, bodies_path, width, big, helpers_path=None):
     if not spans:
         return None
     base, order = int(str(cfg["load_address"]), 16), "big" if big else "little"
+    secs = dol_sections(image) if str(cfg["binary_path"]).lower().endswith(".dol") else None
 
-    def word(a):
-        o = a - base
+    def word(a):  # a GameCube main.dol is read by its sections (dol_sections), not as a flat image
+        o = a - base if secs is None else next((off + a - at for at, off, n in secs if at <= a <= at + n - width), -1)
         return int.from_bytes(image[o:o + width], order) if 0 <= o <= len(image) - width else None
     return (sh_scan if width == 2 else ppc_scan)(word, spans), entries, hel
+
+
+def dol_sections(image):
+    """A DOL's 18 sections (7 text, 11 data) as [(address, file offset, size)], the empty ones left out."""
+    w = [int.from_bytes(image[4 * i:4 * i + 4], "big") for i in range(54)]
+    return [(w[18 + k], w[k], w[36 + k]) for k in range(18) if w[36 + k]]
 
 
 def hook(cfg, addr, bodies_path, width, big, helpers_path=None):
@@ -266,7 +273,8 @@ def direct(cfg, addr, bodies_path, width, big, helpers_path=None):
 
 
 # --- The marks (tools/args_marks.py): state/unchecked_args.json, the ledger row, the readable row ---
-WORDS = {"dreamcast_sh4": (2, False), "saturn_sh2": (2, True), "xbox360_ppc": (4, True)}  # width, big-endian
+WORDS = {"dreamcast_sh4": (2, False), "saturn_sh2": (2, True), "xbox360_ppc": (4, True),
+         "gamecube_ppc": (4, True)}  # width, big-endian
 TOOL = pathlib.Path(__file__).resolve().parents[1]
 
 

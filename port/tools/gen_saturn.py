@@ -12,15 +12,16 @@ reported at run time.
   gen_saturn.py --game game.json --tx DIR_OF_ADDR.C --out OUTDIR
 """
 import argparse
-import base64
 import json
 import pathlib
 import re
-import struct
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import scene_map  # noqa: E402
+import gen_saturn_menus  # noqa: E402
+import gen_saturn_level  # noqa: E402
+import gen_saturn_heads  # noqa: E402
 
 CHUNK = 120
 DYNAMIC = 0x2000
@@ -234,9 +235,13 @@ def main(argv=None):
     hdr += auto_load_h(cfg.get("auto_load"))
     hdr += movie_h(cfg.get("movie"))
     hdr += netplay_h(cfg.get("netplay"))
+    hdr += team_fight_h(cfg.get("team_fight"))
+    hdr += gen_saturn_level.level_edit_h(cfg.get("level_edit"), pathlib.Path(a.game).resolve().parent, step_c)
+    hdr += gen_saturn_menus.menus_h(cfg)  # menus and menu_panel
+    hdr += gen_saturn_heads.heads_h(cfg)  # new head types (sat_heads.c)
     hdr.append("")
     (out / "sat_game.h").write_text("\n".join(hdr), encoding="utf-8")
-    (out / "sat_part_data.h").write_text(part_choice_h(cfg.get("part_choice")), encoding="utf-8")
+    (out / "sat_part_data.h").write_text(gen_saturn_heads.part_choice_h(cfg.get("part_choice")), encoding="utf-8")
     game_dir = pathlib.Path(a.game).resolve().parent  # scene_dump.json sits beside game.json; without it the dump has the kit's fields only
     (out / "scene_map.c").write_text(scene_map.scene_map_c({"dir": game_dir}, "", "", header=""), encoding="utf-8")
     (out / "sat_chunks.txt").write_text("\n".join(f"txchunk_{i:02d}.c" for i in range(idx)) + "\n", encoding="utf-8")
@@ -264,7 +269,39 @@ def netplay_h(np):
         sys.exit("gen_saturn: netplay pad: only 1 (the second pad) is supported")
     return ["#define SAT_NETPLAY 1", f"#define SAT_NET_DELAY {int(np.get('delay', 3))}",
             f"#define SAT_NET_HASH_EVERY {int(np.get('hash_every', 50))}", f"#define SAT_NET_PORT {int(np.get('port', 29720))}",
-            f"#define SAT_NET_TEST_BYTE 0x{int(str(np.get('test_byte', '0')), 0):08x}u"]
+            f"#define SAT_NET_TEST_BYTE 0x{int(str(np.get('test_byte', '0')), 0):08x}u"] + gen_saturn_menus.net_menu_h(np)
+
+
+def team_fight_h(tf):
+    """game.json team_fight, a four-robot fight played two against two (port/saturn/sat_team.c), as the SAT_TEAM_FIGHT
+    initialiser: the game's addresses and sizes in the order sat_team.c's TeamGame lists them. Keys: count (the robots in
+    the fight, a word) and mode (the four-robot flag, a byte); flags [address, step, CPU byte, out byte] (each robot's
+    flag bytes); pos [address, step] (x, y, z, 16.16); energy [address, robot step, full]; the functions control,
+    pad_read, brain, setup, camera, hud, frames and sides [two]; gate [count address, after, or-flag address] (when the
+    game takes a pad at all); bars {map, line, first_line, cells, table, cell_add, max, tables [side A, side B]}; ringout
+    [the function that tests for robots out of the ring, the flag a ring-out sets to end the fight]; names {setup (the
+    fight's HUD set-up, which draws two names), draw (the name routine: name, x, y, 0, a fifth argument 1), records (each
+    robot's record number, halfwords), name (the first record's name), record (a record's size), map (the text map), x,
+    len (the longest name)}; shared_camera {view (the per-view camera, view number), mode (each view's camera mode,
+    halfwords), pair (the mode that frames robots 0 and 1 side-on), span (its two points apart, 16ths of the group's radius),
+    warning (the ring-edge sign for a view's robot, view number), height (the game's camera height, 16.16, larger is
+    higher), lift (added to it while the shared camera runs, 16ths of the camera's distance), near (its least half span,
+    whole units)}."""
+    if not tf:
+        return []
+    def a(v):
+        return f"0x{int(str(v), 0):08x}u"
+    fl, pos, en, gate, b, nm = tf["flags"], tf["pos"], tf["energy"], tf["gate"], tf["bars"], tf["names"]
+    sc = tf["shared_camera"]
+    if len(tf["sides"]) != 2 or len(b["tables"]) != 2:
+        sys.exit("gen_saturn: team_fight sides and bars tables each take two")
+    vals = [tf["count"], tf["mode"], fl[0], fl[1], fl[2], fl[3], pos[0], pos[1], en[0], en[1], en[2], tf["control"], tf["pad_read"],
+            gate[0], gate[1], gate[2], tf["brain"], tf["setup"], tf["camera"], tf["hud"], tf["frames"], tf["sides"][0], tf["sides"][1],
+            b["map"], b["line"], b["first_line"], b["cells"], b["table"], b["cell_add"], b["max"], b["tables"][0], b["tables"][1], tf["ringout"][0], tf["ringout"][1],
+            nm["setup"], nm["draw"], nm["records"], nm["name"], nm["record"], nm["map"], nm["x"], nm["len"],
+            sc["view"], sc["mode"], sc["pair"], sc["span"], sc["warning"], sc["height"], sc["lift"], sc["near"]]
+    return ["#define SAT_TEAM_FIGHT {" + ", ".join(a(v) for v in vals[:21]) + ", {" + a(vals[21]) + ", " + a(vals[22]) + "}, "
+            + ", ".join(a(v) for v in vals[23:30]) + ", {" + a(vals[30]) + ", " + a(vals[31]) + "}, " + ", ".join(a(v) for v in vals[32:]) + "}"]
 
 
 def movie_h(mv):
@@ -287,7 +324,17 @@ def movie_h(mv):
             out.append(f"#define SAT_MOVIE_{key.upper()} {int(mv[key])}u")
     if "reset_call" in mv:
         out.append(f"#define SAT_MOVIE_RESET_CALL 0x{int(mv['reset_call'], 0):08x}u")
-    return out
+    return out + gen_saturn_menus.logos_h(mv)
+
+
+def step_c(st):
+    """one AutoLoadStep initialiser (port/base/autoload.h) from {"enter" or "leave", "press", "poke", "call"}"""
+    fn, leave = (st["leave"], 1) if "leave" in st else (st["enter"], 0)
+    poke = st.get("poke", [0, 0])
+    press = json.dumps(st["press"]) if st.get("press") else "NULL"
+    call = st.get("call", [0, 0])
+    return (f"{{0x{int(fn, 0):08x}u, {leave}, {press}, 0x{int(str(poke[0]), 0):08x}u, {int(str(poke[1]), 0)}u, "
+            f"0x{int(str(call[0]), 0):08x}u, {int(str(call[1]), 0)}u}}")
 
 
 def auto_load_h(al):
@@ -300,45 +347,8 @@ def auto_load_h(al):
     name = al["file"]
     if len(name) != 11:
         sys.exit(f"gen_saturn: auto_load file {name!r} is not the 11 characters a backup file name has")
-    steps = []
-    for st in al["steps"]:
-        fn, leave = (st["leave"], 1) if "leave" in st else (st["enter"], 0)
-        poke = st.get("poke", [0, 0])
-        press = json.dumps(st["press"]) if st.get("press") else "NULL"
-        call = st.get("call", [0, 0])
-        steps.append(f"{{0x{int(fn, 0):08x}u, {leave}, {press}, 0x{int(str(poke[0]), 0):08x}u, {int(str(poke[1]), 0)}u, "
-                     f"0x{int(str(call[0]), 0):08x}u, {int(str(call[1]), 0)}u}}")
+    steps = [step_c(st) for st in al["steps"]]
     return [f"#define SAT_AUTO_LOAD_FILE {json.dumps(name)}", "#define SAT_AUTO_LOAD_STEPS {" + ", ".join(steps) + "}"]
-
-
-def part_choice_h(pc):
-    """game.json part_choice, a model part the player picks (port/saturn/sat_part.c), as C: index 0 is the original."""
-    lines = ["/* generated by gen_saturn.py from game.json part_choice: the versions of a model part (sat_part.c) */"]
-    if not pc:
-        return "\n".join(lines + ["#define SAT_PART_N 0", ""])
-    ch = pc["choices"]
-    lines += [
-        f"#define SAT_PART_N {len(ch) + 1}",
-        f"#define SAT_PART_TITLE {json.dumps(pc['title'])}",
-        f"#define SAT_PART_OBJECT 0x{int(pc['object'], 0):08x}u",
-        f"#define SAT_PART_PDATA 0x{int(pc['pdata'], 0):08x}u",
-        f"#define SAT_PART_POINTS {int(pc['points'])}u",
-        f"#define SAT_PART_POLYS {int(pc['polygons'])}u",
-        f"#define SAT_PART_DROP {int(pc['drop_points'])}u",
-        "static const char *const sat_part_labels[] = {" + ", ".join(json.dumps(x) for x in [pc["original"]] + [c[1] for c in ch]) + "};",
-        "static const char *const sat_part_values[] = {" + ", ".join(json.dumps(x) for x in ["original"] + [c[0] for c in ch]) + "};",
-    ]
-    for i, (name, _, b64) in enumerate(ch, 1):
-        data = base64.b64decode(b64)
-        # the game copies and transforms every point of a part, and too many overrun it (Robo Pit: 450 crashed, 354
-        # runs); max_points is the most a game has been shown to take
-        points = int(pc["points"]) - int(pc["drop_points"]) + struct.unpack_from(">H", data, 2)[0]
-        if "max_points" in pc and points > int(pc["max_points"]):
-            sys.exit(f"gen_saturn: part_choice {name} has {points} points, more than max_points {pc['max_points']}")
-        rows = [",".join(str(x) for x in data[k:k + 32]) for k in range(0, len(data), 32)]
-        lines.append(f"static const unsigned char sat_part_e{i}[] = {{\n" + ",\n".join(rows) + "};")
-    lines.append("static const unsigned char *const sat_part_edits[] = {0, " + ", ".join(f"sat_part_e{i}" for i in range(1, len(ch) + 1)) + "};")
-    return "\n".join(lines + [""])
 
 
 def unit(out, name, texts):

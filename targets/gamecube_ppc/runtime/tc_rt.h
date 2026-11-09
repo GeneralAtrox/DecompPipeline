@@ -39,6 +39,10 @@ void wrf32(u32 addr, f32 value);     /* stfs of a register holding a single (the
 void wrf32d(u32 addr, f64 value);    /* stfs of a register holding any double: the 750CL's store conversion */
 void wrf64(u32 addr, f64 value);     /* stfd */
 
+/* A callee-saved register's value at exit (r14..r31, f14..f31), for the strict judge's exit frame. */
+void tc_xr(u32 k, u32 value);
+void tc_xrf(u32 k, f64 value);
+
 /* Calls to other original functions (including calls through function pointers: bctrl, blrl).
  * Fill r[0..7] = r3..r10 and f[0..7] = f1..f8 exactly as the original sets them before the bl, and s[0..7] =
  * the words at r1+8, r1+12, ... r1+36 at the call (stack arguments). A call through a function pointer (a target

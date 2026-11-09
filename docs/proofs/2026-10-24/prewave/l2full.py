@@ -1,4 +1,4 @@
-"""Build box B: the full re-proof's prepares. For each RUN (TREE:CFG, TREE rb = the rebased branch, land = its base), every
+"""build box B: the full re-proof's prepares. For each RUN (TREE:CFG, TREE rb = the rebased branch, land = its base), every
 sampled function (tools/mutation_audit/sample.json) of every workspace, one workspace after another, each bounded.
 usage: py -3.12 l2full.py JOBS RUN ...      e.g. l2full.py 3 rb:off land:off rb:on
 A run whose probe JSON exists is skipped (resume). LOCALAPPDATA: this job's own broker folder. Before each workspace it

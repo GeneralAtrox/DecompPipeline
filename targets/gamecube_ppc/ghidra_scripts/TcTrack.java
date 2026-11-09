@@ -1,7 +1,9 @@
 // What a run's own steps write, for two judge rules. Not a script itself; TcPrepare sets `on` for every prepare (null:
 // the body has no computed call or jump and no float store, and nothing changes).
 // 1. Calls through function pointers (bctrl, blrl, bctr: a target not in meta callees, whose argument registers come
-//    from the callee's prototype). The argument registers the run set since its entry or its last call (its own
+//    from the callee's prototype), and direct calls and branches to code no listed callee starts (a bl to code in no
+//    function, or a run on past the body's end into the next function: TcOracle mocks both as calls, unlisted). The
+//    argument registers the run set since its entry or its last call (its own
 //    parameters count as set at entry; after a call r3 and f1 hold its scripted results, and r4 a 64-bit callee's low
 //    word (TcFlow.returnsR4), the mock zeroes the rest:
 //    TcOracle.clobber), in order up to the first gap (r3..r10; f1..f8), are that call's arguments: expected.txt
@@ -51,21 +53,36 @@ final class TcTrack {
         this.stores = stores;
     }
 
-    // `on` for the body (null when it has neither a computed call or jump nor a float store).
+    // `on` for the body (null when it has neither a computed call or jump, nor a flow to code no listed callee starts,
+    // nor a float store).
     static TcTrack of(Listing listing, AddressSetView body, List<Function> callees, TcBase.Proto proto) {
+        Set<Long> c = new HashSet<>();
+        for (Function g : callees) c.add(g.getEntryPoint().getOffset());
         boolean calls = false, stores = false;
         for (Instruction in : listing.getInstructions(body, true)) {
             FlowType f = in.getFlowType();
             calls |= f.isComputed() && (f.isCall() || f.isJump());
+            if ((f.isJump() || f.isCall()) && !f.isComputed()) {
+                for (Address to : in.getFlows()) calls |= unlisted(listing, to, body, c);
+            }
+            calls |= in.getFallThrough() != null && unlisted(listing, in.getFallThrough(), body, c);
             stores |= store(in);
         }
         if (!calls && !stores) return null;
-        Set<Long> c = new HashSet<>();
-        for (Function g : callees) c.add(g.getEntryPoint().getOffset());
         Set<String> p = new HashSet<>();
         for (TcBase.Param q : proto.params) p.add(q.storage);
         p.retainAll(ARGS);
         return new TcTrack(c, p, calls, stores);
+    }
+
+    // A flow out of the body to an address no listed callee starts. TcOracle mocks it as a call whose target has no
+    // record, so the CA line holds its arguments (call): a bl to code in no function, or a run on past the body's end
+    // into the next function (TcOracle.entersCallee). Before 2026-11-09 only a computed call or jump turned the lines on
+    // here, and such a call had no argument compared (core/unchecked_args.py; target.json stamp scope
+    // unlisted_call_args; the Dreamcast, Saturn and Xbox 360 oracles had it from 2026-11-07). The save and restore
+    // helpers run inline (TcOracle.findInline): no call, no record.
+    static boolean unlisted(Listing listing, Address to, AddressSetView body, Set<Long> c) {
+        return !body.contains(to) && !c.contains(to.getOffset()) && !TcFlow.isSaveHelper(listing, to);
     }
 
     static boolean store(Instruction in) {

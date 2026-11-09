@@ -4,8 +4,8 @@
  * call extern; here a guest memory access, fr0..fr15 and
  * r4..r14 are the same code as tx_rt.c's and sh4_rt.c's, in the caller, so a translated body's loads and stores are
  * not one call each (they were ~30% of a heavy frame). The translated C itself is unchanged: it names tc_rt.h and gets
- * the same functions, same results, same order. Anything with state or a side effect stays out of line:
- * a spin word's read (tx_rt.c rd32). */
+ * the same functions, same results, same order (fipr and ftrv: sh4_vec.h's packed forms, as sh4_rt.c's).
+ * Anything with state or a side effect stays out of line: a spin word's read (tx_rt.c rd32). */
 #ifndef PORT_TX_TC_RT_INLINE_H
 #define PORT_TX_TC_RT_INLINE_H
 
@@ -26,6 +26,10 @@
 #define sh4_set_xf tcx_decl_sh4_set_xf
 #define sh4_r tcx_decl_sh4_r
 #define sh4_set_r tcx_decl_sh4_set_r
+#define sh4_fipr tcx_decl_sh4_fipr
+#define sh4_ftrv tcx_decl_sh4_ftrv
+#define sh4_fipr_fv tcx_decl_sh4_fipr_fv
+#define sh4_ftrv_fv tcx_decl_sh4_ftrv_fv
 #include PORT_TC_RT_H
 #undef rd8
 #undef rd16
@@ -41,6 +45,11 @@
 #undef sh4_set_xf
 #undef sh4_r
 #undef sh4_set_r
+#undef sh4_fipr
+#undef sh4_ftrv
+#undef sh4_fipr_fv
+#undef sh4_ftrv_fv
+#include "../sh4_vec.h"
 
 extern u32 port_tx_spin_bits, port_tx_spin_mask; /* tx_spin.c: only an address these match can be a spin word (port_spin_word) */
 u32 port_tx_rd32_slow(u32 addr);  /* tx_rt.c's rd32, spin words included */
@@ -48,6 +57,8 @@ extern u32 port_sh4_fr[16];       /* sh4_rt.c: fr0..fr15 as bits */
 extern u32 port_sh4_xf[16];       /* sh4_rt.c: xf0..xf15 as bits */
 extern u32 port_sh4_gs[7];        /* r8..r14 */
 extern u32 port_sh4_ro[4];        /* r4..r7 as the last tc_call passed them */
+extern int g_work_on;             /* work_count.h: the vector helpers' count (WC_VECTOR_OPS), as sh4_rt.c's keep it */
+extern u64 g_work_now[];
 
 #pragma warning(push)
 #pragma warning(disable : 4505) /* an inline function a body does not use */
@@ -139,6 +150,30 @@ static __forceinline void sh4_set_r(int i, u32 v)
 {
     if (i >= 8 && i < 15) port_sh4_gs[i - 8] = v;
     if (i >= 4 && i < 8) port_sh4_ro[i - 4] = v;
+}
+
+/* fipr and ftrv (sh4_rt.c's, through sh4_vec.h): the same bits and the same count, without a call per vector. */
+static __forceinline f32 sh4_fipr(const f32 a[4], const f32 b[4])
+{
+    if (g_work_on) g_work_now[SH4V_WC_VECTOR_OPS] += 1u;
+    return sh4v_fipr(a, b);
+}
+static __forceinline void sh4_ftrv(f32 v[4])
+{
+    if (g_work_on) g_work_now[SH4V_WC_VECTOR_OPS] += 1u;
+    sh4v_ftrv(port_sh4_xf, v, v);
+}
+static __forceinline void sh4_ftrv_fv(int n)
+{
+    if (n < 0 || n > 12 || (n & 3)) return;
+    if (g_work_on) g_work_now[SH4V_WC_VECTOR_OPS] += 1u;
+    sh4v_ftrv(port_sh4_xf, (const f32 *)(port_sh4_fr + n), (f32 *)(port_sh4_fr + n));
+}
+static __forceinline void sh4_fipr_fv(int m, int n)
+{
+    if (m < 0 || m > 12 || (m & 3) || n < 0 || n > 12 || (n & 3)) return;
+    if (g_work_on) g_work_now[SH4V_WC_VECTOR_OPS] += 1u;
+    _mm_store_ss((f32 *)(port_sh4_fr + n + 3), sh4v_fipr_ss((const f32 *)(port_sh4_fr + m), (const f32 *)(port_sh4_fr + n)));
 }
 
 #pragma warning(pop)

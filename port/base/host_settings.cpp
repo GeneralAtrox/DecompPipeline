@@ -102,6 +102,34 @@ extern "C" int port_setting_get_int(const char *key, int def)
     return value;
 }
 
+extern "C" void port_setting_set(const char *key, const char *value) { host::settings_set(key, value ? value : ""); }
+// A game's own short text ("game.NAME=text"), as port_setting_get_int: def when there is none. 1 when one was found.
+extern "C" int port_setting_get_str(const char *key, char *out, int cap)
+{
+    std::string k = key ? key : "", v;
+    bool found = false;
+    if (cap <= 0 || k.rfind("game.", 0) != 0 || host::g_file.empty()) return 0;
+    std::ifstream in(host::g_file);
+    std::string line;
+    while (std::getline(in, line)) {
+        std::string text = host::trim(line.substr(0, line.find('#')));
+        size_t eq = text.find('=');
+        if (eq != std::string::npos && host::trim(text.substr(0, eq)) == k) v = host::trim(text.substr(eq + 1)), found = true;
+    }
+    if (found) snprintf(out, (size_t)cap, "%s", v.c_str());
+    return found ? 1 : 0;
+}
+
+extern "C" void port_setting_set_str(const char *key, const char *value)
+{
+    std::string k = key ? key : "";
+    if (k.rfind("game.", 0) != 0) {
+        port_log("settings: a game's key starts with \"game.\", not \"%s\"\n", k.c_str());
+        return;
+    }
+    host::settings_set(k, value ? value : "");
+}
+
 extern "C" void port_setting_set_int(const char *key, int value)
 {
     std::string k = key ? key : "";

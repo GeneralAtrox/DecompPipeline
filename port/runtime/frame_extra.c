@@ -6,9 +6,8 @@
  * none ready) is shown after the wait, as --present tick does.
  *
  *   --present tick|interp|auto  one shown frame per rendered one (the kit's default; the checks use it), or in-between
- *                           frames too, or (a play run's default, base/host_main.cpp) in-between frames while the
- *                           frame-rate cap is above the rate the game is rendering at now, measured in vertical blanks:
- *                           a game's rate can change from screen to screen. No cap counts as above it
+ *                           frames too, or (a play run's default, base/host_main.cpp) in-between frames for the slots
+ *                           the frame-rate cap gives above each rendered frame's rate (auto_decide)
  *   --interp-frames N       --fixed-clock runs: in-between frames per vertical blank waited for (default 1)
  *   --interp-verify 1       logs what in-between frames wrote in guest RAM, and checks that it all went back
  *   --fps N                 real time: in-between frames shown one per 1/N s slot (frame_thread.c; a play run's default
@@ -164,26 +163,27 @@ static int init(void)
     return g_inited = 1;
 }
 
-/* --present auto, for each rendered frame: half a second of them gives the game's rate. A cap has to clear it by an
- * eighth, so that a 60 Hz game's dropped frame does not turn blending on under a cap of 60. */
-static void auto_decide(void)
+/* --present auto, for each rendered frame: in-between frames fill the slots the cap gives above the frame's own rate (60
+ * a second over the blanks its flip waits for: under a cap of 60 none for a frame of every blank, the middle slot for one
+ * of every other; 144 or none, all), and those a game short of that rate leaves (a load), measured over half a second
+ * from the last change of rate. A cap of 60 on a game at 56 left 4 slots a second repeated (the user's log, 11-08). */
+static void auto_decide(u32 vblanks)
 {
-    static u32 from, frames, logged;
-    u32 blanks = port_vblank_count() - from;
-    frames++;
-    if (!g_auto || blanks < PORT_VBLANK_HZ / 2u) return;
-    u32 rate = frames * PORT_VBLANK_HZ / blanks;
-    int on = !g_fps || g_fps > rate + rate / 8u;
+    static u32 from, frames, logged, own, rate;
+    u32 now = port_vblank_count(), want = PORT_VBLANK_HZ / (vblanks ? vblanks : 1u);
+    if (want != own) from = now, frames = 0, rate = own = want; /* a new scene's rate: measured afresh */
+    if (++frames, now - from >= PORT_VBLANK_HZ / 2u) rate = frames * PORT_VBLANK_HZ / (now - from), from = now, frames = 0;
+    if (!g_auto) return;
+    int on = !g_fps || g_fps > own || rate + rate / 16u < own;
     if (on != g_interp && logged++ < 32u)
-        port_log("frame_extra: the game renders %u a second, cap %u: in-between frames %s\n", rate, g_fps, on ? "on" : "off");
+        port_log("frame_extra: a frame every %u blank(s), %u a second, cap %u: in-between frames %s\n", PORT_VBLANK_HZ / own,
+                 rate, g_fps, on ? "on" : "off");
     g_interp = on;
-    from += blanks;
-    frames = 0;
 }
 
 int port_extra_begin(u32 vblanks)
 {
-    auto_decide();
+    auto_decide(vblanks);
     if (!g_interp || g_drawing || (!g_draw && !(g_scene_mode && pvr_blend_ready()))) return 0;
     if (host_fixed_clock() && host_fast_until()) return 0; /* --fast-until: ticks only until real time starts */
     if (g_draw && g_ready && !g_ready()) return 0;
@@ -201,7 +201,8 @@ int port_extra_begin(u32 vblanks)
     g_count = g_fixed_done = 0;
     g_begun++;
     if (!host_fixed_clock()) g_start_us = host_ticks(1000000u);
-    if (!g_draw) {
+    if (g_draw) port_extra_thread_own(g_thread_mode == 3 && !host_fixed_clock() && !gfx_capture_asked());
+    else {
         port_extra_thread_early(g_thread_mode == 3 && !host_fixed_clock() && !gfx_capture_asked());
         port_extra_thread_begin(g_thread_mode == 2 || (g_thread_mode && g_thread_mode != 2 && !host_fixed_clock()));
     }
@@ -320,7 +321,7 @@ int port_extra_thread_show(u64 now_us, u64 start_us, int *finished)
      * the rest, a 12-18 ms gap every render. They span the time between the last two renders instead, unless that was a
      * pause (a load), when the frame waited for stands. */
     if (period > tick_us && period < 4u * tick_us) tick_us = period;
-    if (g_draw) return 0; /* the game's own draw function came after the thread started (--interp-scene on): the tick draws them */
+    if (g_draw) return port_extra_thread_reshow(now_us, g_fps, &g_reshown); /* the tick draws them; the last frame again */
     if (g_interp && !gfx_held() && !pvr_blend_ready() && port_extra_thread_is_early()) { /* the same picture again */
         if (now_us - g_shown_us < RESHOW_US) return 0;
         if (port_extra_cap_wait(now_us, g_fps, 0u)) return 3; /* in an --fps slot too: shown frames stay under the cap */
@@ -359,7 +360,6 @@ int port_extra_flip(u32 vblanks)
     gfx_frame_done();
     return g_held = 1;
 }
-
 int port_extra_pending(void) { return g_held; }
 
 void port_extra_land(void)

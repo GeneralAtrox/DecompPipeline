@@ -29,6 +29,7 @@ from . import expr as X
 from .decode import Insn, disasm
 from .expr import Call, Const, Var, ZERO, FZERO, u, s, load
 from .ir import Assign, Block, CallS, Comment, Goto, If, Ret, Store, Switch
+from .frames import attach_exit_regs, generic_ret, recursive_f1
 
 
 class TranslateError(Exception):
@@ -1131,23 +1132,14 @@ class FunctionTranslator:
         c = F(i.frc) if "frc" in i.f else None
         out = []
         sgl = False
-        if o in ("fadd", "fadds"):
-            e, sgl = X.binop("+", a, b, "f64"), o.endswith("s")
-        elif o in ("fsub", "fsubs"):
-            e, sgl = X.binop("-", a, b, "f64"), o.endswith("s")
-        elif o in ("fmul", "fmuls"):
-            e, sgl = X.binop("*", a, c, "f64"), o.endswith("s")
+        if o in ("fadd", "fadds", "fsub", "fsubs", "fmul", "fmuls"):  # px_fadd..: an invalid op gives the 750CL's NaN
+            e, sgl = Call("px_" + o[:4], [a, c if o[1:4] == "mul" else b], "f64"), o.endswith("s")
         elif o in ("fdiv", "fdivs"):
             e, sgl = Call("px_fdiv", [a, b], "f64"), o.endswith("s")
             self.helpers.add("fdiv")
-        elif o == "fmadd":
-            e = X.binop("+", X.binop("*", a, c, "f64"), b, "f64")
-        elif o == "fmsub":
-            e = X.binop("-", X.binop("*", a, c, "f64"), b, "f64")
-        elif o == "fnmadd":
-            e = X.fneg(X.binop("+", X.binop("*", a, c, "f64"), b, "f64"))
-        elif o == "fnmsub":
-            e = X.fneg(X.binop("-", X.binop("*", a, c, "f64"), b, "f64"))
+        elif o in ("fmadd", "fmsub", "fnmadd", "fnmsub"):
+            e = Call("px_f" + o[-4:], [a, c, b], "f64")
+            e = Call("px_fnm", [e], "f64") if o[1] == "n" else e
         elif o in ("fmadds", "fmsubs", "fnmadds", "fnmsubs"):
             e = Call("ppc_" + o, [a, c, b], "f64")
             sgl = None              # already single: ps1 takes it too
@@ -1225,7 +1217,7 @@ class FunctionTranslator:
         rnd = X.fround
 
         def ar(op, x, y):
-            return rnd(X.binop(op, x, y, "f64"))
+            return rnd(Call({"+": "px_fadd", "-": "px_fsub", "*": "px_fmul"}[op], [x, y], "f64"))
 
         def div(x, y):
             self.helpers.add("fdiv")
@@ -1453,14 +1445,6 @@ def var_types(ft, blocks):
     return types
 
 
-def generic_ret(blocks):
-    w = set()
-    for s in all_stmts(blocks[1:]):
-        if not isinstance(s, Clobber):
-            w |= s.writes() if not isinstance(s, CallS) else {"r3"}
-    return "u32" if "r3" in w else "f64" if "f1" in w else "void"
-
-
 def translate_function(dol, entry, sig, facts, body, comments=False, structured=True, optimise=True, returns=None):
     """(C text, FunctionTranslator) for the function at entry whose body is [(lo, hi_exclusive)]. returns: the
     whole executable's return kinds (returns.analyse), for callees DP's meta does not describe."""
@@ -1477,10 +1461,12 @@ def translate_function(dol, entry, sig, facts, body, comments=False, structured=
             blocks = ft.build()
     fill_auto_args(ft, blocks)
     types = var_types(ft, blocks)
+    attach_exit_regs(blocks, types)
     fn = passes.Fn(blocks, types, (facts.stack_lo, facts.ram[1]))
     params = {n for n, _, _, _ in sig.params}
     entry_vals = {n: passes.zero(t) for n, t in types.items()
                   if n not in params and n not in ft.temps and n not in ("g_", "sp_")}
+    recursive_f1(ft, blocks, entry_vals, passes.HAS_LAST)
     if optimise:
         passes.optimise(fn, entry_vals, ft.notes, returns=sig.returns)
     else:

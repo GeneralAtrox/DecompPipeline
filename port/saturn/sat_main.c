@@ -11,6 +11,17 @@
  *            [--twin-stick on|off]   (game.json twin_stick: in fights the right stick turns; on in unscripted runs)
  *            [--auto-load on|off]   (the game's load path at boot when its save is there: on in unscripted play runs)
  *            [--part-choice NAME]   (a model part the game offers, sat_part.c; default the original)
+ *            [--team-fight on|off]   (game.json team_fight: the four-robot fight two against two, sat_team.c; off)
+ *            [--level-mod on|off] [--level-play on] [--level-file F]   (game.json level_edit: the edited arena, sat_level.c; off)
+ *            [--level-edit-at VB] [--level-edit-select NAME] [--level-edit-shot FILE]   (the base's level editor, tests)
+ *            [--new-heads on|off]   (game.json heads: part_choice's versions as head types after the game's own, sat_heads.c; on in play runs)
+ *            [--skip-logos on|off]   (game.json movie skip_logos: the opening logos skipped, sat_logos.c; on in play runs)
+ *            [--fight-choice on|off] (game.json menus fight_choice: FIGHT asks 1 VS 1 or 2 VS 2, sat_menus.c; on in play runs)
+ *            [--online-menu on|off]  (game.json menus online: JOIN GAME and HOST GAME in the hub, sat_lobby.c; on in play runs)
+ *            [--ladder-test-weak on] (a test: a FIGHT ladder fight's other side starts with 1 energy, sat_ladder.c)
+ *            [--ladder-test-rank N]  (a test: SELECT ENEMY's list built as if the player were rank N, sat_ladder.c)
+ *            [--online-note WHY] [--join-address ADDRESS]  (why a match ended, shown once; JOIN GAME's first address)
+ *            [--menu-panel original|shader] (game.json menu_panel: the menus' dark panel drawn by the presenter, sat_panel.c; shader in play runs)
  *            [--net on|off|HOST[:PORT]]   (the Online menu's saved choice: host, play alone, join)
  *            [--net-host PORT|on | --net-join HOST[:PORT]] [--net-delay N] [--net-wait on|off] [--net-hash-every N]
  *            [--net-pace on|off] [--net-test-*]   (online play for two, game.json netplay: sat_net.h)
@@ -63,6 +74,9 @@ void port_exit(const char *why, int code)
     if (InterlockedExchange(&g_exiting, 1)) return;
     port_log("exit: %s (%d) after %u vertical blanks\n", why, code, sat_vblank_count());
     sat_net_end();
+    sat_team_end();
+    sat_level_end();
+    sat_menus_end();
     play_stats_report();
     work_count_report();
     game_log_end(end_words(why, code), code, code != 0);
@@ -153,6 +167,19 @@ static int kit_option(const char *a, const char *v, KitRun *r)
     else if (!strcmp(a, "--in-between")) sat_inb_on = !strcmp(v, "on"); /* play runs: on (sat_inb.c) */
     else if (!strcmp(a, "--cd-fast-loads")) sat_cd_fast_loads = strcmp(v, "off") != 0;
     else if (!strcmp(a, "--part-choice")) sat_part_option(v);
+    else if (!strcmp(a, "--team-fight")) sat_team_option(v);
+    else if (!strcmp(a, "--new-heads")) sat_heads_option(v);
+    else if (!strcmp(a, "--skip-logos")) sat_logos_option(v);
+    else if (!strcmp(a, "--fight-choice")) sat_fight_choice_option(v);
+    else if (!strcmp(a, "--online-menu")) sat_online_menu_option(v);
+    else if (!strcmp(a, "--ladder-test-weak")) sat_ladder_test_option(v);
+    else if (!strcmp(a, "--ladder-test-rank")) sat_ladder_rank_option(v);
+    else if (!strcmp(a, "--online-note")) sat_online_note_option(v);
+    else if (!strcmp(a, "--join-address")) sat_join_address_option(v);
+    else if (!strcmp(a, "--clipboard-test")) host_text_test(v);
+    else if (!strcmp(a, "--text-test")) sat_text_test_option(v);
+    else if (!strcmp(a, "--input-next")) {} /* a test's presses for the copy the game starts next (base host_online.cpp) */
+    else if (!strcmp(a, "--menu-panel")) sat_panel_option(v);
     else if (!strcmp(a, "--layers")) sat_layer_mask = (u32)strtoul(v, NULL, 16);
     else if (!strcmp(a, "--peek")) {
         for (char *s = (char *)v; *s && sat_peek_n < 16; sat_peek_n++) {
@@ -217,7 +244,7 @@ int port_main(int argc, char **argv)
                    (used = game_log_option(a, v)) == 0 && (used = play_stats_option(a, v)) == 0 && (used = work_count_option(a, v)) == 0 &&
                    (used = host_window_option(a, v)) == 0 && (used = sat_video_dump_option(a, v)) == 0 && (used = cpu_present_option(a, v)) == 0 &&
                    (used = autoload_option(a, v)) == 0 && (used = sat_movie_option(a, v)) == 0 && (used = sat_net_option(a, v)) == 0 &&
-                   (used = bands_option(a, v)) == 0) {
+                   (used = bands_option(a, v)) == 0 && (used = sat_level_option(a, v)) == 0) {
             used = 1; /* unknown: skipped */
         }
     }
@@ -241,7 +268,13 @@ int port_main(int argc, char **argv)
     fast_loads_start(!run.headless && !run.fast && !host_fixed_clock());
     sat_smpc_clock_start(!run.headless && !run.fast && !host_fixed_clock() && !run.det && !sat_net_on());
     sat_movie_start(!run.headless && !run.fast && !host_fixed_clock(), !g_audio_off);
+    sat_logos_start(!run.headless && !run.fast && !host_fixed_clock() && !run.det);
     sat_part_start();
+    sat_heads_start(!run.headless && !run.fast && !host_fixed_clock() && !run.det);
+    sat_team_start();
+    sat_menus_start(!run.headless && !run.fast && !host_fixed_clock() && !run.det);
+    sat_panel_start(!run.headless && !run.fast && !host_fixed_clock() && !run.det);
+    sat_level_start();
 #ifdef SAT_TWIN_STICK
     {
         static const PortTwinStick twin = SAT_TWIN_STICK;
@@ -270,6 +303,7 @@ int port_main(int argc, char **argv)
     sat_load(SAT_IMAGE_BASE, buf, (u32)n);
     free(buf);
     sat_bios_init();
+    sat_level_loaded();
     port_log("port: image %s (%ld bytes) at %08x, entry %08x, %u functions\n", g_image, n, SAT_IMAGE_BASE, SAT_ENTRY_FN,
              (u32)sat_nfns);
     port_log_flush();

@@ -87,6 +87,63 @@ class Scope(unittest.TestCase):
         self.assertTrue(ua.ppc_in_scope(ws([0x60000000, bl(base + 4, base + 0x100)]), span, {base + 0x100}))  # runs on
         self.assertFalse(ua.ppc_in_scope(ws([0x4E800421, blr]), span, set()))  # bctrl: CA already
 
+    def test_gamecube_hook(self):
+        """gamecube_ppc (2026-11-09): the stamp scope through the target's hook, over a big-endian image at 0x80003100;
+        the scope's "after" hash is TcTrack.java as it is, and the oracle turns the CA lines on for an unlisted flow."""
+        sys.path.insert(0, str(ROOT / "targets" / "gamecube_ppc"))
+        import hooks
+        from core import paths
+        base, blr = 0x80003100, 0x4E800020
+        bl = lambda frm, to: 0x48000001 | ((to - frm) & 0x03FFFFFC)  # noqa: E731
+        funcs = {base: [bl(base, base + 0x40), blr], base + 0x10: [0x60000000, 0x60000000],  # runs on into 0x20
+                 base + 0x20: [bl(base + 0x20, base + 0x80), blr], base + 0x40: [blr]}  # 0x80: code in no function
+        with tempfile.TemporaryDirectory() as d:
+            img = bytearray(0x100)
+            for a, w in funcs.items():
+                img[a - base:a - base + 4 * len(w)] = struct.pack(f">{len(w)}I", *w)
+            (pathlib.Path(d) / "main.bin").write_bytes(bytes(img))
+            bodies = pathlib.Path(d) / "function_bodies.txt"
+            bodies_text = "".join(f"{a:08x} {a:08x} {a + 4 * len(w):08x}\n" for a, w in funcs.items())
+            bodies.write_text(bodies_text, encoding="utf-8")
+            cfg = {"binary_path": str(pathlib.Path(d) / "main.bin"), "load_address": f"{base:08x}"}
+            old = paths.FUNCTION_BODIES
+            paths.FUNCTION_BODIES = bodies
+            try:
+                got = {f"{a:08x}": hooks.stamp_scope(cfg, f"{a:08x}", "unlisted_call_args") for a in funcs}
+                self.assertTrue(hooks.stamp_scope(cfg, f"{base:08x}", "other"))
+            finally:
+                paths.FUNCTION_BODIES = old
+        # 0x80003100 calls an entry; 0x80003110 runs on; 0x80003120 calls code in no function; 0x80003140 ends in blr
+        want = {"80003100": False, "80003110": True, "80003120": True, "80003140": False}
+        self.assertEqual(got, want)
+        # the same code as a main.dol (a 0x100-byte header, text 0 at file offset 0x100): read by its sections, not
+        # as a flat image at the load address (the planted wrong answer, which put 6,327 of Skies' 6,751 in scope)
+        with tempfile.TemporaryDirectory() as d:
+            hdr = bytearray(0x100)
+            struct.pack_into(">I", hdr, 0x00, 0x100)
+            struct.pack_into(">I", hdr, 0x48, base)
+            struct.pack_into(">I", hdr, 0x90, len(img))
+            (pathlib.Path(d) / "main.dol").write_bytes(bytes(hdr) + bytes(img))
+            cfg = {"binary_path": str(pathlib.Path(d) / "main.dol"), "load_address": f"{base:08x}"}
+            paths.FUNCTION_BODIES = bodies2 = pathlib.Path(d) / "function_bodies.txt"
+            bodies2.write_text(bodies_text, encoding="utf-8")
+            try:
+                self.assertEqual({f"{a:08x}": hooks.stamp_scope(cfg, f"{a:08x}", "unlisted_call_args")
+                                  for a in funcs}, want)
+                self.assertEqual(ua.dol_sections(bytes(hdr)), [(base, 0x100, len(img))])
+            finally:
+                paths.FUNCTION_BODIES = old
+        gc = ROOT / "targets" / "gamecube_ppc"
+        sc = [s for s in json.loads((gc / "target.json").read_text(encoding="utf-8"))["stamp_scopes"]
+              if s["scope"] == "unlisted_call_args"]
+        import hashlib
+        self.assertEqual(sc[0]["scripts"]["TcTrack.java"][1],
+                         hashlib.sha256((gc / "ghidra_scripts" / "TcTrack.java").read_bytes()).hexdigest())
+        src = (gc / "ghidra_scripts" / "TcTrack.java").read_text(encoding="utf-8")
+        self.assertIn("calls |= in.getFallThrough() != null && unlisted(listing, in.getFallThrough(), body, c);", src)
+        self.assertIn("!TcFlow.isSaveHelper(listing, to)", src)
+        self.assertEqual(ua.WORDS["gamecube_ppc"], (4, True))
+
 
 def image(ws, funcs):
     """image.bin at 0x8c000000 and function_bodies.txt: {entry: [16-bit words]} (little-endian, SH-4)."""

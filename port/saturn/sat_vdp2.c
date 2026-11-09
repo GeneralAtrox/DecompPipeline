@@ -37,7 +37,7 @@ typedef struct {
 } Band;
 static Band g_band[BANDS_MAX];
 static u32 g_w, g_h, g_bklines, g_ww, g_ox; /* the screen's size and back screen mode, for the bands; the picture's width, the screen's x in it */
-static int g_act[5], g_nact; /* the planes that can show (on, a priority, not masked), in layer order */
+static int g_act[5], g_nact, g_pan; /* the planes that can show (on, a priority, not masked), in layer order; the panel (sat_panel.c) */
 
 static u32 R(u32 o) { return ((u32)sat_v2_reg[o] << 8) | sat_v2_reg[o + 1]; }
 static u32 vb(u32 a) { return sat_v2_vram[a & 0x7ffffu]; }
@@ -49,7 +49,6 @@ static u32 rgb555(u32 w)
     u32 r = w & 31u, g = (w >> 5) & 31u, b = (w >> 10) & 31u;
     return ((r << 3 | r >> 2) << 16) | ((g << 3 | g >> 2) << 8) | (b << 3 | b >> 2);
 }
-
 static void cram_load(void)
 {
     u32 mode = (g_ramctl >> 12) & 3u, n = mode == 1u ? 2048u : 1024u;
@@ -236,6 +235,7 @@ named:
     }
 }
 
+static u32 spr_word(u32 x, u32 y) { u32 o = (((y << g_spr_sh) + x + g_spr_ox) * 2u) & g_spr_mask; return (u32)g_spr_fb[o] << 8 | g_spr_fb[o + 1]; }
 /* the sprite layer at (x, y): 1 with colour and priority when a VDP1 pixel is there */
 static int spr_dot(u32 x, u32 y, u32 *rgb, int *prio, int *ccen, int *ratio)
 {
@@ -272,7 +272,6 @@ static int spr_dot(u32 x, u32 y, u32 *rgb, int *prio, int *ccen, int *ratio)
     }
     return 1;
 }
-
 static u32 blend(u32 a, u32 b, int ratio) /* a over b, a's weight (31 - ratio) / 32 */
 {
     u32 out = 0;
@@ -282,7 +281,6 @@ static u32 blend(u32 a, u32 b, int ratio) /* a over b, a's weight (31 - ratio) /
     }
     return out;
 }
-
 static u32 offset_color(u32 c, int sel)
 {
     u32 out = 0;
@@ -349,6 +347,8 @@ static void rows(void *ctx, unsigned band, unsigned bands)
                 if ((g_clofen >> (t.best == L_SPR ? 6 : t.best - 1)) & 1u) rgb = offset_color(rgb, (int)((g_clofsl >> (t.best == L_SPR ? 6 : t.best - 1)) & 1u));
             }
             if (t.best < 0 && ((g_clofen >> 5) & 1u)) rgb = offset_color(rgb, (int)((g_clofsl >> 5) & 1u));
+            if (g_pan) /* the menu panel: what is under it, marked for the presenter (sat_panel.c) */
+                rgb = sat_panel_dot(spr_word, w > 512u ? x / 2u : x, y, rgb, t.best == L_SPR ? t.pb : -1, t.best == L_SPR ? (t.second >= 0 ? t.ps : -1) : t.best >= 0 ? t.pb : -1, t.best == L_SPR && t.second >= 0 ? t.cs : back, wx ? out[wx - 1] : 0u);
             out[wx] = rgb;
         }
     }
@@ -381,7 +381,7 @@ void sat_compose(void)
     sat_win_setup();
     if (sat_vwatch_lo == 0x25f80000u && sat_vblank_count() == sat_vwatch_vb) sat_v2_dump_regs();
     g_w = w;
-    g_h = h;
+    g_h = h, g_pan = sat_panel_frame();
     g_bklines = (R(0xac) & 0x8000u) ? 1u : 0u; /* BKCLMD; TVMD bit 8 is the border's mode, not this */
     bands_run(rows, NULL);
     memset(g_hist, 0, sizeof g_hist);

@@ -12,6 +12,8 @@
 #include "sat_disc.h"
 #include "sat_cd.h"
 #include "sat_part.h"
+const PortMenuItem *sat_level_menu(void); /* sat_level.c */
+const PortMenuItem *sat_logos_menu(void); /* sat_logos.c */
 #include "sat_game.h"
 #include "sat_net.h"
 #include "console.h"
@@ -19,7 +21,7 @@
 #include "scene_dump.h"
 #include "present_cpu.h"
 
-#ifdef SAT_NETPLAY
+#if defined(SAT_NETPLAY) && !defined(SAT_NET_IN_GAME)
 #define SAT_CONSOLE_FLAGS (PORT_CONSOLE_FPSCAP | PORT_CONSOLE_ONLINE) /* online play (sat_net.c): the Online menu */
 #else
 #define SAT_CONSOLE_FLAGS PORT_CONSOLE_FPSCAP
@@ -144,9 +146,11 @@ int console_lockstep_time(HostTime *t)
 
 /* ---- the menu bar: Display > Fast disc loads (sat_cd.c), Native movie player (sat_movie.c) for a game that names its
  * movie routine, Shadows for a game that names its floor shadows
- * (sat_vdp1_list.c) and a model part for a game that offers one (sat_part.c). A load's speed and the part are kept in the
- * recording at start, so a change to either applies from the next start. While an online match is on, those that change the
- * game (fast loads, the movie player, the part) are greyed: the joiner plays the host's (sat_net_setup.c). ---- */
+ * (sat_vdp1_list.c) and Game > Skip the opening logos (sat_logos.c); Game > Edited arena for a game with an editable level
+ * (sat_level.c); a team fight is chosen in the game's own FIGHT menu (sat_menus.c) and a model part's versions as new head
+ * types in its own part choice (sat_heads.c). A load's speed is kept in the recording at start, so a change applies from the
+ * next start. While an online match is on, those that change the game (fast loads, the movie player) are greyed: the joiner
+ * plays the host's (sat_net_setup.c). ---- */
 static int g_fast_next = -1;
 static int alone(void) { return !sat_net_on(); }
 static int fast_get(void) { return g_fast_next >= 0 ? g_fast_next : sat_cd_fast_loads > 0; }
@@ -167,7 +171,7 @@ static const PortMenuItem k_menu[] = {
 
 const PortMenuItem *console_menu_extra(unsigned *count)
 {
-    static PortMenuItem menu[5];
+    static PortMenuItem menu[8];
     unsigned n = 0;
     menu[n++] = k_menu[0];
     menu[n++] = k_menu[1];
@@ -177,7 +181,8 @@ const PortMenuItem *console_menu_extra(unsigned *count)
 #ifdef SAT_MOVIE_FN
     menu[n++] = k_menu[3];
 #endif
-    if (sat_part_menu()) menu[n] = *sat_part_menu(), menu[n].available = menu[n].available ? menu[n].available : alone, n++;
+    if (sat_logos_menu()) menu[n++] = *sat_logos_menu(); /* Game > Skip the opening logos (sat_logos.c) */
+    if (sat_level_menu()) menu[n++] = *sat_level_menu(); /* Game > Edited arena, greyed online (sat_level.c) */
     *count = n;
     return menu;
 }

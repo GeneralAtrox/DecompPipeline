@@ -83,6 +83,7 @@ static void send_packet(NetLink *l, int kind, uint16_t seq, const void *data, in
 void net_link_init(NetLink *l, NetCarrier carrier, void *ctx, const uint8_t digest[NET_DIGEST], uint32_t nonce)
 {
     memset(l, 0, sizeof *l);
+    l->timeout_ms = NET_TIMEOUT_MS;
     l->carrier = carrier;
     l->ctx = ctx;
     memcpy(l->digest, digest, NET_DIGEST);
@@ -137,6 +138,7 @@ static void on_hello(NetLink *l, const uint8_t *m, int n, uint32_t now)
         if (st != NET_OK) {   /* this caller stays out; the host goes on waiting for one with the same game */
             l->stats.bad++;
             l->status = st;
+            l->stats.refused++;
             send_welcome(l, st, peer, now);
             return;
         }
@@ -300,12 +302,12 @@ void net_link_tick(NetLink *l, uint32_t now)
 {
     int i;
     if (l->state == NET_CONNECTING) {
-        if (now - l->last_rx >= NET_TIMEOUT_MS) l->state = NET_TIMED_OUT;
+        if (now - l->last_rx >= l->timeout_ms) l->state = NET_TIMED_OUT;
         else if (now - l->last_hello >= HELLO_MS) send_hello(l, now);
         return;
     }
     if (l->state != NET_ESTABLISHED) return;
-    if (now - l->last_rx >= NET_TIMEOUT_MS) { l->state = NET_TIMED_OUT; return; }
+    if (now - l->last_rx >= l->timeout_ms) { l->state = NET_TIMED_OUT; return; }
     for (i = 0; i < NET_WINDOW; i++) {
         NetSlot *s = &l->out[i];
         if (s->used && now - s->sent_ms >= s->rto) resend(l, s, now);

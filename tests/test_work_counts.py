@@ -100,6 +100,14 @@ def test_no_direct3d_call_gets_past_the_counters():
         for path in (ROOT / "port" / folder).rglob("*"):
             if path.suffix not in (".c", ".h", ".cpp") or path.name == "present.h":
                 continue
+            if path.name == "imgui_impl_dx11.cpp" and path.parent.parts[-2:] == ("third_party", "imgui"):
+                # Dear ImGui's Direct3D backend (vendored) draws only the level editor's own UI. The editor runs with
+                # the game paused, opened by Game > Level editor or the test option --level-edit-at, never in a play
+                # frame, so these calls are not play work. Only the editor (level_edit*.cpp) may call the backend:
+                callers = {c.name for c in (ROOT / "port").rglob("*.cpp") if "third_party" not in c.parts
+                           and "ImGui_ImplDX11_" in c.read_text(encoding="utf-8", errors="replace")}
+                assert callers and all(c.startswith("level_edit") for c in callers), callers
+                continue
             text = path.read_text(encoding="utf-8", errors="replace")
             assert "lpVtbl->" not in text, f"{path}: a direct Direct3D call"
             assert "<d3d11.h>" not in text, f"{path}: Direct3D without present.h's counted calls"

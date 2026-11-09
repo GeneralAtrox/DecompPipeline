@@ -102,6 +102,7 @@ int gfx_vsync(void);
 
 /* present.c */
 int gfx_resize(unsigned out_w, unsigned out_h); /* (re)creates the frame target for an output size */
+ID3D11RenderTargetView *gfx_back_rtv(void); /* the swap chain's back buffer (the level editor draws its own picture there) */
 f32 gfx_aspect(void);                 /* the shape in use, width over height; 0: fit the window */
 int gfx_set_aspect(const char *text); /* --aspect fit|4:3|16:9|21:9|W:H, at once; 0 if not one */
 const char *gfx_aspect_text(void);    /* the shape in use, in those words */

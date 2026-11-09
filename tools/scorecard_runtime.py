@@ -5,14 +5,15 @@ Two sources, each "unmeasured" until it exists (and an unmeasured check never tu
 - the game log's session summary and verdict, the last lines a play session writes (rule point 5 of RUNTIME_TARGET.md),
   read from the launcher's own data folder (spec: consoles.KEY.runtime.logs, relative to the projects folder):
       play summary: shown_fps 143.9 output 2560x1600 frames 8640 tick_ms 1.10/2.30/9.10 draw_ms 2.00/3.10/12.00 frame_ms 6.90/7.20/14.00 make_ms 1.90/5.10/12.00
-      play verdict: pass make_ms p99 5.10 (bar 6.67) late 4 of 8600 shown (0.47 per 1000, bar 1) loading 40 shown 9 late machine target_laptop
+      play verdict: pass make_ms p99 5.10 (bar 6.67) late 4 of 8600 shown (0.47 per 1000, bar 1) loading 40 shown 9 late machine LAPTOP-NAME
   the times are median/99th percentile/worst, in milliseconds. The bar ("150 fps headroom") is two checks: make p99
   (thresholds.runtime.make_p99_ms) and missed 144 slots per 1,000 shown frames (late_per_1000), loading screens left out.
   Shown-frame spacing is not one: under the cap it can't go below 6.94 ms. A session counts only at the target output
   size and with at least spec thresholds.runtime.min_frames shown frames; the gate takes the worst session of the logs
   kept (the heaviest section is what the target names), and a session without the figures (a log older than the bar)
-  leaves the check unmeasured. Only sessions whose verdict names thresholds.runtime.machine (the user's laptop) count:
-  Build box A and build box B compare builds, and their sessions leave the checks unmeasured, never failed.
+  leaves the check unmeasured. Only sessions whose verdict names the user's laptop count (target_machine: the spec
+  has only a label, thresholds.runtime.machine; the computer name is set on the machine that runs the scorecard): the
+  build boxes compare builds, and their sessions leave the checks unmeasured, never failed.
 - the "Emulated layers in the play path" table of RUNTIME_TARGET.md: a layer of this console (spec: runtime.layers) is
   open unless its Status starts with one of thresholds.runtime.layer_done. game.json has no per-game switch for a
   layer yet; when one exists this is where it is read.
@@ -24,6 +25,8 @@ Nearest existing: scorecard_data.py - its readers cover workspaces' state files 
 port's play logs or a markdown table.
 """
 import glob
+import json
+import os
 import pathlib
 import re
 
@@ -35,6 +38,21 @@ VERDICT = re.compile(r"play verdict: (pass|fail|none) make_ms p99 ([\d.]+) \(bar
                      r"\([\d.]+ per 1000, bar [\d.]+\) loading (\d+) shown (\d+) late(?: machine (\S+))?")
 TABLE_HEAD = "## Emulated layers in the play path"
 ASPECT_HEAD = "### Aspect-ratio proof per game"
+MACHINE_ENV = "DP_TARGET_MACHINE"
+
+
+def target_machine(th, tool):
+    """The computer name of the user's laptop, the only machine whose sessions pass or fail. The tracked spec names it only
+    by a label (thresholds.runtime.machine), so no computer name is published: the name is DP_TARGET_MACHINE, else the
+    checkout's git-ignored machines.local.json "target_machine", else the label itself. Not config.local.json: the judge's
+    stamp hashes the whole config (core/verdict_memo), and a machine's name must not change it."""
+    name = os.environ.get(MACHINE_ENV, "").strip()
+    if not name:
+        try:
+            name = str(json.loads((pathlib.Path(tool) / "machines.local.json").read_text(encoding="utf-8")).get("target_machine") or "")
+        except (OSError, ValueError, AttributeError):
+            name = ""
+    return name.strip() or th["machine"]
 
 
 def parse_summary(text):
@@ -137,7 +155,7 @@ def gate_runtime(spec, con, projects_dir, tool):
     found = sessions(projects_dir, pats)
     want = f"{th['width']}x{th['height']}"
     good = [(f, s) for f, s in found if s["w"] * s["h"] >= th["width"] * th["height"] and s["frames"] >= th["min_frames"]]
-    mine = th["machine"].lower()  # the user's laptop: the only machine whose sessions pass or fail
+    mine = target_machine(th, tool).lower()  # the user's laptop: the only machine whose sessions pass or fail
     elsewhere = sorted({s.get("machine") or "a machine not named" for _, s in good if (s.get("machine") or "").lower() != mine})
     good = [(f, s) for f, s in good if (s.get("machine") or "").lower() == mine]
     names = ["frame making time, 99th percentile", "late frames: 144 slots missed per 1,000 shown"]

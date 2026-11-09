@@ -246,6 +246,14 @@ The user's rules (2026-11-01), for DP and every port. Proof and survey: `docs/pr
    `py -3.12 tools/fails_before.py prove -- CMD`, and put the trailer it prints in the commit message. A port's check adds
    `--unfixed-cmd`. If no check can reproduce the bug, write `Fails-before: n/a <why>`. `tests/test_test_rules.py` catches a
    subject that says it fixes something and has no trailer; a fix worded otherwise still owes one. A commit that repairs a landing doesn't.
+3. **A kit change to host C lands with an AddressSanitizer result** (the user, 2026-11-09: "Yes, every landing"). A landing that
+   changes `port/runtime`, `pvr`, `sdk`, `base` or `saturn` C gets one ASan build per console it touches (`build.py --asan`;
+   Saturn `DP_ASAN=1`), run on build box A or build box B. Each build first reports the planted overflow (`DP_ASAN_PLANT=1`), then
+   one short replay of each of that console's core games runs with no ASan error (Dreamcast: Toy Commander, Power Stone 2,
+   Spawn; Saturn: Robo Pit). `py -3.12 tools/asan_landing.py trailer --console C RESULTS` turns the runs into the line for
+   the landing's last commit, `ASan: C tree T: plant caught; ...`, and refuses a missing plant, an error or a missing game.
+   `tests/test_asan_landing.py` fails on a kit host-C commit since the rule that no line covers. `ASan: n/a <why>` is for a
+   change ASan can't see. The first runs and their runner: `docs/proofs/asan/`.
 
 ## Changing the checker
 

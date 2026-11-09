@@ -1,4 +1,4 @@
-"""Build box B: harness comparisons of the full re-proof. off: master's flags-off harnesses (land_off) against the rebased
+"""build box B: harness comparisons of the full re-proof. off: master's flags-off harnesses (land_off) against the rebased
 branch's (rb_off), byte for byte (meta.json without oracle_stamp, which hashes the scripts). on: which of rb_on's differ
 from land_off (vectors.txt, expected.txt, meta.json), and the functions whose harness is refused or short in either.
 Writes proof/harness_cmp.json."""

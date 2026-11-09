@@ -8,8 +8,10 @@ DAZ|FTZ for DN=1: sh4_core_regs.cpp setHostRoundingMode). DP models that, bit fo
    nearest (RM=0) or toward zero (RM=1), the sum rounded once onto binary32, under FPSCR.DN=1 (denormal sources and
    results are signed zeros; IEEE signs for zero sums); a double sum in [2^-126 - 2^-150, 2^-126) is "B" (the oracle
    rejects the vector: TcRound.nearMinNormal).
-2. The C: sh4_fipr and sh4_ftrv, the same text in tc_fpu.c, rd_sh4.c and the port's sh4_rt.c, built 32-bit (the
-   readable runner, the port) and 64-bit (the judge's runner, xemu), run with MXCSR as the runners set it.
+2. The C: sh4_fipr and sh4_ftrv, the same text in tc_fpu.c and rd_sh4.c, built 32-bit (the readable runner) and 64-bit
+   (the judge's runner, xemu), run with MXCSR as the runners set it. The port's packed SSE2 forms (port/runtime/sh4_vec.h,
+   which sh4_rt.c and the translator C's tc_rt_inline.h use), built 32-bit as the port is: the reference's results, and
+   the judged text's bits, NaNs included.
 3. The oracle: TcRound.fipr through TcFpu's DN steps (tests/java/TcFiprStub.java); with ONCE=0 the p-code's seven
    roundings, which must differ from one rounding on the separating cases (what the judge tells apart).
 ftrv is checked as four rows (XMTRX row 0 = a, row 1 = -a, rows 2 and 3 zero): row r is fipr(row r, v).
@@ -33,14 +35,18 @@ from test_fmac import CORNERS, f2b, is_inf, is_nan, show, text, vcvars  # noqa: 
 from test_fsca_rm import CP, jdk  # noqa: E402
 
 SH4 = ROOT / "targets" / "dreamcast_sh4"
-SIDES = [SH4 / "runtime" / "tc_fpu.c", SH4 / "runtime_rd" / "rd_sh4.c", ROOT / "port" / "runtime" / "sh4_rt.c"]
+SIDES = [SH4 / "runtime" / "tc_fpu.c", SH4 / "runtime_rd" / "rd_sh4.c"]
+PORT_VEC = ROOT / "port" / "runtime" / "sh4_vec.h"
+PORT_SIDE = """#include "%s"
+f32 sh4_fipr(const f32 a[4], const f32 b[4]) { return sh4v_fipr(a, b); }
+void sh4_ftrv(f32 v[4]) { sh4v_ftrv(g_xf, v, v); }
+""" % PORT_VEC.as_posix()
 N = int(os.environ.get("FIPR_N", "20000"))
 MIN = Fraction(1, 2 ** 126)
 
 
 def fipr_core(p):
-    """fipr_source up to the end of the dot product, its signature line dropped: the arithmetic every side shares. The
-    port's sh4_rt.c wraps it (a forced-inline fipr, the work counters of 66d6dd5e, port_sh4_xf in ftrv)."""
+    """fipr_source up to the end of the dot product, its signature line dropped: the arithmetic the judged sides share."""
     head, rest = re.split(r"\n(?:static __forceinline )?f32 (?:sh4_)?fipr\(const f32 a\[4\], const f32 b\[4\]\)\n",
                           fipr_source(p), maxsplit=1)
     return head + rest.split("\n}\n")[0]
@@ -234,20 +240,25 @@ int main(int argc, char **argv)
 """
 
 
-def build_c(d, bits):
-    (d / f"fp{bits}.c").write_text(HARNESS % fipr_source(SIDES[0]), encoding="utf-8")
+def build_c(d, bits, side=None, name="fp"):
+    (d / f"{name}{bits}.c").write_text(HARNESS % (side or fipr_source(SIDES[0])), encoding="utf-8")
     vc = str(vcvars(bits)).replace("/", "\\")
-    r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && cl /nologo /std:c11 /W4 /WX /O2 fp{bits}.c"', cwd=d,
+    r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && cl /nologo /std:c11 /W4 /WX /O2 {name}{bits}.c"', cwd=d,
                        capture_output=True, text=True, errors="replace", timeout=300)
-    return r, d / f"fp{bits}.exe"
+    return r, d / f"{name}{bits}.exe"
 
 
-def run_c(exe, d, cases, rm):
+def run_raw(exe, d, cases, rm):
+    """per case [fipr, ftrv row 0..3], as bits"""
     src, dst = d / "cases.bin", d / f"out{rm}.bin"
     src.write_bytes(b"".join(struct.pack("<8I", *a, *b) for a, b in cases))
     subprocess.run([str(exe), "6000" if rm else "0", str(src), str(dst)], check=True, timeout=600)
     got = struct.unpack(f"<{5 * len(cases)}I", dst.read_bytes())
-    return [["N" if is_nan(g) else g for g in got[5 * i:5 * i + 5]] for i in range(len(cases))]
+    return [list(got[5 * i:5 * i + 5]) for i in range(len(cases))]
+
+
+def run_c(exe, d, cases, rm):
+    return [["N" if is_nan(g) else g for g in row] for row in run_raw(exe, d, cases, rm)]
 
 
 class Reference(unittest.TestCase):
@@ -274,7 +285,7 @@ class Reference(unittest.TestCase):
 @unittest.skipUnless(os.name == "nt" and vcvars(32) and vcvars(64), "no 32- and 64-bit Visual Studio tools")
 class C(unittest.TestCase):
     def test_same_text(self):
-        """One sh4_fipr/sh4_ftrv in all three runtimes (tested once below), and the declarations agents see."""
+        """One sh4_fipr/sh4_ftrv in both judged runtimes (tested once below), and the declarations agents see."""
         self.assertEqual(len({fipr_core(p) for p in SIDES}), 1)
         for h in (SH4 / "runtime" / "tc_rt.h", SH4 / "runtime_rd" / "rd_rt.h"):
             self.assertIn("f32 sh4_fipr(const f32 a[4], const f32 b[4]);", text(h))
@@ -293,6 +304,26 @@ class C(unittest.TestCase):
                 for rm in (0, 1):
                     bad = mismatches(cases, rm, run_c(exe, d, cases, rm))
                     self.assertEqual(bad[:10], [], f"{bits}-bit, {len(bad)} of {5 * len(cases)}")
+
+    def test_port_packed(self):
+        """The port's packed sh4_vec.h, 32-bit as the port runs: the reference's results, and the judged text's bits."""
+        cases = gen(N)
+        work = ROOT / "tests" / ".work"
+        work.mkdir(parents=True, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="fiprp_", dir=work) as d:
+            d = pathlib.Path(d)
+            r, judged = build_c(d, 32)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            r, port = build_c(d, 32, PORT_SIDE, "pv")
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            for rm in (0, 1):
+                got = run_raw(port, d, cases, rm)
+                bad = mismatches(cases, rm, [["N" if is_nan(g) else g for g in row] for row in got])
+                self.assertEqual(bad[:10], [], f"port, {len(bad)} of {5 * len(cases)}")
+                want = run_raw(judged, d, cases, rm)
+                diff = ["%s rm%d: judged %s port %s" % (c, rm, " ".join("%08x" % x for x in w), " ".join("%08x" % x for x in g))
+                        for c, w, g in zip(cases, want, got) if w != g]
+                self.assertEqual(diff[:10], [], f"port bits, {len(diff)} of {len(cases)} cases differ")
 
 
 @unittest.skipUnless(CP and jdk("javac") and jdk("java"), "no ghidra_home or JDK on this machine")

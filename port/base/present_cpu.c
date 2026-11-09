@@ -33,10 +33,14 @@ static const char k_hlsl[] =
     "struct V { float4 p : SV_Position; float2 uv : TEXCOORD0; };\n"
     "V vs_main(uint i : SV_VertexID) {\n"
     "    V o; o.uv = float2((i << 1) & 2, i & 2); o.p = float4(o.uv * float2(2, -2) + float2(-1, 1), 0, 1); return o; }\n"
-    "float4 ps_main(V i) : SV_Target { return float4(t.Sample(s, i.uv).rgb, 1); }\n";
+    "float4 ps_main(V i) : SV_Target { return float4(t.Sample(s, i.uv).rgb, 1); }\n"
+    /* a dot marked in its top byte (1 + half a grey) is mixed half and half with that grey: a menu panel (cpu_present_panel) */
+    "float4 ps_panel(V i) : SV_Target { float4 c = t.Sample(s, i.uv); float d = (c.a * 255.0 - 1.0) * 2.0 / 255.0;\n"
+    "    return float4(c.a > 0.0 ? (c.rgb + d) * 0.5 : c.rgb, 1); }\n";
 
 static ID3D11VertexShader *g_vs;
-static ID3D11PixelShader *g_ps;
+static ID3D11PixelShader *g_ps, *g_ps_panel;
+static volatile LONG g_panel; /* cpu_present_panel: marked dots are a menu panel */
 static ID3D11SamplerState *g_sampler;
 static ID3D11Texture2D *g_tex;
 static ID3D11ShaderResourceView *g_srv;
@@ -56,6 +60,7 @@ int cpu_present_option(const char *arg, const char *value)
 }
 
 void cpu_present_set_fps(unsigned fps) { g_fps = (LONG)fps; }
+void cpu_present_panel(int on) { g_panel = on != 0; }
 unsigned cpu_present_fps(void) { return g_fps < 0 ? 144u : (unsigned)g_fps; }
 
 static ID3DBlob *compile(pD3DCompile fn, const char *entry, const char *target)
@@ -71,7 +76,7 @@ static int make_pipeline(void)
 {
     HMODULE dll = LoadLibraryW(L"d3dcompiler_47.dll");
     pD3DCompile fn = dll ? (pD3DCompile)(void *)GetProcAddress(dll, "D3DCompile") : NULL;
-    ID3DBlob *vs, *ps;
+    ID3DBlob *vs, *ps, *pp;
     D3D11_SAMPLER_DESC sd;
     HRESULT hr;
     if (!fn) {
@@ -80,11 +85,15 @@ static int make_pipeline(void)
     }
     vs = compile(fn, "vs_main", "vs_5_0");
     ps = compile(fn, "ps_main", "ps_5_0");
+    pp = compile(fn, "ps_panel", "ps_5_0");
     if (!vs || !ps) return 0;
     hr = ID3D11Device_CreateVertexShader(g_gfx.dev, ID3D10Blob_GetBufferPointer(vs), ID3D10Blob_GetBufferSize(vs), NULL, &g_vs);
     if (SUCCEEDED(hr)) hr = ID3D11Device_CreatePixelShader(g_gfx.dev, ID3D10Blob_GetBufferPointer(ps), ID3D10Blob_GetBufferSize(ps), NULL, &g_ps);
+    if (SUCCEEDED(hr) && pp && FAILED(ID3D11Device_CreatePixelShader(g_gfx.dev, ID3D10Blob_GetBufferPointer(pp), ID3D10Blob_GetBufferSize(pp), NULL, &g_ps_panel)))
+        g_ps_panel = NULL;
     ID3D10Blob_Release(vs);
     ID3D10Blob_Release(ps);
+    if (pp) ID3D10Blob_Release(pp);
     memset(&sd, 0, sizeof sd);
     sd.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
     sd.AddressU = sd.AddressV = sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
@@ -115,7 +124,7 @@ static int make_texture(u32 w, u32 h)
     d.Height = h;
     d.MipLevels = 1;
     d.ArraySize = 1;
-    d.Format = DXGI_FORMAT_B8G8R8X8_UNORM; /* 0x00RRGGBB in memory */
+    d.Format = DXGI_FORMAT_B8G8R8A8_UNORM; /* 0xMMRRGGBB in memory: M is 0, or a menu panel's mark (ps_panel) */
     d.SampleDesc.Count = 1;
     d.Usage = D3D11_USAGE_DYNAMIC;
     d.BindFlags = D3D11_BIND_SHADER_RESOURCE;
@@ -164,7 +173,7 @@ static void draw_and_show(void)
     ID3D11DeviceContext_RSSetViewports(cx, 1, &vp);
     ID3D11DeviceContext_IASetPrimitiveTopology(cx, D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     ID3D11DeviceContext_VSSetShader(cx, g_vs, NULL, 0);
-    ID3D11DeviceContext_PSSetShader(cx, g_ps, NULL, 0);
+    ID3D11DeviceContext_PSSetShader(cx, g_panel && g_ps_panel ? g_ps_panel : g_ps, NULL, 0);
     ID3D11DeviceContext_PSSetSamplers(cx, 0, 1, &g_sampler);
     ID3D11DeviceContext_PSSetShaderResources(cx, 0, 1, &g_srv);
     ID3D11DeviceContext_Draw(cx, 3, 0);

@@ -22,7 +22,7 @@ enum {
     PROF_N
 };
 
-extern int g_prof_on;
+extern int g_prof_on; /* 1 --prof on; 2 the tick cost line only (--tick-cost, prof_tc.c) */
 u64 prof_now(void);
 
 /* prof_begin returns a token (0 when off); prof_end(id, token) closes it. They must nest. */
@@ -34,7 +34,7 @@ static inline void prof_end(u64 token)
     if (token) prof_leave(token);
 }
 
-int prof_option(const char *arg, const char *value); /* --prof on|off, --prof-from VBLANK, --prof-csv FILE */
+int prof_option(const char *arg, const char *value); /* --prof on|off, --prof-from VBLANK, --prof-csv FILE, --tick-cost on|off */
 void prof_frame(void);                               /* at the end of each vertical blank */
 void prof_scene(u32 headers, u32 triangles);         /* this frame's TA scene size */
 void prof_gpu_begin(void);                           /* around the scene's Direct3D work: D3D11 timestamps */
@@ -43,5 +43,19 @@ void prof_call(u32 target);                          /* tx_rt.c: a tc_call by gu
 void prof_calls_on(int on);                          /* prof.c: counting from --prof-from on */
 void prof_calls_report(u32 blanks);                  /* prof.c, at exit: the most called targets */
 void prof_report(void);                              /* at exit */
+
+/* prof.c's family, split off for the file-size cap. prof_tc.c: the tick cost line (g_prof_on 2) */
+extern u64 g_prof_sections;                          /* prof_enter calls since the last line */
+int prof_tc_wanted(void);                            /* --tick-cost on, or auto in a real-time play run */
+int prof_tc_option(const char *arg, const char *value);
+void prof_tc_begin(void);                            /* on the game thread */
+void prof_tc_note_present(void);                     /* from the present thread: its CPU time */
+void prof_tc_blank(const u64 *us, u64 work);         /* a blank's microseconds by row (PROF_N + 1) and its work */
+void prof_tc_report_due(void);                       /* off the lock: the line when 10 s have passed */
+void prof_tc_flush(void);                            /* at exit */
+/* prof_sample.c: --prof-sample US, --prof-samples FILE */
+int prof_sample_option(const char *arg, const char *value);
+void prof_sample_frame(int on);                      /* each blank under --prof: on from --prof-from */
+void prof_sample_report(void);                       /* at exit */
 
 #endif

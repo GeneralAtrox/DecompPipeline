@@ -22,8 +22,8 @@ public class TcBank extends MemoryBank {
     final TcFacts facts;
     long pc = -1;                                  // the instruction being stepped
     final List<long[]> reads = new ArrayList<>();  // this step's data reads {pc, address, size, value}
-    long[] stored;                                 // this step's last store {address, size}
-    final List<long[]> stores = new ArrayList<>(); // this step's stores {address, size}
+    long[] stored;                                 // this step's last store {address, size, io index or -1}
+    final List<long[]> stores = new ArrayList<>(); // this step's stores {address, size, io index or -1}
     long codeRead = -1;                            // the first data read of an instruction byte (R8), or -1
     boolean track;                                 // record stores in written
     static final int IO_LIMIT = 4096;              // tc_rt.c's MAX_IO must equal it
@@ -51,7 +51,7 @@ public class TcBank extends MemoryBank {
     @Override
     public void setChunk(long offset, int size, byte[] val) {
         long f = TcBase.fold(offset);
-        stored = new long[] {f, size};
+        stored = new long[] {f, size, -1};
         stores.add(stored);
         if (track && size > 0 && size <= 8 && facts.isMmio(f)) {
             long v = 0;
@@ -61,6 +61,7 @@ public class TcBank extends MemoryBank {
                 io.add(new long[] {f, size, v, 0});
                 ioStep = io.size() - 1;
             } else ioOverflow = true;
+            if (ioStep >= 0 && io.get(ioStep)[0] == f) stored[2] = ioStep;
             return;
         }
         if (track && size > 0) written.add(getSpace().getAddress(f), getSpace().getAddress(f + size - 1));
@@ -84,7 +85,7 @@ public class TcBank extends MemoryBank {
             reads.add(new long[] {pc, f, size, v});
             return size;
         }
-        int got = in.getChunk(f, size, res, stopOnUninitialized);
+        int got = keepWritten(f, size, res, stopOnUninitialized);
         boolean fetch = pc < 0 || (f >= pc && f < pc + 16);
         if (!fetch) {
             if (codeRead < 0 && facts.isCode(f)) codeRead = f;
@@ -93,6 +94,47 @@ public class TcBank extends MemoryBank {
             reads.add(new long[] {pc, f, size, v});
         }
         return got;
+    }
+
+    // Ghidra's MemoryBank.getChunk hands the fault handler the whole rest of a read from its first byte never written,
+    // as the page's own data, and TcOracle's handler zeroes that range and accepts it (so stopOnUninitialized never
+    // stops it): a word whose first bytes were never written lost the bytes after them that were. Skies 80211298: the
+    // call record's read of r1+0x18 wiped what sth r0,0x1a(r1) had stored, so the oracle copied 0 where the original
+    // copies the halfword; 800e6e58: lwz of a word whose low half sthx had just stored read 0. Read each run the page
+    // marks initialized as it is (no handler) and each byte never written alone, so the handler only fills bytes that
+    // hold nothing.
+    static final java.lang.reflect.Method PAGE;
+    static {
+        try {
+            PAGE = MemoryBank.class.getDeclaredMethod("getPage", long.class);
+            PAGE.setAccessible(true);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    // The bytes from f (at most n, within f's page) that the page marks initialized.
+    int initRun(long f, int n) {
+        long ps = in.getPageSize(), al = f & ~(ps - 1);
+        int skip = (int) (f - al), m = (int) Math.min(n, ps - skip);
+        try {
+            return ((MemoryPage) PAGE.invoke(in, al)).getInitializedByteCount(skip, m);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    int keepWritten(long f, int size, byte[] res, boolean stopOnUninitialized) {
+        int n = 0;
+        while (n < size) {
+            int k = Math.max(initRun(f + n, size - n), 1);
+            byte[] b = new byte[k];
+            int got = in.getChunk(f + n, k, b, stopOnUninitialized);
+            System.arraycopy(b, 0, res, n, Math.max(got, 0));
+            n += Math.max(got, 0);
+            if (got < k) break;
+        }
+        return n;
     }
 
     @Override

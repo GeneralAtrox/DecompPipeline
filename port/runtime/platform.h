@@ -88,6 +88,9 @@ int port_extra_thread_is_early(void);
 void port_extra_shown(void);           /* gfx_present, holding gfx_lock: a frame was shown by the tick */
 int gfx_capture_asked(void);           /* a dump of the frame target is asked for */
 int port_extra_thread_go(void);
+void port_extra_thread_own(int wanted); /* a game's own draw function: the thread shows the last frame again */
+void port_extra_thread_shown(void);     /* gfx_show, holding gfx_lock */
+int port_extra_thread_reshow(u64 now_us, u32 fps, u32 *count);
 void gfx_lock_on(void); /* base/present.h */
 void gfx_lock(void);
 void gfx_unlock(void);

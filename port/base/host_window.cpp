@@ -20,6 +20,7 @@
 #include <cstring>
 #include <string>
 #include "host.h"
+#include "level_edit.h"
 #include "present.h"
 #include "game_log.h"
 #include "host_internal.hpp"
@@ -128,10 +129,18 @@ void set_title(const char *extra)
     SDL_SetWindowTitle(g_window, t.c_str());
 }
 
+// The title bar's " - extra" (host_window_title_extra, below): two buffers, the one shown and the one a writer fills
+char g_extra[2][96];
+volatile LONG g_extra_at, g_extra_gen;
+LONG g_extra_shown;
+volatile DWORD g_pump_thread; // the window's thread, the one in gfx_pump
+
+const char *title_extra(void) { return g_extra[g_extra_at]; }
+
 void set_paused(bool on)
 {
     g_paused = on;
-    set_title(on ? "paused" : nullptr);
+    set_title(on ? "paused" : title_extra());
     port_log("host: %s\n", on ? "paused (window not focused)" : "resumed");
 }
 
@@ -159,8 +168,8 @@ void handle(const SDL_Event &e)
                           g_windowed ? "on" : "off");
             host::window_set_fullscreen(g_windowed);
         }
-        if (!e.key.repeat && e.key.key == SDLK_F9) game_log_line("keyboard: F9 (Copy agent prompt)");
-        if (!e.key.repeat && e.key.key == SDLK_F9) scene_dump_request(); // the copy icon's key (full screen too)
+        if (!e.key.repeat && e.key.key == SDLK_F9) game_log_line("keyboard: F9 (Copy agent prompt)"), scene_dump_request();
+        host_text_key(static_cast<int>(e.key.key), static_cast<int>(e.key.mod)); // a console's own text field (host_text.cpp)
         break;
     case SDL_EVENT_WINDOW_FOCUS_LOST:
         port_log("host: window lost the focus (the keyboard is not read)\n");
@@ -221,6 +230,7 @@ void window_set_scale(int n)
 
 extern "C" int host_window_option(const char *arg, const char *value)
 {
+    if (int n = level_edit_option(arg, value)) return n; // --level-edit-* (level_edit.cpp)
     if (!value) return 0;
     bool *pref = !std::strcmp(arg, "--fps-counter")       ? &g_prefs.fps_counter
                  : !std::strcmp(arg, "--pause-unfocused") ? &g_prefs.pause_unfocused
@@ -331,64 +341,39 @@ extern "C" const char *host_window_state(void)
     return (f & SDL_WINDOW_FULLSCREEN) ? "full screen" : "focused";
 }
 
+// The title bar's " - extra": the level editor's " - Level editor - ...", or a game's screen (the Xbox 360 kit's xb_flow.c
+// names the movie, loading or menu from whichever guest thread sees it). Any thread may call it. The text goes into one of
+// two buffers, so a writer never touches the one being read; the window's own thread (the one in gfx_pump) puts it in the
+// title at once when it is the caller, and otherwise at its next gfx_pump. SDL wants the title set on the window's thread.
+extern "C" void host_window_title_extra(const char *extra)
+{
+    LONG next = g_extra_at ^ 1;
+    std::snprintf(g_extra[next], sizeof g_extra[next], "%s", extra ? extra : "");
+    InterlockedExchange(&g_extra_at, next);
+    LONG gen = InterlockedIncrement(&g_extra_gen);
+    if (g_window && GetCurrentThreadId() == g_pump_thread && !g_paused) { g_extra_shown = gen; set_title(title_extra()); }
+}
+
 // Window events: closing ends the run, a new pixel size resizes the output, Alt+Enter and F11 switch full screen,
-// and while paused the game thread waits here (still handling events) until the window is focused again.
-// --present-thread: the lock around the device context (host.h). The game's thread is the window's: while it waits it answers
-// messages sent to the window, since a present on the other thread can wait for those. It says it is waiting, so the other
-// thread, which draws frame after frame, cannot keep it out.
-static CRITICAL_SECTION g_gfx_cs;
-static volatile LONG g_gfx_mt, g_gfx_wanted, g_gfx_waits; static LONGLONG g_gfx_wait_us; /* the game's thread's waits (gfx_lock_waits) */
-static __declspec(thread) int g_gfx_present_thread;
-
-extern "C" void gfx_lock_on(void)
-{
-    InitializeCriticalSection(&g_gfx_cs);
-    g_gfx_mt = 1;
-}
-
-extern "C" void gfx_lock(void)
-{
-    if (!g_gfx_mt) return;
-    if (g_gfx_present_thread) {
-        EnterCriticalSection(&g_gfx_cs);
-        return;
-    }
-    InterlockedIncrement(&g_gfx_wanted);
-    if (!TryEnterCriticalSection(&g_gfx_cs)) {
-        LARGE_INTEGER a, b, f;
-        QueryPerformanceCounter(&a);
-        do {
-            MSG m;
-            PeekMessageW(&m, NULL, 0, 0, PM_NOREMOVE | PM_QS_SENDMESSAGE);
-            SwitchToThread();
-        } while (!TryEnterCriticalSection(&g_gfx_cs));
-        QueryPerformanceCounter(&b);
-        QueryPerformanceFrequency(&f);
-        g_gfx_waits++, g_gfx_wait_us += (b.QuadPart - a.QuadPart) * 1000000 / f.QuadPart;
-        if ((b.QuadPart - a.QuadPart) * 10 >= f.QuadPart)
-            port_log("gfx: the game's thread waited %lld ms for the device context\n", (b.QuadPart - a.QuadPart) * 1000 / f.QuadPart);
-    }
-    InterlockedDecrement(&g_gfx_wanted);
-}
-
-extern "C" void gfx_unlock(void)
-{
-    if (g_gfx_mt) LeaveCriticalSection(&g_gfx_cs);
-}
-
-extern "C" void gfx_lock_present_thread(void) { g_gfx_present_thread = 1; }
-extern "C" int gfx_on_present_thread(void) { return g_gfx_present_thread; }
-extern "C" int gfx_lock_wanted(void) { return g_gfx_wanted != 0; }
-extern "C" void gfx_lock_waits(unsigned *n, unsigned long long *us) { *n = (unsigned)g_gfx_waits, *us = (unsigned long long)g_gfx_wait_us; }
-
+// and while paused the game thread waits here (still handling events) until the window is focused again. The lock
+// round them is host_gfx_lock.cpp's.
 extern "C" void gfx_pump(void)
 {
     SDL_Event e;
     if (!g_window) return;
+    g_pump_thread = GetCurrentThreadId();
+    if (!g_paused && g_extra_gen != g_extra_shown) { g_extra_shown = g_extra_gen; set_title(title_extra()); } // another thread's extra
     frame_counter(); /* frames shown by the other thread (--present-thread) count here */
     while (SDL_PollEvent(&e)) {
         gfx_lock();
         handle(e);
+        gfx_unlock();
+    }
+    if (level_edit_wanted()) { // Game > Level editor (level_edit.cpp): it runs here, the game paused and quiet under it
+        gfx_lock();
+        audio_set_volume(audio_volume(), 1);
+        level_edit_run(g_window, [](const void *ev) { handle(*static_cast<const SDL_Event *>(ev)); });
+        audio_set_volume(audio_volume(), 0);
         gfx_unlock();
     }
     if (g_paused) {

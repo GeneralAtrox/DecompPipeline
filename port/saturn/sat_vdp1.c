@@ -267,7 +267,7 @@ static void draw_cmd(u32 cmd, u32 ctrl)
     if (!g_by0) work_add(WC_SPRITE_COMMANDS, 1);
     memset(&d, 0, sizeof d);
     d.pmod = v1w(cmd + 4u);
-    d.colr = (u16)v1w(cmd + 6u);
+    d.colr = (u16)v1w(cmd + 6u), sat_panel_mark(d.pmod, d.colr); /* a menu panel the presenter draws (sat_panel.c) */
     switch (comm) {
     case 0: /* normal sprite */
         verts(cmd, p, 4);

@@ -30,16 +30,18 @@ static struct {
     const char *host, *join;
     int port, delay, wait, every, pace, loss, lag, jitter, test_frame;
     u32 test_addr;
-} g_opt = {NULL, NULL, 0, -1, 0, -1, 1, 0, 0, 0, 0, 0};
+    int saved; /* host and join came from --net (the Online menu's saved choice), not --net-host or --net-join */
+} g_opt = {NULL, NULL, 0, -1, 0, -1, 1, 0, 0, 0, 0, 0, 0};
 
 int sat_net_option(const char *a, const char *v)
 {
     if (strncmp(a, "--net", 5) || (a[5] && a[5] != '-') || !v) return 0;
     if (!strcmp(a, "--net")) { /* the Online menu's: on (host), off, or the host to join */
         int host = !strcmp(v, "on") || !strcmp(v, "host");
-        g_opt.host = host ? "on" : NULL, g_opt.join = host || !strcmp(v, "off") || !*v ? NULL : v;
-    } else if (!strcmp(a, "--net-host")) g_opt.host = strcmp(v, "off") && *v ? v : NULL, g_opt.join = g_opt.host ? NULL : g_opt.join;
-    else if (!strcmp(a, "--net-join")) g_opt.join = strcmp(v, "off") && *v ? v : NULL, g_opt.host = g_opt.join ? NULL : g_opt.host;
+        g_opt.host = host ? "on" : NULL, g_opt.join = host || !strcmp(v, "off") || !*v ? NULL : v, g_opt.saved = 1;
+    } else if (!strcmp(a, "--net-host")) g_opt.host = strcmp(v, "off") && *v ? v : NULL, g_opt.join = g_opt.host ? NULL : g_opt.join, g_opt.saved = 0;
+    else if (!strcmp(a, "--net-join")) g_opt.join = strcmp(v, "off") && *v ? v : NULL, g_opt.host = g_opt.join ? NULL : g_opt.host, g_opt.saved = 0;
+    else if (!strcmp(a, "--net-menu")) sat_lobby_match = strcmp(v, "off") != 0;
     else if (!strcmp(a, "--net-port")) g_opt.port = atoi(v);
     else if (!strcmp(a, "--net-delay")) g_opt.delay = atoi(v);
     else if (!strcmp(a, "--net-wait")) g_opt.wait = strcmp(v, "off") != 0;
@@ -140,6 +142,7 @@ static const char *save_path(void)
     return s && *s ? s : "saturn_backup.bin";
 }
 
+static const char *g_image; /* the code image, for the digest */
 static int digest(const char *image, u8 out[NET_DIGEST])
 {
     static const char tag[] = "saturn netplay 1";
@@ -180,14 +183,15 @@ static void snapshot(void) /* the host's save as it is before the game reads it 
     fclose(f);
 }
 
-/* the host, lock held: {SETUP delay, hash_every, fast, auto-load, part[16], save bytes, frames so far}, the save, the end */
+/* the host, lock held: {SETUP delay, hash_every, fast, auto-load, part[16], save bytes, frames so far, logos skipped}, the
+ * save, the end */
 void sat_net_send_setup(void)
 {
     u8 m[NET_MAX_MSG];
     m[0] = M_SETUP, m[1] = (u8)S.delay, sat_net_put32(m + 2, (u32)S.hash_every), m[6] = (u8)S.fast, m[7] = (u8)S.autoload;
     memcpy(m + 8, S.part, 16);
-    sat_net_put32(m + 24, g_snap_len), sat_net_put32(m + 28, S.last_final);
-    net_udp_send(1, m, 32);
+    sat_net_put32(m + 24, g_snap_len), sat_net_put32(m + 28, S.last_final), m[32] = (u8)S.logos, m[33] = (u8)S.online;
+    net_udp_send(1, m, 34); /* m[33]: the hub's online lines (the two hubs must be alike) */
     for (u32 o = 0; o < g_snap_len; o += 1300u) {
         u32 n = g_snap_len - o < 1300u ? g_snap_len - o : 1300u;
         m[0] = M_SAVE;
@@ -205,7 +209,7 @@ void sat_net_setup_msg(const u8 *m, int len)
     if (m[0] == M_SETUP && len >= 32) {
         S.delay = m[1], S.hash_every = (int)sat_net_get32(m + 2), S.fast = m[6], S.autoload = m[7];
         memcpy(S.part, m + 8, 16), S.part[15] = 0;
-        S.save_len = sat_net_get32(m + 24), S.last_final = sat_net_get32(m + 28), S.save_got = 0;
+        S.save_len = sat_net_get32(m + 24), S.last_final = sat_net_get32(m + 28), S.save_got = 0, S.logos = len >= 33 && m[32], S.online = len >= 34 && m[33];
         free(S.save);
         S.save = S.save_len && S.save_len < (1u << 24) ? (u8 *)malloc(S.save_len) : NULL;
         if (!S.save) S.save_len = 0;
@@ -230,8 +234,8 @@ static void join_setup(void)
         if (!end && (st == NET_TIMED_OUT || st == NET_CLOSED) && t < 60000) net_udp_reconnect(); /* the host was not up yet */
         net_udp_unlock();
         if (end) break;
-        if (st == NET_REFUSED) port_exit("netplay: the host runs a different copy of the game", 7);
-        if (t >= 60000) port_exit("netplay: no host answered in 60 s", 7);
+        if (st == NET_REFUSED) sat_lobby_back("other-version"), port_exit("netplay: the host runs a different copy of the game", 7);
+        if (t >= 60000) sat_lobby_back("no-host"), port_exit("netplay: no host answered in 60 s", 7);
         if (!said && t > 2000) said = 1, game_log_line("netplay: waiting for the host at %s", g_opt.join);
         if (!sat_video_headless()) gfx_pump(); /* the window stays answering */
         net_udp_wait(50);
@@ -239,6 +243,8 @@ static void join_setup(void)
     sat_cd_fast_loads = S.fast;
     autoload_option("--auto-load", S.autoload ? "on" : "off");
     sat_part_option(S.part[0] ? S.part : "original");
+    sat_logos_option(S.logos ? "on" : "off");
+    sat_online_menu_option(S.online ? "on" : "off");
     snprintf(g_copy, sizeof g_copy, "%s.netplay", save_path());
     remove(g_copy);
     if (S.save_len && S.save_got == S.save_len) {
@@ -252,10 +258,24 @@ static void join_setup(void)
                   S.save_len, g_copy, S.last_final);
 }
 
+/* sat_lobby.c: the link on the game's port with the game's digest (join NULL: a host) */
+int sat_net_open(const char *join, NetUdpMessage on_msg, NetUdpState on_state)
+{
+    u8 dg[NET_DIGEST];
+    if (!digest(g_image ? g_image : "", dg)) port_log("netplay: can't read the code image for the digest\n");
+    return net_udp_start(g_opt.port > 0 ? g_opt.port : SAT_NET_PORT, join, dg, on_msg, on_state, NULL);
+}
+
 void sat_net_start(const char *image)
 {
     u8 dg[NET_DIGEST];
     int port = g_opt.port > 0 ? g_opt.port : SAT_NET_PORT;
+    g_image = image;
+#ifdef SAT_NET_IN_GAME /* online play starts in the game's own menu: a saved --net from the old Online menu is not taken */
+    if (g_opt.saved && !sat_lobby_match && (g_opt.host || g_opt.join))
+        port_log("netplay: --net is taken only from the game's own online screens; this run plays alone\n"), g_opt.host = g_opt.join = NULL;
+    if (!sat_lobby_match) host_online_forget();
+#endif
     if (!g_opt.host && !g_opt.join) return;
     if (host_arg("--replay")) {
         port_log("netplay: off while a recording is replayed\n");
@@ -275,7 +295,12 @@ void sat_net_start(const char *image)
     if (!digest(image, dg)) port_log("netplay: can't read the code image %s for the digest\n", image);
     if (S.host) snapshot();
     net_udp_test(g_opt.loss, g_opt.lag, g_opt.jitter);
-    if (net_udp_start(port, g_opt.join, dg, sat_net_msg, sat_net_link, NULL)) port_exit("netplay: the network did not start", 7);
+#ifdef SAT_NET_DROP_MS
+    net_udp_drop(SAT_NET_DROP_MS); /* game.json netplay drop_ms */
+    port_log("netplay: the other player is gone after %u ms without a packet (game.json netplay drop_ms)\n", (u32)SAT_NET_DROP_MS);
+#endif
+    if (net_udp_start(port, g_opt.join, dg, sat_net_msg, sat_net_link, NULL))
+        sat_lobby_back("no-network"), port_exit("netplay: the network did not start", 7);
     if (g_opt.loss || g_opt.lag || g_opt.jitter)
         game_log_line("netplay: TEST network: %d%% of packets lost, %d ms late, up to %d ms more", g_opt.loss, g_opt.lag, g_opt.jitter);
     if (S.test_frame) game_log_line("netplay: TEST: a planted desync at frame %d (%08x)", S.test_frame, S.test_addr);
@@ -286,10 +311,12 @@ void sat_net_start(const char *image)
                       S.delay, S.hash_every, S.wait ? "frame 1 waits for player 2" : "player 2 can join at any time",
                       S.pace ? "at the game's rate" : "unpaced (a test)");
         snprintf(now, sizeof now, "hosting: player 2 joins %s:%d", at, port);
+        sat_online_begin(at);
         host_online_match(1, now);
     } else {
         char now[160];
         join_setup();
+        sat_online_begin(g_opt.join);
         snprintf(now, sizeof now, "player 2, joined %s", g_opt.join);
         host_online_match(0, now);
     }
@@ -300,7 +327,7 @@ void sat_net_started(void)
     const char *p = host_arg("--part-choice");
     if (!S.on || !S.host) return;
     net_udp_lock();
-    S.fast = sat_cd_fast_loads > 0, S.autoload = autoload_fn != 0;
+    S.fast = sat_cd_fast_loads > 0, S.autoload = autoload_fn != 0, S.logos = sat_logos_on(), S.online = sat_menus_online();
     snprintf(S.part, sizeof S.part, "%s", p && *p ? p : "original");
     S.started = 1;
     net_udp_unlock();

@@ -5,7 +5,8 @@ from core.rtx import flow
 from core.rtx.cast import Cast, Unary, Var
 from core.rtx.flow import Unsupported
 
-F64 = {"px_b2f", "px_ctiw", "px_fdiv", "ppc_frsp", "ppc_fmadds", "ppc_fmsubs", "ppc_fnmadds", "ppc_fnmsubs",
+F64 = {"px_b2f", "px_lfs", "px_ctiw", "px_fdiv", "ppc_frsp", "ppc_fmadds", "ppc_fmsubs", "ppc_fnmadds", "ppc_fnmsubs",
+       "px_fnm", "px_fadd", "px_fsub", "px_fmul", "px_fmadd", "px_fmsub",
        "ppc_fsel", "ppc_fabs", "ppc_fnabs", "ppc_fres", "ppc_frsqrte"}
 U32 = {"ppc_single_bits", "ppc_cntlzw", "ppc_rlwinm", "ppc_rlwimi", "ppc_divwu", "ppc_mulhw", "ppc_mulhwu"}
 S32 = {"ppc_fctiwz", "ppc_fctiw", "ppc_divw"}

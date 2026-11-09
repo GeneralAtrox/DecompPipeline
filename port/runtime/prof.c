@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <windows.h>
-#include <timeapi.h>
 #include "port.h"
 #include "platform.h"
 #include "prof.h"
@@ -60,8 +59,12 @@ static int top(void) { return g_depth ? g_stack[g_depth - 1u] : GAME; }
 
 u64 prof_enter(int id)
 {
-    if (gfx_on_present_thread()) return 0u; /* the rows are the game thread's */
+    if (gfx_on_present_thread()) { /* the rows are the game thread's */
+        if (g_prof_on == 2) prof_tc_note_present();
+        return 0u;
+    }
     u64 t = prof_now();
+    g_prof_sections++;
     g_acc[top()] += t - g_since;
     g_since = t;
     if (g_depth < DEPTH) g_stack[g_depth++] = id;
@@ -95,7 +98,7 @@ static ID3D11Query *make_query(D3D11_QUERY kind)
 
 void prof_gpu_begin(void)
 {
-    if (!g_prof_on || !g_gfx.dev) return;
+    if (g_prof_on != 1 || !g_gfx.dev) return;
     u32 i = g_gpu_at % GPU_SLOTS;
     if (g_gpu[i].busy) return; /* the slot's result was never read: skip this scene */
     if (!g_gpu[i].disjoint) g_gpu[i].disjoint = make_query(D3D11_QUERY_TIMESTAMP_DISJOINT);
@@ -111,7 +114,7 @@ void prof_gpu_begin(void)
 
 void prof_gpu_end(void)
 {
-    if (!g_prof_on || !g_gfx.dev) return;
+    if (g_prof_on != 1 || !g_gfx.dev) return;
     u32 i = g_gpu_at % GPU_SLOTS;
     if (!g_gpu[i].busy || g_gpu[i].busy == 2) return;
     ID3D11DeviceContext_End(g_gfx.ctx, (ID3D11Asynchronous *)g_gpu[i].t1);
@@ -142,83 +145,6 @@ static u32 gpu_collect(void)
     return got;
 }
 
-
-/* ---- --prof-sample US: the game thread's instruction pointer every US microseconds from --prof-from on, as
- * port.exe+OFFSET counts in FILE (--prof-samples FILE), for tools/symbolize.py-style reading against port.map ---- */
-#define SAMPLES_MAX 4000000u
-static HANDLE g_game_thread;
-static u32 g_sample_us, *g_samples, g_nsamples;
-static const char *g_samples_path;
-static volatile LONG g_sampling_on, g_sampler_stop;
-
-#pragma comment(lib, "winmm.lib")
-/* The sample for a thread context: Eip when it is in port.exe. Eip in a system DLL (a wait, a file read) says nothing
- * of who called it, so the stack is scanned for the nearest value that points into port.exe (a return address, or a
- * stale one: close enough to name the caller) and the sample is that address with bit 31 set. */
-static u32 sample_of(const CONTEXT *c)
-{
-    u32 base = (u32)(uintptr_t)GetModuleHandleW(NULL);
-    const IMAGE_DOS_HEADER *dos = (const IMAGE_DOS_HEADER *)(uintptr_t)base;
-    u32 size = ((const IMAGE_NT_HEADERS32 *)(uintptr_t)(base + (u32)dos->e_lfanew))->OptionalHeader.SizeOfImage;
-    if (c->Eip - base < size) return c->Eip;
-    __try {
-        const u32 *sp = (const u32 *)(uintptr_t)c->Esp;
-        for (int i = 0; i < 512; i++)
-            if (sp[i] - base < size) return sp[i] | 0x80000000u;
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-    }
-    return c->Eip;
-}
-
-static DWORD WINAPI sampler(void *arg)
-{
-    (void)arg;
-    timeBeginPeriod(1); /* Sleep(1) otherwise sleeps a scheduler tick (15 ms): too few samples */
-    while (!g_sampler_stop) {
-        Sleep(1); /* not the tick: a watchdog or sampler thread */
-        if (!g_sampling_on || g_nsamples >= SAMPLES_MAX) continue;
-        if (SuspendThread(g_game_thread) == (DWORD)-1) continue;
-        CONTEXT c;
-        c.ContextFlags = CONTEXT_CONTROL;
-        if (GetThreadContext(g_game_thread, &c)) g_samples[g_nsamples++] = sample_of(&c);
-        ResumeThread(g_game_thread);
-    }
-    return 0;
-}
-
-static void sampler_start(void)
-{
-    if (!g_sample_us || g_game_thread || !g_samples) return;
-    if (!DuplicateHandle(GetCurrentProcess(), GetCurrentThread(), GetCurrentProcess(), &g_game_thread, 0, FALSE,
-                         DUPLICATE_SAME_ACCESS))
-        return;
-    CloseHandle(CreateThread(NULL, 0, sampler, NULL, 0, NULL));
-}
-
-static int cmp_addr(const void *a, const void *b)
-{
-    u32 x = *(const u32 *)a, y = *(const u32 *)b;
-    return x < y ? -1 : x > y;
-}
-
-static void samples_write(void)
-{
-    u32 base = (u32)(uintptr_t)GetModuleHandleW(NULL);
-    FILE *f;
-    if (!g_nsamples || !g_samples_path) return;
-    g_sampler_stop = 1;
-    qsort(g_samples, g_nsamples, sizeof *g_samples, cmp_addr);
-    if (fopen_s(&f, g_samples_path, "w") || !f) return;
-    fprintf(f, "# %u samples, one every ~1 ms of the game thread; address count (port.exe+offset)\n", g_nsamples);
-    for (u32 i = 0; i < g_nsamples;) {
-        u32 j = i;
-        while (j < g_nsamples && g_samples[j] == g_samples[i]) j++;
-        u32 v = g_samples[i], flag = v & 0x80000000u; /* flag: a system wait, named by its caller in port.exe */
-        fprintf(f, "%08x %u\n", ((v & 0x7fffffffu) - base) | flag, j - i);
-        i = j;
-    }
-    fclose(f);
-}
 
 /* ---- the table ---- */
 static int cmp_u32(const void *a, const void *b)
@@ -296,11 +222,44 @@ void prof_scene(u32 headers, u32 triangles)
     g_triangles = triangles;
 }
 
+/* ---- the tick cost line (prof_tc.c): the sections' times only ---- */
+/* On the game thread at the end of a blank, from the next blank on. */
+static void tc_start(void)
+{
+    prof_tc_begin();
+    QueryPerformanceFrequency(&g_freq);
+    if (g_cycles) g_freq.QuadPart = (LONGLONG)CYCLES_PER_SEC;
+    memset(g_acc, 0, sizeof g_acc);
+    g_depth = 0;
+    g_since = prof_now();
+    g_prof_on = 2;
+}
+
+static void tc_frame(void)
+{
+    u64 t = prof_now(), work = 0, us[ROWS];
+    g_acc[top()] += t - g_since;
+    g_since = t;
+    for (u32 i = 0; i < ROWS; i++) {
+        us[i] = g_acc[i] * 1000000u / (u64)g_freq.QuadPart;
+        if (i != PROF_WAIT) work += us[i];
+    }
+    memset(g_acc, 0, sizeof g_acc);
+    prof_tc_blank(us, work);
+}
+
 static void prof_frame_locked(void)
 {
     u64 t;
     Rec r;
-    if (!g_prof_on) return;
+    if (!g_prof_on) {
+        if (prof_tc_wanted()) tc_start();
+        return;
+    }
+    if (g_prof_on == 2) {
+        tc_frame();
+        return;
+    }
     t = prof_now();
     g_acc[top()] += t - g_since;
     g_since = t;
@@ -312,9 +271,8 @@ static void prof_frame_locked(void)
     }
     memset(g_acc, 0, sizeof g_acc);
     r.gpu_us = gpu_collect();
-    sampler_start();
-    g_sampling_on = r.vblank >= g_from;
-    prof_calls_on((int)g_sampling_on);
+    prof_sample_frame(r.vblank >= g_from);
+    prof_calls_on(r.vblank >= g_from);
     r.headers = g_headers;
     r.triangles = g_triangles;
     if (r.vblank < g_from || !g_rec) return;
@@ -329,6 +287,10 @@ static void prof_frame_locked(void)
 
 void prof_report(void)
 {
+    if (g_prof_on == 2) {
+        prof_tc_flush();
+        return;
+    }
     if (!g_prof_on || !g_n) return;
     port_log("prof: all counted blanks: %u of %u took more than 16.7 ms of work\n", g_over, g_n);
     table("whole run", 0, g_n);
@@ -340,13 +302,13 @@ void prof_report(void)
     }
     if (g_csv != INVALID_HANDLE_VALUE) CloseHandle(g_csv);
     g_csv = INVALID_HANDLE_VALUE;
-    g_sampling_on = 0;
-    samples_write();
+    prof_sample_report();
 }
 
 int prof_option(const char *arg, const char *value)
 {
     if (!value) return 0;
+    if (prof_tc_option(arg, value) || prof_sample_option(arg, value)) return 2;
     if (!strcmp(arg, "--prof")) {
         g_prof_on = strcmp(value, "off") != 0;
         if (g_prof_on && !g_rec) {
@@ -364,15 +326,6 @@ int prof_option(const char *arg, const char *value)
             if (g_cycles) g_freq.QuadPart = (LONGLONG)CYCLES_PER_SEC;
             g_since = prof_now();
         }
-        return 2;
-    }
-    if (!strcmp(arg, "--prof-sample")) {
-        g_sample_us = (u32)strtoul(value, NULL, 10);
-        if (!g_samples) g_samples = malloc(SAMPLES_MAX * sizeof *g_samples);
-        return 2;
-    }
-    if (!strcmp(arg, "--prof-samples")) {
-        g_samples_path = value;
         return 2;
     }
     if (!strcmp(arg, "--prof-from")) {
@@ -396,4 +349,5 @@ void prof_frame(void)
     gfx_lock();
     prof_frame_locked();
     gfx_unlock();
+    prof_tc_report_due();
 }

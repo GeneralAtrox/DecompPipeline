@@ -14,6 +14,8 @@
  *   --net-hash-every N  frames between desync checks           --net-pace on|off  the host keeps the game's rate (off: tests)
  *   --net-test-loss PCT, --net-test-lag MS, --net-test-jitter MS  a planted bad network (test aid)
  *   --net-test-desync FRAME[,ADDR]  flip a byte of this side's RAM at FRAME (test aid; ADDR default game.json test_byte)
+ *   --net-menu on  the match was started by the game's own online screens (sat_lobby.c): one that cannot go on goes back
+ *                  there; a game whose online play is in its own menus (netplay "menu": "in-game") takes --net only with it
  *
  * Nearest existing: targets/xbox360_ppc/port/runtime/xb_net_session.c and xb_net_check.c (Mega Man 10's online play on the
  * Xbox 360 kit: its game's own net messages carried by the base's link, with the same RAM-hash desync check); the Saturn
@@ -35,7 +37,7 @@ long long sat_net_next(void);         /* when the next vertical blank is due (Qu
 #ifdef SAT_NET_INTERNAL /* sat_net.c and sat_net_setup.c */
 #include "net_inputs.h"
 #include "net_udp.h"
-enum { M_FAST = 1, M_SURE, M_SETUP, M_SAVE, M_SETUP_END, M_HASH, M_READY, M_DESYNC };
+enum { M_FAST = 1, M_SURE, M_SETUP, M_SAVE, M_SETUP_END, M_HASH, M_READY, M_DESYNC, M_LEAVE };
 enum { R_HAVE = 1, R_P1 = 2, R_JHAVE = 4 }; /* the frame's pads are decided; port 2 is there; the joiner's pad came */
 typedef struct NetRec { u8 flags; u16 w0, w1, jw; } NetRec;
 typedef struct NetHash { u64 mine, theirs; u8 have; } NetHash; /* have: 1 mine, 2 theirs */
@@ -43,7 +45,8 @@ typedef struct SatNet {
     int on, host, delay, hash_every, pace, wait, test_frame;
     u32 test_addr;
     int started, link_up, link_new, link_lost, setup_sent, setup_end, ready;
-    int fast, autoload;          /* the host's settings (a joiner: as the host sent them) */
+    int fast, autoload, logos, online;   /* the host's settings (a joiner: as the host sent them) */
+    int left;                    /* the other copy said goodbye (M_LEAVE) */
     char part[16];
     u8 *save;
     u32 save_len, save_got;
@@ -64,6 +67,9 @@ void sat_net_send_setup(void);
 void sat_net_pace(void);
 void sat_net_idle(long long until);
 void sat_net_plant(u32 f);
+int sat_net_open(const char *join, NetUdpMessage on_msg, NetUdpState on_state); /* sat_lobby.c: the link on the game's port */
+#define SAT_NET_NO_PAD 0xffffffffu
+void sat_online_watch(u32 f, u32 pad); /* sat_online.c, lock held: each frame (this player's pad) and after a wait */
 u32 sat_net_get32(const u8 *p);
 void sat_net_put32(u8 *p, u32 v);
 #endif

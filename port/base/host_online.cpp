@@ -9,6 +9,7 @@
 // Nearest existing: base/host_resume.cpp (the same start-again of this program on its own command line, asked first).
 #include <windows.h>
 #include <shellapi.h>
+#include <algorithm>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -49,38 +50,20 @@ const std::string &saved()
     return g_saved.empty() ? g_run : g_saved;
 }
 
-// The game again, with --net value: this one closes once the new one has started.
-void restart(HWND hwnd, const std::string &value)
+// The game again, with --net value (and the extra arguments): this one closes once the new one has started. This run's
+// own --net... and --online-note choices are left out.
+bool restart(HWND hwnd, const std::string &value, const std::string &extra = "")
 {
-    int n = 0;
-    wchar_t **argv = CommandLineToArgvW(GetCommandLineW(), &n), exe[MAX_PATH];
-    GetModuleFileNameW(nullptr, exe, MAX_PATH);
-    std::wstring cmd = host::arg_text(exe);
-    for (int i = 1; argv && i < n; i++) {
-        std::wstring a = argv[i];
-        if (a == L"--net" || a == L"--net-host" || a == L"--net-join") {
-            i++; // and its value
-            continue;
-        }
-        cmd += L" " + host::arg_text(a);
+    std::vector<std::wstring> add{L"--net", widen(value)};
+    for (size_t at = 0; at < extra.size();) { // the extra arguments, separated by spaces
+        size_t end = extra.find(' ', at);
+        if (end == std::string::npos) end = extra.size();
+        if (end > at) add.push_back(widen(extra.substr(at, end - at)));
+        at = end + 1;
     }
-    LocalFree(argv);
-    cmd += L" --net " + host::arg_text(widen(value));
-    std::wstring pid = std::to_wstring(GetCurrentProcessId());
-    SetEnvironmentVariableW(L"PORT_RESUME_WAIT", pid.c_str()); // the child inherits it
-    STARTUPINFOW si{};
-    si.cb = sizeof si;
-    PROCESS_INFORMATION pi{};
-    BOOL ok = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi);
-    SetEnvironmentVariableW(L"PORT_RESUME_WAIT", nullptr);
-    if (!ok) {
-        game_log_line("online: could not start the game again (error %lu)", GetLastError());
-        return;
-    }
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
-    game_log_line("online: started process %lu with --net %s; this one ends", pi.dwProcessId, value.c_str());
-    PostMessageW(hwnd, WM_CLOSE, 0, 0);
+    unsigned long pid = host::start_again(hwnd, {L"--net*", L"--online-note"}, add, "online");
+    if (pid) game_log_line("online: started process %lu with --net %s %s; this one ends", pid, value.c_str(), extra.c_str());
+    return pid != 0;
 }
 
 void choose(HWND hwnd, const std::string &value, const std::wstring &what)
@@ -191,8 +174,8 @@ bool online_command(void *hwnd, unsigned id)
     if (id == g_first + kJoin) {
         const std::string &s = saved();
         std::wstring text = s != "off" && s != "on" && s != "join" ? widen(s) : L"";
-        if (ask_text(h, L"Join a game", L"The host's address, as the host's Online menu shows it (for example 192.168.1.20, "
-                                        L"or 192.168.1.20:29720 for another port):", &text) && !text.empty())
+        if (ask_text(h, L"Join a game", L"The host's address, as the host's Online menu shows it (for example 192.0.2.20, "
+                                        L"or 192.0.2.20:29720 for another port):", &text) && !text.empty())
             choose(h, narrow(text), L"as player 2, joining " + text);
     }
     return true;
@@ -200,7 +183,72 @@ bool online_command(void *hwnd, unsigned id)
 
 const char *online_locked() { return g_lock.empty() ? nullptr : g_lock.c_str(); }
 
+// This program again on its own command line, less the options in drop (each with its value; "--net*": every option
+// starting --net) and the one-start-only --level-play, then add; the new run waits for this one to end (PORT_RESUME_WAIT, host_resume.cpp's way) and this one
+// closes. The new process's id, 0 if it could not start (logged).
+unsigned long start_again(void *hwnd, const std::vector<std::wstring> &drop, const std::vector<std::wstring> &add, const char *who)
+{
+    int n = 0;
+    wchar_t **argv = CommandLineToArgvW(GetCommandLineW(), &n), exe[MAX_PATH];
+    GetModuleFileNameW(nullptr, exe, MAX_PATH);
+    std::wstring cmd = arg_text(exe), next;
+    bool has_next = false; // a test's --input-next A|B|...: the new copy plays --input A (and --input-next B|...)
+    for (int i = 1; argv && i + 1 < n; i++)
+        if (std::wstring(argv[i]) == L"--input-next") next = argv[i + 1], has_next = true;
+    for (int i = 1; argv && i < n; i++) {
+        std::wstring a = argv[i];
+        bool dropped = std::any_of(drop.begin(), drop.end(), [&a](const std::wstring &d) {
+            return !d.empty() && d.back() == L'*' ? a.rfind(d.substr(0, d.size() - 1), 0) == 0 : a == d;
+        });
+        if (has_next && (a == L"--input" || a == L"--input-next")) dropped = true;
+        if (a == L"--level-play" || a.rfind(L"--level-edit-", 0) == 0 || dropped) {
+            i++; // and its value (the editor's tests open it once, in this process only)
+            continue;
+        }
+        cmd += L" " + arg_text(a);
+    }
+    LocalFree(argv);
+    if (has_next) {
+        size_t bar = next.find(L'|');
+        cmd += L" --input " + arg_text(next.substr(0, bar));
+        if (bar != std::wstring::npos) cmd += L" --input-next " + arg_text(next.substr(bar + 1));
+    }
+    for (const std::wstring &a : add) cmd += L" " + arg_text(a);
+    std::wstring pid = std::to_wstring(GetCurrentProcessId());
+    SetEnvironmentVariableW(L"PORT_RESUME_WAIT", pid.c_str()); // the child inherits it
+    STARTUPINFOW si{};
+    si.cb = sizeof si;
+    PROCESS_INFORMATION pi{};
+    BOOL ok = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &si, &pi);
+    DWORD err = GetLastError();
+    SetEnvironmentVariableW(L"PORT_RESUME_WAIT", nullptr);
+    if (!ok) {
+        game_log_line("%s: could not start the game again (error %lu)", who, err);
+        return 0;
+    }
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    if (hwnd) PostMessageW(static_cast<HWND>(hwnd), WM_CLOSE, 0, 0); // none: the console ends this run itself
+    return pi.dwProcessId;
+}
+
 } // namespace host
+
+// A console whose online play is in the game's own menus (no Online menu): the game again at once with --net value and
+// the extra arguments (space-separated), nothing asked; 1 when the new one started (the caller then ends this one).
+extern "C" int host_online_restart(const char *value, const char *extra)
+{
+    return restart(nullptr, value ? value : "off", extra ? extra : "") ? 1 : 0; // the console ends this run (port_exit)
+}
+
+// The Online menu's saved choice back to playing alone (a console without the menu has no other way to change it).
+extern "C" void host_online_forget(void)
+{
+    if (saved() == "off") return;
+    g_saved = "off";
+    host::settings_set("net", "off");
+    game_log_line("online: the saved --net choice is back to off (online play is in the game's own menu)");
+}
 
 extern "C" void host_online_match(int hosting, const char *status)
 {
@@ -208,4 +256,25 @@ extern "C" void host_online_match(int hosting, const char *status)
     g_run = hosting ? "on" : "join";
     g_lock = "locked during online play: it would change the game for both players";
     game_log_line("online: %s; the menu's entries that would change the game are locked until this run ends", g_now.c_str());
+}
+
+// host.h: the game again with these options in place of its own ("--level-mod on --level-play on")
+extern "C" int port_start_again(const char *args)
+{
+    std::vector<std::wstring> add, drop;
+    std::string s = args ? args : "";
+    for (size_t i = 0; i < s.size();) {
+        while (i < s.size() && s[i] == ' ') i++;
+        size_t j = s.find(' ', i);
+        if (j == std::string::npos) j = s.size();
+        if (j > i) {
+            std::wstring w = widen(s.substr(i, j - i));
+            add.push_back(w);
+            if (w.rfind(L"--", 0) == 0) drop.push_back(w);
+        }
+        i = j;
+    }
+    unsigned long pid = host::start_again(host_window_hwnd(), drop, add, "start again");
+    if (pid) game_log_line("start again: process %lu started with %s; this one ends", pid, s.c_str());
+    return pid != 0;
 }

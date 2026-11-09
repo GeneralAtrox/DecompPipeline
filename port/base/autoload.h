@@ -37,6 +37,10 @@ typedef struct AutoLoadConsole {
  * run) when the game's file is there. */
 void autoload_start(const AutoLoadStep *steps, unsigned n, int play_run, const AutoLoadConsole *con);
 void autoload_hit(void);
+/* more steps, driven the same way once the load's steps are done (Play of an edited level: the menu's screens to a fight),
+ * and lead (a button, as a step's press; NULL: none) pressed while a step of the load waits with no press of its own (the
+ * title before the menu the load waits for). None of it runs when the auto-load is off. steps and lead outlive the run. */
+void autoload_then(const char *lead, const AutoLoadStep *steps, unsigned n);
 /* autoload_buttons (host.h, for input.c): player 1's presses now; *own 1 while a step holds the pad */
 int autoload_available(void);   /* the game has a load path to drive (the menu entry) */
 int autoload_get(void);         /* the setting, for the menu */

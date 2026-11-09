@@ -24,6 +24,7 @@ void cpu_present_post(const u32 *xrgb, unsigned w, unsigned h, u32 vb); /* a fin
  * the sides beside it at the same dot size (a widescreen picture: saturn/sat_wide.c) */
 void cpu_present_post_wide(const u32 *xrgb, unsigned w, unsigned h, u32 vb, unsigned sw);
 void cpu_present_set_fps(unsigned fps);                    /* the menu's frame-rate cap, 0 none */
+void cpu_present_panel(int on); /* a dot whose top byte is 1 + G/2 is shown mixed half and half with grey G (a menu panel) */
 unsigned cpu_present_fps(void);
 void cpu_present_report(void);                             /* --present-check: the log's line */
 

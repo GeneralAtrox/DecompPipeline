@@ -2,7 +2,10 @@
  * of any length takes no time from them. No game code runs for one. The device context is shared under gfx_lock; this
  * thread gives way whenever the game's thread wants it. The renderer and gfx_present hold it back while the frame target
  * has a frame not yet counted or shown, and a vertical blank's wait lets it go on; under --present-thread on only a frame
- * with nothing to blend holds it, and a render's end lets it go on. */
+ * with nothing to blend holds it, and a render's end lets it go on. A game with its own draw function (port_extra_thread_own)
+ * draws and shows its in-between frames on its own thread; this one only shows the last shown frame again when the tick
+ * has shown none for a slot (a long game step, the logos, a menu), so the screen keeps its rate. A render holds it until
+ * its frame is shown (gfx_show), so no frame is shown early and none out of order. No game code runs here. */
 #include <windows.h>
 #include <timeapi.h>
 #include "port.h"
@@ -20,6 +23,9 @@ static volatile u32 g_render_gen, g_counted_gen, g_backoff_gen; /* renders begun
 static volatile int g_counts;   /* gfx_frame_done reports the count (port_extra_thread_counted) */
 static u64 g_render_at, g_backoff_at, g_hold_us; /* a render's start; the back-off's; what a frame holds the lock for */
 static u64 g_tick_at, g_lead_us; /* the tick's start (port_extra_thread_tick); from a tick's start to its render */
+static int g_own;               /* the game's own draw function: this thread only shows the last frame again */
+static u64 g_own_shown_us, g_own_nap; /* when a frame was last shown; how long until showing it again is due */
+#define OWN_GRACE_US 1500u      /* past its slot: the tick's own frame comes first unless it is this late */
 
 static u64 now_us(void)
 {
@@ -65,10 +71,10 @@ void port_extra_cap_shown(u64 at_us, u32 fps)
 
 /* This thread's own wait for its slot: a high-resolution sleep (base/pace.c) to about half a millisecond early, and
  * the rest spins. It reads the counter directly: pace_nap_until is the tick's, on the game's clock. */
-static void nap_to_slot(void)
+static void nap_to_slot(u64 nap)
 {
-    u64 until = now_us() + g_nap_us;
-    if (g_nap_us > 600u) pace_sleep_us(g_nap_us - 500u);
+    u64 until = now_us() + nap;
+    if (nap > 600u) pace_sleep_us(nap - 500u);
     while (now_us() < until && !gfx_lock_wanted()) YieldProcessor();
 }
 
@@ -139,7 +145,7 @@ static DWORD WINAPI present_thread(void *arg)
         if (gfx_lock_wanted() && g_early) g_backoff_gen = g_render_gen + 1u, g_backoff_at = now_us(); /* it waited for this frame */
         t0 = g_xcost ? xcost_now() : 0u;
         if (what == 2) gfx_show_wait();
-        else if (what == 3) nap_to_slot(); /* --fps: not yet */
+        else if (what == 3) nap_to_slot(g_own == 1 ? g_own_nap : g_nap_us); /* --fps: not yet */
         else if (!what) WaitForSingleObject(g_wake, 1); /* nothing to draw: a render's end (g_wake) goes on at once, where
                                                            Sleep(1) noticed it 1-2 ms late, a late frame every tick */
         if (t0) xcost_add(what == 2 ? XC_SWAP : XC_IDLE, xcost_now() - t0);
@@ -212,8 +218,47 @@ void port_extra_thread_tick(void) { if (g_up == 1) g_tick_at = now_us(); }
 
 int port_extra_thread_go(void)
 {
-    if (g_up != 1) return 0;
+    if (g_up != 1 || g_own == 1) return 0; /* the game's own draw function: the tick still draws its in-between frames */
     g_go = 1;
     SetEvent(g_wake);
+    return 1;
+}
+
+/* port_extra_begin, for a game with its own draw function under --present-thread on, real clock and no dump: start the
+ * thread that shows the last frame again. */
+void port_extra_thread_own(int wanted)
+{
+    if (!wanted || g_own) return;
+    g_own = -1; /* tried */
+    port_extra_thread_begin(1);
+    if (g_up != 1) return;
+    g_own = 1;
+    port_log("frame_extra: the game draws its own in-between frames; the thread shows the last frame again when a tick "
+             "shows none for a slot\n");
+}
+
+/* gfx_show, holding gfx_lock: a frame was shown, so it may be shown again until a render holds the thread. */
+void port_extra_thread_shown(void)
+{
+    if (g_own != 1) return;
+    g_own_shown_us = now_us();
+    if (!g_go) {
+        g_go = 1;
+        SetEvent(g_wake);
+    }
+}
+
+/* This thread, holding gfx_lock (port_extra_thread_show), with the game's own draw function: the last frame again once
+ * its slot and OWN_GRACE_US have gone by with nothing shown. 1 shown, 2 the display would not take it, 3 not yet. */
+int port_extra_thread_reshow(u64 now, u32 fps, u32 *count)
+{
+    u64 due;
+    if (g_own != 1) return 0;
+    fps = cap(fps);
+    due = g_own_shown_us + 1000000u / (fps ? fps : 144u) + OWN_GRACE_US;
+    if (now < due) return g_own_nap = due - now, 3;
+    if (!gfx_can_show()) return 2;
+    gfx_show();
+    ++*count;
     return 1;
 }

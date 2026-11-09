@@ -285,7 +285,9 @@ u32 tc_call(u32 target, const TcArgs *a)
         stub_named(target);
         return 0;
     }
+    if (f->addr == sat_logo_fn && sat_logos_skip(a, &r)) return r; /* an opening logo skipped (sat_logos.c) */
     if (f->addr == sat_movie_fn && sat_movie_play(a, &r)) return r; /* game.json movie: the host plays it (sat_movie.c) */
+    TcArgs menu; if (sat_menus_on && sat_menus_enter(f->addr, &a, &menu, &r)) return r; /* the kit's in-game menus (sat_menus.c) */
     top = csp ? csp : (c->sp ? c->sp : 0x060ffc00u) - 32u;
     if (g_trace_vb && sat_vblank_count() >= g_trace_vb) {
         g_trace_vb = 0;
@@ -304,10 +306,9 @@ u32 tc_call(u32 target, const TcArgs *a)
     }
     c->popped[c->depth] = 0;
     u32 keep[7]; for (int k = 0; k < 7; k++) keep[k] = sh4_r(8 + k);
-    if (f->addr == port_twin_fn) port_twin_hit(); /* the game's fight (base pad_twin.c) */ sat_wide_cull_at(f->addr); /* its culling, wide (sat_wide.c) */
-    if (f->addr == autoload_fn && !autoload_leave) autoload_hit(); /* a step of the save's auto-load (base autoload.c) */
+    SatFeat feat; a = sat_feat_enter(f->addr, a, &feat); /* the feature hooks on this call, before and after (sat_call_feat.c) */
     r = run_frame(f, top, a, 1);
-    if (f->addr == autoload_fn && autoload_leave) autoload_hit();
+    r = sat_feat_leave(f->addr, a, r);
     if (g_watch_saved) sat_saved_note(f->addr, keep);
     cur->last_top = top;
     if (g_trace_ret && g_trace) port_log("ret %08x = %08x\n", f->addr, r);

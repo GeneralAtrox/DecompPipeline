@@ -42,6 +42,7 @@ static u32 blocks_used(void)
 }
 
 void sat_bup_path(const char *path) { g_path = path; }
+const char *sat_bup_where(void) { return g_path; }
 
 static void save_all(void)
 {
@@ -159,6 +160,7 @@ static u32 b_write(u32 dev, u32 dir, u32 data, u32 mode)
         for (u32 i = 0; i < size; i++) e->data[i] = rd8(data + i);
     }
     save_all();
+    if (sat_heads_on) sat_heads_bup(dir, 1); /* the kit's save beside the game's (sat_heads.c) */
     return OK;
 }
 static u32 b_read(u32 dev, u32 name, u32 data, u32 d)
@@ -169,6 +171,7 @@ static u32 b_read(u32 dev, u32 name, u32 data, u32 d)
     at = find(name);
     if (at < 0) return NOT_FOUND;
     for (u32 i = 0; i < g_file[at].size; i++) wr8(data + i, g_file[at].data[i]);
+    if (sat_heads_on) sat_heads_bup(name, 0);
     return OK;
 }
 static u32 delete_file(u32 dev, u32 name, u32 c, u32 d)

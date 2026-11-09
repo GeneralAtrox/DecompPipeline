@@ -173,10 +173,13 @@ class Switch:
 
 
 class Ret:
-    __slots__ = ("e",)
+    """return e. xr: the callee-saved registers the function wrote, [(k, "r" or "f", expr)], each reported at exit
+    (tc_xr / tc_xrf): the strict judge's exit frame holds r14..r31 and f14..f31."""
+    __slots__ = ("e", "xr")
 
-    def __init__(self, e=None):
+    def __init__(self, e=None, xr=None):
         self.e = e
+        self.xr = list(xr or [])
 
     def writes(self):
         return set()
@@ -185,14 +188,19 @@ class Ret:
         return []
 
     def reads(self):
-        return self.e.vars() if self.e is not None else set()
+        out = self.e.vars() if self.e is not None else set()
+        for _, _, x in self.xr:
+            out |= x.vars()
+        return out
 
     def exprs(self):
-        return [self.e] if self.e is not None else []
+        return ([self.e] if self.e is not None else []) + [x for _, _, x in self.xr]
 
     def set_exprs(self, es):
-        if es:
-            self.e = es[0]
+        es = list(es)
+        if self.e is not None:
+            self.e = es.pop(0)
+        self.xr = [(k, kd, x) for (k, kd, _), x in zip(self.xr, es)]
 
 
 class Block:

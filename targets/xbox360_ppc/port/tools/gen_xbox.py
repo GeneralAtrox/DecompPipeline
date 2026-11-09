@@ -272,7 +272,7 @@ class Kit:
         self.write_tables()
         (self.gen / "scene_map.c").write_text(scene_map.scene_map_c({"dir": self.wsdir}, "", "", header=""), encoding="utf-8")
         sdl = build_saturn.sdl3(self.out / "xbox_run.exe", "x64-windows")
-        base = sorted(BASE.glob("*.c")) + sorted(BASE.glob("*.cpp"))
+        base = sorted(BASE.glob("*.c")) + sorted(BASE.glob("*.cpp")) + sorted(BASE.glob("third_party/*.cpp"))
         srcs = sorted(self.gen.glob("*.c")) + KIT_RUNTIME + SHARED_RUNTIME + base
         incs = [X360 / "runtime", KIT / "runtime", BASE, sdl / "include"]
         flags = ["/nologo", "/c", "/O1", "/fp:strict", "/W3", "/MP2", "/DTC_PORT", x360_check.fma_define(cfg),

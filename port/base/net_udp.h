@@ -15,6 +15,7 @@ typedef int (*NetUdpMessage)(void *ctx, const u8 *msg, int len, int reliable); /
 typedef void (*NetUdpState)(void *ctx, NetState from, NetState to);
 
 void net_udp_test(int loss_pct, int lag_ms, int jitter_ms); /* a planted bad network (a test aid): before net_udp_start */
+void net_udp_drop(u32 ms);       /* before net_udp_start: nothing heard for ms and the other player is gone (0: the default) */
 /* join NULL: a host waiting on port. join "host[:port]": reach that host (port when it names none). 0: the port is open */
 int net_udp_start(int port, const char *join, const u8 digest[NET_DIGEST], NetUdpMessage on_msg, NetUdpState on_state, void *ctx);
 void net_udp_lock(void);
@@ -25,6 +26,7 @@ const NetStats *net_udp_stats(void);                      /* lock held */
 void net_udp_reconnect(void);    /* lock held: a joiner says hello again (the host was not up yet) */
 void net_udp_wait(u32 ms);       /* lock not held: until something comes from the other side, or ms */
 void net_udp_finish(u32 ms);     /* lock not held: up to ms for the other side to have every reliable message, then the link closes */
+void net_udp_stop(void);         /* lock not held: the link closes and the port is let go; net_udp_start may open another */
 u32 net_udp_lost(void);          /* packets the test network dropped */
 int net_udp_address(char *out, int cap); /* this computer's LAN address (the default route's), 0 if none: a host gives it to the joiner */
 #endif

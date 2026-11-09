@@ -9,6 +9,7 @@
 #include <xmmintrin.h>
 #include "port.h"
 #include "work_count.h"
+#include "sh4_vec.h"
 #include "platform.h"
 
 #define MODE_FR 0x00200000u
@@ -97,39 +98,21 @@ void sh4_fsca(u32 fpul, f32 *s, f32 *c)
     *c = u2f(tab[(i + 0x4000u) & 0xffffu]); /* the cosine is the sine a quarter turn on */
 }
 
-/* fipr FVm,FVn and ftrv XMTRX,FVn: one inner product rounded once, as the reference emulator (Flycast: sh4_fpu.cpp,
- * shil_canonical.h innerProduct) computes the SH-4's (the software manual's FIPR and FTRV: one hardware inner product,
- * no rounded intermediate values): each product in double (exact), the four summed in element order 0..3 in double,
- * the sum converted once to single, all in MXCSR's mode (RC from FPSCR.RM, DAZ|FTZ from FPSCR.DN), as the oracle's
- * TcRound.fipr. SSE2 operations, never the x87 or a fused multiply-add. */
-static __m128d widen(f32 x) { return _mm_cvtss_sd(_mm_setzero_pd(), _mm_set_ss(x)); }
-
-static __m128d dmul(f32 a, f32 b) { return _mm_mul_sd(widen(a), widen(b)); }
-
-static __forceinline f32 fipr(const f32 a[4], const f32 b[4])
-{
-    __m128d t = dmul(a[0], b[0]);
-    t = _mm_add_sd(t, dmul(a[1], b[1]));
-    t = _mm_add_sd(t, dmul(a[2], b[2]));
-    t = _mm_add_sd(t, dmul(a[3], b[3]));
-    return _mm_cvtss_f32(_mm_cvtsd_ss(_mm_setzero_ps(), t));
-}
+/* fipr FVm,FVn and ftrv XMTRX,FVn: sh4_vec.h's packed forms, the judged runtimes' results bit for bit
+ * (tests/test_fipr.py). tx/tc_rt_inline.h has the translator C's own inline copies of these four helpers, with the same
+ * count; readable and native C call these. */
+typedef char sh4v_wc_matches[(WC_VECTOR_OPS == SH4V_WC_VECTOR_OPS) ? 1 : -1];
 
 f32 sh4_fipr(const f32 a[4], const f32 b[4])
 {
     work_add(WC_VECTOR_OPS, 1);
-    return fipr(a, b);
+    return sh4v_fipr(a, b);
 }
 
 void sh4_ftrv(f32 v[4])
 {
-    f32 out[4];
     work_add(WC_VECTOR_OPS, 1);
-    for (int row = 0; row < 4; row++) { /* XMTRX is column-major: row r is xf r, r+4, r+8, r+12 */
-        f32 m[4] = {u2f(port_sh4_xf[row]), u2f(port_sh4_xf[row + 4]), u2f(port_sh4_xf[row + 8]), u2f(port_sh4_xf[row + 12])};
-        out[row] = fipr(m, v);
-    }
-    for (int i = 0; i < 4; i++) v[i] = out[i];
+    sh4v_ftrv(port_sh4_xf, v, v);
 }
 
 f32 sh4_xf(int i) { return (i >= 0 && i < 16) ? u2f(port_sh4_xf[i]) : 0.0f; }
@@ -174,21 +157,15 @@ u32 sh4_sz(void) { return (g_mode & MODE_SZ) != 0u; }
 void sh4_ftrv_fv(int n)
 {
     if (n < 0 || n > 12 || (n & 3)) return;
-    f32 v[4];
-    for (int i = 0; i < 4; i++) v[i] = u2f(port_sh4_fr[n + i]);
-    sh4_ftrv(v);
-    for (int i = 0; i < 4; i++) port_sh4_fr[n + i] = f2u(v[i]);
+    work_add(WC_VECTOR_OPS, 1);
+    sh4v_ftrv(port_sh4_xf, (const f32 *)(port_sh4_fr + n), (f32 *)(port_sh4_fr + n));
 }
 
 void sh4_fipr_fv(int m, int n)
 {
     if (m < 0 || m > 12 || (m & 3) || n < 0 || n > 12 || (n & 3)) return;
-    f32 a[4], b[4];
-    for (int i = 0; i < 4; i++) {
-        a[i] = u2f(port_sh4_fr[m + i]);
-        b[i] = u2f(port_sh4_fr[n + i]);
-    }
-    port_sh4_fr[n + 3] = f2u(sh4_fipr(a, b));
+    work_add(WC_VECTOR_OPS, 1);
+    _mm_store_ss((f32 *)(port_sh4_fr + n + 3), sh4v_fipr_ss((const f32 *)(port_sh4_fr + m), (const f32 *)(port_sh4_fr + n)));
 }
 
 u32 sh4_r(int i) { return (i >= 8 && i < 15) ? port_sh4_gs[i - 8] : (i >= 4 && i < 8) ? port_sh4_ro[i - 4] : 0; }

@@ -33,6 +33,11 @@ def thin(verdict, cov):
     return verdict == "PASS" and bool(total) and hit is not None and hit * 100 < THIN_BELOW * total
 
 
+def tree_sig(p):
+    """(relative path, size, mtime) of every file under p: a harness copy that differs is stale."""
+    return sorted((f.relative_to(p).as_posix(), f.stat().st_size, f.stat().st_mtime_ns) for f in p.rglob("*") if f.is_file())
+
+
 def mirror(ws, dst, addrs):
     dst.mkdir(parents=True, exist_ok=True)
     proj = json.loads((ws / "project.json").read_text(encoding="utf-8"))
@@ -49,7 +54,8 @@ def mirror(ws, dst, addrs):
     for a in addrs:
         for sub in ("harness", "packets"):
             s, d = ws / sub / a, dst / sub / a
-            if s.is_dir() and not d.exists():
+            if s.is_dir() and (not d.exists() or tree_sig(s) != tree_sig(d)):  # a re-prepared harness replaces
+                shutil.rmtree(d, ignore_errors=True)                           # the mirror's (it judged the old one)
                 shutil.copytree(s, d)
 
 

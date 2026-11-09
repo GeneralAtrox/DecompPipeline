@@ -44,6 +44,7 @@ const PortConsole port_console = {"test", "Test", "Fixture", "0", 640u, 480u, 60
 u32 port_vblank_count(void) { return 7u; }
 int host_fixed_clock(void) { return g_fixed; }
 int session_replaying(void) { return g_replay; }
+unsigned extra_fps(void) { return 0u; } /* base/console.h: no cap set, the 144 slots */
 void port_log(const char *fmt, ...)
 {
     va_list ap;

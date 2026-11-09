@@ -27,12 +27,12 @@ Before a job starts, under a lock on the registry (core/filelock), the wrapper
   points      (exit 0) to a job whose inputs finished (done): its result, log and run time; nothing runs;
   allows      everything else. --cross-check "REASON" is the named exception (CLAUDE.md): it runs whatever was done or
               failed before (never beside a running one) and the reason is logged. --changed "WHAT" names an input
-              the key cannot see (build box B's workspace changed, a network fault fixed): it joins the key, so the
+              the key cannot see (a build box's workspace changed, a network fault fixed): it joins the key, so the
               job is a new one, and it is logged.
 A job that ends 0 is done; 124 (tools/bounded.py, GNU timeout) or the wrapper's own --timeout is timeout; ssh's 255
 (the connection, not the job) and Ctrl+C are lost (never refused); anything else failed. A wrapper that died leaves a
 start with no end: list shows it as lost.
-A command run on build box B (`ssh HOST "..."`) is keyed here too: every heavy job starts from this laptop. Its DP
+A command run on a build box (`ssh HOST "..."`) is keyed here too: every heavy job starts from this laptop. Its DP
 commit is asked from the remote checkout the command names (`cd /d DIR`, `Set-Location DIR`, a DIR\\tools\\X.py),
 else --commit is required. The registry: config "job_registry" "dir", else DP_JOBS_DIR, else
 %LOCALAPPDATA%/DecompPipeline/job_registry (jobs.jsonl, running/*.lock, logs/), shared by every clone and worktree.

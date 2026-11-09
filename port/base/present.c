@@ -12,6 +12,7 @@
 #include "base.h"
 
 static ID3D11RenderTargetView *g_back_rtv;
+ID3D11RenderTargetView *gfx_back_rtv(void) { return g_back_rtv; }
 static u32 g_border = 0xff000000u;
 
 void gfx_set_border(u32 argb) { g_border = argb; }

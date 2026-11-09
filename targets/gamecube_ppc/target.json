@@ -92,6 +92,8 @@
     {"scope": "boundary_vectors", "flags": ["boundary_vectors"],
      "why": "the compare-edge pass (TcBound.Edges, TcBoundPass.edges) changes no harness byte while boundary_vectors is off: its edges are never recorded and the pass never runs",
      "scripts": {
-       "TcBound.java": ["f2f05bdacf2971165552f416d43b68da032190280612ff7134273ce9b9023165", "201c711521ea78477868cdf0f5a97c4a0be78650f4311d51d0c001b963f6535c"]}}
+       "TcBound.java": ["f2f05bdacf2971165552f416d43b68da032190280612ff7134273ce9b9023165", "201c711521ea78477868cdf0f5a97c4a0be78650f4311d51d0c001b963f6535c"]}},
+    {"scope": "unlisted_call_args", "why": "TcTrack.of writes CA lines also at a direct call or branch to code no listed callee starts, and at a run on past the body's end (2026-11-09, 8f72a3fa's change on GameCube): only a body without a computed call or jump that has one makes other bytes (core/unchecked_args.ppc_in_scope)",
+     "scripts": {"TcTrack.java": ["2e7e4b82940891a10239a12a355c01ff8b2b37b1b8acd80e19a26983d801f9d3", "b01b85e84dd5b0de400c89d6258be0b6b289bb9c41f6378e977884f09835bcab"]}}
   ]
 }

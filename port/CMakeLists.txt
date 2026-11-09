@@ -24,7 +24,7 @@ file(GLOB PORT_RUNTIME CONFIGURE_DEPENDS runtime/*.c runtime/gfx/*.c runtime/med
 # SDK modules stay C.
 file(GLOB PORT_BASE_C CONFIGURE_DEPENDS base/*.c)
 list(APPEND PORT_RUNTIME ${PORT_BASE_C})
-file(GLOB PORT_HOST CONFIGURE_DEPENDS base/*.cpp)
+file(GLOB PORT_HOST CONFIGURE_DEPENDS base/*.cpp base/third_party/*.cpp)
 # Host libraries from vcpkg (vcpkg.json; tools/build.py configures with its toolchain, x86-windows): SDL3 for the
 # window and input. Direct3D 11, DXGI and WIC come with the Windows SDK.
 find_package(SDL3 CONFIG REQUIRED)
@@ -56,6 +56,19 @@ if(PORT_CHECKED)
   set(PORT_C_FLAGS ${PORT_C_BASE} /Od /RTC1)
   set(PORT_KIT_OPT /Od)
   set(PORT_GAME_OPT /Od /RTC1)
+endif()
+# AddressSanitizer (tools/build.py --asan, its own folder build/x86asan): the play build's optimisation, with every host
+# load and store checked against the bounds of the heap block, stack local or global it belongs to; a bad one is reported
+# with its stack (ASAN_OPTIONS=continue_on_error=1 reports each and goes on). Guest RAM is a mapped section, not the heap,
+# so the game's own reads and writes of it are never flagged, nor is a guest address past a table's end: only the host's
+# own errors. MSVC has no UndefinedBehaviorSanitizer; /fsanitize=address does not combine with /RTC1 (--checked).
+option(PORT_ASAN "AddressSanitizer build (/fsanitize=address)" OFF)
+if(PORT_ASAN)
+  if(PORT_CHECKED)
+    message(FATAL_ERROR "PORT_ASAN with PORT_CHECKED: /fsanitize=address does not combine with /RTC1")
+  endif()
+  add_compile_options(/fsanitize=address /Z7)
+  add_link_options(/DEBUG /INCREMENTAL:NO)
 endif()
 # The host's C++: no guest code, so no judge flags; the same zero-warning bar.
 set(PORT_CXX_FLAGS /W4 /WX /permissive- /utf-8 /EHsc /arch:SSE2 /DNOMINMAX /DWIN32_LEAN_AND_MEAN)

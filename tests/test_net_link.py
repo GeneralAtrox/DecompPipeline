@@ -296,7 +296,7 @@ PLANTED = (
     ("|| r32(p + 4) != l->token", "", "strangers"),
     ("else if (memcmp(m + 8, l->digest, NET_DIGEST)) st = NET_REFUSED_CONTENT;", "", "refuse"),
     ("after = (uint16_t)(s->seq - next);", "after = s->seq < next ? 0x8000u : (uint16_t)(s->seq - next);", "wrap"),
-    ("if (now - l->last_rx >= NET_TIMEOUT_MS) { l->state = NET_TIMED_OUT; return; }", "", "gone"),
+    ("if (now - l->last_rx >= l->timeout_ms) { l->state = NET_TIMED_OUT; return; }", "", "gone"),
     ("if (s->used) return -1;   /* the window is full: the oldest in flight sits in this slot */", "", "window"),
     ("if (!in_window(seq, l->read_rel)) {", "if (0) {", "bad"),
     ("} else if (l->state == NET_ESTABLISHED && st == NET_OK) {", "} else if (0) {", "restart"),

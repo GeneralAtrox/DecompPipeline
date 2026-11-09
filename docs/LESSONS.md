@@ -124,6 +124,12 @@ date in its title is the one the gate reads.
   nearest, so C keeps the disc's exact bits where they differ. Harnesses carry the rounding mode the game plays in.
 - **Prove fused multiply-add per target:** prepare both ways, compare harnesses, count the vectors that differ.
 - **Re-translate after a translator model changes:** the C's hashes change, and a port takes only judged text.
+- **A register a function reads before it sets it is an input, whatever the calling convention says.** Too Human's
+  hand-written movie decoder passed its constants in v64..v77 from one function to the next. The judge seeds and
+  compares only the convention's registers and had never judged those functions; the port form carried v1..v13, so
+  the C read 0 and every movie picture was garbage. The picture was blacked out for four days instead of compared
+  plane by plane with the emulator's. The Xbox 360 translator now finds such reads, refuses them in the judge's form
+  and carries the vector file in the port form. A wrong picture is traced to its first wrong function, not hidden.
 
 ## Re-stamps after the harness changes
 
@@ -199,6 +205,10 @@ date in its title is the one the gate reads.
 - **Hot spin reads stay inline.** Sending every read of a named spin word out of line cost about 14% of samples.
 - **Compare builds by alternating runs** (A, B, A, B) on the same machine: host load moves the level between runs.
   Only the target machine's timing is a verdict.
+- **A fault known to be intermittent is never cleared by one pass.** Too Human's movie-worker fault (one try in 3 to
+  13, recorded in its handover since 2026-11-07) went live on one lucky launcher check, and the verdict did not name it;
+  the user's first run died in the first movie. Go live only on repeated real-clock runs with a fault count, and every
+  verdict names each known fault with its measured rate.
 
 ## Findings
 

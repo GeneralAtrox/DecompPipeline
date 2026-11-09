@@ -20,6 +20,17 @@ def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harn
     return ppc_match.attach(cfg, paths.ROOT, addr, work_file, res, build_dir or (paths.BUILD / addr))
 
 
+def stamp_scope(cfg, addr, scope):
+    """core/oracle_stamp: whether a scoped oracle change reaches addr. "unlisted_call_args": TcTrack's CA lines at a
+    call no callee record lists reach only a body core/unchecked_args.ppc_in_scope names (the save and restore helpers
+    are function entries in the bodies file, so a call of one is no flow out). An unknown scope reaches every
+    function."""
+    if scope == "unlisted_call_args":
+        from core import paths, unchecked_args
+        return unchecked_args.hook(cfg, addr, paths.FUNCTION_BODIES, 4, True)
+    return True
+
+
 def build_sandbox(cfg, addr, meta, summary, prev_work, previous_text):
     return ppc_agent.build_sandbox(cfg, addr, meta, summary, prev_work, previous_text)
 

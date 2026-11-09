@@ -46,7 +46,7 @@ class Expiry(unittest.TestCase):
     def b(self, **kw):
         return {**ghidra_broker.settings(cfg(2, by_ram=True, max_jvms=8, **kw))[0]}
 
-    def test_a_stale_outlier_stops_counting(self):  # Build box A: 16,000 MB, RAM 40%
+    def test_a_stale_outlier_stops_counting(self):  # build box A: 16,000 MB, RAM 40%
         b, d = self.b(), folder()
         f = outlier(d, 10 * HOUR)
         self.assertEqual(ghidra_broker.by_ram(b, 40.0, 16000.0, [], 0, 5990.0), 1)  # what the old peak left

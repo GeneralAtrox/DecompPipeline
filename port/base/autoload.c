@@ -21,8 +21,10 @@ enum { EVERY = 20, HOLD = 6, GIVE_UP = 3000 };
 
 u32 autoload_fn;
 int autoload_leave;
-static const AutoLoadStep *g_steps;
-static unsigned g_n, g_at;
+static const AutoLoadStep *g_steps, *g_then;
+static unsigned g_n, g_at, g_nthen;
+static int g_then_on; /* the steps running are the ones after the load */
+static const char *g_lead; /* pressed while a load step waits without a press */
 static int g_want = -1, g_on;
 static u32 g_since, g_press;
 static const AutoLoadConsole *g_con;
@@ -55,12 +57,16 @@ static u32 buttons(const char *names)
 /* the step at g_at: its event for the console, its buttons */
 static void arm(void)
 {
+    if (g_at >= g_n && g_then) {
+        port_log("auto-load: the save is loaded (vertical blank %u); %u step(s) after it follow\n", port_vblank_count(), g_nthen);
+        g_steps = g_then, g_n = g_nthen, g_at = 0, g_then = NULL, g_then_on = 1;
+    }
     const AutoLoadStep *s = g_at < g_n ? &g_steps[g_at] : NULL;
     autoload_fn = s ? s->fn : 0u;
     autoload_leave = s && s->leave;
-    g_press = s ? buttons(s->press) : 0u;
+    g_press = s ? buttons(s->press ? s->press : g_then_on ? NULL : g_lead) : 0u;
     g_since = port_vblank_count();
-    if (!s) port_log("auto-load: the save is loaded (vertical blank %u)\n", g_since);
+    if (!s) port_log(g_then_on ? "auto-load: the steps after the load are done (vertical blank %u)\n" : "auto-load: the save is loaded (vertical blank %u)\n", g_since);
 }
 
 void autoload_start(const AutoLoadStep *steps, unsigned n, int play_run, const AutoLoadConsole *con)
@@ -74,6 +80,15 @@ void autoload_start(const AutoLoadStep *steps, unsigned n, int play_run, const A
     if (on) session_save_read(NOTE, &on, 1, 1);
     port_log("auto-load: %s\n", g_on ? "on: the save is there" : g_want == 0 ? "off" : "off (no save, or not a play run)");
     if (g_on) arm();
+    else if (g_then) port_log("auto-load: off, so the %u step(s) after it do not run\n", g_nthen);
+}
+
+void autoload_then(const char *lead, const AutoLoadStep *steps, unsigned n)
+{
+    g_then = n ? steps : NULL, g_nthen = n, g_lead = lead;
+    if (!g_on || !g_steps || g_then_on) return;
+    if (g_at >= g_n) arm(); /* the load is already done */
+    else if (!g_steps[g_at].press) g_press = buttons(g_lead); /* the step waiting now takes the lead press */
 }
 
 void autoload_hit(void)

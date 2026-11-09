@@ -10,6 +10,7 @@
 Run: python -W error tests/test_game_setup.py (also from test_tooling.py).
 """
 import json
+import os
 import pathlib
 import shutil
 import struct
@@ -114,6 +115,21 @@ class Setup(unittest.TestCase):
         self.assertIsNone(locations.write_skeleton(game / "decomp", "G"))  # a project's own file is never overwritten
         self.assertEqual((game / "LOCATIONS.md").read_text(encoding="utf-8"), "real paths")
 
+    def test_locations_machines_from_local_config(self):
+        saved = os.environ.pop(locations.MACHINES_ENV, None)
+        if saved is not None:
+            self.addCleanup(os.environ.__setitem__, locations.MACHINES_ENV, saved)
+        self.assertEqual(locations.machines(self.d), locations.MACHINES)  # no machines.local.json: the published names
+        (self.d / "machines.local.json").write_text('{"machines": ["Here", "Box one"]}', encoding="utf-8")
+        self.assertEqual(locations.machines(self.d), ("Here", "Box one"))
+        os.environ[locations.MACHINES_ENV] = "Env one; Env two"
+        self.addCleanup(os.environ.pop, locations.MACHINES_ENV, None)
+        self.assertEqual(locations.machines(self.d), ("Env one", "Env two"))  # the environment wins
+        os.environ.pop(locations.MACHINES_ENV)
+        text = locations.skeleton("G", self.d)
+        self.assertIn("## Box one", text)
+        self.assertNotIn("## build box A", text)
+
     def test_saturn(self):
         iso = self.d / "game.iso"
         iso.write_bytes(b"".join(disc_sectors()))
@@ -121,7 +137,7 @@ class Setup(unittest.TestCase):
         ws = self.d / "ws"
         cfg = game_setup.setup(iso, ws, files=["FIELD.BIN@0x2602c000"])
         text = (ws / "LOCATIONS.md").read_text(encoding="utf-8")
-        for want in (*locations.MACHINES, *locations.HEADINGS, cfg["name"]):
+        for want in (*locations.machines(), *locations.HEADINGS, cfg["name"]):
             self.assertIn(want, text)
         image = (ws / "binary" / "image.bin").read_bytes()
         first, field = SAT_FILES["/0"], SAT_FILES["/FIELD/FIELD.BIN"]

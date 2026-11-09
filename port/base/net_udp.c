@@ -27,7 +27,8 @@ static int s_held_len, s_held_rel;
 static NetUdpMessage s_on_msg;
 static NetUdpState s_on_state;
 static void *s_ctx;
-static HANDLE s_heard;
+static HANDLE s_heard, s_thread;
+static volatile LONG s_stop; /* net_udp_stop: the worker ends */
 static LARGE_INTEGER s_freq;
 
 void net_udp_lock(void) { AcquireSRWLockExclusive(&s_lock); }
@@ -56,6 +57,8 @@ static struct { u32 due; int len; u8 data[NET_MAX_PACKET]; } *s_test;
 static int s_loss, s_lag, s_jitter;
 static u32 s_lost;
 void net_udp_test(int loss_pct, int lag_ms, int jitter_ms) { s_loss = loss_pct, s_lag = lag_ms, s_jitter = jitter_ms; }
+static u32 s_drop_ms;
+void net_udp_drop(u32 ms) { s_drop_ms = ms; }
 u32 net_udp_lost(void) { return s_lost; }
 
 static void raw_send(const u8 *p, int len)
@@ -128,6 +131,7 @@ static void drain(void)
 static void link_reset(void)
 {
     net_link_init(&s_link, carrier, NULL, s_digest, rnd(0));
+    if (s_drop_ms) s_link.timeout_ms = s_drop_ms;
     s_out_head = s_out_count = 0;
     s_held_len = 0;
     s_peer_set = s_joining;
@@ -158,7 +162,7 @@ static DWORD WINAPI worker(void *unused)
 {
     u8 p[NET_MAX_PACKET + 64];
     (void)unused;
-    for (;;) {
+    while (!s_stop) {
         fd_set r;
         struct timeval tv = {0, 2000};
         u32 now;
@@ -185,6 +189,7 @@ static DWORD WINAPI worker(void *unused)
         state_watch(now);
         net_udp_unlock();
     }
+    return 0;
 }
 
 static int resolve(const char *addr, int port, struct sockaddr_in *out)
@@ -243,7 +248,7 @@ int net_udp_start(int port, const char *join, const u8 digest[NET_DIGEST], NetUd
         s_last = NET_LISTENING;
     }
     s_running = 1;
-    CloseHandle(CreateThread(NULL, 0, worker, NULL, 0, NULL));
+    s_thread = CreateThread(NULL, 0, worker, NULL, 0, NULL);
     port_log("network: %s, UDP port %d\n", join ? "joining" : "hosting", join ? 0 : port);
     if (s_test) port_log("network: TEST NETWORK: %d%% of packets lost, %d ms late, up to %d ms more\n", s_loss, s_lag, s_jitter);
     return 0;
@@ -288,6 +293,21 @@ void net_udp_finish(u32 ms)
         net_udp_unlock();
         Sleep(2);
     }
+}
+
+/* The link closes, the worker ends and the port is let go: net_udp_start may open another (a game's own online screens
+ * try a lobby, give up, and may try again in the same run) */
+void net_udp_stop(void)
+{
+    if (!s_running) return;
+    net_udp_finish(0);
+    InterlockedExchange(&s_stop, 1);
+    if (s_thread) WaitForSingleObject(s_thread, 5000), CloseHandle(s_thread);
+    closesocket(s_udp), WSACleanup();
+    free(s_out), free(s_test), CloseHandle(s_heard);
+    s_thread = NULL, s_udp = INVALID_SOCKET, s_out = NULL, s_test = NULL, s_heard = NULL;
+    s_running = 0, s_hosting = 0, s_joining = 0, s_last = NET_IDLE, s_stop = 0;
+    s_out_head = 0, s_out_count = 0, s_peer_set = 0, s_held_len = 0;
 }
 
 /* The address of the interface the default route leaves by: a UDP socket "connected" to a public address (nothing is

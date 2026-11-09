@@ -59,6 +59,7 @@ f64 ppc_fmadds(f64 a, f64 c, f64 b)
 {
     f64 p = a * c;
     f64 s = p + b;
+    if (s != s && a == a && b == b && c == c) return bitsd(0x7ff8000000000000ull); /* an invalid op: the 750CL's +NaN */
     return (f64)(f32)s;
 }
 
@@ -66,12 +67,13 @@ f64 ppc_fmsubs(f64 a, f64 c, f64 b)
 {
     f64 p = a * c;
     f64 s = p - b;
+    if (s != s && a == a && b == b && c == c) return bitsd(0x7ff8000000000000ull);
     return (f64)(f32)s;
 }
 
-f64 ppc_fnmadds(f64 a, f64 c, f64 b) { return -ppc_fmadds(a, c, b); }
+f64 ppc_fnmadds(f64 a, f64 c, f64 b) { f64 r = ppc_fmadds(a, c, b); return r != r ? r : -r; } /* a NaN keeps its sign */
 
-f64 ppc_fnmsubs(f64 a, f64 c, f64 b) { return -ppc_fmsubs(a, c, b); }
+f64 ppc_fnmsubs(f64 a, f64 c, f64 b) { f64 r = ppc_fmsubs(a, c, b); return r != r ? r : -r; }
 
 f64 ppc_fsel(f64 a, f64 c, f64 b) { return a >= 0.0 ? c : b; }
 

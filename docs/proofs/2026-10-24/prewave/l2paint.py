@@ -1,4 +1,4 @@
-"""Build box B: the stack paint's verdict check. Every matched C that declares a TcArgs without an initialiser (the only C
+"""build box B: the stack paint's verdict check. Every matched C that declares a TcArgs without an initialiser (the only C
 whose result the paint can change), judged flags off on its workspace harness (paint_h/KEY/ADDR, copied from the main
 laptop with its matched C, paint_m/KEY/ADDR.c) by one repo's official check.
 usage: py -3.12 l2paint.py REPO(land|rb) WORKERS KEY ...   writes proof/paint_REPO_KEY.json {addr: [verdict, failing,

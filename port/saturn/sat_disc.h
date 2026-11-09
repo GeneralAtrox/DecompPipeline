@@ -27,5 +27,7 @@ u32 sat_disc_leadout(void);
 int sat_disc_read(u32 fad, u8 *raw);           /* 2352 bytes of the frame; 0 when outside the disc */
 int sat_disc_root(SatFile *root);              /* the root directory record */
 int sat_disc_dir(u32 dir_lba, u32 size, SatFile *out, int max); /* the directory's records, "." and ".." first */
+u32 sat_disc_find(const char *path, u32 *sectors, u32 *bytes);  /* a file by its path ("RP/MV.BIN"): its first frame, 0 if absent */
+int sat_disc_file_bytes(u32 fad, u32 off, u32 len, u8 *dst);    /* len bytes of the file at fad from off; 0 on a read failure */
 
 #endif

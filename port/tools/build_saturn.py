@@ -4,9 +4,13 @@ Nearest existing: build.py - it drives CMake + vcpkg for the Dreamcast kit (SDL3
 kit so far is plain C against the Windows API, so this calls cl directly with the same flags (/O1 /fp:strict /W4 /WX,
 32-bit). It joins build.py when the Saturn video and audio need SDL3.
 
-  build_saturn.py --gen OUTDIR_OF_gen_saturn --exe PATH [--check]   (--check: compile the kit files only, no link)
+  build_saturn.py --gen OUTDIR_OF_gen_saturn --exe PATH [--check] [--asan]   (--check: compile the kit files only, no link)
+
+--asan, or DP_ASAN=1 in the environment (a game's own builder calls this unchanged): AddressSanitizer, as build.py --asan
+(MSVC /fsanitize=address), with its runtime dll copied beside the exe.
 """
 import argparse
+import os
 import pathlib
 import shutil
 import subprocess
@@ -40,7 +44,7 @@ def sdl3(exe, triplet="x86-windows"):
     return root
 
 
-def run(gen, exe, check, jobs):
+def run(gen, exe, check, jobs, asan=False):
     vc = game_config.vcvars32()
     if not vc:
         sys.exit("no 32-bit Visual Studio environment (set VCVARS32 or config.local.json vcvars)")
@@ -49,22 +53,26 @@ def run(gen, exe, check, jobs):
     exe.parent.mkdir(parents=True, exist_ok=True)
     sdl = sdl3(exe)
     kit = sorted(str(p) for p in KIT.glob("*.c")) + sorted(str(p) for p in BASE.glob("*.c")) + [str(gen / "scene_map.c")]
-    cxx = sorted(str(p) for p in BASE.glob("*.cpp"))
+    cxx = sorted(str(p) for p in BASE.glob("*.cpp")) + sorted(str(p) for p in BASE.glob("third_party/*.cpp"))  # imgui_build.cpp
     chunks = [] if check else [str(gen / n) for n in (gen / "sat_chunks.txt").read_text().split()] + [str(gen / "sat_table.c"), str(gen / "txextra.c")]
     inc = ["/I" + str(KIT), "/I" + str(BASE), "/I" + str(TC_RT), "/I" + str(gen), "/I" + str(sdl / "include")]
     obj = exe.parent / "obj"
     obj.mkdir(exist_ok=True)
-    cl = ["cl"] + FLAGS + [f"/MP{jobs}"] + inc + ["/Fo" + str(obj) + "\\"]
+    asan = asan or os.environ.get("DP_ASAN") == "1"
+    # the DLL C runtime under ASan: the static one (/MT) needs LIBVCASAN.lib, which the x86 Build Tools on build box A lack
+    cl = ["cl"] + ([f if f != "/MT" else "/MD" for f in FLAGS] + ["/fsanitize=address", "/Z7"] if asan else FLAGS) + [f"/MP{jobs}"] + inc + ["/Fo" + str(obj) + "\\"]
     cl += CXX_FLAGS  # for the base's C++ files (the C files ignore them)
     if check:
         cl += ["/c"] + kit + cxx
     else:
-        cl += kit + cxx + chunks + ["/Fe" + str(exe), "/link", "/LIBPATH:" + str(sdl / "lib"), "SDL3.lib"] + KITLIBS
+        cl += kit + cxx + chunks + ["/Fe" + str(exe), "/link", "/LIBPATH:" + str(sdl / "lib"), "SDL3.lib"] + KITLIBS + (["/DEBUG", "/INCREMENTAL:NO"] if asan else [])
     bat = exe.parent / "build_saturn.bat"
     cfg = game_config.toolchain()
     from core import toolcfg  # noqa: E402  (on the path through toolchain)
     pin = "".join(f" {a}" for a in toolcfg.vcvars_args(cfg))  # the judge's toolset: the default 14.38 miscompiles translated C
-    bat.write_text(f'@echo off\r\ncall "{vc}"{pin}\r\nif errorlevel 1 exit /b 1\r\n' + subprocess.list2cmdline(cl) + "\r\n", encoding="ascii")
+    bat.write_text(f'@echo off\r\ncall "{vc}"{pin}\r\nif errorlevel 1 exit /b 1\r\n' + subprocess.list2cmdline(cl) + "\r\n"
+                   + ("if errorlevel 1 exit /b 1\r\nfor %%f in (clang_rt.asan_dynamic-i386.dll) do copy /y \"%%~$PATH:f\" "
+                      f'"{exe.parent}" >nul\r\n' if asan and not check else ""), encoding="ascii")
     r = subprocess.run(["cmd", "/c", str(bat)], timeout=1500)
     if r.returncode == 0 and not check:
         shutil.copy2(sdl / "bin" / "SDL3.dll", exe.parent / "SDL3.dll")
@@ -77,5 +85,6 @@ if __name__ == "__main__":
     ap.add_argument("--exe", required=True)
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--jobs", type=int, default=4)
+    ap.add_argument("--asan", action="store_true", help="AddressSanitizer (also DP_ASAN=1)")
     a = ap.parse_args()
-    sys.exit(run(a.gen, a.exe, a.check, a.jobs))
+    sys.exit(run(a.gen, a.exe, a.check, a.jobs, a.asan))

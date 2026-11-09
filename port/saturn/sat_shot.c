@@ -60,7 +60,7 @@ int sat_png_write(const char *path, const u32 *rgb, u32 w, u32 h)
     for (u32 y = 0; y < h; y++) {
         rawbuf[ri++] = 0;
         for (u32 x = 0; x < w; x++) {
-            u32 c = rgb[y * w + x];
+            u32 c = rgb[y * w + x] >> 24 ? sat_panel_shade(rgb[y * w + x]) : rgb[y * w + x]; /* a menu panel's dot (sat_panel.c) */
             rawbuf[ri++] = (u8)(c >> 16);
             rawbuf[ri++] = (u8)(c >> 8);
             rawbuf[ri++] = (u8)c;

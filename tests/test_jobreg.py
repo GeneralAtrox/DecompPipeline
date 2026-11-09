@@ -56,16 +56,16 @@ class Classify(unittest.TestCase):
             ("python decomp.py --project P divergence mission1", ("divergence run", None)),
             ("python x/ramguard.py 900 -- python -B tools/prepare_list.py --project W @l", ("prepare", None)),
             ("python -m cProfile -o p.out tools/prepare_list.py --project W @l --slots 1", ("prepare", None)),
-            ('timeout 900 ssh -o BatchMode=yes build box B "cd /d C:\\dp && py -3.12 tools/regress.py --projects tc"',  # an example path
-             ("regress gate", "Build box B")),
-            ('ssh $Q build box B "set X=1&& cd /d C:\\dp && py -3.12 decomp.py --project W setup"',  # an example path
-             ("prepare", "Build box B")),
+            ('timeout 900 ssh -o BatchMode=yes boxb "cd /d C:\\dp && py -3.12 tools/regress.py --projects tc"',  # an example path
+             ("regress gate", "boxb")),
+            ('ssh $Q boxb "set X=1&& cd /d C:\\dp && py -3.12 decomp.py --project W setup"',  # an example path
+             ("prepare", "boxb")),
             ('powershell -NoProfile -Command "Set-Location C:/dp; py -3.12 tools/oracle_probe.py --project W"',
              ("prepare", None)),
             ("bash -c 'python tools/final_audit.py --project W'", ("rejudge", None)),
             ("python tools/regress.py \\\n  --projects tc", ("regress gate", None)),
-            ("ssh HOST \"powershell -Command -\" <<'EOF'\npy -3.12 tools/regress.py --projects tc\nEOF",
-             ("regress gate", "Build box B")),
+            ("ssh boxb \"powershell -Command -\" <<'EOF'\npy -3.12 tools/regress.py --projects tc\nEOF",
+             ("regress gate", "boxb")),
             ("S=/c/x; cat > $S/a.sh <<'EOF'\npython tools/regress.py --projects tc\nEOF\nbash $S/a.sh",
              ("regress gate", None)),
         ]:
@@ -98,7 +98,7 @@ class Classify(unittest.TestCase):
         self.assertEqual(kinds("S=C:/w; sh \"$S/run.sh\" a b", read), [("regress gate", None)])
         self.assertEqual(kinds("cd C:/w && ./run.sh", read), [("regress gate", None)])
         self.assertEqual(kinds("pwsh -NoProfile -File C:/w/job.ps1", read), [("rejudge", None)])
-        self.assertEqual(kinds('ssh HOST "powershell -Command -" < C:/w/job.ps1', read), [("rejudge", "Build box B")])
+        self.assertEqual(kinds('ssh boxb "powershell -Command -" < C:/w/job.ps1', read), [("rejudge", "boxb")])
         self.assertEqual(kinds("bash C:/w/light.sh", read), [])
         self.assertEqual(kinds("bash $UNKNOWN/run.sh", read), [])  # a path it cannot resolve is not guessed
         self.assertEqual(kinds("cat C:/w/run.sh", read), [])  # read, not run
@@ -128,7 +128,7 @@ class Key(unittest.TestCase):
             k2 = jobreg.job_key(cmd[:-1] + ["3"], args(), d)
             self.assertEqual(k1["inputs"], k2["inputs"])  # the limits decide only the key
             self.assertNotEqual(k1["key"], k2["key"])
-            k3 = jobreg.job_key(cmd, args(changed="Build box B workspace re-copied"), d)
+            k3 = jobreg.job_key(cmd, args(changed="boxb workspace re-copied"), d)
             self.assertNotEqual(k1["inputs"], k3["inputs"])
             pathlib.Path(d, "l.txt").write_text("8c010000\n8c020000\n")
             self.assertNotEqual(k1["inputs"], jobreg.job_key(cmd, args(), d)["inputs"])  # the list by content
@@ -136,7 +136,7 @@ class Key(unittest.TestCase):
     def test_remote_commit_needed(self):
         with mock.patch.object(jobreg, "remote_commit", return_value=None):
             with self.assertRaises(ValueError):
-                jobreg.job_key(["ssh", "Build box B", "py -3.12 tools/regress.py"], args(commit=None))
+                jobreg.job_key(["ssh", "boxb", "py -3.12 tools/regress.py"], args(commit=None))
 
 
 def rec(i, event, **kw):
@@ -156,7 +156,7 @@ class Decide(unittest.TestCase):
             self.assertEqual(jobreg.decide(bad, self.K, cross_check="both machines")[0], "run")
         lost = [rec("1", "start", inputs="I", key="K"), rec("1", "end", status="lost")]
         self.assertEqual(jobreg.decide(lost, self.K)[0], "run")
-        self.assertEqual(jobreg.decide(done, self.K, cross_check="byte-identical on build box B")[0], "run")
+        self.assertEqual(jobreg.decide(done, self.K, cross_check="byte-identical on boxb")[0], "run")
 
     def test_running_claim(self):
         with tempfile.TemporaryDirectory() as d:
@@ -216,7 +216,7 @@ class Run(unittest.TestCase):
         rc, text = self.run_job("import sys; sys.exit(5)")
         self.assertEqual(rc, jobreg.REFUSED)
         self.assertIn("REFUSED", text)
-        self.assertEqual(self.run_job("import sys; sys.exit(5)", cross_check="the fix on build box B")[0], 5)
+        self.assertEqual(self.run_job("import sys; sys.exit(5)", cross_check="the fix on boxb")[0], 5)
         self.assertEqual(self.run_job("import sys; sys.exit(5)", changed="network fault fixed")[0], 5)
         self.assertEqual(self.statuses(), ["failed", "failed", "failed"])
         self.assertEqual(self.events().count("refuse"), 1)

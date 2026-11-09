@@ -1,5 +1,5 @@
-/* A model part the player picks (Display > the game's title for it; game.json part_choice, which gen_saturn.py turns into
- * sat_part_data.h). The game names one OBJECT of its model data and the original PDATA it points at, and offers other
+/* A model part's versions (game.json part_choice, which gen_saturn.py turns into sat_part_data.h): one for every copy of
+ * the part with --part-choice NAME, and each one for a robot of its own as a new head type (sat_heads.c). The game names one OBJECT of its model data and the original PDATA it points at, and offers other
  * versions of that part, each an edit of the original made by the game's own tools (Robo Pit's animal heads for the
  * bunny: tools/animal_heads/export_choices.py in its repository). An edit holds only what the game's tools add, never
  * the disc's data, so the kit puts the version together from the original in guest memory:
@@ -16,7 +16,8 @@
  * back in again. The log line gives the version's FNV-1a sum, to check against the game tools' own build of it.
  * The choice is made at start: a replay takes the recording's (the original when the recording has none), otherwise
  * --part-choice NAME. It goes in the recording only when it is not the original; with the original nothing is mapped,
- * read or written, so the run is as before. A change in the menu applies from the next start.
+ * read or written, so the run is as before. The player picks a version for one robot in the game's own part choice
+ * (sat_heads.c, which puts each together here with sat_part_compose); the menu bar has no entry for it.
  *
  * Nearest existing: session.h's session notes, used as they are for the start-time choice; console_guest_ptr in
  * console_sat.c reads guest memory the same way, byte-reversed for the scene dump, which this cannot use. */
@@ -116,19 +117,20 @@ static void normal(const u8 *a, const u8 *b, const u8 *c, double sg, u8 *out)
     for (int k = 0; k < 3; k++) put32(out + 4 * k, (u32)(s32)nearbyint(n[k] / r * sg * 65536.0));
 }
 
-/* the version in g_ram from the original at SAT_PART_PDATA and the edit; its size, 0 if the original is not as named */
-static u32 compose(const u8 *edit)
+/* the version in ram (guest address lo, room bytes) from the original at SAT_PART_PDATA and the edit; its size, 0 if the
+ * original is not as named or it does not fit */
+u32 sat_part_compose(const u8 *edit, u8 *ram, u32 lo, u32 room)
 {
     const u8 *hd = guest(SAT_PART_PDATA, 20u), *pts, *pls, *ats, *cols, *ep, *ef;
-    u32 npt = 0, npl = 0, nk, ne, nf, base, opt, opl, lo, ao, k = 0;
+    u32 npt = 0, npl = 0, nk, ne, nf, base, opt, opl, lp, ao, k = 0;
     double s = 0.0;
     if (!hd || (npt = be32(hd + 4)) != SAT_PART_POINTS || (npl = be32(hd + 12)) != SAT_PART_POLYS) return 0;
     pts = guest(be32(hd), npt * 12u), pls = guest(be32(hd + 8), npl * 20u), ats = guest(be32(hd + 16), npl * 12u);
     nk = be16(edit), ne = be16(edit + 2), nf = be16(edit + 4);
     cols = edit + 8, ep = cols + 2u * nk, ef = ep + 12u * ne;
     base = npt - SAT_PART_DROP, opt = base + ne, opl = nk + nf;
-    lo = 20u + 12u * opt, ao = lo + 20u * opl;
-    if (!pts || !pls || !ats || ao + 12u * opl > PART_SIZE) return 0;
+    lp = 20u + 12u * opt, ao = lp + 20u * opl;
+    if (!pts || !pls || !ats || ao + 12u * opl > room) return 0;
     for (u32 i = 0; i < npl; i++) { /* which way the original's normals point: the sum of each against its points' */
         u8 n[12];
         const u8 *p = pls + 20u * i;
@@ -136,19 +138,19 @@ static u32 compose(const u8 *edit)
         normal(pts + 12u * be16(p + 12), pts + 12u * be16(p + 14), pts + 12u * be16(p + 16), 1.0, n);
         for (int c = 0; c < 3; c++) s += (double)(s32)be32(n + 4 * c) / 65536.0 * ((double)(s32)be32(p + 4 * c) / 65536.0);
     }
-    memset(g_ram, 0, PART_SIZE);
-    put32(g_ram, PART_LO + 20u), put32(g_ram + 4, opt), put32(g_ram + 8, PART_LO + lo), put32(g_ram + 12, opl), put32(g_ram + 16, PART_LO + ao);
-    memcpy(g_ram + 20, pts + 12u * SAT_PART_DROP, 12u * base);
-    memcpy(g_ram + 20 + 12u * base, ep, 12u * ne);
+    memset(ram, 0, room);
+    put32(ram, lo + 20u), put32(ram + 4, opt), put32(ram + 8, lo + lp), put32(ram + 12, opl), put32(ram + 16, lo + ao);
+    memcpy(ram + 20, pts + 12u * SAT_PART_DROP, 12u * base);
+    memcpy(ram + 20 + 12u * base, ep, 12u * ne);
     for (u32 i = 0; i < npl; i++) {
         const u8 *p = pls + 20u * i;
-        u8 *q = g_ram + lo + 20u * k, *a = g_ram + ao + 12u * k;
+        u8 *q = ram + lp + 20u * k, *a = ram + ao + 12u * k;
         u32 v[4];
         for (int j = 0; j < 4; j++) v[j] = be16(p + 12 + 2 * j);
         if (v[0] < SAT_PART_DROP || v[1] < SAT_PART_DROP || v[2] < SAT_PART_DROP || v[3] < SAT_PART_DROP) continue;
         if (k == nk) return 0;
         for (int j = 0; j < 4; j++) put16(q + 12 + 2 * j, v[j] - SAT_PART_DROP);
-        normal(g_ram + 20 + 12u * (v[0] - SAT_PART_DROP), g_ram + 20 + 12u * (v[1] - SAT_PART_DROP), g_ram + 20 + 12u * (v[2] - SAT_PART_DROP),
+        normal(ram + 20 + 12u * (v[0] - SAT_PART_DROP), ram + 20 + 12u * (v[1] - SAT_PART_DROP), ram + 20 + 12u * (v[2] - SAT_PART_DROP),
                s >= 0.0 ? 1.0 : -1.0, q);
         memcpy(a, ats, 12);
         put16(a + 6, be16(cols + 2u * k));
@@ -157,8 +159,8 @@ static u32 compose(const u8 *edit)
     if (k != nk) return 0;
     for (u32 i = 0; i < nf; i++, k++) {
         const u8 *f = ef + 24u * i;
-        u8 *a = g_ram + ao + 12u * k;
-        memcpy(g_ram + lo + 20u * k, f, 20);
+        u8 *a = ram + ao + 12u * k;
+        memcpy(ram + lp + 20u * k, f, 20);
         memcpy(a, ats, 12);
         a[0] = f[22];
         put16(a + 6, be16(f + 20));
@@ -176,7 +178,7 @@ void sat_part_frame(void)
         if (!g_ram) return;
         sat_map(PART_LO, PART_LO + PART_SIZE, "part", ram_read, ram_write);
     }
-    size = compose(sat_part_edits[g_pick]);
+    size = sat_part_compose(sat_part_edits[g_pick], g_ram, PART_LO, PART_SIZE);
     if (!size) {
         port_log("part: the original at %08x is not the one game.json names; %s is not put in\n", SAT_PART_PDATA, sat_part_values[g_pick]);
         g_pick = 0;
@@ -188,15 +190,16 @@ void sat_part_frame(void)
              sat_part_values[g_pick], sat_vblank_count(), be32(g_ram + 4), be32(g_ram + 12), size, PART_LO, sum);
 }
 
-static int part_get(void) { return g_choice; }
-static void part_set(int choice) { g_choice = choice; }
-static const PortMenuItem k_item = {"Display", SAT_PART_TITLE " (from the next start)", PORT_MENU_CHOICE, "part-choice", part_get, part_set,
-                                    sat_part_labels, sat_part_values, SAT_PART_N, NULL};
-const PortMenuItem *sat_part_menu(void) { return &k_item; }
+const u8 *sat_part_edit(const char *value)
+{
+    int i = find(value);
+    return i > 0 ? sat_part_edits[i] : NULL;
+}
 
 #else /* the game offers no part */
 void sat_part_option(const char *value) { (void)value; }
 void sat_part_start(void) {}
 void sat_part_frame(void) {}
-const PortMenuItem *sat_part_menu(void) { return NULL; }
+u32 sat_part_compose(const u8 *edit, u8 *ram, u32 lo, u32 room) { (void)edit, (void)ram, (void)lo, (void)room; return 0; }
+const u8 *sat_part_edit(const char *value) { (void)value; return NULL; }
 #endif

@@ -702,15 +702,15 @@ def lower(root):
             # test for every jump out of the same breakable to the same place)
             b = brks[-1]
             i = seq.index(j)
-            if (id(b), j.x) in flag_of:
-                k = flag_of[(id(b), j.x)]
-                seq[i:i + 1] = [S("ops", a=[f"fl_ = {k}u;"]), S("jump", x=("after", b))]
-                mutated = True
+            carried = j.a if kind == "after" else None  # a hop's end hops on with its value, unreset (Skies 800d8214)
+            key = (id(b), j.x, carried)
+            hit = key in flag_of
+            stats["flags"], flag[0] = stats["flags"] + (not hit), flag[0] + (not hit and carried is None)
+            k = flag_of.setdefault(key, flag[0] if carried is None else carried)
+            seq[i:i + 1] = [S("ops", a=[f"fl_ = {k}u;"])] * (carried is None) + [S("jump", x=("after", b), a=k)]
+            mutated = True
+            if hit:
                 break
-            stats["flags"] += 1
-            flag[0] += 1
-            k = flag_of[(id(b), j.x)] = flag[0]
-            seq[i:i + 1] = [S("ops", a=[f"fl_ = {k}u;"]), S("jump", x=("after", b))]
             parent = None
 
             def find(sq, i, s, st):
@@ -718,9 +718,8 @@ def lower(root):
                 if s is b:
                     parent = sq
             walk(root, [], find)
-            parent.insert(parent.index(b) + 1, S("if", c=f"fl_ == {k}u", a=[S("ops", a=["fl_ = 0u;"]),
-                                                                              S("jump", x=j.x)], b=[]))
-            mutated = True
+            land = [S("ops", a=["fl_ = 0u;"]), S("jump", x=j.x)] if carried is None else [S("jump", x=j.x, a=j.a)]
+            parent.insert(parent.index(b) + 1, S("if", c=f"fl_ == {k}u", a=land, b=[]))
             break
         if mutated:
             continue

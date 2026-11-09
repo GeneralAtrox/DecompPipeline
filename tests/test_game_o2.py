@@ -39,12 +39,13 @@ class GameO2(unittest.TestCase):
                 self.load(**over)
 
     def test_build_folder_set_up_the_other_way(self):
-        self.assertFalse(build.cached_game_o2(self.dir))  # never set up
+        self.assertFalse(build.cached_on(self.dir, "PORT_GAME_O2"))  # never set up
         cache = self.dir / "CMakeCache.txt"
         cache.write_text("PORT_GAME_O2:BOOL=OFF\n", encoding="utf-8")
-        self.assertFalse(build.cached_game_o2(self.dir))
-        cache.write_text("PORT_GAME_O2:BOOL=ON\n", encoding="utf-8")
-        self.assertTrue(build.cached_game_o2(self.dir))
+        self.assertFalse(build.cached_on(self.dir, "PORT_GAME_O2"))
+        cache.write_text("PORT_GAME_O2:BOOL=ON\nPORT_ASAN:BOOL=OFF\n", encoding="utf-8")
+        self.assertTrue(build.cached_on(self.dir, "PORT_GAME_O2"))
+        self.assertFalse(build.cached_on(self.dir, "PORT_ASAN"))  # --asan's folder is set up the same way
 
 
 if __name__ == "__main__":

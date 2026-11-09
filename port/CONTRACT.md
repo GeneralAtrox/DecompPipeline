@@ -221,3 +221,18 @@ see the original. None changes guest memory or timing.
 
 Not enhancements: the player's preferences the menu also saves, which change neither what the game draws nor its
 timing: `vsync`, `fps`, `volume`, `mute-unfocused`, `rumble`, `pause-unfocused`. `pad-art` (the Input menu's Controller pictures) picks among a texture pack's controller images and does nothing without one.
+
+## Releasing for Phangrade
+
+A port without the contract does not reject `--setup-only`: it ignores the options it does not know and starts the
+game, so Phangrade's Install opens the game and then reports a failed setup (Toy Commander `v0.1.0-preview`,
+17 October 2026). A game is only as current as the kit it was last released with, so in this order:
+
+1. Rebuild the game's release with a kit that has the launcher contract (`caabe02` or later), and make its ZIP with
+   `tools/package_release.py` (Texture packs, "Packs in a release").
+2. Run Phangrade's `scripts/check-port.ps1 -Game <id> -Executable <port.exe> -Disc <image>` on the build. It must print `PASS`.
+3. Publish the release, download the published ZIP, extract it and run the same check on that copy.
+4. Only then may Phangrade's `data/catalogue.json` declare the game's `port` object.
+
+The full model (what Phangrade runs, in what order, and how to read a failed install) is Phangrade's
+[docs/port-contract.md](https://github.com/GeneralAtrox/Phangrade/blob/main/docs/port-contract.md).

@@ -182,6 +182,9 @@ void port_pad_page_keep(void);
  * (others are refused); unset, or in a run that reads no settings, you get `def`. */
 int port_setting_get_int(const char *key, int def);
 void port_setting_set_int(const char *key, int value);
+void port_setting_set(const char *key, const char *value); /* a menu-style choice kept for the next start (host_settings.cpp) */
+int port_setting_get_str(const char *key, char *out, int cap); /* a game's short text ("game.NAME"): 1 when there is one */
+void port_setting_set_str(const char *key, const char *value);
 void host_pad_rumble(u32 player, u32 strength, u32 ms); /* player 0..3's motors, 0..65535 for ms; 0 stops */
 
 #ifdef __cplusplus

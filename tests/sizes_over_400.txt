@@ -1,13 +1,13 @@
 # tools/sizes.py: the files over the 400-line cap and their line counts. A file may only leave this list or
 # shrink (tests/test_sizes.py); after a split run  python tools/sizes.py --ratchet
  3111  targets/dreamcast_sh4/translator/sh4translate/translate.py
- 1496  targets/gamecube_ppc/translator/ppctranslate/translate.py
  1491  targets/saturn_sh2/translator/sh2translate/translate.py
+ 1482  targets/gamecube_ppc/translator/ppctranslate/translate.py
  1354  targets/xbox360_ppc/translator/xenontranslate/translate.py
  1244  targets/dreamcast_sh4/translator/sh4translate/cfgstruct.py
  1226  core/rtx/lift.py
  1123  targets/xbox360_ppc/translator/xenontranslate/cfgstruct.py
- 1105  targets/gamecube_ppc/translator/ppctranslate/cfgstruct.py
+ 1104  targets/gamecube_ppc/translator/ppctranslate/cfgstruct.py
  1103  targets/saturn_sh2/translator/sh2translate/cfgstruct.py
  1012  targets/xbox360_ppc/translator/xenontranslate/vmx.py
   986  core/stack_overread.py
@@ -17,8 +17,8 @@
   838  core/rtx/flow.py
   743  tests/test_gamecube_disc.py
   735  targets/gamecube_ppc/tools/gcdisc.py
-  715  targets/gamecube_ppc/translator/ppctranslate/passes.py
   715  targets/xbox360_ppc/translator/xenontranslate/passes.py
+  713  targets/gamecube_ppc/translator/ppctranslate/passes.py
   701  tools/selective_restamp.py
   670  core/rtx/cast.py
   649  targets/gamecube_ppc/tools/rvz.py

@@ -1,13 +1,13 @@
 """Generate, configure and build a game's port (32-bit x86, MSVC, Ninja); optionally run it. Every step is
 time-bounded and a step that times out is killed with its whole process tree.
 
-    python port/tools/build.py [--game DIR] [--engine | --no-gen] [--jobs N] [--checked] [--run [--seconds N]]
+    python port/tools/build.py [--game DIR] [--engine | --no-gen] [--jobs N] [--checked | --asan] [--run [--seconds N]]
                                [--regress] [--build-dir NAME] [--progress] [--tx DIR [--tx-mode mix|only]]
                                [--tx-ovl ROOT]
                                [-- PORT ARGS...]   (passed to port.exe, e.g. -- --fixed-clock 1)
 
 --game: the folder with game.json (default: the current folder). Writes into <game>/build: gen (gen_port.py),
-x86 or x86chk (CMake + Ninja, the kit's CMakeLists.txt) and, with --run, run/port.log and run/port_sym.log.
+x86, x86chk or x86asan (CMake + Ninja, the kit's CMakeLists.txt) and, with --run, run/port.log and run/port_sym.log.
 --run starts port.exe headless (no window) unless the port arguments ask for one (-- --window 1280x960).
 --regress then runs the game's regression scripts (tools/regress.py).
 --build-dir NAME: a build of its own, so an agent's builds and runs never touch the user's (build/x86 belongs to
@@ -20,6 +20,8 @@ ROOT: the overlays' (gen_overlays.py --tx; default: overlays.json "translator_c"
 NAME_gen, NAME_run, NAME_regress, NAME_lockstep and NAME.log are removed once nothing in them was written for 5 days
 and no process uses them (build_gc.py; also DP_BUILD_GC=0); x86, x86chk, gen, run, regress, reference, this build and
 folders it cannot confirm as builds stay.
+--asan: AddressSanitizer (MSVC /fsanitize=address, CMakeLists.txt PORT_ASAN) in build/x86asan, or --build-dir NAME; its
+runtime dll is copied beside port.exe. Run it with ASAN_OPTIONS=continue_on_error=1 to have every error reported.
 --progress: the launcher's view (a game's Start Game.bat): one line counting the compiles as they finish, rewritten
 in place, warnings and errors in full as they come, "Game is up to date." when nothing changed; the generator's and
 the compiler's full output go to the build log only.
@@ -174,10 +176,22 @@ def msvc_env(cache):
     return env
 
 
-def cached_game_o2(bdir):
-    """Whether this build folder was set up with the game's C at /O2: the launcher's folder outlives a game.json change."""
+def cached_on(bdir, name):
+    """Whether this build folder was set up with option name on (PORT_GAME_O2: the launcher's folder outlives a game.json
+    change; PORT_ASAN: --asan given to a folder set up without it, or the other way)."""
     cache = bdir / "CMakeCache.txt"
-    return cache.is_file() and "PORT_GAME_O2:BOOL=ON" in cache.read_text(encoding="utf-8", errors="replace").splitlines()
+    return cache.is_file() and f"{name}:BOOL=ON" in cache.read_text(encoding="utf-8", errors="replace").splitlines()
+
+
+def asan_dll(env, dest):
+    """--asan: the AddressSanitizer runtime the linker chose (clang_rt.asan_dynamic-i386.dll, on the x86 tools' PATH),
+    copied beside port.exe."""
+    for d in next((v for k, v in env.items() if k.upper() == "PATH"), "").split(os.pathsep):
+        f = pathlib.Path(d) / "clang_rt.asan_dynamic-i386.dll"
+        if d and f.is_file():
+            shutil.copy2(f, dest / f.name)
+            return f
+    raise SystemExit("--asan: no clang_rt.asan_dynamic-i386.dll on the 32-bit tools' PATH (Visual Studio's C++ AddressSanitizer)")
 
 
 def configured_from_kit(bdir):
@@ -203,6 +217,7 @@ def main():
     ap.add_argument("--jobs", type=int, default=os.cpu_count() or 8)
     ap.add_argument("--run", action="store_true")
     ap.add_argument("--checked", action="store_true", help="unoptimised /RTC1 build in build/x86chk")
+    ap.add_argument("--asan", action="store_true", help="AddressSanitizer build in build/x86asan (not with --checked)")
     ap.add_argument("--seconds", type=int, default=20)
     ap.add_argument("--disc", default=None, help="default: game.json disc")
     ap.add_argument("--must-work", default=None, help="stop at the first listed stub ('' off; default: game.json)")
@@ -219,11 +234,13 @@ def main():
                     "workspace name (gen_overlays.py --tx; default: overlays.json translator_c)")
     ap.add_argument("port_args", nargs=argparse.REMAINDER, help="after --: arguments for port.exe")
     a = ap.parse_args()
+    if a.asan and a.checked:
+        raise SystemExit("--asan and --checked: /fsanitize=address does not combine with /RTC1")
     cfg = game_config.load(game_config.find_game(a.game))
     game_config.oplog().begin("port build.py", [cfg["dir"]])
     game, build = cfg["dir"], cfg["dir"] / "build"
     own = a.build_dir
-    if own and (own in ("x86", "x86chk", "gen", "run", "regress") or not re.fullmatch(r"[\w.-]+", own)):
+    if own and (own in ("x86", "x86chk", "x86asan", "gen", "run", "regress") or not re.fullmatch(r"[\w.-]+", own)):
         raise SystemExit(f"--build-dir {own}: give a plain name of its own (x86 is the user's build)")
     gen = build / (f"{own}_gen" if own else "gen")
     blog = build / (f"{own}.log" if own else "build.log")
@@ -251,7 +268,7 @@ def main():
         else:
             (gen / "overlays" / "overlays.cmake").unlink(missing_ok=True)
     env = msvc_env(build / "msvc_env_x86.json")
-    bdir = build / (own or ("x86chk" if a.checked else "x86"))
+    bdir = build / (own or ("x86chk" if a.checked else "x86asan" if a.asan else "x86"))
     if not a.progress and not a.no_build_gc:  # old agent builds go when this exits; the launcher's start never waits
         atexit.register(build_gc.maybe_sweep, build, {bdir.name})
     vcpkg = game_config.vcpkg_root()
@@ -259,7 +276,7 @@ def main():
         raise SystemExit("no vcpkg for the kit's host libraries (vcpkg.json): set VCPKG_ROOT, or \"vcpkg\" in "
                          "DecompPipeline/config.local.json (a vcpkg checkout)")
     game_o2 = a.game_o2 or cfg["game_o2"]
-    if not configured_from_kit(bdir) or cached_game_o2(bdir) != game_o2:
+    if not configured_from_kit(bdir) or cached_on(bdir, "PORT_GAME_O2") != game_o2 or cached_on(bdir, "PORT_ASAN") != a.asan:
         if a.progress:
             print("Setting up the build folder (the first time takes a few minutes)...", flush=True)
         # vcpkg installs vcpkg.json's libraries for x86-windows into the build folder at the first configure
@@ -268,7 +285,7 @@ def main():
                        "-DVCPKG_TARGET_TRIPLET=x86-windows", f"-DVCPKG_MANIFEST_DIR={KIT.as_posix()}", f"-DCMAKE_MAKE_PROGRAM={NINJA}", "-DCMAKE_BUILD_TYPE=Release",
                        "-DCMAKE_C_FLAGS_RELEASE=/DNDEBUG",
                        f"-DPORT_CHECKED={'ON' if a.checked else 'OFF'}", f"-DPORT_GEN={gen.as_posix()}",
-                       f"-DPORT_GAME_O2={'ON' if game_o2 else 'OFF'}",
+                       f"-DPORT_GAME_O2={'ON' if game_o2 else 'OFF'}", f"-DPORT_ASAN={'ON' if a.asan else 'OFF'}",
                        "-S", str(KIT), "-B", str(bdir)],
                       2400, env=env)
         if not a.progress or rc:
@@ -297,6 +314,8 @@ def main():
         if rc:
             print("\n".join(lines[-15:]))
             raise SystemExit(1)
+    if a.asan:
+        asan_dll(env, bdir)
     if a.run:
         disc = a.disc or (str(cfg["disc"]) if cfg["disc"] else None)
         if not disc:

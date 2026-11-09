@@ -14,6 +14,7 @@
 //   --setup-only, --verify-assets   runtime/install.c, without a window or sound
 //   --no-dialog                     no message box, even for a crash
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <string>
 #include <vector>
@@ -70,6 +71,16 @@ int install(int argc, char **argv, const char *data)
 
 int main(int argc, char **argv)
 {
+#if defined(__SANITIZE_ADDRESS__)
+    // An AddressSanitizer build's planted error (tools/build.py --asan, DP_ASAN_PLANT=1): one byte written past a heap block,
+    // so a checked run proves that the build reports one before its silence is taken as clean.
+#pragma warning(suppress : 4996)
+    if (const char *plant = std::getenv("DP_ASAN_PLANT"); plant && plant[0] == '1') {
+        volatile char *block = static_cast<volatile char *>(std::malloc(8));
+        block[8] = 1;
+        std::free(const_cast<char *>(block));
+    }
+#endif
     const char *fixed = option(argc, argv, "--fixed-clock"), *settings = option(argc, argv, "--settings");
     const char *data = option(argc, argv, "--data-directory"), *assets = option(argc, argv, "--assets");
     if (has_flag(argc, argv, "--version")) {

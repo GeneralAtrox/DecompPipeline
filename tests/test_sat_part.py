@@ -17,7 +17,7 @@ import tempfile
 ROOT = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "port" / "tools"))
 import game_config  # noqa: E402
-import gen_saturn  # noqa: E402
+import gen_saturn_heads  # noqa: E402
 
 KIT = ROOT / "port" / "saturn"
 SRC = (KIT / "sat_part.c").read_text(encoding="utf-8")
@@ -26,9 +26,9 @@ EDIT = (struct.pack(">4H", 2, 3, 1, 0) + struct.pack(">2H", 0x1111, 0x2222) + st
 CHOICE = {"title": "&Head", "object": "0x00220000", "pdata": "0x00210000", "points": 5, "polygons": 3, "drop_points": 2,
           "original": "&Original", "choices": [["fox", "&Fox", base64.b64encode(EDIT).decode()]]}
 PLANTS = {
-    "the dropped points kept": ("memcpy(g_ram + 20, pts + 12u * SAT_PART_DROP, 12u * base);", "memcpy(g_ram + 20, pts, 12u * base);"),
+    "the dropped points kept": ("memcpy(ram + 20, pts + 12u * SAT_PART_DROP, 12u * base);", "memcpy(ram + 20, pts, 12u * base);"),
     "the normals' direction ignored": ("s >= 0.0 ? 1.0 : -1.0", "1.0"),
-    "the pointers not rebased": ("put32(g_ram, PART_LO + 20u)", "put32(g_ram, 20u)"),
+    "the pointers not rebased": ("put32(ram, lo + 20u)", "put32(ram, 20u)"),
     "the kept colours not changed": ("put16(a + 6, be16(cols + 2u * k));", ";"),
     "the version's flag not taken": ("a[0] = f[22];", ";"),
     "the original recorded as a choice": ("    if (g_pick) {\n        strncpy_s", "    if (1) {\n        strncpy_s"),
@@ -41,7 +41,7 @@ def run(vcvars, source, name):
     with tempfile.TemporaryDirectory() as tmp:
         tmp = pathlib.Path(tmp)
         (tmp / "sat_part.c").write_text(source, encoding="utf-8")
-        (tmp / "sat_part_data.h").write_text(gen_saturn.part_choice_h(CHOICE), encoding="utf-8")
+        (tmp / "sat_part_data.h").write_text(gen_saturn_heads.part_choice_h(CHOICE), encoding="utf-8")
         inc = f'/I"{tmp}" /I"{KIT}" /I"{ROOT / "port" / "base"}" /I"{ROOT / "targets" / "saturn_sh2" / "runtime"}"'
         srcs = f'"{ROOT / "tests" / "sat_part_test.c"}" "{tmp / "sat_part.c"}"'
         bat = tmp / "b.bat"
@@ -54,10 +54,10 @@ def run(vcvars, source, name):
 
 
 def main():
-    assert gen_saturn.part_choice_h(None).count("#define SAT_PART_N 0") == 1, "a game with no part_choice"
-    assert "sat_part_e1" in gen_saturn.part_choice_h(dict(CHOICE, max_points=6)), "a version of exactly max_points"
+    assert gen_saturn_heads.part_choice_h(None).count("#define SAT_PART_N 0") == 1, "a game with no part_choice"
+    assert "sat_part_e1" in gen_saturn_heads.part_choice_h(dict(CHOICE, max_points=6)), "a version of exactly max_points"
     try:
-        gen_saturn.part_choice_h(dict(CHOICE, max_points=5))
+        gen_saturn_heads.part_choice_h(dict(CHOICE, max_points=5))
         raise AssertionError("a version over max_points was built")
     except SystemExit:
         pass

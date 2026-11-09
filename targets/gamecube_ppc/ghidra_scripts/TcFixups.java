@@ -45,8 +45,8 @@
 //    not own).
 //    Exception: psq_l / psq_st through a GQR whose type and scale fields are 0 (GQR0 in CodeWarrior's prologues and
 //    epilogues, saving ps1 of f14..f31) take the SLEIGH's float path, a plain single load or store with no
-//    CALLOTHER: the hardware's but for rounding (not truncating) the stored ps0, a stack-frame word no check compares
-//    and the epilogue's lfd overwrites.
+//    CALLOTHER: the hardware's but for rounding (not truncating) the stored singles and for the NaNs, which the
+//    "psq_l" / "psq_st" fixups below make the hardware's.
 import ghidra.app.emulator.EmulatorHelper;
 import ghidra.pcode.emulate.BreakCallBack;
 import ghidra.pcode.memstate.MemoryState;
@@ -179,7 +179,7 @@ public class TcFixups {
     String dest;       // fctiw*, single, double, sign, lfs, shift: the destination register
     long operand;      // fctiw*, sign, estimate: fB's bits; stfs: fS's bits, before the step
     String op;         // single, double, sign, estimate: the mnemonic without "."; shift: the mnemonic
-    long[] srcBits;    // single, double, shift: the source operands' bits, before the step
+    long[] srcBits;    // single, double, shift: the source operands' bits, before the step; psq_st: ps0's, ps1's
     String ps1;        // single, lfs: fD's ps1 register when the step writes it, else null
     int fixups;        // how many steps this oracle corrected (TcPrepare reports it)
 
@@ -187,6 +187,12 @@ public class TcFixups {
         Object[] o = in.getOpObjects(op);
         for (Object x : o) if (x instanceof Register) return ((Register) x).getName().toLowerCase();
         return null;
+    }
+
+    // The FPR (fN) of a paired-single operand named fN, psN or psN_0, or null.
+    static String fpr(String r) {
+        java.util.regex.Matcher m = r == null ? null : java.util.regex.Pattern.compile("[a-z]+([0-9]+)(_0)?").matcher(r);
+        return m != null && m.matches() ? "f" + m.group(1) : null;
     }
 
     static long bits(EmulatorHelper emu, String reg) {
@@ -233,6 +239,13 @@ public class TcFixups {
             kind = dest == null || src == null ? null : "sign";
             if (kind != null) operand = bits(emu, src);
             op = m.replace(".", "");
+        } else if (m.matches("psq_lu?x?")) {  // unquantized (refuse): one or two singles, a NaN kept bit for bit
+            dest = fpr(reg(in, 0));
+            kind = dest == null ? null : "psq_l";
+        } else if (m.matches("psq_stu?x?")) {  // unquantized: each word is ps0's or ps1's store-single
+            String src = fpr(reg(in, 0));
+            kind = src == null ? null : "psq_st";
+            if (src != null) srcBits = new long[] {bits(emu, src), bits(emu, "ps" + src.substring(1) + "_1")};
         } else if (m.matches("lfsu?x?")) {
             dest = reg(in, 0);
             kind = dest == null ? null : "lfs";
@@ -270,6 +283,17 @@ public class TcFixups {
     // {pc, address, size, value} (TcBank).
     void after(EmulatorHelper emu, AddressSpace ram, TcBank bank, long[] stored, java.util.List<long[]> reads) {
         if (kind == null) return;
+        int n = reads.size();
+        fix(emu, ram, bank, stored, reads);
+        // The fixup's own emu.readMemory goes through TcBank into the step's load log, which TcOracle's pointer repair
+        // reads back (the last loads before a fault name the input to repair). They are not the program's loads: Skies
+        // 8003a370's prologue saves ps1 of f22..f31 with psq_st, and the psq_st check's ten stack reads hid the pointer's
+        // source, so 741 of 768 vectors failed their repairs (3 dev vectors left; master's oracle kept 48).
+        while (reads.size() > n) reads.remove(reads.size() - 1);
+        kind = null;
+    }
+
+    void fix(EmulatorHelper emu, AddressSpace ram, TcBank bank, long[] stored, java.util.List<long[]> reads) {
         if (kind.startsWith("fctiw")) {
             emu.writeRegister(dest, new BigInteger(Long.toUnsignedString(fctiw(operand, kind.equals("fctiwz")))));
             fixups++;
@@ -281,6 +305,39 @@ public class TcFixups {
             put(emu, op.equals("fres") ? TcEstimate.fres(operand) : TcEstimate.frsqrte(operand));
         } else if (kind.equals("sign")) {
             if (TcNaN.nan(operand)) put(emu, TcNaN.sign(op, operand));
+        } else if (kind.equals("psq_l")) {
+            int k = 0;
+            for (long[] rd : reads) {
+                if (rd[2] != 4) continue;
+                String r = k == 0 ? dest : "ps" + dest.substring(1) + "_1";
+                long want = TcNaN.nan32(rd[3]) ? TcNaN.load(rd[3]) : bits(emu, r);
+                if (bits(emu, r) != want) {
+                    emu.writeRegister(r, new BigInteger(Long.toUnsignedString(want)));
+                    fixups++;
+                }
+                if (++k == 2) break;
+            }
+        } else if (kind.equals("psq_st")) {
+            int k = 0;
+            // A copy: writeMemory goes through TcBank, which adds the write to bank.stores.
+            for (long[] st : new java.util.ArrayList<>(bank.stores)) {
+                for (int h = 0; h < st[1] / 4 && k < 2; h++, k++) {
+                    long s = toSingle(srcBits[k]);
+                    if (st.length > 2 && st[2] >= 0 && st[1] == 4) {  // a hardware register: the log has it
+                        if (bank.io.get((int) st[2])[2] != s) {
+                            bank.io.get((int) st[2])[2] = s;
+                            fixups++;
+                        }
+                        continue;
+                    }
+                    byte[] b = {(byte) (s >>> 24), (byte) (s >>> 16), (byte) (s >>> 8), (byte) s};
+                    Address a = ram.getAddress(st[0] + 4L * h);
+                    if (!java.util.Arrays.equals(emu.readMemory(a, 4), b)) {
+                        emu.writeMemory(a, b);
+                        fixups++;
+                    }
+                }
+            }
         } else if (kind.equals("lfs")) {
             for (long[] rd : reads) {
                 if (rd[2] == 4 && TcNaN.nan32(rd[3])) put(emu, TcNaN.load(rd[3]));
@@ -308,6 +365,5 @@ public class TcFixups {
                 fixups++;
             }
         }
-        kind = null;
     }
 }

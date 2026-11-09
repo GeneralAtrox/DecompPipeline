@@ -75,4 +75,8 @@ const char *online_locked(); // why the entries that change the game are locked 
 // tells the user where the dump is.
 void crash_install(bool interactive);
 
+// host_online.cpp: this program again on its own command line less drop's options (and --level-play), then add; this
+// one closes. The new process's id, 0 if it could not start.
+unsigned long start_again(void *hwnd, const std::vector<std::wstring> &drop, const std::vector<std::wstring> &add, const char *who);
+
 } // namespace host

@@ -25,7 +25,7 @@ def holder(state):
         return None
     if isinstance(h, dict) and filelock.pid_alive(int(h.get("pid") or 0)):
         return h
-    f.unlink(missing_ok=True)
+    _unlink(f)
     return None
 
 
@@ -34,14 +34,29 @@ def acquire(state):
     if holder(state) is not None:
         return False
     state.mkdir(parents=True, exist_ok=True)
-    (state / STOP).unlink(missing_ok=True)
+    _unlink(state / STOP)
     filelock.write_atomic(state / HOLD, json.dumps({"pid": os.getpid(), "started": time.time()}))
     return True
 
 
+def _unlink(p, wait=2.0):
+    """Remove p. On Windows a file another thread or process has open cannot be removed (PermissionError): end_job's
+    holder() reads the hold file every half second, so the job's release() can land inside that read. Retry for up to
+    `wait` seconds, then raise."""
+    end = time.monotonic() + wait
+    while True:
+        try:
+            p.unlink(missing_ok=True)
+            return
+        except PermissionError:
+            if time.monotonic() >= end:
+                raise
+            time.sleep(0.05)
+
+
 def release(state):
-    (state / HOLD).unlink(missing_ok=True)
-    (state / STOP).unlink(missing_ok=True)
+    _unlink(state / HOLD)
+    _unlink(state / STOP)
 
 
 def stop_requested(state):
@@ -60,7 +75,7 @@ def end_job(state, log=None, timeout=120):
     end = time.monotonic() + timeout
     while time.monotonic() < end:
         if holder(state) is None:
-            (state / STOP).unlink(missing_ok=True)
+            _unlink(state / STOP)
             return True
         time.sleep(0.5)
     if log:
