@@ -10,7 +10,7 @@
 
 Read-only on the image. The game files live in the high-density area, whose first data track starts at LBA
 45000; IP.BIN is its first 16 sectors and the ISO 9660 volume descriptor is at 45016. Directory records hold
-absolute LBAs. Sectors are raw 2352-byte Mode 1 (16-byte header, 2048 bytes of data); the boot file is not
+absolute LBAs. A .gdi track whose sector-size column says 2048 is a plain .iso of the data bytes and is read as such. Raw sectors are 2352-byte Mode 1 (16-byte header, 2048 bytes of data); the boot file is not
 scrambled on GD-ROM (scrambling only applies to MIL-CD boots).
 """
 import pathlib
@@ -24,8 +24,9 @@ RAW, DATA, HEAD = 2352, 2048, 16
 
 
 def tracks(image):
-    """[(number, start_lba, path, byte_offset)] of the data tracks in the high-density area, in order: the track
-    starts (INDEX 01) at start_lba, found byte_offset bytes into its file (Redump keeps a 225-sector pregap in
+    """[(number, start_lba, path, byte_offset, sector_size)] of the data tracks in the high-density area, in order (sector_size is 2352
+    for a raw track, 2048 for a .iso holding only each sector's data; the .gdi line's sector-size column says which):
+    the track starts (INDEX 01) at start_lba, found byte_offset bytes into its file (Redump keeps a 225-sector pregap in
     every HD track after the first)."""
     image = pathlib.Path(image)
     out = []
@@ -36,7 +37,10 @@ def tracks(image):
             if len(f) >= 5 and f[2] == "4" and int(f[1]) >= HD_LBA:
                 p = pathlib.Path(f[4].strip('"'))
                 off = int(f[5]) if len(f) > 5 else 0
-                out.append((int(f[0]), int(f[1]), p if p.is_absolute() else image.parent / p, off))
+                size = int(f[3])
+                if size not in (RAW, DATA):
+                    raise SystemExit(f"{image}: track {f[0]} has sector size {size}; only {RAW} (raw) and {DATA} (.iso) are read")
+                out.append((int(f[0]), int(f[1]), p if p.is_absolute() else image.parent / p, off, size))
     else:  # Redump cue: one FILE per track; the HD area's first file starts at LBA 45000, later files follow
         cur, entries = None, []
         for ln in image.read_text(encoding="utf-8").splitlines():
@@ -53,7 +57,7 @@ def tracks(image):
         file_lba = HD_LBA
         for n, mode, p, idx in (e for e in entries if e[0] >= 3):
             if mode.startswith("MODE"):
-                out.append((n, file_lba + idx, p, idx * RAW))
+                out.append((n, file_lba + idx, p, idx * RAW, RAW))
             file_lba += p.stat().st_size // RAW
     if not out:
         raise SystemExit("no high-density data track found")
@@ -66,10 +70,15 @@ class Disc:
         self.files = {}
 
     def sector(self, lba):
-        for n, start, p, off in reversed(self.tracks):
+        for n, start, p, off, size in reversed(self.tracks):
             if lba >= start:
                 f = self.files.get(p) or self.files.setdefault(p, open(p, "rb"))
-                f.seek(off + (lba - start) * RAW)
+                f.seek(off + (lba - start) * size)
+                if size == DATA:  # a .iso track: the 2048 data bytes, no header to check
+                    data = f.read(DATA)
+                    if len(data) != DATA:
+                        raise ValueError(f"LBA {lba}: past the end of track {n}")
+                    return data
                 raw = f.read(RAW)
                 if len(raw) != RAW or raw[0:12] != b"\x00" + b"\xff" * 10 + b"\x00" or raw[15] != 1:
                     raise ValueError(f"LBA {lba}: not a Mode 1 data sector in track {n}")
@@ -169,7 +178,7 @@ def main(argv):
     if argv[0] == "info":
         for k, v in disc.ip().items():
             print(f"{k:12} {v}")
-        print(f"{'tracks':12} {[(n, lba, p.name) for n, lba, p, _ in disc.tracks]}")
+        print(f"{'tracks':12} {[(n, lba, p.name) for n, lba, p, _, _ in disc.tracks]}")
     elif argv[0] == "scan":
         scan(disc, argv[2] if len(argv) > 2 else None)
     elif argv[0] == "list":
