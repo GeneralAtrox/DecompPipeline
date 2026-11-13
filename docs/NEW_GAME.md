@@ -146,6 +146,15 @@ game. You don't decompile those; you name them.
 - `tools/sdk_fid.py build` turns an SDK release you own into Ghidra Function ID databases (once per machine: the
   databases serve every game); `tools/sdk_fid.py apply --project WS --out DIR --fidb R10.1=PATH --fidb R9=PATH`
   names the SDK functions in your game (DIR outside any repository; Power Stone 2: 3 minutes).
+  - What `build --sdk` accepts (read from `tools/sdk_fid.py`, `resolve_source`): a folder, an installer `.iso`, or an
+    InstallShield 5 `data1.hdr`. A folder that holds no `data1.hdr` is used as it is, so an SDK you have installed or
+    extracted yourself (for example with `unshield`, which also handles multi-volume and InstallShield 6 sets that
+    `tools/is5cab.py` refuses) can be passed directly. It looks for the SDK's `libsplit.exe` and `elfcnv.exe` under
+    it (`--tools DIR` if they are elsewhere).
+  - Japanese SDK line: the examples above name only the English R9 and R10.1 releases. The rest of this note is an
+    outside user's finding, not ours, and we have not checked it: their Dreamcast game links Shinobi 1.70 / Ninja
+    01100114 (mid-2000), the English R11b (Feb 2001) has only Shinobi 1.66, and the Japanese R2.00J (Sep 2000) looked
+    like the match. Read which SDK release your game links from its version strings (`gdrom.py scan` lists them).
 - Find `game_end`: the first library function after the game's code. FID names the SHC C runtime (`_divls`,
   `memcpy`, `sprintf`...): on TC, Spawn and Power Stone 2 the runtime starts the library range. Code an earlier
   workspace decompiles as game code (`xproject.py ... match` / `report`, step 4) belongs below it. Set it, then
