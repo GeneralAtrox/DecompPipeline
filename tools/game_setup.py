@@ -124,6 +124,9 @@ def dreamcast(image, ws, name):
                                                              "pointers_p1": p1, "pointers_p0": p0}}, indent=1) + "\n",
                                    encoding="utf-8", newline="\n")
     cfg = common_fields("dreamcast_sh4", name or title_name(ip["title"]), f"disc/{p.split('/')[-1]}", data)
+    # Default scope: the whole boot file (load address to its end), so game_ranges() is never empty and decomp.py setup
+    # never meets a missing game_end. Narrow it once step 4 of docs/NEW_GAME.md finds where the SDK code starts.
+    cfg["game_end"] = f"{0x8C010000 + len(data):08x}"
     if p0 > 4 * max(p1, 1):  # linked at 0x0c... (gdrom.py scan): TcSeed finds the functions
         cfg["seed_functions"] = True
     print(f"{out}: {p} ({size} bytes) from {ip['title']} ({ip['product']} {ip['version']})")

@@ -112,7 +112,7 @@ A folder with `project.json`. Toy Commander's is the template; the fields a new 
 | `name`, `ghidra_name` | display name; Ghidra project name |
 | `target` | `dreamcast_sh4` |
 | `binary`, `binary_sha256` | the boot file (relative to the workspace) and its hash, so a wrong file is refused |
-| `game_end` | first address of the SDK code linked after the game (see step 4); `0` until you know |
+| `game_end` | first address of the SDK code linked after the game (see step 4). `game_setup.py setup` writes the end of the boot file (`8c010000` + its size) for a Dreamcast game, so the game range is the whole boot file until you narrow it; never `0`, which makes the range empty and the fixups (TcRuns, TcJumpIn, TcCont) run nowhere |
 | `references` | 2-3 functions you decompile by hand first: the controls that prove the judge works (`[]` until setup) |
 | `broken_control` | one reference plus a deliberately wrong copy of it, which must FAIL |
 | `port` | the monitor UI's port (one per workspace that serves at the same time) |

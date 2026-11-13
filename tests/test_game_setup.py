@@ -193,6 +193,9 @@ class Setup(unittest.TestCase):
         self.assertEqual((ws / "disc" / "1ST_READ.BIN").read_bytes(), boot)
         self.assertEqual((cfg["name"], cfg["ghidra_name"], cfg["binary"], cfg.get("seed_functions")),
                          ("Some Game", "SomeGame", "disc/1ST_READ.BIN", True))
+        from core import scope  # the outside user's KeyError: 'game_end' in decomp.py setup
+        self.assertEqual(cfg["game_end"], f"{0x8C010000 + len(boot):08x}")
+        self.assertEqual(scope.game_ranges(cfg), [(0x8C010000, 0x8C010000 + len(boot))])
         rec = json.loads((ws / "disc" / "disc.json").read_text(encoding="utf-8"))
         self.assertEqual(rec["boot_file"]["sha256"], game_setup.sha256(boot))
 
