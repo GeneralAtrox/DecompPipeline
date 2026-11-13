@@ -109,6 +109,25 @@ def replace_once(text, old, new, what):
     return text.replace(old, new)
 
 
+def patch_bsr(text):
+    """Add PR = inst_next to :bsr. Ghidra 12.2's stock file already has it: leave that alone. Neither text: fail."""
+    if text.count(BSR_NEW) == 1:
+        return text
+    return replace_once(text, BSR_OLD, BSR_NEW, "bsr")
+
+
+def run_sleigh(sleigh, slaspec):
+    """Compile with sleigh. Output is read as bytes and decoded with errors replaced: sleigh.bat's German 'pause'
+    line holds byte 0x81, which cp1252 cannot decode. stdin is closed so that pause cannot wait for a key."""
+    r = subprocess.run([str(sleigh), str(slaspec)], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                       stderr=subprocess.PIPE, timeout=600)
+    out = (r.stdout or b"").decode("utf-8", "replace")
+    err = (r.stderr or b"").decode("utf-8", "replace")
+    enc = sys.stdout.encoding or "utf-8"  # the console's own codec may not hold U+FFFD
+    print(out[-2000:].encode(enc, "replace").decode(enc), err[-2000:].encode(enc, "replace").decode(enc))
+    return r.returncode
+
+
 def main():
     home = pathlib.Path(sys.argv[1])
     lang = home / "Ghidra/Processors/SuperH4/data/languages"
@@ -116,16 +135,18 @@ def main():
     sinc = replace_once(sinc, FRCHG_OLD, frchg_new(), "frchg")
     sinc = replace_once(sinc, FSCHG_OLD, FSCHG_NEW, "fschg")
     sinc = replace_once(sinc, FPCHG_OLD, FPCHG_NEW, "fpchg")
-    sinc = replace_once(sinc, BSR_OLD, BSR_NEW, "bsr")
+    sinc = patch_bsr(sinc)
     sinc = fv_logical(sinc, "fipr")
     sinc = fv_logical(sinc, "ftrv")
     (lang / "SuperH4_tc.sinc").write_text(sinc, encoding="utf-8")
     (lang / "SuperH4_tc_le.slaspec").write_text(SLASPEC, encoding="utf-8")
     (lang / "SuperH4_tc.ldefs").write_text(LDEFS, encoding="utf-8")
     sleigh = home / "support" / ("sleigh.bat" if sys.platform == "win32" else "sleigh")
-    r = subprocess.run([str(sleigh), str(lang / "SuperH4_tc_le.slaspec")], capture_output=True, text=True, timeout=600)
-    print(r.stdout[-2000:], r.stderr[-2000:])
-    if r.returncode != 0 or not (lang / "SuperH4_tc_le.sla").exists():
+    code = run_sleigh(sleigh, lang / "SuperH4_tc_le.slaspec")
+    if code != 0 or not (lang / "SuperH4_tc_le.sla").exists():
+        for stale in lang.glob("SuperH4_tc_le.sla.lock"):  # a failed run leaves an empty lock behind
+            if stale.stat().st_size == 0:
+                stale.unlink()
         sys.exit("install_lang: sleigh compile failed")
     print("installed SuperH4:LE:32:tcfix")
 
