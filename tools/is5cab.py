@@ -3,7 +3,7 @@
 usage: python tools/is5cab.py HDR_FILE OUT_DIR [--list] [--only RX]
 
 Written from the format's public description (the header's cab descriptor, file table, and raw-deflate chunks with a
-2-byte length prefix). Only what Katana SDK installers use: version 5, one data volume, files neither split nor
+2-byte length prefix). Only what Katana SDK installers use: version 5 (version 6 and multi-volume sets such as dataN.cab are refused up front, with the unshield workaround named), one data volume, files neither split nor
 obfuscated (such a file is reported and skipped). Each extracted file is checked against its stored MD5.
 Re-runnable: a file already present with the right size and MD5 is left alone.
 """
@@ -40,7 +40,9 @@ def read_header(hdr):
         raise ValueError("not an InstallShield header (signature)")
     major = major_version(version)
     if major != 5:
-        raise ValueError(f"InstallShield version {major} is not supported (only 5)")
+        raise ValueError(f"InstallShield version {major or 'unknown'} is not supported (only 5). Workaround: extract the "
+                         f"set with unshield (Linux or Windows build; `unshield -d OUT x data1.cab`), then pass the "
+                         f"extracted folder to sdk_fid.py (docs/NEW_GAME.md step 1)")
     p = cdo + 0x0C
     ft_off = struct.unpack_from("<I", hdr, p)[0]
     dir_count = struct.unpack_from("<I", hdr, p + 0x10)[0]  # after the table offset, 4 reserved, 2 table sizes
@@ -98,10 +100,28 @@ def file_path(entry):
     return "/".join(p for p in parts if p)
 
 
+MULTI_VOLUME = ("is5cab: {cab} is one volume of a multi-volume set ({why}); only a single data volume is supported. "
+                "Workaround: extract the whole set with unshield (`unshield -d OUT x {hdr}`), then pass the extracted "
+                "folder to sdk_fid.py (docs/NEW_GAME.md step 1)")
+
+
+def check_single_volume(hdr_path, info):
+    """Refuse a multi-volume set up front: a data2.cab beside data1.cab, or a file stored beyond the end of this cab.
+    (Without this the next volume's bytes are inflated as if they belonged here: zlib 'invalid block type'.)"""
+    cab = hdr_path.with_suffix(".cab")
+    m = re.fullmatch(r"(.*?)(\d+)", hdr_path.stem)
+    if m and (hdr_path.parent / f"{m.group(1)}{int(m.group(2)) + 1}.cab").exists():
+        raise ValueError(MULTI_VOLUME.format(cab=cab.name, hdr=hdr_path.name, why="the next volume is beside it"))
+    size = cab.stat().st_size
+    if any(e["offset"] + e["csize"] > size for e in info["files"] if not e["flags"] & FLAG_INVALID):
+        raise ValueError(MULTI_VOLUME.format(cab=cab.name, hdr=hdr_path.name, why="files are stored past its end"))
+
+
 def extract(hdr_path, out_dir, only=None, log=print):
     hdr_path, out_dir = pathlib.Path(hdr_path), pathlib.Path(out_dir)
     info = read_header(hdr_path.read_bytes())
     cab = hdr_path.with_suffix(".cab")
+    check_single_volume(hdr_path, info)
     counts = {"written": 0, "kept": 0, "skipped": 0, "bad": 0}
     rx = re.compile(only, re.I) if only else None
     with open(cab, "rb") as f:
