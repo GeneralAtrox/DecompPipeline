@@ -13,5 +13,5 @@ This repository is run by agents. Everything they need, and the full reference, 
 A new game, from disc to port: [docs/NEW_GAME.md](docs/NEW_GAME.md). Progress at a glance: run `Dashboard.bat`
 ([docs/DASHBOARD.md](docs/DASHBOARD.md)).
 
-Needs Python 3.12, JDK 21, Ghidra 12 and Visual Studio 2022 (C++). `python -m pip install -r requirements.txt`; machine
+Needs Python 3.12, a JDK that matches the Ghidra release (21 for Ghidra 12.1.x; see docs/NEW_GAME.md step 0), Ghidra 12 and Visual Studio 2022 (C++). `python -m pip install -r requirements.txt`; machine
 paths go in a git-ignored `config.local.json`.

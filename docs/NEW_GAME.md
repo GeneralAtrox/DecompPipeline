@@ -31,7 +31,7 @@ readable round and a native port follow (steps 6 and 8); a port can already run 
 
 ## 0. Machine setup (once)
 
-- Python 3.12, a JDK 21, Ghidra 12.x, Visual Studio 2022 with the C++ workload (the judge builds every
+- Python 3.12, Ghidra 12.x and the JDK it asks for: the line `application.java.min=` in `<ghidra_home>/Ghidra/application.properties` (it is 21 in Ghidra 12.1.2, which our machines run; an outside user reports `application.java.min=25` in Ghidra 12.2, where JDK 21 made sleigh fail with "java could not be found"; we have not run 12.2), Visual Studio 2022 with the C++ workload (the judge builds every
   candidate with MSVC), and the `claude` CLI logged in (it runs the agent sessions).
 - Create `config.local.json` next to `config.json` (git-ignored, merged over it key by key) with this machine's
   paths: `ghidra_home`, `java_home`, `vcvars` (vcvars64.bat) and, for tools/sdk_fid.py only, `sevenzip` (else
