@@ -44,7 +44,10 @@ class Added(unittest.TestCase):
         dashboard.add(game, self.d / "projects")
         dashboard.add(game, self.d / "projects")  # twice: listed once, progress.json kept
         self.assertEqual(self.listed(), [{"folder": str(game.resolve()), "workspaces": ["decomp"]}])
-        self.assertIn("now", json.loads((game / "progress.json").read_text(encoding="utf-8")))
+        prog = json.loads((game / "progress.json").read_text(encoding="utf-8"))
+        self.assertIn("now", prog)
+        self.assertLess(prog["next"].index("control references"), prog["next"].index("SDK"))  # NEW_GAME.md's order
+        self.assertNotIn("Prepare each function", prog["next"])
         games = dashboard.collect(self.listed(), self.d / "projects")
         self.assertEqual([g["game"] for g in games], ["MyGame"])
         self.assertEqual(games[0]["console"], "Dreamcast")

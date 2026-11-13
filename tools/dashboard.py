@@ -148,7 +148,7 @@ def add(folder, pdir, mirrors=()):
             "updated": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
             "milestones": {"builds": None, "boots": None, "playable": None, "matches": None},
             "now": "Set up from the disc; the functions are catalogued.",
-            "next": "Prepare each function's tests, then the translator and the judge.", "bugs": []}, indent=1) + "\n",
+            "next": "Pick the control references (docs/NEW_GAME.md step 2), split game code from the SDK (step 3), then the match round: tests, translator, judge (step 4).", "bugs": []}, indent=1) + "\n",
             encoding="utf-8")
     lst = project_list()
     keep = [e for e in (load(lst, {}) or {}).get("projects", []) if pathlib.Path(e["folder"]) != folder]
