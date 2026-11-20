@@ -45,11 +45,33 @@ static u32 g_next_frames = 735u;
 static AicaEnvFn g_env;
 static AicaSliceFn g_slice;
 static u32 g_slice_frames;
+/* Catch-up mixing (aica_catchup): a voice read mid-blank first mixes the blank up to that point, into g_pre, so the
+ * position the game reads is never ahead of what was mixed. The blank's mix then plays g_pre and mixes the rest. */
+static int g_catchup = PORT_AUDIO_CATCHUP;
+static s16 g_pre[2 * AICA_VBLANK_MAX_FRAMES];
+static u32 g_pre_n;
+
+static void mix_frames(s16 *stereo, u32 frames);
 
 void aica_next_frames(u32 frames) { g_next_frames = frames; }
 
+void aica_catchup(int on) { g_catchup = on; }
+
 /* The output frames of the next mix that come by phase (0..65536) through the vertical blank. */
 static u32 frames_at(u32 phase) { return (u32)((u64)(phase < 65536u ? phase : 65536u) * g_next_frames >> 16); }
+
+/* Mixes the next mix's frames up to out now (catch-up mixing), and gives the frames from there to out. */
+static u32 catch_up(u32 out)
+{
+    if (g_catchup && !g_slice) {
+        u32 to = out < AICA_VBLANK_MAX_FRAMES ? out : AICA_VBLANK_MAX_FRAMES;
+        if (to > g_pre_n) {
+            mix_frames(g_pre + 2u * g_pre_n, to - g_pre_n);
+            g_pre_n = to;
+        }
+    }
+    return out > g_pre_n ? out - g_pre_n : 0u;
+}
 
 void aica_key_log(AicaKeyLog fn) { g_key_log = fn; }
 int aica_key_logging(void) { return g_key_log != NULL; }
@@ -210,7 +232,12 @@ void aica_voice_play(u32 v, u32 start, int loop, u32 loop_start, u32 end)
     p->pos = p->playing ? start : p->end;
     p->frac = 0;
     p->release = 0;
-    p->delay = g_slice ? 0u : frames_at(port_vblank_phase(0)); /* a key on mid-blank: the chip starts it there */
+    if (g_slice) {
+        p->delay = 0;
+    } else { /* a key on mid-blank: the chip starts it there (counted from what catch-up mixing has not mixed yet) */
+        u32 at = frames_at(port_vblank_phase(0));
+        p->delay = at > g_pre_n ? at - g_pre_n : 0u;
+    }
     p->looped = 0;
     p->env = 1.0f;
     p->dpos = 0xffffffffu; /* not decoded: the first fetch starts the decoder */
@@ -235,7 +262,7 @@ u32 aica_voice_position(u32 v, u32 phase)
 {
     if (v >= AICA_VOICES) return 0;
     const Voice *p = &g_voice[v];
-    u32 out = frames_at(phase);
+    u32 out = catch_up(frames_at(phase));
     if (!p->playing || out <= p->delay) return p->pos;
     u64 pos = p->pos + (((u64)(out - p->delay) * p->step + p->frac) >> 16); /* as voice_mix moves it */
     if (pos < p->end) return (u32)pos;
@@ -304,6 +331,15 @@ static void voice_mix(Voice *p, float *acc, u32 n)
 }
 
 void aica_mix(s16 *stereo, u32 frames)
+{
+    u32 pre = g_pre_n < frames ? g_pre_n : frames; /* the part catch-up mixing has mixed already */
+    memcpy(stereo, g_pre, sizeof(s16) * 2u * pre);
+    g_pre_n -= pre;
+    if (g_pre_n) memmove(g_pre, g_pre + 2u * pre, sizeof(s16) * 2u * g_pre_n);
+    mix_frames(stereo + 2u * pre, frames - pre);
+}
+
+static void mix_frames(s16 *stereo, u32 frames)
 {
     static float acc[2 * CHUNK];
     static s16 cd[2 * CHUNK];

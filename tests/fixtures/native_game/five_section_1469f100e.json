@@ -1,0 +1,5 @@
+{
+ "shot": "1d4916115b00b2b1697774093f3a0b7a5e4a5e43d3bc8df4f0c224fe8fea64e1",
+ "line": "dummy: FIRE pressed (1)",
+ "made": "1469f100e native_dummy: --frames 60 --input FIRE@10+2,P2.A@12+2 --scene-dump-at 56 (shot 50)"
+}

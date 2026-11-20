@@ -1,6 +1,6 @@
 /* The kit's XACT engine. The game reaches sound through one direct call (8209dc6c to 821e5990, XACT3CreateEngine) and then only through the COM methods of the objects it
  * gets back, so like the Direct3D library the XDK's XACT and the XAudio2 under it are replaced at that call, and the wave banks' sound goes to the kit's mixer (xb_sound.c). Each
- * method is an address the game can call through a guest vtable (port/boundary.json makes the range a host call) and is written when a run stops on it. */
+ * method is an address the game can call through a guest vtable (boundary.json makes the range a host call) and is written when a run stops on it. */
 #include <windows.h>
 #include "xb.h"
 

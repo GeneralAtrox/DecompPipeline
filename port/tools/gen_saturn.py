@@ -22,6 +22,7 @@ import scene_map  # noqa: E402
 import gen_saturn_menus  # noqa: E402
 import gen_saturn_level  # noqa: E402
 import gen_saturn_heads  # noqa: E402
+import game_config  # noqa: E402  (SATURN_KEYS: the keys a saturn object may have)
 
 CHUNK = 120
 DYNAMIC = 0x2000
@@ -135,6 +136,14 @@ def vblank_waits(text, offsets):
     return text
 
 
+def check_keys(cfg, where):
+    """Stop on a saturn key the contract does not list (port/CONTRACT.md "Saturn ports")."""
+    unknown = sorted(set(cfg) - set(game_config.SATURN_KEYS))
+    if unknown:
+        sys.exit(f"{where}: unknown saturn key {', '.join(unknown)}; the known keys are "
+                 f"{', '.join(sorted(game_config.SATURN_KEYS))} (port/CONTRACT.md \"Saturn ports\")")
+
+
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--game", required=True)
@@ -143,6 +152,7 @@ def main(argv=None):
     ap.add_argument("--extra", action="append", default=[], help="a dir of more ADDR.c files (functions the catalogue missed)")
     a = ap.parse_args(argv)
     cfg = json.loads(pathlib.Path(a.game).read_text(encoding="utf-8"))["saturn"]
+    check_keys(cfg, a.game)
     regs = tuple(cfg.get("exit_regs", (4,)))
     out = pathlib.Path(a.out)
     out.mkdir(parents=True, exist_ok=True)

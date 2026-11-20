@@ -11,6 +11,11 @@
 // reads nothing either: the registers compared at an import call are the ones the caller sets up for it
 // (TcPrepare.importRegs), so a register a caller passes through to the kernel untouched is not a parameter.
 // A move of a register to itself reads and writes nothing (identityMove).
+//
+// entryReads (an instance made with entry = true): r12 and the CR fields cr0..cr7 a function reads before it sets
+// them on some path, the entry values TcOracle seeds per vector (vectors.txt A). Callees are not looked into: the
+// oracle mocks them, and a mock zeroes r12 only where the callee may write it (clobbers) and leaves CR as it was.
+// The CR fields an instruction reads and sets come from TcCrFirst (bit by bit: a record form's cr0 is set, not read).
 import ghidra.program.model.address.*;
 import ghidra.program.model.block.*;
 import ghidra.program.model.lang.Register;
@@ -36,6 +41,38 @@ public class TcFlow implements TcPassThrough.Flow {
     TcFlow(Program prog, TaskMonitor monitor) {
         this.prog = prog;
         this.monitor = monitor;
+    }
+
+    TcFlow(Program prog, TaskMonitor monitor, boolean entry) {
+        this(prog, monitor);
+        if (!entry) return;
+        crs = new TreeMap<>();
+        for (Register r : prog.getLanguage().getRegisters()) {
+            if (!r.getName().toLowerCase().matches("cr[0-7]")) continue;
+            crs.put(r.getAddress().getOffset(), r.getName().toLowerCase());
+            crSize = r.getMinimumByteSize();
+        }
+    }
+
+    // ---------- the entry values the oracle seeds (TcOracle.findEntrySeeds) ----------
+    TreeMap<Long, String> crs;  // cr0..cr7 by offset, only in an entry instance
+    int crSize = 1;
+
+    // One instruction's CR fields (TcCrFirst): the ones it reads before this block set them, then the ones it sets.
+    static void crStep(Blk b, TcCrFirst.Effect e) {
+        for (String r : e.reads) b.use(r);
+        b.def.addAll(e.defs);
+    }
+
+    // r12 and the CR fields f reads before it sets them on some path (an entry instance only).
+    Set<String> entryReads(Function f) {
+        Set<String> out = new TreeSet<>();
+        try {
+            for (String r : solve(f, 0)) if (r.equals("r12") || r.matches("cr[0-7]")) out.add(r);
+        } catch (Exception e) {
+            // no dataflow: nothing is seeded (the C then reads 0, as the oracle starts it)
+        }
+        return out;
     }
 
     // The register name of a register varnode (r0..r31, f0..f31, lr, ctr), or null for anything else. A 64-bit
@@ -84,6 +121,10 @@ public class TcFlow implements TcPassThrough.Flow {
     static class Blk {
         Set<String> use = new HashSet<>(), def = new HashSet<>(), in = new HashSet<>();
         List<Blk> succ = new ArrayList<>();
+
+        void use(String r) {
+            if (r != null && !def.contains(r)) this.use.add(r);
+        }
     }
 
     // TcPassThrough.Flow (not memoised: TcPrepare asks it for the function under test only).
@@ -123,7 +164,9 @@ public class TcFlow implements TcPassThrough.Flow {
                 long w = word(in);
                 if (identityMove(w)) continue;
                 Set<String> none = literalZero(w);
-                for (PcodeOp op : in.getPcode()) step(b, op, body, depth, none);
+                PcodeOp[] ops = in.getPcode();
+                if (crs != null) crStep(b, TcCrFirst.effect(Arrays.asList(ops), crs, crSize));
+                for (PcodeOp op : ops) step(b, op, body, depth, none);
             }
             CodeBlockReferenceIterator d = cb.getDestinations(monitor);
             while (d.hasNext()) {
@@ -150,7 +193,7 @@ public class TcFlow implements TcPassThrough.Flow {
     }
 
     void use(Blk b, String r) {
-        if (r != null && !b.def.contains(r)) b.use.add(r);
+        b.use(r);
     }
 
     // The registers an instruction's p-code reads that the processor does not (none: Set.of()). Ghidra reads r0 for

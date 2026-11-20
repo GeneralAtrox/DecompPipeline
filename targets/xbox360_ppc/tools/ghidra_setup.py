@@ -12,6 +12,10 @@ The list is plain text, one item per line, beside the binary (TcSetup finds it t
 All numbers are hex. Helper families and thunks are always listed; their callers run them inline (helpers) or
 mock them (thunks).
 
+Bodies that share words (catfeed.py's kit entries: a mid entry inside its parent, a hole's body running on into the
+next function) cannot all be Ghidra functions at once: place() keeps the roots, then the catalogue's own functions,
+then the kit entries, and leaves out any function that overlaps one kept before it.
+
 Proof mode (--proof proof_set.json): only the proof's functions and the callees they reach in `depth` calls (4 by
 default: a callee's prototype reads its own callees' inputs three levels down, TcBase.prototypeOf), plus every
 helper and the thunks those functions call. Without --proof: every catalog function.
@@ -19,6 +23,7 @@ helper and the thunks those functions call. Without --proof: every catalog funct
 usage: python ghidra_setup.py <catalog_inputs.json> <out.txt> [--proof proof_set.json] [--depth N]
 """
 import argparse
+import bisect
 import json
 import re
 import sys
@@ -39,21 +44,77 @@ def closure(funcs, roots, depth):
     return have
 
 
-def lines(cat, chosen=None):
-    """The setup list's lines for the catalog `cat`, every function or only the addresses in `chosen`."""
+KIT = ("kit_hole", "kit_mid", "kit_leaf")   # catfeed.py's entries: bodies that may share words with another function
+
+
+class Overlap(ValueError):
+    """Two roots whose bodies share words: Ghidra holds one function per word, so they go in different setups."""
+
+
+def _hits(spans, starts, lo, hi):
+    """Does [lo, hi) overlap one of the sorted, disjoint spans?"""
+    i = bisect.bisect_right(starts, lo) - 1
+    return (i >= 0 and spans[i][1] > lo) or (i + 1 < len(spans) and spans[i + 1][0] < hi)
+
+
+def place(funcs, roots=()):
+    """The functions whose bodies Ghidra can hold together, and the ones dropped: (kept, dropped), lists of catalog rows.
+    Ghidra makes one function per word, and catfeed.py's kit entries (a mid entry inside its parent, a hole's leaf body
+    running on into the next function) share words with others. Roots come first (two overlapping roots: Overlap),
+    then the catalogue's own functions, then the kit entries, in address order; a function that overlaps one already
+    kept is dropped. Without kit entries or roots this keeps every function, as before."""
+    roots = set(roots)
+
+    def span(f):
+        a = int(f["addr"], 16)
+        return a, a + f["size"]
+
+    def disjoint(rows):
+        s = sorted((span(f), f) for f in rows)
+        for (p, pf), (q, qf) in zip(s, s[1:]):
+            if q[0] < p[1]:
+                raise Overlap(f"roots {pf['addr']} and {qf['addr']} share words: set them up apart")
+        return [x for x, _ in s]
+
+    first = [f for f in funcs if f["addr"] in roots]
+    rs = disjoint(first)
+    rstarts = [lo for lo, _ in rs]
+    kept, dropped = list(first), []
+    for f in funcs:   # the catalogue's own functions do not overlap one another (pdata, ppcscan's added entries)
+        if f["addr"] in roots or f.get("source") in KIT:
+            continue
+        (dropped if _hits(rs, rstarts, *span(f)) else kept).append(f)
+    held = sorted(span(f) for f in kept)
+    hstarts = [lo for lo, _ in held]
+    last = 0
+    for f in sorted((f for f in funcs if f.get("source") in KIT and f["addr"] not in roots), key=span):
+        lo, hi = span(f)
+        if lo < last or _hits(held, hstarts, lo, hi):
+            dropped.append(f)
+        else:
+            kept.append(f)
+            last = hi
+    return sorted(kept, key=lambda f: int(f["addr"], 16)), dropped
+
+
+def lines(cat, chosen=None, roots=(), dropped=None):
+    """The setup list's lines for the catalog `cat`, every function or only the addresses in `chosen`. Functions that
+    share words with a root or a kept function are left out (place); `dropped`, a list, receives them."""
     helpers = [(kind, lo, hi) for kind, lo, hi in cat["helper_ranges"]]
 
     def in_helper(lo, hi):
         return any(lo < h_hi and h_lo < hi for _, h_lo, h_hi in helpers)
 
     out, thunks = [], set()
-    for f in cat["functions"]:
-        a = int(f["addr"], 16)
-        if chosen is not None and f["addr"] not in chosen:
-            continue
+    rows = [f for f in cat["functions"] if chosen is None or f["addr"] in chosen]
+    for f in rows:
         thunks.update(int(t, 16) for t in f["imports"])
-        if f["kind"] == "frame_helper" or in_helper(a, a + f["size"]):
-            continue
+    rows = [f for f in rows if not (f["kind"] == "frame_helper" or in_helper(int(f["addr"], 16), int(f["addr"], 16) + f["size"]))]
+    rows, lost = place(rows, roots)
+    if dropped is not None:
+        dropped.extend(lost)
+    for f in rows:
+        a = int(f["addr"], 16)
         out.append((a, f"F {a:08x} {f['size']:x}"))
     for kind, lo, hi in helpers:
         out.append((lo, f"H {kind} {lo:08x} {hi:08x}"))
@@ -88,7 +149,12 @@ def main(argv):
             print(f"ghidra_setup: proof functions not in the catalog: {', '.join(missing)}")
             return 1
         chosen = closure(funcs, roots, a.depth)
-    out = lines(cat, chosen)
+    else:
+        roots = []
+    dropped = []
+    out = lines(cat, chosen, roots, dropped)
+    if dropped:
+        print(f"ghidra_setup: {len(dropped)} function(s) left out: they share words with a root or a kept function")
     with open(a.out, "w", encoding="utf-8", newline="\n") as fh:
         fh.write("# DecompPipeline Xbox 360 setup list (tools/ghidra_setup.py)\n" + "\n".join(out) + "\n")
     kinds = {k: sum(1 for t in out if t[0] == k) for k in "FHLI"}

@@ -253,7 +253,9 @@ The user's rules (2026-11-01), for DP and every port. Proof and survey: `docs/pr
    Spawn; Saturn: Robo Pit). `py -3.12 tools/asan_landing.py trailer --console C RESULTS` turns the runs into the line for
    the landing's last commit, `ASan: C tree T: plant caught; ...`, and refuses a missing plant, an error or a missing game.
    `tests/test_asan_landing.py` fails on a kit host-C commit since the rule that no line covers. `ASan: n/a <why>` is for a
-   change ASan can't see. The first runs and their runner: `docs/proofs/asan/`.
+   change ASan can't see. A core game whose kit line is on another contract runs on its kit line's merge of the landing
+   instead (`trailer --game G --on REV`; the user, 2026-11-10: "Count kit-line merge runs"). That line goes on a later
+   commit and holds for every commit the merge contains. The first runs and their runner: `docs/proofs/asan/`.
 
 ## Changing the checker
 

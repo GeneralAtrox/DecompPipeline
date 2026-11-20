@@ -314,7 +314,8 @@ def forward(sfn, sval, lfn, off):
 
 SIZES = {"wr8": 1, "wr16": 2, "wr32": 4, "wr64": 8, "wrf32d": 4, "wrf64": 8, "rd8": 1, "rd16": 2, "rd32": 4,
          "rd64": 8, "rdf32": 4, "rdf64": 8, "rd16r": 2, "rd32r": 4, "wr16r": 2, "wr32r": 4,
-         "xv_ld": 16, "xv_st": 16, "xv_ldew": 4, "xv_stew": 4, "xv_steh": 2, "xv_steb": 1}
+         "xv_ld": 16, "xv_st": 16, "xv_ldew": 4, "xv_stew": 4, "xv_steh": 2, "xv_steb": 1,
+         "xv_ldv": 16, "xv_stv": 16, "tc_ldg": 8, "tc_stg": 8, "tc_ldf": 8, "tc_stf": 8}   # (the port form's tc_vr / tc_gr / tc_fr slot k: fn_parts; never a stack address)
 # vector loads/stores of part of the aligned quadword holding the address (lvlx, lvrx, stvlx, stvrx): they touch
 # bytes on both sides of it, so their span is the whole quadword
 PARTIAL = {"xv_ldl", "xv_ldr", "xv_stl", "xv_str"}
@@ -325,35 +326,11 @@ def span(fn_name, a):
     if fn_name in PARTIAL:
         b = a & ~15
         return b, b + 16
-    return a, a + SIZES[fn_name]
+    return a, a + SIZES.get(fn_name, 8)    # tc_resv / tc_resv_ok (port form): the reservation of up to a doubleword at a
 
 
 # --------------------------------------------------------------------------------------- constant propagation
-class State:
-    """Var -> Const/Var value; stack slot address -> (store fn, value)."""
-    __slots__ = ("v", "m")
-
-    def __init__(self, v=None, m=None):
-        self.v = dict(v or {})
-        self.m = dict(m or {})
-
-    def copy(self):
-        return State(self.v, self.m)
-
-    def meet(self, o):
-        v = {k: x for k, x in self.v.items() if k in o.v and o.v[k] == x}
-        m = {k: x for k, x in self.m.items() if k in o.m and o.m[k][0] == x[0] and o.m[k][1] == x[1]}
-        return State(v, m)
-
-    def __eq__(self, o):
-        return self.v == o.v and self.m == o.m
-
-    def kill(self, name):
-        self.v.pop(name, None)
-        for k in [k for k, x in self.v.items() if name in x.vars()]:
-            del self.v[k]
-        for k in [k for k, (_, x) in self.m.items() if name in x.vars()]:
-            del self.m[k]
+from .pstate import State  # noqa: E402  (its own file: the size cap)
 
 
 def simple(e):
@@ -395,13 +372,13 @@ class Propagator:
         a = const_addr(s.addr)
         if a is None:
             if s.fn == "px_q":
-                st.m.clear()
+                st.clear_m()
             return
         lo, hi = span(s.fn, a) if (s.fn in SIZES or s.fn in PARTIAL) else (a, a + s.size())
         for sa in [k for k, (sfn, _) in st.m.items() if k < hi and lo < k + SIZES[sfn]]:
-            del st.m[sa]
+            st.del_m(sa)
         if self.track and in_stack(self.fn, a) and simple(s.val) and s.fn in SIZES:
-            st.m[a] = (s.fn, s.val)
+            st.set_m(a, (s.fn, s.val))
 
     def transfer(self, st: State, sts, rewrite):
         for s in sts:
@@ -416,7 +393,7 @@ class Propagator:
                 if isinstance(val, Const) or (simple(val) and s.dst not in val.vars()
                                               and X.INT_BITS.get(val.ty, 64) == X.INT_BITS.get(self.fn.ty(s.dst), 64)
                                               and (val.ty in X.FLOAT) == (self.fn.ty(s.dst) in X.FLOAT)):
-                    st.v[s.dst] = val
+                    st.set_v(s.dst, val)
             elif isinstance(s, Store):
                 self.store(st, s)
             elif isinstance(s, CallS):
@@ -695,7 +672,7 @@ def substitute(fn, max_size=40):
 
 
 # ---------------------------------------------------------------------------------------------------- driver
-def optimise(fn, entry_vals, notes, returns=None, rounds=30, port=False):
+def optimise(fn, entry_vals, notes, returns=None, rounds=30, port=False, keep_stack=False):
     for _ in range(rounds):
         changed = False
         track = not stack_escapes(fn)
@@ -704,7 +681,8 @@ def optimise(fn, entry_vals, notes, returns=None, rounds=30, port=False):
         changed |= remove_unreachable(fn)
         changed |= merge_blocks(fn)
         changed |= dce(fn)
-        changed |= stack_dce(fn)
+        if not keep_stack:      # the exit-state form compares the stack bytes written (exit_form.py)
+            changed |= stack_dce(fn)
         if not changed:
             break
     from .other_result import choose_calls; choose_calls(fn, notes, returns, port)  # noqa: E702  (in its own file: the 400-line cap)

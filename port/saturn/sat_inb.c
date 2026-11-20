@@ -22,6 +22,7 @@
 #include "sat_vdp.h"
 #include "present_cpu.h"
 #include "sat_net.h"
+#include "sat_screen.h"
 
 int sat_inb_on = -1; /* --in-between on|off, the menu's; -1 not set: on in a play run */
 static int g_allowed = -1, g_live, g_drawing;
@@ -80,7 +81,6 @@ static void p32(u8 *m, u32 a, s32 v) { p16(m, a, (u32)v >> 16); p16(m, a + 2u, (
 static int sx13(u32 v) { return (int)((s32)(v << 19) >> 19); }
 static s32 mix(s32 a, s32 b, int t) { return a + (s32)(((s64)b - a) * t >> 8); }
 static int fbi(const u8 *fb) { return fb == sat_v1_fb[0] ? 0 : 1; }
-
 int sat_inb_drawing(void) { return g_drawing; }
 int sat_inb_live(void) { return g_live; }
 
@@ -118,9 +118,11 @@ void sat_inb_drawn(const u8 *fb)
 void sat_inb_vblank(void)
 {
     Pic *p;
+    int want;
     if (g_allowed < 0) decide();
-    if (g_live != (sat_inb_on > 0 && g_allowed > 0)) { /* switched: start clean */
-        g_live = sat_inb_on > 0 && g_allowed > 0;
+    want = sat_inb_on > 0 && g_allowed > 0 && !sat_screen_on(); /* a kit screen (sat_screen.c) shows its own picture */
+    if (g_live != want) { /* switched: start clean */
+        g_live = want;
         g_npic = g_has_held = 0;
         g_fb_buf[0] = g_fb_buf[1] = -1;
     }
@@ -280,9 +282,7 @@ static void scroll(const Pic *o, const Pic *n, u32 ri, u32 rd, int t)
     W2(ri, (R2(n->reg, ri) & ~0x7ffu) | (u32)(v >> 8));
     if (rd) W2(rd, ((u32)(v & 0xff) << 8) | (R2(n->reg, rd) & 0xffu));
 }
-
 static u32 table(const u8 *r, u32 hi, u32 lo) { return ((((R2(r, hi) & 7u) << 16) | (R2(r, lo) & 0xfffeu)) * 2u) & 0x7ffffu; }
-
 static void v2_blend(const Pic *o, const Pic *n, int t)
 {
     static const u32 k_scroll[6][2] = {{0x70, 0x72}, {0x74, 0x76}, {0x80, 0x82}, {0x84, 0x86}, {0x90, 0}, {0x92, 0}};

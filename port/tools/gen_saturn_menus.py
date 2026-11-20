@@ -60,6 +60,8 @@ def menus_h(cfg):
                       ld["flags"][1], ld["boss"][0], ld["boss"][1], ld["won"], f["in_use"], f["listed"], f["rank"], f["special"], f["kind"], f["name"], ld["name_draw"], ld["show"][0], ld["show"][1],
                       ld["energy"][0], ld["energy"][1], ld["size"], fc["four"], fc["count"], ld["list"], *ld["cursor"]]
                 out.append("#define SAT_MENUS_LADDER {" + ", ".join(_a(v) for v in lv) + "}")
+                if fc.get("team_lobby"):
+                    out += team_lobby_h(fc["team_lobby"])
         on = mn.get("online")
         if on:
             ov = [on["move"], on["box_h"]] + list(on["items"])
@@ -67,6 +69,36 @@ def menus_h(cfg):
     mp = cfg.get("menu_panel")
     if mp:
         out.append("#define SAT_MENU_PANEL {0x%04xu, 0x%04xu}" % (int(str(mp["pmod"]), 0), int(str(mp["color"]), 0)))
+    return out
+
+
+def team_lobby_h(tl):
+    """menus fight_choice "team_lobby", the TEAM FIGHT lobby and fight selection for 2 VS 2 on the ladder
+    (port/saturn/sat_tlobby.c), as SAT_TLOBBY: {"list": [SELECT ENEMY's opponent list (words), its length (a word)],
+    "points": the robots' points (words, by record), "skill": [the arms' skill (words), a record's step], "arms": [the arm
+    table (a 12-letter name first), its step], "fields": {"right", "left": a record's arms, "champion": its champion flag},
+    "seat_fields": {"power_r", "power_l", "defence", "weight", "walk", "turn", "jump": offsets in a seat's block (words)},
+    "title": [the large-type text routine, the palette slot word it changes, a hub string borrowed for its words],
+    "slots": [the palette slots of labels, values, the opponents' labels, headings], "after": [[address, bytes, value], ...]:
+    the game's select leaves these when a fight is picked}; its "pictures", the robots drawn for the screens
+    (sat_robopic.c), as SAT_ROBOPIC: {"load": [the reset, the load flag (a word), the word set, the word it is set from, the
+    robot load (seat, record)], "synch": the frame end, "camera": [the camera set at once, r4..r7, the two stack words],
+    "draw": the robot draw, "yoff", "joints" [base, step], "rot", "scale", "seat" [base, step], "in_seat" (each seat's
+    record, words), "records" [base, size], "mesh" [base, step], "pos": the seats' places (12 bytes each), "yaw": the turn
+    drawn, "camera_on": the byte the draw's camera needs}."""
+    f, s, af = tl["fields"], tl["seat_fields"], tl["after"]
+    v = [*tl["list"], tl["points"], *tl["skill"], *tl["arms"], f["right"], f["left"], f["champion"], s["power_r"], s["power_l"],
+         s["defence"], s["weight"], s["walk"], s["turn"], s["jump"], *tl["title"], *tl["slots"], len(af)]
+    after = ", ".join("{" + ", ".join(_a(x) for x in a) + "}" for a in af) or "{0}"
+    out = ["#define SAT_TLOBBY {" + ", ".join(_a(x) for x in v) + ", {" + after + "}}"]
+    p = tl.get("pictures")
+    if p:
+        c = p["camera"]
+        pv = [*p["load"], p["synch"], c[0]]
+        rest = [p["draw"], p["yoff"], *p["joints"], p["rot"], p["scale"], *p["seat"], p["in_seat"], *p["records"], *p["mesh"], p["pos"],
+                p["yaw"], p["camera_on"]]
+        out.append("#define SAT_ROBOPIC {" + ", ".join(_a(x) for x in pv) + ", {" + ", ".join(_a(x) for x in c[1:7]) + "}, "
+                   + ", ".join(_a(x) for x in rest) + "}")
     return out
 
 

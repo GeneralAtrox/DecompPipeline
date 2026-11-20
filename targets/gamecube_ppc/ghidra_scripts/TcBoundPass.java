@@ -54,6 +54,7 @@ final class TcBoundPass {
     String pass(long seed, Set<Integer> open) {
         long deadline = g.facts.oracleDeadlineS <= 0 ? 0
             : ManagementFactory.getRuntimeMXBean().getStartTime() + g.facts.oracleDeadlineS * 1000;
+        long end = TcBudget.of(g.facts, g.facts.oracleBudgetS);  // the work budget (TcBudget), 0 without one
         int[] added = new int[2];
         int runs = 0;
         Set<Integer> hit = new TreeSet<>();
@@ -62,7 +63,8 @@ final class TcBoundPass {
         for (int s = 0; s < 2; s++) {
             Set<Integer> want = new TreeSet<>(open);
             for (int t = 0; t < TcBound.TRIES && added[s] < TcBound.MAX_ADDED && !want.isEmpty(); t++) {
-                if (deadline > 0 && System.currentTimeMillis() > deadline || g.refused != null) {
+                if (TcBudget.over(g.work(), end) || deadline > 0 && System.currentTimeMillis() > deadline
+                    || g.refused != null) {
                     note = "the deadline came after " + runs + " runs";
                     break sets;
                 }
@@ -93,6 +95,7 @@ final class TcBoundPass {
                 g.covAll.addAll(r.cov); g.dirsAll.addAll(r.dirs);
                 for (int c : r.cov) g.blockHits.merge(c, 1, Integer::sum);
                 for (long site : r.sites) g.siteHits.merge(site, 1, Integer::sum);
+                g.switchHits.add(r.bctrs);  // its switch cases too (TcSwitchHits)
             }
         }
         return TcBound.summary(open.size(), runs, added, hit.size(), note);
@@ -105,6 +108,10 @@ final class TcBoundPass {
         c.rets = v.rets.clone();
         c.frets = v.frets.clone();
         TcOracle.hwOf.put(c, TcOracle.hwOf.get(v));
+        TcOracle.r4Of.put(c, TcOracle.r4Of.get(v));
+        if (TcOracle.fxOf.containsKey(v)) TcOracle.fxOf.put(c, new ArrayList<>(TcOracle.fxOf.get(v)));
+        long[] late = TcOracle.lateOf.get(v);
+        if (late != null) TcOracle.lateOf.put(c, late.clone());
         c.patchAddr = new ArrayList<>(v.patchAddr);
         c.patchData = new ArrayList<>();
         for (byte[] d : v.patchData) c.patchData.add(d.clone());

@@ -55,5 +55,21 @@ class TestDecode(unittest.TestCase):
             self.assertIn(op, g)
 
 
+    def test_vupk_halfword_form(self):
+        """vupkhsb128 / vupklsb128 words with vA = 0x60 are the halfword-to-word unpacks (Xenia 95a5c3ee
+        ppc_emit_altivec.cc:2024-2051; the game feeds them to vcsxwfp128, vaddsws, vslw128 and vsubsws), and are lifted to the
+        halfword helpers. Any other vA keeps the byte name."""
+        from types import SimpleNamespace
+        from xenontranslate import vmx
+        for w, op, helper in ((0x1BC0FFA5, "vupkhsh128", "xv_vupkhsh"), (0x1BC0B7E4, "vupklsh128", "xv_vupklsh"),
+                               (0x1BC0FF85, "vupkhsb128", "xv_vupkhsb")):    # last: vA = 0x40, not the halfword form
+            i = decode(w, 0x82A131BC)
+            self.assertEqual(i.op, op, f"{w:08x}")
+            ft = SimpleNamespace(vhelpers=set(), notes=[])
+            vmx.lift(ft, i)
+            self.assertEqual(ft.vhelpers, {helper}, f"{w:08x}")
+        self.assertIn("vupkhsh128", __import__("xenontranslate.decode", fromlist=["x"]).VECTOR_OPS)
+
+
 if __name__ == "__main__":
     unittest.main()

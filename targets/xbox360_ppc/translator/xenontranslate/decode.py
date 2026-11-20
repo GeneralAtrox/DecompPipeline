@@ -181,11 +181,15 @@ VX128_6U = {0x230: "vcfpsxws128", 0x270: "vcfpuxws128", 0x2B0: "vcsxwfp128", 0x2
             0x670: "vrsqrtefp128", 0x6B0: "vexptefp128", 0x6F0: "vlogefp128", 0x730: "vspltw128",
             0x770: "vspltisw128", 0x7F0: "vupkd3d128"}
 VX128_6_UNARY = {"vupkhsb128", "vupklsb128"}
+# The two unary words at 0x380 / 0x3C0 with the vA field 0x60 are the halfword-to-word unpacks, not byte unpacks (Xenia
+# 95a5c3ee ppc_emit_altivec.cc:2024-2051; the game feeds all 269 of them to word ops: vcsxwfp128, vaddsws, vslw128, vsubsws).
+VX128_6_HW_VA = 0x60
+VX128_6_HW = {"vupkhsb128": "vupkhsh128", "vupklsb128": "vupklsh128"}
 
 VECTOR_OPS = (set(VA4.values()) | set(VC4.values()) | set(VX4.values()) | VEC_LOAD31 | VEC_STORE31 |
               set(VX128_1.values()) | set(VX128_5.values()) | set(VX128_6R.values()) | set(VX128_6.values()) |
               set(VX128_6U.values()) | {"vperm128", "vsldoi128", "vpermwi128", "vrlimi128", "vpkd3d128", "dst",
-                                        "dstst", "dss"})
+                                        "dstst", "dss"} | set(VX128_6_HW.values()))
 
 
 def vd128(w):
@@ -476,6 +480,8 @@ def _decode6(w, mk):
     op = VX128_6.get(w & 0x3D0)
     if op is not None:
         if op in VX128_6_UNARY:
+            if va128(w) == VX128_6_HW_VA:
+                op = VX128_6_HW[op]
             return mk(op, vd=vd128(w), vb=vb128(w))
         return mk(op, vd=vd128(w), va=va128(w), vb=vb128(w))
     return mk("illegal")

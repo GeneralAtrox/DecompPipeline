@@ -277,6 +277,7 @@ def describe(rec):
 
 # --- Readable C: every store reached, no admitted gap (docs/READABLE_STAGE.md) ---
 UNPROVEN, REVIEW = "unproven", "needs_review"
+PASSED = ("readable", UNPROVEN, REVIEW)  # every status a readable PASS records (readable_state); a file exists for each
 _LABEL = re.compile(r"^[A-Za-z_][\w.]*:\s*$")
 _SH_STORES = {"mov", "mov.b", "mov.w", "mov.l", "fmov", "fmov.s", "fmov.d", "sts.l", "stc.l", "movca.l", "tas.b"}
 _CALLS = {"bsr", "bsrf", "jsr", "bl", "bla", "bctrl", "blrl"}  # a call returns into its block

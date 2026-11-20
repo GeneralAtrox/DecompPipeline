@@ -4,7 +4,9 @@ Decoding is DecompPipeline's own, by primary and extended opcode (IBM PowerPC Ar
 VMX128 opcodes 4, 5 and 6), and only as far as the catalog needs: what class each instruction is in, and where
 branches go. It gives
 - the function entries: every `.pdata` function (begin, length), every `bl` target outside them (leaf functions
-  without unwind data) and every data word that points at a code address no function covers yet; an added entry
+  without unwind data), every data word that points at a code address no function covers yet, and every address
+  the code builds with lis + addi/ori that starts a function inside an added entry (code_built_starts: source
+  "codeptr"; one in a gap is catfeed's, with the kit's body); an added entry
   runs to the next known entry or the end of its section;
 - the register save/restore helpers the compiler calls from prologues and epilogues (`__savegprlr_N`,
   `__restgprlr_N`, `__savefpr_N`, `__restfpr_N`, `__savevmx_N`, `__restvmx_N`), found by their encodings;
@@ -17,7 +19,10 @@ instructions; this scan, not Ghidra's mnemonics, decides which functions use vec
 """
 import array
 import bisect
+import pathlib
 import sys
+
+HERE = pathlib.Path(__file__).resolve().parent
 
 # Extended opcodes (bits 21-30) of primary opcode 31 by class.
 VMX31 = {6, 7, 38, 39, 71, 103, 135, 167, 199, 231, 359, 487, 519, 551, 647, 679, 775, 807, 903, 935,
@@ -141,6 +146,87 @@ class Image:
         return next(((lo, hi) for lo, hi in self.code if lo <= a < hi), None)
 
 
+# -- code-built function starts --------------------------------------------------------------------------------
+
+LIS_WINDOW = 96                                              # bytes after a lis in which its addi / ori is looked for
+PAIR_ENDS = (14, 15, 21, 24, 25, 32, 33, 34, 40)             # primary opcodes that write rD again: the lis pair ends
+
+
+def after_terminator(w):
+    """Whether the word before a start ends the flow: blr, bctr, an unconditional branch (b), a zero word or a nop."""
+    return w in (0x4E800020, 0x4E800420, 0, 0x60000000) or (w & 0xFC000003) == 0x48000000
+
+
+def code_built_starts(image, funcs, eh_continuations=()):
+    """Function starts the code builds with lis rD,hi + addi/ori rX,rD,lo that no data word names (so the pointer pass
+    misses them). image: an Image; funcs: {start: end} of the known functions; eh_continuations: the catch continuations
+    (eh_tables.continuation_set), which the catch funclets also build this way but which run in their parent's frame.
+    A target is kept when it is word-aligned in a code section, not a known start, right after a terminator
+    (after_terminator), its first word's primary opcode is not 0 (data in the code section: Too Human's 8312ec1c,
+    8312ec3c, 8312ec4c after a bctr), not a catch continuation, and built from outside the function that holds it (a
+    jump table's case labels are built only by their own function, a function pointer by others; a target no
+    function holds is kept). Too Human's 82644cf0, a vcall{64} thunk handed as a pointer-to-member to the delegate
+    82581e68, sat inside 82644ce8, which this scan had sized to the next entry: the port stopped on missing_function
+    (2026-11-14). The rule is gen_xbox code_pointers' (12e91f9e3, e101aebf3), shared: the port kit imports it.
+    Returns the sorted starts."""
+    words, base = image.words, image.base
+    starts = sorted(funcs)
+
+    def owner(a):
+        i = bisect.bisect_right(starts, a) - 1
+        if i < 0:
+            return None
+        lo, hi = starts[i], funcs[starts[i]]
+        return (lo, hi) if lo <= a < hi else None
+
+    refs = {}
+    for lo, hi in image.code:
+        i0, i1 = (lo - base) >> 2, (hi - base) >> 2
+        for i in range(i0, i1):
+            x = words[i]
+            if x >> 26 != 15 or (x >> 16) & 31:   # lis rD, hi (addis rD, 0, hi)
+                continue
+            r, hv = (x >> 21) & 31, (x & 0xFFFF) << 16
+            for j in range(i + 1, min(i1, i + LIS_WINDOW // 4)):
+                y = words[j]
+                op, ra, rd = y >> 26, (y >> 16) & 31, (y >> 21) & 31
+                if op in (14, 24) and ra == r:   # addi / ori rX, rD, lo
+                    lv = y & 0xFFFF
+                    t = (hv + (lv - 0x10000 if op == 14 and lv & 0x8000 else lv)) & 0xFFFFFFFF
+                    if image.in_code(t):
+                        refs.setdefault(t, set()).add(base + 4 * i)
+                    if rd == r:
+                        break
+                elif rd == r and op in PAIR_ENDS:
+                    break
+    conts = set(eh_continuations)
+    out = []
+    for t, rs in sorted(refs.items()):
+        if t in funcs or t in conts or image.code_section(t - 4) is None:
+            continue
+        if not after_terminator(image.word(t - 4)) or image.word(t) >> 26 == 0:
+            continue
+        o = owner(t)
+        if o is not None and all(o[0] <= r < o[1] for r in rs):
+            continue
+        out.append(t)
+    return out
+
+
+def eh_continuations(img, desc, eh=None):
+    """The image's catch continuations, read by the port kit's eh_tables (port/tools): eh is port/games/<game>/eh.json
+    ({"frame_handler", "throw"}, eh_tables.load); without it the frame handler is found by its FuncInfo magic
+    (eh_tables.frame_handler) and no throw is known. An empty set when the image has no C++ exception tables."""
+    for p in (HERE.parent / "port" / "tools", HERE.parent / "translator"):
+        if str(p) not in sys.path:
+            sys.path.append(str(p))
+    import eh_tables
+    fh, throws = (eh["frame_handler"], eh.get("throw", ())) if eh else (eh_tables.frame_handler(img, desc), ())
+    if fh is None:
+        return set()
+    return eh_tables.continuation_set(eh_tables.scan(img, desc, fh, throws))
+
+
 def find_helpers(im):
     """{name_N: address} of the save/restore helpers, found by their encodings. Each family is a run of one
     instruction (or li + one instruction) per register; the helper for register N is that run's Nth entry."""
@@ -184,8 +270,9 @@ def find_helpers(im):
     return found, ranges
 
 
-def scan(img, desc):
-    """The catalog inputs (see the module doc) as a dict."""
+def scan(img, desc, eh=None):
+    """The catalog inputs (see the module doc) as a dict. eh: the game's eh.json (eh_tables.load), for the catch
+    continuations (eh_continuations); without it they are found from the image."""
     im = Image(img, desc)
     helpers, helper_ranges = find_helpers(im)
     helper_lo = {lo: (name, lo, hi) for name, lo, hi in helper_ranges}
@@ -232,15 +319,31 @@ def scan(img, desc):
     # An added entry runs to the next entry, helper, thunk or the end of its code section, and stops at its first
     # zero word: an illegal instruction, so alignment padding, and what follows it (data, or a routine no entry
     # names) is not the entry's code.
-    bounds = sorted(set(starts) | set(added) | set(helper_lo) | set(thunks) | {hi for _, hi in im.code})
-    for t, src in added.items():
-        i = bisect.bisect_right(bounds, t)
-        end = bounds[i] if i < len(bounds) else im.code_section(t)[1]
-        end = min(end, im.code_section(t)[1])
-        a = t + 4
-        while a < end and im.word(a) != 0:
-            a += 4
-        funcs[t] = {"size": a - t, "source": src}
+    def size_added():
+        bounds = sorted(set(starts) | set(added) | set(helper_lo) | set(thunks) | {hi for _, hi in im.code})
+        for t, src in added.items():
+            i = bisect.bisect_right(bounds, t)
+            end = bounds[i] if i < len(bounds) else im.code_section(t)[1]
+            end = min(end, im.code_section(t)[1])
+            a = t + 4
+            while a < end and im.word(a) != 0:
+                a += 4
+            funcs[t] = {"size": a - t, "source": src}
+    size_added()
+    # Starts the code builds with lis + addi/ori (code_built_starts) inside an entry this scan added become entries too
+    # ("codeptr"); the added entries are sized again, so one that ran over such a start ends at it. A start in a gap
+    # between entries is left to catfeed, which gives it the body the port kit translated (xb_leaf), not this sizing.
+    ends = {b: b + f["size"] for b, f in funcs.items()}
+    built = code_built_starts(im, ends, eh_continuations(img, desc, eh))
+    order = sorted(ends)
+
+    def inside_entry(t):
+        i = bisect.bisect_right(order, t) - 1
+        return i >= 0 and t < ends[order[i]]
+    for t in built:
+        if inside_entry(t) and not covered(t) and not in_helper(t) and not in_thunk(t):
+            added[t] = "codeptr"
+    size_added()
     out = []
     for begin in sorted(funcs):
         f = funcs[begin]

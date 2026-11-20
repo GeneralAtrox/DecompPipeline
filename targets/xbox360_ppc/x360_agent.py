@@ -81,7 +81,7 @@ Every rule is enforced automatically. Breaking one fails the attempt.
 - Registers are 64-bit. `add`, `subf`, `neg`, `mullw`, `ld`, `std` work on all 64 bits; `lwz`/`lhz`/`lbz` zero-extend
   into the full register, `lwa`/`lha`/`extsw`/`extsh`/`extsb` sign-extend, `clrldi rA,rS,32` clears the upper word.
   `cmpw`/`cmplw` compare the low words, `cmpd`/`cmpld` all 64 bits. A dotted instruction (`add.`, `rlwinm.`) sets
-  cr0 from the whole 64-bit result, signed. The return value r3 is compared in all 64 bits: if the original leaves
+  cr0 from the low 32 bits of the result, signed (as Xenia does). The return value r3 is compared in all 64 bits: if the original leaves
   a value whose upper word is not the zero- or sign-extension of the low word, the signature returns u64.
 - Arguments: r3-r10 (integers, pointers; 64-bit) and f1-f13 (floats). Results: r3 (integers), f1 (floats). Set
   args.r[0..7] = r3..r10 and args.f[0..12] = f1..f13 before tc_call/tc_callf; stack arguments are doublewords at

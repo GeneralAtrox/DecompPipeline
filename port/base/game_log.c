@@ -120,7 +120,7 @@ static const struct {
                  {HOST_PAD_Z, "Z"},   {HOST_PAD_Y, "Y"},       {HOST_PAD_X, "X"},
                  {HOST_PAD_LB, "LB"}, {HOST_PAD_RB, "RB"},     {HOST_PAD_L3, "L3"},       {HOST_PAD_R3, "R3"},
                  {HOST_PAD_BACK, "BACK"}, {HOST_PAD_GUIDE, "GUIDE"}, {HOST_PAD_RS_UP, "RS-UP"},
-                 {HOST_PAD_RS_DOWN, "RS-DOWN"}, {HOST_PAD_RS_LEFT, "RS-LEFT"}, {HOST_PAD_RS_RIGHT, "RS-RIGHT"}};
+                 {HOST_PAD_RS_DOWN, "RS-DOWN"}, {HOST_PAD_RS_LEFT, "RS-LEFT"}, {HOST_PAD_RS_RIGHT, "RS-RIGHT"}, {HOST_PAD_SHARE, "SHARE"}};
 
 const char *game_log_button(unsigned bit)
 {

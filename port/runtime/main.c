@@ -9,7 +9,7 @@
  *            [--fast-until N]     (the fixed clock until vertical blank N, then real time: watch from there)
  *            [--headless] [--warp] [--window WxH] [--size WxH]   (runtime/gfx: no window, the WARP rasterizer, a
  *                                  window instead of full screen, the headless output size; default 640x480)
- *            [--dump-frames N,N,..] [--dump-every N] [--dump-dir DIR]   (frame PNGs, gfx_capture.c)
+ *            [--dump-frames N,N,..] [--dump-every N] [--dump-dir DIR] [--dump-hashes FILE]   (frame PNGs, gfx_capture.c)
  *            [--input START@300,A@600+30,..]   (scripted presses at vertical blanks, gfx/gfx_input.c)
  *            [--save-dir DIR] [--vmu A1,B1,..|none]   (save files, default data\saves beside port.exe and none
  *                                  kept by a --fixed-clock run; the memory card sockets, sdk/bu_vmu.c, default A1)
@@ -159,7 +159,7 @@ static int __cdecl rtc_report(int type, const wchar_t *file, int line, const wch
     _vsnwprintf_s(msg, 512, _TRUNCATE, fmt, ap);
     va_end(ap);
     port_log("RTC: %ls\n", msg);
-    port_exit("run-time check failure", 3);
+    port_exit("run-time check failure", PORT_EXIT_HALTED);
     return 1;
 }
 #endif
@@ -170,11 +170,12 @@ static DWORD WINAPI watchdog(void *arg)
     Sleep(g_seconds * 1000u); /* not the tick: a watchdog or sampler thread */
     port_log("WATCHDOG: %lu s elapsed\n", g_seconds);
     log_game_thread();
-    port_exit("watchdog", 2);
+    port_exit("watchdog", PORT_EXIT_WATCHDOG);
     return 0;
 }
 
-/* 0 when the boot file is loaded, else the exit code: 4 the disc is missing or unreadable, 5 it has no boot file. */
+/* 0 when the boot file is loaded, else the exit code: PORT_EXIT_DISC the disc is missing or unreadable,
+ * PORT_EXIT_OTHER_GAME it has no boot file. */
 static int load_boot(const char *image, const char *dump)
 {
     PortDisc *d = disc_open(image);
@@ -182,23 +183,24 @@ static int load_boot(const char *image, const char *dump)
     u32 size = 0;
     if (!d) {
         port_log("disc: cannot open %s\n", image);
-        return 4;
+        return PORT_EXIT_DISC;
     }
     if (PORT_BOOT_FILE[0]) { /* game.json "boot_file" */
         strncpy_s(boot, sizeof boot, PORT_BOOT_FILE, _TRUNCATE);
     } else if (!disc_boot_name(d, boot, sizeof boot)) {
         port_log("disc: no IP.BIN boot file name\n");
         disc_close(d);
-        return 5;
+        return PORT_EXIT_OTHER_GAME;
     }
     u8 *data = disc_read_file(d, boot, &size);
     if (!data || !guest_load(PORT_IMAGE_BASE, data, size)) {
         port_log("disc: cannot load %s\n", boot);
         free(data);
         disc_close(d);
-        return 5;
+        return PORT_EXIT_OTHER_GAME;
     }
     disc_set_run(d); /* kept open for the game's gdFs reads */
+    disc_loose_start(image); /* after the boot file is read: a loose file never replaces it */
     if (g_thunks) dispatch_thunks(PORT_IMAGE_BASE, PORT_IMAGE_BASE + size);
     port_log("disc: %s, %u bytes loaded at %08x\n", boot, size, PORT_IMAGE_BASE);
     if (dump) {
@@ -251,17 +253,17 @@ int port_main(int argc, char **argv)
 #endif
     if (!image) {
         port_log("usage: port --disc <image.cue|image.gdi> [--seconds N] [--log FILE] [--check-fsca FILE]\n");
-        return 1;
+        return PORT_EXIT_FAILED;
     }
     if (must && !port_stub_must_work(must)) {
         port_log("must-work list: cannot read %s\n", must);
-        return 1;
+        return PORT_EXIT_FAILED;
     }
-    if (!guest_mem_init() || !sh4_rt_init(fsca)) return 1;
-    if (!gfx_init()) return 1;
+    if (!guest_mem_init() || !sh4_rt_init(fsca)) return PORT_EXIT_FAILED;
+    if (!gfx_init()) return PORT_EXIT_FAILED;
     if (!dispatch_install()) {
         port_log("dispatch: cannot install the handler\n");
-        return 1;
+        return PORT_EXIT_FAILED;
     }
     port_log("dispatch: %d guest functions\n", dispatch_count());
     diag_install();
@@ -274,6 +276,6 @@ int port_main(int argc, char **argv)
     port_log_flush();
     sh4_rt_set_fpu_mode();
     port_game_entry();
-    port_exit("the entry function returned", 0);
+    port_exit("the entry function returned", PORT_EXIT_OK);
     return 0;
 }

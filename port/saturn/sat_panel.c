@@ -22,6 +22,7 @@
 #include "sat_sys.h"
 #include "sat_game.h"
 #include "present_cpu.h"
+#include "sat_vdp.h"
 
 int sat_panel_on;
 u32 sat_panel_seen = ~0u - 64u; /* the vertical blank of the last panel command */
@@ -58,6 +59,14 @@ void sat_panel_mark(u32 pmod, u32 colr)
 
 int sat_panel_frame(void) { return sat_panel_on && sat_vblank_count() - sat_panel_seen < 4u; }
 
+/* a kit screen's panel (sat_screen.c) at the dot (x, y) of the Saturn's screen: as the presenter mixes the game's panel,
+ * or the game's mesh (one dot in two the panel's colour) when the shader is off */
+u32 sat_panel_mix(u32 rgb, u32 x, u32 y)
+{
+    if (sat_panel_on) return sat_panel_shade((rgb & 0xffffffu) | g_flag);
+    return (x + y) & 1u ? sat_rgb555(P.color) : rgb;
+}
+
 /* sat_vdp2.c, each dot of a picture that may show the panel: the colour, marked when the panel shows there. spr_pr: the
  * sprite's priority when it is the top layer (else -1); pn: the top scroll plane's priority (-1 none); under: the layers
  * under the sprite; left: the dot before on the line, as it came out */
@@ -76,6 +85,7 @@ u32 sat_panel_dot(u32 (*word)(u32 x, u32 y), u32 x, u32 y, u32 rgb, int spr_pr, 
 void sat_panel_start(int play_run) { (void)play_run, (void)g_want; }
 void sat_panel_mark(u32 pmod, u32 colr) { (void)pmod, (void)colr; }
 int sat_panel_frame(void) { return 0; }
+u32 sat_panel_mix(u32 rgb, u32 x, u32 y) { return (x + y) & 1u ? 0x101010u : rgb; }
 u32 sat_panel_dot(u32 (*word)(u32 x, u32 y), u32 x, u32 y, u32 rgb, int spr_pr, int pn, u32 under, u32 left)
 {
     (void)word, (void)x, (void)y, (void)spr_pr, (void)pn, (void)under, (void)left;

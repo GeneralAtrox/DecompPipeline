@@ -56,4 +56,14 @@ final class TcRun {
     static boolean pastEnd(long prev, int calls, boolean wordBeforeInBody) {
         return prev < 0 && calls > 0 && wordBeforeInBody;
     }
+
+    // The PC left the body for an address below the image: the heap, the scratch window, the stack or the kernel words
+    // hold no code, so the branch went through a word this input supplied (a return address its own stores overwrote,
+    // or a pointer it passed). The input is invalid; the body is not incomplete, so the function is not refused. Too
+    // Human 82e40388 copies 2n quadwords into a 16-entry stack buffer whose grow call (82db3e18) is mocked: with n > 16
+    // the copy overwrites the saved LR with an input word, and __restgprlr_25's blr went to 4000079c, refusing the
+    // function ("executes code outside its body") once pointer seeding's repairs had moved the vector stream.
+    static boolean intoData(long pc) {
+        return (pc & 0xffffffffL) < TcBase.IMAGE_LO;
+    }
 }

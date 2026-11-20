@@ -44,15 +44,10 @@ cap on a lean context's types. From tests/test_tail.py, TcTail's run-on rule on 
 the Ghidra jars, skipped without them).
 From tests/test_catalog_hw.py, the catalog's hardware address-use scan on a stub listing (the same jars), and a function
 matched before the catalog flags it hardware keeps its tier, row and PASS.
-From tests/test_mova_pool.py, pool words read through a `mova` base are the function's text (TcText).
-From tests/test_finish_no_attempts.py, a function ended before any attempt ends cleanly (its worker lives on).
-From tests/test_requeue_rejudge.py, a requeued function's own C judged again before any agent run.
-From tests/test_translate_stage.py, the target's translator writes and the judge decides C before any agent run.
-From tests/test_cache_ttl.py, the agents' prompt cache lifetime (config cache_ttl).
-From tests/test_shared_prefix.py, the shared prompt prefix of raw attempts (config shared_prefix).
-From tests/test_ledger_rows.py, the ledger's save: one line per function, the same data read back.
-From tests/test_prefetch.py, the next function's Ghidra prepare while the current agent works (config prefetch).
-From tests/test_kill_cost.py, a killed session's spend estimated from its requests (config agent_rates).
+From tests/test_mova_pool.py, test_finish_no_attempts.py, test_requeue_rejudge.py, test_translate_stage.py,
+test_cache_ttl.py, test_shared_prefix.py, test_ledger_rows.py, test_prefetch.py and test_kill_cost.py: `mova` pool
+words as text, a function ended before any attempt, a requeued function's C judged first, the translator stage, the
+prompt cache lifetime, the shared prompt prefix, the ledger's one line per function, prefetch, a killed session's spend.
 From tests/test_joined.py, a matched function whose body a catalog run grew over a function its C still calls is requeued (decomp.py setup/catalog/seed; core/joined.py).
 From tests/test_stale_skips.py, finished rows whose blocker kind a landing fixed after they were judged are
 requeued (target.json blocker_kinds "fixed_at"; tools/requeue.py --stale-skips and decomp.py serve).
@@ -71,7 +66,7 @@ From tests/test_readable_tx.py, the readable pass's machine files (adopted at an
 agent's start) and the lift's rules that keep the raw C's meaning, per target.
 From tests/test_kit_gdfs.py, the kit's gdFs streaming calls over a fake disc (skipped without the 32-bit Visual Studio tools).
 
-usage: python tests/test_tooling.py   (or python -m unittest discover -s tests -p "test_*.py")
+usage: python tests/test_tooling.py runs all of the above; under discover or pytest each runs once, from its own file.
 """
 import atexit
 import json
@@ -216,8 +211,13 @@ from test_strict_judge import (Facts as SjFacts, Judge as SjJudge, Stream as SjS
 from test_strict_runtime import Readable as SjReadable, Runtimes as SjRuntimes  # noqa: E402,F401  (item 2)
 from test_test_rules import DpGoldens, FailsBefore, Landing, Outcome, Provenance  # noqa: E402,F401  (AGENTS.md "Test rules")
 
-atexit.register(_TMP.cleanup)  # not tearDownModule: unittest also calls that when it switches to the test_retire
-# classes and back, which would remove the folder mid-run
+atexit.register(_TMP.cleanup)  # not tearDownModule: unittest calls it on each switch to another file's classes
+
+
+def load_tests(loader, tests, pattern):  # discover runs each file imported above itself: here only this file's own
+    own = [c for c in globals().values()
+           if isinstance(c, type) and issubclass(c, unittest.TestCase) and c.__module__ == __name__]
+    return tests if pattern is None else loader.suiteClass(map(loader.loadTestsFromTestCase, own))
 
 
 class Effort(unittest.TestCase):

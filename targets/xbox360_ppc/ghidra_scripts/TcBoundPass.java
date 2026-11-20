@@ -89,14 +89,7 @@ final class TcBoundPass {
                 hit.addAll(got);
                 g.valid[s]++;
                 added[s]++;
-                if (!g.writeVector(g.valid[0] + g.valid[1] - 1, s == 0 ? "dev" : "hidden", v, r)) continue;
-                g.goodVecs.add(v);
-                g.goodRes.add(r);
-                if (g.hasFma) g.checkFma(v, r);
-                if (s == 0) { g.covDev.addAll(r.cov); g.dirsDev.addAll(r.dirs); }
-                g.covAll.addAll(r.cov); g.dirsAll.addAll(r.dirs);
-                for (int c : r.cov) g.blockHits.merge(c, 1, Integer::sum);
-                for (long site : r.sites) g.siteHits.merge(site, 1, Integer::sum);
+                g.keep(s, v, r, false);  // its id from nextId (after the seed extras'); false: the strict replay failed
             }
         }
         return TcBound.summary(open.size(), runs, added, hit.size(), note);

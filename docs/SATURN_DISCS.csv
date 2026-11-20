@@ -1,0 +1,10 @@
+set,product,version,ip_date,maker,area,files,kit,has_driver_file,libs,sound_driver,sound_driver_files,middleware,compiler_strings,bytes_read_mb
+Dragon Force II - Kami Sarishi Daichi ni (Japan) (Rev A),GS-9184,V1.007,19980319,SEGA ENTERPRISES,JT,374,SBL,True,BUP 1.25 (1997-06-20); CDC 1.22 (1997-02-27); CPK 1.20 (1995-10-05); GFS_SBL 2.14 (1997-04-11); SYS 2.50 (1997-06-10),,SDDRVSA.204; SDDRVSA.209,cri adx (48 files),,15.0
+Saturn Bomberman (Europe),MK-81070,V1.000,19970228,SEGA ENTERPRISES,E,27,SBL,False,GFS_SBL 2.10 (1996-02-01); PCM 1.15 (1995-02-21); STM_SBL 2.10 (1996-02-01); SYS 2.21 (1996-10-01),,,cinepak (3 files),,0.8
+Saturn Bomberman (Japan) (SegaNet),T-14305G,V1.001,19960809,SEGA TP T-143,J,34,SBL,False,FLD 1.21 (1996-02-28); GFS_SBL 2.10 (1996-02-01); PCM 1.15 (1995-02-21); STM_SBL 2.10 (1996-02-01); SYS 2.10 (1996-01-31),Ver2.04 96/01/25,,cinepak (3 files),,3.0
+Saturn Bomberman (USA) (1S),MK-81070,V1.003,19970512,SEGA ENTERPRISES,U,430,SBL,False,FLD 1.21 (1996-02-28); GFS_SBL 2.10 (1996-02-01); HFLD 1.21 (1996-02-28); PCM 1.15 (1995-02-21); STM_SBL 2.10 (1996-02-01); SYS 2.21 (1996-10-01),Ver1.31 95/06/20; Ver2.04 96/01/25,,cinepak (3 files),,4.0
+Robo Pit (Europe),T-10002H50,V1.001,19960725,SEGA TP T-100,E,34,SGL,True,GFS_SGL 2.11 (1996-03-21); STM_SGL 2.11 (1996-03-21),Ver2.04 96/01/25,SDDRVS.133,cinepak (4 files),,6.3
+"Blast Chamber (Europe) (En,Fr,De,Es,It)",T-13003H50,V1.000,19961217,SEGA TP T-130,E,363,,True,,Ver1.31 95/06/20,SDDRVS.TSK,,,14.0
+Dragon Force (Europe),MK-8138250,V1.100,19970626,SEGA ENTERPRISES,E,734,,True,CPK 1.10 (1995-03-31); PCM 1.16 (1995-03-31),,SDDRVS.TSK,cinepak (16 files),,43.4
+Dragon Force (Japan) (Rev A) (10M),GS-9028,V1.011,19960409,SEGA ENTERPRISES,JT,745,,True,CPK 1.10 (1995-03-31); PCM 1.16 (1995-03-31),,SDDRVS.TSK,cinepak (12 files),,43.3
+Dragon Force (USA),T-12703H,V1.000,19961110,SEGA TP T-127,U,734,,True,CPK 1.10 (1995-03-31); PCM 1.16 (1995-03-31),,SDDRVS.TSK,cinepak (16 files),,43.4

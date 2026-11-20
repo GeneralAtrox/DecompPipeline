@@ -56,6 +56,9 @@ Every rule is enforced automatically. Breaking one fails the attempt.
   `return tc_call(...)`). Use the same target, the same order and the same argument registers. Never implement a
   callee and never skip a call. A `bl` to an address context.md does not list is a register save/restore helper
   (`_savegpr_NN`/`_restgpr_NN`, `_savefpr`/`_restfpr`): it is part of the prologue or epilogue, not a call. Skip it.
+  A function that is itself such a helper entry is its whole chain down to the `blr`: read r11 with `tc_inr(11u)`,
+  a register it saves with `tc_inr(N)` / `tc_inf(N)` (its value at entry), and report a register it restores with
+  `tc_xr` / `tc_xrf`.
 - R6. No global or static variables, no static locals, no string literals, no initializer list with more than 32
   elements, no inline assembly, no extern, no volatile.
 - R7. Never special-case test inputs. After your session, a hidden test set with different random inputs is run.

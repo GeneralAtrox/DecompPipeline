@@ -1,0 +1,13 @@
+# every call may return the pointer the function stores through (the order shifts by one when the cached type
+# halfword at 8324e124 is 0xffff, half the vectors)
+genptr r3
+genrange 0x8324e124 0xfffeffff 0xffff0000
+genret 0 0x40000100
+genret 1 0x40000200
+genret 2 0x40000300
+genret 3 0x40000400
+genret 4 0x40000500
+genret 5 0x40000600
+genret 6 0x40000700
+genret 7 0x40000800
+genret 8 0x40000900

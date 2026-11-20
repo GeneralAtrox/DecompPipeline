@@ -32,7 +32,7 @@ from test_strict_judge import ON_TARGETS  # noqa: E402  (the targets the proven 
 from core import ghidra, paths, proof  # noqa: E402
 
 TARGETS = [ROOT / "targets" / t for t in ("dreamcast_sh4", "saturn_sh2", "gamecube_ppc", "xbox360_ppc")]
-LINES = {"dreamcast_sh4": 400, "saturn_sh2": 413, "gamecube_ppc": 325, "xbox360_ppc": 365}  # each TcOracle's line count (DC's cap: 400)
+LINES = {"dreamcast_sh4": 400, "saturn_sh2": 413, "gamecube_ppc": 397, "xbox360_ppc": 400}  # each TcOracle's line count (DC's cap: 400)
 
 
 def text(p):

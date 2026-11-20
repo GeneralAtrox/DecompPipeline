@@ -272,9 +272,10 @@ def cast(t, a):
     plain = set(INT_BITS) - TRUTH
     if t in plain and a.ty in plain and isinstance(a, Cast) and a.a.ty in plain:
         # (t)(m)x is (t)x when the middle cast keeps every bit t takes (m at least as wide as t), or keeps x's
-        # value exactly (m wider than x)
+        # value exactly (m wider than x, and not an unsigned m over a signed x: (u64)(u32)(s16)x zero-extends the
+        # 32-bit pattern, (u64)(s16)x would carry the sign into the high word)
         m, i = INT_BITS[a.ty], INT_BITS[a.a.ty]
-        if m >= INT_BITS[t] or m > i:
+        if m >= INT_BITS[t] or (m > i and not (a.a.ty in SIGNED and a.ty not in SIGNED)):
             return cast(t, a.a)
     if t in ("u32", "s32") and a.ty in TRUTH:
         return Cast(t, a) if t == "s32" or a.ty == "bool" else a

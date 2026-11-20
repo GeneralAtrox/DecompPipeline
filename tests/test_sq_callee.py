@@ -244,6 +244,8 @@ class Wiring(unittest.TestCase):
         self.assertLess(prep.index("sq = TcSq.of("), prep.index("sq.callees(getCurrentProgram(), calledBy(fn, body), facts.fpscrEntry)"))
         sq = text(SH4 / "ghidra_scripts" / "TcSq.java")
         self.assertIn("d.args(g)", sq)
+        self.assertLess(prep.index("sq.callees(getCurrentProgram()"), prep.index("TcSqCopy.apply(sq, facts.sqCopies, calledBy(fn, body))"))
+        self.assertIn('case "sq_copy": f.sqCopies.add(w); break;', text(SH4 / "ghidra_scripts" / "TcFacts.java"))
         # A branch inside an instruction (jsr with an fmov in its delay slot, Vigilante 8's 8c070dc0) is no tail call: it
         # ended the walk at the first such call, and the bytes stored after it were sent stale (the menu's glyph u, v).
         live = text(SH4 / "ghidra_scripts" / "TcLive.java")
@@ -253,6 +255,19 @@ class Wiring(unittest.TestCase):
         self.assertIn("tcrt_sq_line[i] = line[i];", text(SH4 / "runtime" / "runner.c"))
         for name in ("TcLive.java", "TcSq.java", "TcTail.java", "TcPrepare.java", "TcOracle.java"):
             self.assertLessEqual(len(text(SH4 / "ghidra_scripts" / name).splitlines()), 400, name)
+
+
+class CopyFacts(unittest.TestCase):
+    """project.json sq_copy_callees (Spawn's panels: 8c058150 copies each vertex to the queue with 8c0d7b40, whose loop the
+    walk calls loose, so the send copied the block 0x40 back over it): the facts line reaches the oracle, and the range
+    means what the translator's sq_mark reads."""
+    def test_line_and_range(self):
+        sys.path.insert(0, str(SH4.parents[1]))
+        self.assertIn('f"sq_copy {callee} {reg} {spec}"', text(SH4.parents[1] / "core" / "ghidra.py"))
+        sys.path.insert(0, str(SH4 / "translator"))
+        from sh4translate import sqmodel
+        self.assertEqual(sqmodel.sq_callee_bytes({"8c0d7b40": {"r4": "0-3f", "r5": "?"}}),
+                         {0x8c0d7b40: {"r4": ((1 << 64) - 1, 0)}})
 
 
 if __name__ == "__main__":

@@ -1,0 +1,7 @@
+# r3+0x8 an object whose +0x2300 has a vtable; call 1 returns an object (+0x148 maybe another); the object the
+# 825d1c20 call returns (call 2 or 3, after the optional virtual call) has a vtable
+genptr r3+0x8+0x2300+0x0
+genret 1 0x40000100
+genret 2 0x40000400
+genret 3 0x40000400
+genptr 0x40000400

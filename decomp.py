@@ -200,8 +200,6 @@ def main():
         for n, p in sizes.over_cap(files):
             print(f"{n:5d}  {paths.show(p)}")
         sys.exit(sizes.main([]))
-        print("all files <= 400 lines" if not over else f"{len(over)} file(s) over 400 lines")
-        sys.exit(1 if over else 0)
     elif a.cmd == "divergence":
         from core import divergence
         sys.exit(divergence.main(a))

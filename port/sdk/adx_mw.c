@@ -12,7 +12,8 @@
  * answers playing until its last picture and sound are out, then ended; Stop and Destroy end it and take its picture
  * away; Pause and SetOutVol act on it; every other method does nothing and returns 0. The handle and the table are
  * host memory in the guest's 32-bit address space: guest code reads them as words and calls the methods as host
- * function pointers with its argument words (runtime/tx/tx_rt.c, runtime/dispatch.c).
+ * function pointers with its argument words (runtime/tx/tx_rt.c, runtime/dispatch.c). A movie of 4 MB or more is
+ * read behind (runtime/disc_fill.c): StartFname returns with it coming in, and the player reads only what has come.
  *
  * Needs from the game's headers: ADXT (a handle pointer), AdxtErrFunc, MWS_PLY_INIT_SFD and the function names below
  * as the game's registry has them; and the kit's gdfs module in the game's "sdk" list. */
@@ -23,6 +24,7 @@
 #define HANDLES 8u
 #define VOLUME_DEFAULT 0 /* ADX volumes are in 0.1 dB below full, 0 the loudest */
 #define GD_SECTOR 2048
+#define BEHIND_SECTORS 2048 /* 4 MB: a movie this large starts while it is read in (disc_fill.c) */
 
 static struct {
     int used;
@@ -189,9 +191,10 @@ static u32 ply_destroy(u32 ply) { return ply_stop(ply); }
 static u32 ply_start_fname(u32 ply, u32 fname)
 {
     const char *name = (const char *)(uintptr_t)fname;
-    s32 size = 0, r;
+    s32 size = 0, sectors, r;
     GDFS fs;
     u8 *buf;
+    DiscFill *fill = NULL;
     ply_stop(ply);
     if (!g_movie) g_movie = media_movie_new();
     if (!g_movie || !fname) return 0;
@@ -202,8 +205,15 @@ static u32 ply_start_fname(u32 ply, u32 fname)
         return 0;
     }
     gdFsGetFileSize(fs, &size);
-    buf = size > 0 ? media_movie_load(g_movie, (u32)(size + GD_SECTOR - 1) & ~(u32)(GD_SECTOR - 1)) : NULL;
-    r = buf ? gdFsRead(fs, (size + GD_SECTOR - 1) / GD_SECTOR, buf) : -1;
+    sectors = (size + GD_SECTOR - 1) / GD_SECTOR;
+    buf = size > 0 ? media_movie_load(g_movie, (u32)sectors * GD_SECTOR) : NULL;
+    if (buf && sectors >= BEHIND_SECTORS && (fill = disc_fill_start(gdfs_lba(fs), (u32)sectors, buf)) != NULL) {
+        port_log("gdfs: read %s: %d of %d sectors at pos 0 -> %08x, behind\n", name, sectors, sectors,
+                 (u32)(uintptr_t)buf);
+        media_movie_behind(g_movie, fill, disc_fill_wait_v, disc_fill_end_v);
+        disc_fill_reader(fill, DISC_READER_ADX); /* the first bytes, waited for inside the start */
+    }
+    r = !buf ? -1 : fill ? 0 : gdFsRead(fs, sectors, buf);
     if (r != 0 || !media_movie_start(g_movie, (u32)size)) {
         gdFsClose(fs);
         port_log("sofdec: movie %s (%d bytes) could not be %s (%d)\n", name, size, r ? "read" : "started", r);
@@ -211,6 +221,7 @@ static u32 ply_start_fname(u32 ply, u32 fname)
         return 0;
     }
     gdFsClose(fs);
+    disc_fill_reader(fill, DISC_READER_MOVIE);
     port_log("sofdec: movie %s: %d bytes (vblank %u)\n", name, size, port_vblank_count());
     return 0;
 }

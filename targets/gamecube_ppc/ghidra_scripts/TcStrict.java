@@ -18,8 +18,11 @@
 //    (1 + field), k), only to a range wholly in MEM1 with no instruction byte (TcFacts.isCode), as the runtime tests.
 //  - call_snapshots: for each pointer argument p (r3..r10, and the fields a fact names), the bytes this run stored
 //    (TcBank.written: since setEntry) at [p, p + extent): extent the fact's size, else the run of stored bytes from p,
-//    at most RUN_MAX; a pointer into the stack window only with a fact (past a local are saved registers the C does
-//    not have). expected.txt "CS call field hex" ("xx": not stored), vectors.txt "W call field size".
+//    at most RUN_MAX (extent). A pointer into the stack window without a fact only into the own frame [r1, entry SP),
+//    and its run stops below the frame's saved registers (saveLo: past a local are saved registers the C does not
+//    have): a buffer the function fills and passes on (Skies of Arcadia 800a13d8 hands 80291bb4 a two-vertex array
+//    at r1+8) is compared like one in the heap; a frame slot never passed out stays unjudged.
+//    expected.txt "CS call field hex" ("xx": not stored), vectors.txt "W call field size".
 //  - exit_frame: r1, r14..r31 and f14..f31 at the exit (expected.txt "XR"; the C runtime reports the entry values,
 //    which a function that restores what it saves leaves there).
 // The key: seed the function seed, vid this prepare's run number (runs: unique per run, so a repaired run keeps the
@@ -30,8 +33,13 @@
 // expected, so junk never steers the choice (the Dreamcast's TcStrict says why). A vector the replay fails is left
 // out, its id unused.
 import ghidra.app.emulator.EmulatorHelper;
+import ghidra.program.model.address.Address;
+import ghidra.program.model.listing.Instruction;
 import java.math.BigInteger;
 import java.util.*;
+import java.util.function.LongPredicate;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 final class TcStrict {
     static final int JUNK = 1, WRITES = 2, SNAPS = 4, EXIT = 8;
@@ -158,15 +166,104 @@ final class TcStrict {
         return bank.written.contains(o.toAddr(a));
     }
 
+    static boolean inStack(long p) {
+        return p >= TcBase.STACK_LO && p < TcBase.RAM_HI;
+    }
+
+    // A snapshot's extent without a fact: the run of bytes this run stored from p, at most RUN_MAX. In the stack window
+    // only inside the own frame [sp, SP) and below its saved registers (sp + saveLo); 0 elsewhere there.
+    static int extent(long p, long sp, int saveLo, LongPredicate stored) {
+        long cap = RUN_MAX;
+        if (inStack(p)) {
+            if (p < sp || p >= TcBase.SP) return 0;
+            cap = Math.min(cap, Math.min(TcBase.SP, sp + saveLo) - p);
+        }
+        int n = 0;
+        while (n < cap && inRam(p + n, 1) && stored.test(p + n)) n++;
+        return n;
+    }
+
+    static final String NUM = "(-?(?:0x[0-9a-f]+|\\d+))";
+    static final Pattern STWU = Pattern.compile("stwu r1," + NUM + "\\(r1\\)");
+    static final Pattern ADDI11 = Pattern.compile("addi r11,r1," + NUM);
+    static final Pattern SAVE =
+        Pattern.compile("(stw|stmw|stfd|stfs|psq_st)u? ([rf])(\\d+)," + NUM + "\\((r1|r11)\\).*");
+
+    static long num(String s) {
+        boolean neg = s.startsWith("-");
+        String b = neg ? s.substring(1) : s;
+        long v = b.startsWith("0x") ? Long.parseLong(b.substring(2), 16) : Long.parseLong(b);
+        return neg ? -v : v;
+    }
+
+    // The lowest offset from r1 after the prologue's stwu of a callee-saved register's save, or MAX_VALUE: stores of
+    // r14..r31 and f14..f31 (stmw: rN..r31) based on r1, before the stwu entry-relative (moved by its size), and those
+    // of CodeWarrior's save helpers based on r11 = r1 + K. ins: the function's instructions in address order as Ghidra
+    // prints them (lower case), a save helper's after its bl. A local kept in such a register only lowers it.
+    static int saveLo(List<String> ins) {
+        long frame = 0, lo = Long.MAX_VALUE;
+        for (String s : ins) {
+            Matcher m = STWU.matcher(s);
+            if (m.matches()) {
+                frame = -num(m.group(1));
+                break;
+            }
+        }
+        boolean after = false;
+        Long r11 = null;
+        for (String s : ins) {
+            if (STWU.matcher(s).matches()) {
+                after = true;
+                continue;
+            }
+            Matcher a = ADDI11.matcher(s);
+            if (a.matches()) {
+                r11 = num(a.group(1));
+                continue;
+            }
+            Matcher m = SAVE.matcher(s);
+            if (!m.matches() || !m.group(1).equals("stmw") && Integer.parseInt(m.group(3)) < 14) continue;
+            long d = num(m.group(4)), off;
+            if (m.group(5).equals("r1")) off = after ? d : d + frame;
+            else if (r11 != null) off = r11 + d;
+            else continue;
+            if (off >= 0) lo = Math.min(lo, off);
+        }
+        return lo == Long.MAX_VALUE ? Integer.MAX_VALUE : (int) lo;
+    }
+
+    static long savedFor = -1;  // the function saveLo() last scanned, and its result
+    static int savedLo;
+
+    int saveLo() {
+        long e = o.fn.getEntryPoint().getOffset();
+        if (e != savedFor) {
+            List<String> ins = new ArrayList<>();
+            for (Instruction in : o.listing.getInstructions(o.fn.getBody(), true)) {
+                ins.add(in.toString().toLowerCase());
+                if (!in.getFlowType().isCall()) continue;
+                for (Address t : in.getFlows()) {
+                    if (!TcFlow.isSaveHelper(o.listing, t)) continue;
+                    Instruction h = o.listing.getInstructionAt(t);
+                    for (int n = 0; h != null && n < 40; n++, h = h.getNext()) {
+                        String s = h.toString().toLowerCase();
+                        if (s.startsWith("blr")) break;
+                        ins.add(s);
+                    }
+                }
+            }
+            savedLo = saveLo(ins);
+            savedFor = e;
+        }
+        return savedLo;
+    }
+
     void snap(EmulatorHelper emu, int call, long target, String[] rec) {
         for (int fld = 1; fld <= 24 && snaps < MAX_SNAPS; fld++) {
             int n = size(target, fld);
             if (n == 0 && fld > 8 || fld > 8 && fld < 17) continue;
             long p = TcBase.fold(Long.parseLong(rec[fld], 16));
-            if (n == 0) {
-                if (p >= TcBase.STACK_LO && p < TcBase.RAM_HI) continue;  // the stack window: a fact's extent only
-                while (n < RUN_MAX && inRam(p + n, 1) && stored(p + n)) n++;
-            }
+            if (n == 0) n = extent(p, o.reg(emu, "r1"), inStack(p) ? saveLo() : 0, this::stored);
             if (n == 0 || !inRam(p, n)) continue;
             byte[] b = emu.readMemory(o.toAddr(p), n);
             StringBuilder hex = new StringBuilder();

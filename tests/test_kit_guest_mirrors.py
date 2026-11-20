@@ -44,8 +44,66 @@ int main(void)
 """
 
 
+EXTRA_C = r"""#include <stdarg.h>
+#include <stdio.h>
+#include "port.h"
+void port_log(const char *fmt, ...) { va_list ap; va_start(ap, fmt); vprintf(fmt, ap); va_end(ap); }
+
+int main(void)
+{
+    if (!guest_mem_init()) { printf("init failed\n"); return 1; }
+    printf("zero %08x\n", *(volatile u32 *)(uintptr_t)0x88123450u);
+    *(volatile u32 *)(uintptr_t)0x88123450u = 0x5a5a0001u;
+    printf("p0 %s p2 %s\n", *(volatile u32 *)(uintptr_t)0x08123450u == 0x5a5a0001u ? "same" : "DIFF",
+           *(volatile u32 *)(uintptr_t)0xa8123450u == 0x5a5a0001u ? "same" : "DIFF");
+    printf("main %s\n", *(volatile u32 *)(uintptr_t)0x8c123450u == 0x5a5a0001u ? "SHARED" : "apart");
+    printf("fold %08x %08x %d %d %d\n", guest_fold(0x08123450u), guest_fold(0xa8123450u), guest_is_ram(0x08123450u),
+           guest_is_ram(0x8c000000u), guest_is_ram(0x89000000u));
+    return 0;
+}
+"""
+
+
+def build_and_run(test, driver_c, cfg_extra):
+    """Compiles guest_mem.c with driver_c and a port_config.h for cfg_extra, runs it, returns its output."""
+    work = TOOL / "tests" / ".work"
+    d = pathlib.Path(tempfile.mkdtemp(dir=work if work.is_dir() else None))
+    try:
+        cfg = {"name": "Fixture", "entry": {"name": "Fx_Main", "addr": "8c011000"}, "image_base": "8c010000",
+               "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": [], **cfg_extra}
+        (d / "port_config.h").write_text(game_config.port_config_h(cfg), encoding="utf-8")
+        (d / "gm_main.c").write_text(driver_c, encoding="utf-8")
+        rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
+        srcs = " ".join(f'"{p}"' for p in [KIT / "runtime" / "guest_mem.c", d / "gm_main.c"])
+        cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "base"}" /I"{rd}" {srcs} '
+              f'/Fe:gm.exe /link /LARGEADDRESSAWARE')
+        vc = str(game_config.vcvars32()).replace("/", "\\")
+        r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,
+                           errors="replace", timeout=300)
+        test.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-1000:])
+        test.assertNotIn("warning", r.stdout.lower())
+        run = subprocess.run([str(d / "gm.exe")], capture_output=True, text=True, timeout=60)
+        test.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        return run.stdout
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
 @unittest.skipUnless(HAVE_VC, NO_VC)
 class GuestMirrors(unittest.TestCase):
+    def test_extra_ram(self):
+        """game.json extra_ram: 0x88.. is zeroed RAM of its own, the same through 0x08.. and 0xa8.., apart from the main
+        16 MB, folded to its P1 form and known to guest_is_ram; without the key 0x88.. is not RAM."""
+        out = build_and_run(self, EXTRA_C, {"extra_ram": True})
+        self.assertIn("extra RAM: 16 MB at 88000000", out)
+        self.assertIn("zero 00000000", out)
+        self.assertIn("p0 same p2 same", out)
+        self.assertIn("main apart", out)
+        self.assertIn("fold 88123450 88123450 1 1 0", out)
+        self.assertIn("#define PORT_EXTRA_RAM 0", game_config.port_config_h(
+            {"name": "Fixture", "entry": {"name": "Fx_Main", "addr": "8c011000"}, "image_base": "8c010000",
+             "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}))
+
     def test_area3_copies(self):
         work = TOOL / "tests" / ".work"
         d = pathlib.Path(tempfile.mkdtemp(dir=work if work.is_dir() else None))

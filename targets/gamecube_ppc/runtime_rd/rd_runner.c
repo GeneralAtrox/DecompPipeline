@@ -62,6 +62,17 @@ static void dwords(const char *p, u64 *out, int n)
     for (int i = 0; i < n; i++) out[i] = (u64)_strtoui64(e, &e, 16);
 }
 
+/* vectors.txt X: r11, r14..r31 (words), f14..f31 (64-bit bits): a helper entry's frame (tcrt_set_frame). */
+static void frame_line(const char *p)
+{
+    char *e = (char *)p;
+    u32 r11 = (u32)strtoul(e, &e, 16), gpr[18];
+    u64 fpr[18];
+    for (int i = 0; i < 18; i++) gpr[i] = (u32)strtoul(e, &e, 16);
+    for (int i = 0; i < 18; i++) fpr[i] = (u64)_strtoui64(e, &e, 16);
+    tcrt_set_frame(r11, gpr, fpr);
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 6) {
@@ -81,8 +92,8 @@ int main(int argc, char **argv)
     const char *want = argv[4];
     static char line[1 << 16];
     static u8 buf[1 << 15];
-    static u32 r[8], rets[16];
-    static u64 fbits[8], frets[16];
+    static u32 r[8], rets[TCRT_RETS];
+    static u64 fbits[8], frets[TCRT_RETS];
     static f64 f[8];
     int id = -1, active = 0;
     while (fgets(line, sizeof line, in)) {
@@ -105,9 +116,11 @@ int main(int argc, char **argv)
         } else if (line[0] == 'F') {
             dwords(line + 1, fbits, 8);
         } else if (line[0] == 'C') {
-            words(line + 1, rets, 16);
+            words(line + 1, rets, TCRT_RETS); /* 16 words, more when a later call's result was repaired */
         } else if (line[0] == 'D') {
-            dwords(line + 1, frets, 16);
+            dwords(line + 1, frets, TCRT_RETS);
+        } else if (line[0] == 'X') {
+            frame_line(line + 1);
         } else if (line[0] == 'M') {
             char *p = line + 2;
             u32 addr = (u32)strtoul(p, &p, 16);

@@ -5,6 +5,7 @@
  * come 0 to 16 ms late. A game that times its step from a timer then moves unevenly from tick to tick (a judder that
  * in-between frames show). A high-resolution waitable timer wakes within about half a millisecond, and the rest spins.
  * With in-between frames it naps 1 ms at most, so they are still tried through the wait. */
+#include <stdlib.h>
 #include <string.h>
 #include <windows.h>
 #include "base.h"
@@ -54,11 +55,38 @@ int pace_option(const char *arg, const char *value)
     return 2;
 }
 
+/* PACE_STALL=MS:EVERY (developer env only, off when unset; port/README.md): every EVERY-th tick of the real clock overruns by
+ * MS ms plus (k * 7) % 17 ms at its k-th time, so the late tick ends at a different point of a blank each time: a hitch to
+ * measure the pacing after it. Each one logs how late it was and the wait from its end until the next tick goes. */
+static u32 g_stall_ms, g_stall_every, g_stall_ticks, g_stall_k;
+static void stall_read(void)
+{
+    const char *e = getenv("PACE_STALL");
+    char *end = NULL;
+    if (e) g_stall_ms = (u32)strtoul(e, &end, 10);
+    if (end && *end == ':') g_stall_every = (u32)strtoul(end + 1, NULL, 10);
+    if (g_stall_every)
+        port_log("pace: PACE_STALL %u ms every %u ticks (developer test switch)\n", g_stall_ms, g_stall_every);
+    else g_stall_every = 0;
+}
+
 void pace_next_tick(u32 hz, PaceIdle idle)
 {
-    u64 next = pace_next(&g_due, host_ticks(hz), g_catch_up), due_us = next * 1000000u / hz;
+    static int drop_old = -1;   /* PACE_DROP_NOW=0: a dropped blank waits for the boundary after now, as before 2026-11-14 (pace.h) */
+    u64 next, due_us, stalled_at = 0, late = 0;
+    u32 ms = 0;
+    if (drop_old < 0) { const char *e = getenv("PACE_DROP_NOW"); drop_old = e && e[0] == '0'; stall_read(); }
+    if (g_stall_every && ++g_stall_ticks % g_stall_every == 0) {
+        ms = g_stall_ms + (++g_stall_k * 7u) % 17u;
+        pace_wait_us((u64)ms * 1000u);
+        stalled_at = host_ticks(1000000u), late = host_ticks(hz) - g_due;
+    }
+    next = pace_next(&g_due, host_ticks(hz), g_catch_up && drop_old ? 2 : g_catch_up), due_us = next * 1000000u / hz;
     while (host_ticks(hz) < next)
         if (!idle || !idle(due_us)) pace_nap_until(due_us, idle != NULL);
+    if (stalled_at)
+        port_log("pace: stall %u: %u ms, %llu blanks late, rule %s: the next tick went %.3f ms after it\n", g_stall_k, ms, late,
+                 drop_old ? "old" : "now", (double)(host_ticks(1000000u) - stalled_at) / 1000.0);
     host_tick_real();
 }
 

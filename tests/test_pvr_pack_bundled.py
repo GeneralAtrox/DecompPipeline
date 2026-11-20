@@ -207,5 +207,30 @@ class PadIcons(unittest.TestCase):
             shutil.rmtree(d, ignore_errors=True)
 
 
+@unittest.skipUnless(HAVE_VC, NO_VC)
+class TexturePackInCheckRuns(unittest.TestCase):
+    """A game whose game.json names a pack gets it in a play run, not in a check run (fixed clock: regress goldens,
+    lockstep, emulator comparisons); --texture-pack on or DIR asks for it there, off turns it off anywhere."""
+
+    def test_check_run_ignores_the_game_default(self):
+        d = pathlib.Path(tempfile.mkdtemp(dir=TOOL / "tests" / ".work" if (TOOL / "tests" / ".work").is_dir() else None))
+        try:
+            vram = bytearray(random.Random(3).getrandbits(8) for _ in range(0x10000)) + bytes(0x7f0000)
+            case = (tp.VQ | 1 << 27, 64, 64, 0)
+            pack = d / "pack"
+            p = tp.Pack(pack, "test")
+            p.add(tp.key(*case[:3], vram[0:tp.texture_bytes(*case)]), bytes([9, 8, 7, 255]) * 16, 4, 4)
+            self.assertEqual(p.close(), 1)
+            exe = build_driver(d, pack)
+            levels = lambda arg=None, check=False: run_driver(exe, vram, [case], arg, check_run=check)[0][1]
+            self.assertEqual(levels(), 3)                      # a play run: the game's pack
+            self.assertEqual(levels(check=True), 0)            # a check run: the original
+            self.assertEqual(levels("on", True), 3)            # asked for
+            self.assertEqual(levels(str(pack), True), 3)
+            self.assertEqual(levels("off"), 0)
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+
 if __name__ == "__main__":
     unittest.main()

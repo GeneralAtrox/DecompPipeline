@@ -153,7 +153,10 @@ the other proofs a landing owes (its tests, replays identical, the plant caught,
   Dreamcast, Robo Pit on Saturn.
 
 The landing's last commit carries a line per console, made by `tools/asan_landing.py trailer` from the runs; the line names the
-tree the builds were made from, so it holds only on that tree. `tests/test_asan_landing.py` fails on any kit host-C commit
+tree the builds were made from, so it holds only on that tree. A core game that can't build on that tree (its kit line is on
+another contract) runs on its kit line's merge of the landing instead: `trailer --game G --on REV` makes its line, which goes on
+a later commit and holds for every commit that merge contains (the user, 2026-11-10: "Count kit-line merge runs"). The kit
+line must be pushed, so the check can find the merge. `tests/test_asan_landing.py` fails on any kit host-C commit
 since the rule that no line covers (AGENTS.md "Test rules", rule 3). The first runs (2026-11-09) and their runner are in
 `docs/proofs/asan/`.
 

@@ -10,6 +10,7 @@
 #include "host.h"
 #include "work_count.h"
 #include "base.h"
+#include "show_count.h"
 
 static ID3D11RenderTargetView *g_back_rtv;
 ID3D11RenderTargetView *gfx_back_rtv(void) { return g_back_rtv; }
@@ -50,46 +51,6 @@ f32 port_widescreen(void) { return g_gfx.wide_k > 1.0f ? g_gfx.wide_k : 1.0f; }
 f32 port_tallscreen(void) { return g_gfx.tall_k > 1.0f ? g_gfx.tall_k : 1.0f; }
 /* The shape was chosen (--aspect, the menu) or follows the window: anything but a check at its original 4:3. */
 int port_shape_chosen(void) { return g_gfx.aspect_set || gfx_aspect() == 0.0f; }
-
-/* The 640x480 screen is the frame's middle, so a view centred on it (the full screen, or a wipe opening from the
- * centre) grows by the same share: W by W * (wide - 1), H by H * (tall - 1), half to each side. A view off centre
- * (a render target's) keeps its own. A call inside a widened one (a renderer calling its twin) leaves it as it is. */
-static int g_wide_cull_depth;
-
-static int wide_centred(f32 at, f32 size, f32 screen)
-{
-    f32 d = at + size * 0.5f - screen * 0.5f;
-    return d > -0.5f && d < 0.5f;
-}
-
-int port_wide_cull_begin(u32 viewport, f32 saved[4])
-{
-    f32 *v = (f32 *)(uintptr_t)viewport; /* W, H, X, Y */
-    f32 k = port_widescreen() - 1.0f, ky = port_tallscreen() - 1.0f;
-    f32 side, over;
-    int i;
-    if (g_wide_cull_depth || (k <= 0.0f && ky <= 0.0f) || !wide_centred(v[2], v[0], 640.0f)
-        || !wide_centred(v[3], v[1], 480.0f)) {
-        return 0;
-    }
-    for (i = 0; i < 4; i++) saved[i] = v[i];
-    side = v[0] * 0.5f * k;
-    over = v[1] * 0.5f * ky;
-    v[0] += 2.0f * side;
-    v[1] += 2.0f * over;
-    v[2] -= side;
-    v[3] -= over;
-    g_wide_cull_depth = 1;
-    return 1;
-}
-
-void port_wide_cull_end(u32 viewport, const f32 saved[4])
-{
-    f32 *v = (f32 *)(uintptr_t)viewport;
-    int i;
-    for (i = 0; i < 4; i++) v[i] = saved[i];
-    g_wide_cull_depth = 0;
-}
 
 static void release_frame(void)
 {
@@ -219,22 +180,38 @@ void gfx_clear(u32 argb)
     gfx_unlock();
 }
 
-/* The latency object counts frames the swap chain can take; one taken here is kept for the next gfx_show. */
-static int g_can_show;
-int gfx_can_show(void)
-{
-    if (!g_gfx.latency || g_can_show) return 1;
-    g_can_show = WaitForSingleObject(g_gfx.latency, 0) == WAIT_OBJECT_0;
-    return g_can_show;
-}
+/* The latency object counts frames the swap chain can take; one taken here is kept for the next gfx_show. Two threads
+ * ask (the tick's and the one that shows frames), so the counts held are kept in show_count.c, where none can be lost. */
+int gfx_can_show(void) { return show_count_take(g_gfx.latency, 0); }
 
 /* --present-thread: waits a moment for the display to take a frame, holding no lock. */
-void gfx_show_wait(void)
+void gfx_show_wait(void) { show_count_take(g_gfx.latency, 2); }
+
+/* The last resort, and the log's word for it. A frame is dropped only because presenting it would block; if the
+ * display has taken none for a whole second in a window that is not hidden, something lost the counts (see
+ * show_count.c: that stopped the picture for good while the game ran on), and one blocked Present a second is better
+ * than no picture. The log could not tell that state from a hang or a slow game before: this line is how it shows. */
+static LONGLONG g_present_at;
+static int show_overdue(void)
 {
-    if (g_gfx.latency && !g_can_show && WaitForSingleObject(g_gfx.latency, 2) == WAIT_OBJECT_0) g_can_show = 1;
+    static u32 times;
+    LARGE_INTEGER now, f;
+    QueryPerformanceCounter(&now);
+    QueryPerformanceFrequency(&f);
+    if (!g_present_at) g_present_at = now.QuadPart;
+    if (now.QuadPart - g_present_at < f.QuadPart) return 0;
+    if (times++ % 30u == 0u)
+        port_log("gfx: nothing presented for %.1f s: the display takes no frame (%ld count(s) held, %u time(s), vblank %u); "
+                 "one is presented anyway\n", (double)(now.QuadPart - g_present_at) / (double)f.QuadPart,
+                 show_count_held(), times, port_vblank_count());
+    return 1;
 }
 
 static double g_fps;
+static int g_nowait;          /* gfx_present_nowait */
+static unsigned g_would_wait; /* Presents that would have waited, made again with the lock let go */
+static unsigned g_fallbacks;  /* pending frames presented the old way after PENDING_MAX_MS, holding gfx_lock */
+static LONGLONG g_fallback_held; /* their time in Present (and --present-stall-us), in counter ticks */
 
 double gfx_presented_fps(void) { return g_fps; }
 
@@ -251,6 +228,9 @@ u64 gfx_last_present_us(void)
     QueryPerformanceFrequency(&f);
     return (u64)g_present_last * 1000000u / (u64)f.QuadPart;
 }
+/* runtime/frame_thread.c's 5 s line: that thread's copies into the back buffer and Presents under gfx_lock, ticks */
+static LONGLONG g_split_copy, g_split_present;
+void gfx_lock_split(u64 *copy, u64 *present) { *copy = (u64)g_split_copy, *present = (u64)g_split_present; }
 
 static void note_presented(void)
 {
@@ -286,43 +266,67 @@ static void note_presented(void)
     if (n != waits0)
         port_log("gfx: the game's thread waited %u time(s) for the device context in those %.1f s, %.1f ms in all\n", n - waits0,
                  secs, (double)(us - us0) / 1000.0);
-    waits0 = n;
-    us0 = us;
+    static unsigned ww0;
+    if (g_nowait && g_would_wait != ww0)
+        port_log("gfx: %u Present(s) in those %.1f s would have waited for the display; made again with gfx_lock let go\n",
+                 g_would_wait - ww0, secs);
+    ww0 = g_would_wait;
+    static unsigned fb0;
+    static LONGLONG fbh0;
+    if (g_fallbacks != fb0)
+        port_log("gfx: the 250 ms fallback fired %u time(s) in those %.1f s, held the device context %.1f ms in all\n",
+                 g_fallbacks - fb0, secs, (double)(g_fallback_held - fbh0) * 1000.0 / (double)freq.QuadPart);
+    fb0 = g_fallbacks, fbh0 = g_fallback_held;
+    waits0 = n, us0 = us;
 }
 
-static void show_inner(void)
+/* --present-nowait (on by default) with --present-thread and vsync: a Present that would wait for the display (a buffer to
+ * draw into, its next refresh) comes back at once instead (DXGI_PRESENT_DO_NOT_WAIT); the frame stays in the back buffer
+ * and the thread of in-between frames presents it again holding no lock between tries (gfx_present_retry). On the user's
+ * laptop (2026-11-13, 144 Hz) each such Present waited up to a refresh, 7 ms, holding gfx_lock on that thread, every
+ * frame; the game's thread waited 400-700 times in 5 s for it, 1.7-4.5 s in all, and ran 300-480 ticks in 10 s, not 600.
+ * Now it waits at most for the copy into the back buffer. A frame still not taken after PENDING_MAX_MS is presented
+ * the old way. --present-stall-us N stands for a slow display: a wait of N us, or with no wait, that long refused. */
+#define PENDING_MAX_MS 250
+static int g_pending;
+static LONGLONG g_pending_at;
+void gfx_present_nowait(int on) { g_nowait = on; }
+int gfx_present_pending(void) { return g_pending; }
+
+static void present_made(void)
 {
-    float border[4];
-    ID3D11Resource *back = NULL;
-    work_add(WC_PRESENTS, 1);
-    if (!g_gfx.dev) return;
-    if (gfx_present_stall_us()) pace_sleep_us(gfx_present_stall_us()); /* --present-stall-us: a test's slow Present */
-    /* the swap chain still holds as many frames as it may queue (a hidden or throttled window): this one is dropped,
-     * since presenting it would block the game */
-    if (!g_gfx.swap || !g_back_rtv || !gfx_can_show()) {
-        if (g_gfx.swap && g_back_rtv && g_gfx.dropped++ % 600u == 0u)
-            port_log("gfx: %u frame(s) dropped: the display is not taking them (vblank %u)\n", g_gfx.dropped,
-                     port_vblank_count());
-        if (!gfx_on_present_thread()) gfx_pump();
-        return;
-    }
-    g_can_show = 0;
-    argb_to_float(g_border | 0xff000000u, border);
-    ID3D11DeviceContext_ClearRenderTargetView(g_gfx.ctx, g_back_rtv, border);
-    ID3D11RenderTargetView_GetResource(g_back_rtv, &back);
-    ID3D11DeviceContext_CopySubresourceRegion(g_gfx.ctx, back, 0, g_gfx.frame_x, g_gfx.frame_y, 0,
-                                              (ID3D11Resource *)g_gfx.frame, 0, NULL);
-    console_present_over(back);
-    ID3D11Resource_Release(back);
+    static int occluded;
+    LARGE_INTEGER before, after, f;
+    int test = occluded;
+    int nowait, fallback;
+    UINT flags = !g_gfx.vsync && g_gfx.tearing ? DXGI_PRESENT_ALLOW_TEARING : 0u;
+    HRESULT hr;
+    QueryPerformanceCounter(&before);
+    QueryPerformanceFrequency(&f);
+    if (!g_pending) g_pending_at = before.QuadPart;
+    nowait = g_nowait && g_gfx.vsync && !test && before.QuadPart - g_pending_at < f.QuadPart * PENDING_MAX_MS / 1000;
+    fallback = g_pending && g_nowait && g_gfx.vsync && !test && !nowait; /* logged only (note_presented) */
     /* VSync off presents at once, tearing where the swap chain allows it (variable refresh). While the window cannot
      * be seen, a synced present can block far longer than a refresh, so only a test present is made then. */
-    static int occluded;
-    UINT flags = !g_gfx.vsync && g_gfx.tearing ? DXGI_PRESENT_ALLOW_TEARING : 0u;
-    LARGE_INTEGER before, after;
-    QueryPerformanceCounter(&before);
-    HRESULT hr = IDXGISwapChain1_Present(g_gfx.swap, occluded ? 0u : g_gfx.vsync ? 1u : 0u,
-                                         occluded ? DXGI_PRESENT_TEST : flags);
+    if (gfx_present_stall_us() && !test && !nowait) pace_sleep_us(gfx_present_stall_us()); /* --present-stall-us */
+    if (nowait && (before.QuadPart - g_pending_at) * 1000000 < (LONGLONG)gfx_present_stall_us() * f.QuadPart)
+        hr = DXGI_ERROR_WAS_STILL_DRAWING;
+    else
+        hr = IDXGISwapChain1_Present(g_gfx.swap, test ? 0u : g_gfx.vsync ? 1u : 0u,
+                                     test ? DXGI_PRESENT_TEST : flags | (nowait ? DXGI_PRESENT_DO_NOT_WAIT : 0u));
     QueryPerformanceCounter(&after);
+    if (gfx_on_present_thread()) g_split_present += after.QuadPart - before.QuadPart; /* gfx_lock_split */
+    if (hr == DXGI_ERROR_WAS_STILL_DRAWING) { /* nothing queued, no count used: tried again with gfx_lock let go */
+        if (!g_pending) g_would_wait++;
+        g_pending = 1;
+        return;
+    }
+    g_pending = 0;
+    if (fallback) g_fallbacks++, g_fallback_held += after.QuadPart - before.QuadPart;
+    /* a test present queues no frame, so no count comes back for it: the one held is kept, or a hidden window would
+     * use up both and show nothing once it could be seen again */
+    if (!test) show_count_used(g_gfx.latency), gfx_note_shown();
+    g_present_at = after.QuadPart;
     g_present_last = after.QuadPart - before.QuadPart;
     if (g_present_last > g_present_worst) g_present_worst = g_present_last;
     if (FAILED(hr)) port_exit("the display device was lost", 4);
@@ -332,6 +336,43 @@ static void show_inner(void)
     }
     if (!occluded) note_presented();
     host_window_frame();
+}
+
+/* --present-thread's thread, holding no lock: the frame whose Present would have waited, again. 1 if it still waits. */
+int gfx_present_retry(void)
+{
+    if (!g_pending) return 0;
+    gfx_lock();
+    if (g_pending && g_gfx.swap) present_made();
+    gfx_unlock();
+    return g_pending;
+}
+
+static void show_inner(void)
+{
+    float border[4];
+    ID3D11Resource *back = NULL;
+    LARGE_INTEGER c0, c1; /* gfx_lock_split */
+    work_add(WC_PRESENTS, 1);
+    if (!g_gfx.dev) return;
+    /* the swap chain still holds as many frames as it may queue (a hidden or throttled window): this one is dropped,
+     * since presenting it would block the game */
+    if (!g_gfx.swap || !g_back_rtv || (!gfx_can_show() && !show_overdue())) {
+        if (g_gfx.swap && g_back_rtv && g_gfx.dropped++ % 600u == 0u)
+            port_log("gfx: %u frame(s) dropped: the display is not taking them (vblank %u)\n", g_gfx.dropped,
+                     port_vblank_count());
+        if (!gfx_on_present_thread()) gfx_pump();
+        return;
+    }
+    argb_to_float(g_border | 0xff000000u, border), QueryPerformanceCounter(&c0);
+    ID3D11DeviceContext_ClearRenderTargetView(g_gfx.ctx, g_back_rtv, border);
+    ID3D11RenderTargetView_GetResource(g_back_rtv, &back);
+    ID3D11DeviceContext_CopySubresourceRegion(g_gfx.ctx, back, 0, g_gfx.frame_x, g_gfx.frame_y, 0,
+                                              (ID3D11Resource *)g_gfx.frame, 0, NULL);
+    console_present_over(back);
+    ID3D11Resource_Release(back);
+    if (QueryPerformanceCounter(&c1) && gfx_on_present_thread()) g_split_copy += c1.QuadPart - c0.QuadPart;
+    present_made();
     if (!gfx_on_present_thread()) gfx_pump();
 }
 
@@ -349,6 +390,7 @@ void gfx_shutdown(void)
     g_gfx.latency = NULL;
     release_frame();
     console_present_release();
+    gfx_edges_release();
     if (g_gfx.swap) IDXGISwapChain1_Release(g_gfx.swap);
     if (g_gfx.ctx) ID3D11DeviceContext_Release(g_gfx.ctx);
     if (g_gfx.dev) ID3D11Device_Release(g_gfx.dev);

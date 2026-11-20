@@ -117,6 +117,65 @@ int main(void)
 """
 
 
+# Catch-up mixing (aica_catchup): port 0 loops a ring of one value; half way through a blank the game reads the
+# position, then refills the whole ring with another value (as a movie refills its ring up to the read position), and
+# three quarters through it keys port 1 on. Prints the position read, then each output frame where the mix changes
+# value. argv[1] "on" or "off".
+CATCHUP_MAIN_C = r"""#include <stdio.h>
+#include <stdarg.h>
+#include <string.h>
+#include "game.h"
+#include "aica.h"
+
+s32 acDigiOpen(u32 port, u32 aicaAddress, u32 sizeInBytes, u32 audioType, u32 sampleRate);
+s32 acDigiPlayWithParameters(u32 port, u32 volume, u32 pan, u32 dspMixerChannel, u32 dspSendLevel,
+                             u32 frequencyOrCents, u32 frequencyOrCentsFlag, u32 eventOffsetInFrames,
+                             s16 loopStartInFrames, u32 loopEndInFrames);
+s32 acDigiGetCurrentReadPosition(u32 port, u32 *position);
+
+static u8 g_sound[AICA_RAM_SIZE];
+static u32 g_phase;
+void *host_map_fixed(u32 addr, u32 size) { (void)addr, (void)size; return g_sound; }
+void port_log(const char *fmt, ...) { (void)fmt; }
+void cdda_read(s16 *stereo, u32 frames) { for (u32 i = 0; i < 2u * frames; i++) stereo[i] = 0; }
+void audio_start(void) {}
+u32 port_vblank_count(void) { return 0; }
+void port_wait_vblank(void) {}
+u32 port_vblank_phase(int look) { (void)look; return g_phase; }
+
+static void fill(u32 at, u32 frames, s16 value)
+{
+    for (u32 i = 0; i < frames; i++) memcpy(&g_sound[at + 2u * i], &value, 2);
+}
+
+int main(int argc, char **argv)
+{
+    static s16 out[2 * 735];
+    u32 pos = 0;
+    aica_catchup(argc > 1 && !strcmp(argv[1], "on"));
+    fill(0x20000u, 0x8000u, 0x1000);
+    fill(0x40000u, 0x8000u, 0x0800);
+    acDigiOpen(0, 0x20000u, 0x10000u, AICA_PCM16, 44100u);
+    acDigiOpen(1, 0x40000u, 0x10000u, AICA_PCM16, 44100u);
+    g_phase = 0;
+    acDigiPlayWithParameters(0, 15, 16, 0, 0, 44100u, 1u, 0, 0, 0);
+    aica_next_frames(735u);
+    aica_mix(out, 735);
+    g_phase = 32768u;
+    acDigiGetCurrentReadPosition(0, &pos);
+    fill(0x20000u, 0x8000u, 0x2000);
+    g_phase = 49152u;
+    acDigiPlayWithParameters(1, 15, 16, 0, 0, 44100u, 1u, 0, 0, 0);
+    aica_mix(out, 735);
+    printf("%u", pos);
+    for (u32 i = 1; i < 735u; i++)
+        if (out[2u * i] != out[2u * i - 2u]) printf(" %u", i);
+    printf("\n");
+    return 0;
+}
+"""
+
+
 ADPCM_LOOP_MAIN_C = r"""#include <stdio.h>
 #include <stdarg.h>
 #include "game.h"
@@ -204,6 +263,29 @@ class AudioClock(unittest.TestCase):
                 want = (1 + k / 4 - 0.32) * 735.735
                 self.assertLessEqual(abs(pos - want), 1.5, f"quarter {k}: {pos} != {want:.1f} ({got})")
             self.assertEqual(got[5:], [0, 1])
+        finally:
+            shutil.rmtree(d, ignore_errors=True)
+
+
+class CatchUp(unittest.TestCase):
+    @unittest.skipUnless(HAVE_VC, NO_VC)
+    def test_a_read_mid_blank_mixes_up_to_it(self):
+        """With catch-up mixing the half of the blank before the game's read plays the ring as it was then, and the
+        refill only the rest; the whole-blank mix plays the refill throughout (each a voice's two held samples late:
+        it interpolates between them). The position read is the same either way, and a key on three quarters in starts
+        there in both (551 of 735 frames)."""
+        d = work_dir()
+        try:
+            r, exe = build_audio(d, CATCHUP_MAIN_C)
+            self.assertEqual(r.returncode, 0, r.stdout[-3000:] + r.stderr[-1000:])
+            self.assertNotIn("warning", r.stdout.lower())
+            got = {}
+            for mode in ("on", "off"):
+                run = subprocess.run([str(exe), mode], capture_output=True, text=True, timeout=60)
+                self.assertEqual(run.returncode, 0)
+                got[mode] = [int(x) for x in run.stdout.split()]
+            self.assertEqual(got["on"], [735 + 367, 367 + 2, 551], got)
+            self.assertEqual(got["off"], [735 + 367, 2, 551], got)
         finally:
             shutil.rmtree(d, ignore_errors=True)
 

@@ -31,7 +31,7 @@ window around `82740ff8..82d34d18`; of the 189 shorter ones 177 match, which mea
 entries written so far, 8 have any match (two of those are functions of 1 and 5 words), and the matches that are not tiny are one function each. So Too Human links **another build of
 the XDK Direct3D library**: the same Direct3D 9 calls with the same arguments, but not the same code or addresses.
 Consequence: the D3D11 backend (what each call does) is shared between games; the table from an entry's address to its call is
-per game (found by the stops, as here). The entry list in `xb_d3d.c` is keyed by address for Mega Man 10 only and moves to a
+per game (found by the stops, as here). The entry list in `xb_d3d.c` is keyed by Mega Man 10's addresses; `port/games/<game>/xb_game.h` maps another game's entries onto them. It was to move to a
 per-game table before a second game uses the kit. The kernel and XAM host calls are shared (same ordinals, same Xenia names).
 
 ## 2. Cut
@@ -73,7 +73,7 @@ share of the frame budget (6.67 ms p99 to make a frame at 2560x1600).
 | Shaders: offline conversion | the 24 containers in the image, found by magic | 820937b8, 820937f0 and the shader creates | `tools/shader_convert.py` reads each container (header, constant table, embedded constants, microcode) and writes HLSL per shader plus `gen/shaders.c`; `xb_gpu.c` compiles it with `D3DCompile` on first use. 24 of 24 convert and compile (`tools/hlsl_check.py`). No microcode runs on the host | to measure |
 | Host D3D11 device, window, swap chain | the first draw | 82093a98 | The port base's (`port/base/present.h`), opened at the first draw; `runtime/xb_gpu.c` draws on them. Headless runs draw the same frame target with no window |
 | Funclets and non-volatile registers | the `__finally` blocks the compiler outlines (first: 821be588, called from 821bdd20) | the CRT lock paths | the translator's port form passes `r12` on every call (`TcArgs.r12`) and, for a call to a funclet (first instructions `addi rN, r12, ...`), `r14..r31` (`TcArgs.nv`); a funclet starts with them. Normal functions are unchanged | none |
-| Direct3D unpack | `vupkd3d128` types 0..5 | 822490b8 (a vertex unpack) | `xv_vupkd3d`, written from the oracle's executor; `vpkd3d128` stays refused. A function with it is translated but not judged (the judge refuses it) | none |
+| Direct3D unpack and pack | `vupkd3d128` and `vpkd3d128`, types 0..5 | 822490b8 (a vertex unpack); Too Human 829e4f08 (a pack) | `xv_vupkd3d` and `xv_vpkd3d`, written from the oracle's executor (`TcVmxFloat.vpkd3d`, its placement by mask and z from Xenia). A function with either is translated but not judged (the judge refuses it) | none |
 | Return kinds and kept registers | every call in the port form | a null write at 0x2694, the leaf 820a0130 | the optimised build keeps volatile registers across calls by its own rules: `keeps.py` works out per function what it and its callees never write; a callee that writes neither r3 nor f1 leaves them as they were (call kind `v`). A leaf also ends at a backward tail jump | none |
 | Threads, r13 | ExCreateThread and the thread's processor block | 821bb250, the sound thread 8209db88 | a guest thread is a host thread with its own guest stack and r13; ExTerminateThread is ExitThread. No scheduler | none |
 | Files | NtCreateFile, NtReadFile, NtWriteFile, NtQuery/SetInformationFile | 82096fe0 | host files over the extracted package (`XB_GAME_DIR`, `tools/stfs.py`). Writing happens only inside saved content | none |

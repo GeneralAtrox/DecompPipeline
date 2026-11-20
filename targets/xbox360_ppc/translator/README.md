@@ -13,20 +13,24 @@ only as reference and for comparison: see [REFERENCES.md](REFERENCES.md).
 |---|---|
 | Code words that decode | 3,693,903 of 3,695,596 (99.95%); the rest are data words inside code |
 | Decoder agreement with a reference disassembler | every one of the 3,695,596 code words |
-| Functions translated to C | 88,149 of 88,187 |
-| **Functions that build** (DP's lint, then MSVC `/O1 /fp:strict /W4 /WX`) | **88,111 of 88,187 (99.91%)**, holding 94.0% of the instructions |
-| Of the 86,565 functions DP's phase 1 can judge (not refused) | 86,537 build (99.97%) |
-| Vector (VMX128 + AltiVec) instructions lifted | 83,116 of 83,210 (99.89%): 144 of the 146 vector ops in the game |
-| Functions with vector code that build | 1,345 of 1,353 |
-| Time for the whole game | 26 min to translate (3 workers), 17 min to compile |
+| Functions translated to C (judge form: `tools/compile_all.py`, 2026-11-13, x360-tx-big) | 87,595 of 88,187 |
+| **Functions that build** (the Xbox 360 judge's lint, then MSVC `/O1 /fp:strict /W4 /WX`) | **87,594 of 88,187 (99.33%)** |
+| Port form (what the game's build translates: `port/tools/gen_xbox.py`, the live build's `gen/` and `obj/`) | 87,759 of 88,187 translated and compiled; the other 428 are XDK Direct3D library code (`port/games/too_human/boundary.json`), replaced by the kit, never translated |
+| Of the 86,565 functions DP's phase 1 can judge (not refused) (earlier run) | 86,537 build (99.97%) |
+| Vector (VMX128 + AltiVec) instructions lifted (earlier run) | 83,116 of 83,210 (99.89%): 144 of the 146 vector ops in the game |
+| Functions with vector code that build (earlier run) | 1,345 of 1,353 |
+| Time for the whole game (build box B, 3 workers) | 37 min to translate, about 27 min to compile. The slowest function, 8237bd08 (22,655 instructions), takes 37 s alone (96 s beside two other workers); it took over 15 minutes before |
 
-Why the other 76 functions do not build:
+Why the other 593 functions do not build in the judge form:
 
-| Count | Cause | Instructions |
-|---|---|---|
-| 38 | over DP's 60 KB file cap even in the short form (one `px_a` / `px_b` per call, chained zeros, no optional whitespace); 2,000 to 8,000 instructions each | 187,393 |
-| 37 | use `vupkd3d128` / `vpkd3d128` (the Direct3D pack/unpack formats), which are not modelled yet | 9,924 |
-| 1 | translation takes over 5 minutes (8237bd08, 22,655 instructions) | 22,655 |
+| Count | Cause |
+|---|---|
+| 592 | refused: they read registers before setting them that the judge's harness does not hand over (452 r12; 66 and 3 the CR fields; 21 v1, 5 v1 and v2, 4 v69 and v72; 6 r30, 2 r31; 2 others), so the judge would run them with zeros there. The port form hands the caller's registers over and translates them all |
+| 1 | 82b01e98 (2,359 instructions): MSVC C4702 (unreachable code) under `/WX` |
+
+The 60 KB cap that used to stop 38 large functions is core/lint's limit for agent-readable files. The Xbox 360 judge
+raises it to 2 MB (`x360_lint.py`), and the port build does not lint at all, so `compile_all.py` now lints with the
+judge's rule. Of the 37 functions over 60 KB, 36 build (82b01e98 is the other).
 
 **Not yet judged.** DP's judge needs harnesses (test vectors and expected results) from the Xbox 360 target's
 proof in Ghidra. That proof is queued, and Too Human has no harness yet. `tools/dp_judge.py` is written for when
@@ -57,8 +61,14 @@ it does, but it is untested.
   - `lvewx` leaves the other elements 0;
   - VSCR[SAT] is not recorded.
 - **Notes.** What the C cannot model exactly is written as a note beside the function. Examples: traps,
-  lwarx / stwcx. (treated as a plain load and an always-successful store), the time base, the MSR, mfocrf, and
+  lwarx / stwcx. (judge form: a plain load and an always-successful store, as one thread runs; port form: a compare and
+  swap, and sync / lwsync / eieio are real fences there), the time base, the MSR, mfocrf, and
   the vector estimates.
+
+- **Exit-state form** (`Facts.exit_state`, `exit_form.py`; judge form only, refused with the port form). The same C,
+  plus entry reads (`tcx_in_r` / `tcx_in_f` / `tcx_in_cr`) of the registers whose entry value may be nonzero, and
+  before each return a `tcx_*` record of every register written; stack stores are kept (no stack_dce). `dp_judge.py`
+  builds it beside the normal form when the harness has exit lines. With the flag off the C is byte for byte the same.
 
 ## Layout
 
@@ -67,6 +77,7 @@ it does, but it is untested.
 - `xenontranslate/translate.py`: control flow, frame helpers, jump tables, and lifting each scalar instruction.
 - `xenontranslate/vmx.py`: the vector instructions and their C helpers.
 - `xenontranslate/passes.py`: propagation, store-to-load forwarding, dead code, and the tc_call / tc_callf choice.
+- `xenontranslate/exit_form.py`: the exit-state form (judge only).
 - `xenontranslate/returns.py`: works out, across the whole executable, whether each function returns in r3, in
   f1, or in neither.
 - `xenontranslate/emit.py`: the C text. `structure.py` and `cfgstruct.py` lay it out as loops and ifs.
@@ -94,7 +105,8 @@ python -m unittest discover tests
 - The tests cover:
   - decoder encodings worked from the manuals, plus one golden word per op;
   - every vector helper, compiled with MSVC and run on hand-worked cases, such as the once-rounded `vmaddfp`
-    case where rounding through double gives a different answer.
+    case where rounding through double gives a different answer;
+  - the exit-state form and its planted wrong answers (DP's `tests/test_x360_judge_exit.py`, `_oracle.py`).
 
 Every tool takes the workspace as `--ws` (`--workspace`). DP is the checkout this folder is part of; the tools build
 with its `targets/xbox360_ppc/runtime` and its `config.local.json` `vcvars`, and save only the compiler's environment

@@ -51,9 +51,11 @@ class BuildList(unittest.TestCase):
 
     def test_both_builds_take_the_whole_base(self):
         saturn = (KIT / "tools" / "build_saturn.py").read_text(encoding="utf-8")
+        native = (KIT / "tools" / "build_native.py").read_text(encoding="utf-8")
         cmake = (KIT / "CMakeLists.txt").read_text(encoding="utf-8")
         for needle in ('BASE.glob("*.c")', 'BASE.glob("*.cpp")'):
             self.assertIn(needle, saturn)
+            self.assertIn(needle, native)
         for needle in ("GLOB PORT_BASE_C CONFIGURE_DEPENDS base/*.c", "GLOB PORT_HOST CONFIGURE_DEPENDS base/*.cpp"):
             self.assertIn(needle, cmake)
 
@@ -162,7 +164,7 @@ class NewConsole(unittest.TestCase):
                 self.assertTrue(defined(self.text, name), name)
 
     def test_the_real_consoles_define_the_same_list(self):
-        for folder in ("runtime", "saturn"):
+        for folder in ("runtime", "saturn", "native"):
             text = "\n".join(p.read_text(encoding="utf-8", errors="replace") for p in sorted((KIT / folder).rglob("*.c")))
             for name in REQUIRED:
                 with self.subTest(kit=folder, name=name):
@@ -240,7 +242,7 @@ int main(void)
     puts("ok");
     return 0;
 }
-''', [KIT / "base" / "session.c"], "c")
+''', [KIT / "base" / "session.c", KIT / "base" / "session_events.c"], "c")
 
     def test_a_save_read_skips_a_note_it_meets(self):
         self.build_run("ahead2", r'''
@@ -270,8 +272,41 @@ int main(void)
     puts("ok");
     return 0;
 }
-''', [KIT / "base" / "session.c"], "c")
+''', [KIT / "base" / "session.c", KIT / "base" / "session_events.c"], "c")
 
+    def test_play_option_round_trip(self):
+        # port_play_option: the recording keeps the value where the game read it; a replay gets it there, and a read
+        # the recording has no note for (an older recording) keeps the run's own value
+        self.build_run("playopt", r'''
+#include <stdio.h>
+#include <string.h>
+#include "base.h"
+#include "session.h"
+static u32 g_vb;
+u32 port_vblank_count(void) { return g_vb; }
+int port_extra_drawing(void) { return 0; }
+int console_lockstep_pad(HostPad *pad) { (void)pad; return 0; }
+s32 console_lockstep_timer(s32 live) { return live; }
+int console_lockstep_time(HostTime *t) { (void)t; return 0; }
+int input_live(void) { return 0; }
+void port_log(const char *fmt, ...) { (void)fmt; }
+#define CHECK(c) do { if (!(c)) { printf("fail line %d: %s\n", __LINE__, #c); return 1; } } while (0)
+int main(void)
+{
+    u32 save = 9, got = 0;
+    CHECK(port_play_option("coop", 1) == 1);
+    session_save_read("a.sav", &save, 4, 1);
+    CHECK(port_play_option("right-stick", 2) == 2);
+    CHECK(session_write("playopt.ptrec", "test\n"));
+    CHECK(session_option("--replay", "playopt.ptrec") == 2);
+    CHECK(port_play_option("coop", 0) == 1);        /* the recording's, not this run's */
+    CHECK(session_save_replayed("a.sav", &got, 4) == 1 && got == save);
+    CHECK(port_play_option("right-stick", 0) == 2);
+    CHECK(port_play_option("right-stick", 1) == 1); /* past the recording's notes: the run's own */
+    puts("ok");
+    return 0;
+}
+''', [KIT / "base" / "session.c", KIT / "base" / "session_events.c"], "c")
 
 if __name__ == "__main__":
     unittest.main()

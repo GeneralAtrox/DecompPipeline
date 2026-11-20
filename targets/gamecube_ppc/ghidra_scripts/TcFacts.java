@@ -14,6 +14,8 @@ public class TcFacts {
     BitSet code = new BitSet(); // bit (addr - ramLo): an instruction byte
     boolean haveCode;
     long oracleDeadlineS, oracleRescueS;
+    long oracleBudgetS;  // vector generation's budget in seconds of work at workPerS (0: none; TcBudget)
+    long workPerS;       // "oracle_work_per_s": the oracle's work per second as measured (TcBudget.of)
     int minValid;
     boolean targetedVectors; // "targeted_vectors": boundary-value vectors for untaken branch directions (TcBound)
     boolean branchCoverage; // "branch_coverage": record branch directions (TcDirs; report only)
@@ -64,6 +66,8 @@ public class TcFacts {
                 case "code_ranges": f.loadCode(v); break;
                 case "oracle_deadline_s": f.oracleDeadlineS = Long.parseLong(v); break;
                 case "oracle_rescue_s": f.oracleRescueS = Long.parseLong(v); break;
+                case "oracle_budget_s": f.oracleBudgetS = Long.parseLong(v); break;
+                case "oracle_work_per_s": f.workPerS = Long.parseLong(v); break;
                 case "targeted_vectors": f.targetedVectors = v.equals("1") || v.equals("true"); break;
                 case "branch_coverage": f.branchCoverage = v.equals("1") || v.equals("true"); break;
                 case "min_valid": f.minValid = Integer.parseInt(v); break;
@@ -80,6 +84,8 @@ public class TcFacts {
     }
 
     void verify() {
+        if (oracleBudgetS > 0 && workPerS <= 0) throw new IllegalStateException("oracle_budget_s without oracle_work_per_s");
+        if (oracleBudgetS > 0 && oracleDeadlineS > 0) throw new IllegalStateException("both a work budget and a clock deadline");
         long[][] pairs = {{ramLo, TcBase.RAM_LO}, {ramHi, TcBase.RAM_HI}, {entrySp, TcBase.SP},
             {stackLo, TcBase.STACK_LO}, {sentinel, TcBase.SENTINEL}, {scrLo, TcBase.SCR}, {scrHi, TcBase.SCR + TcBase.SCR_SIZE}};
         for (long[] p : pairs) {

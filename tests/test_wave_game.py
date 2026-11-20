@@ -62,6 +62,21 @@ class Pool(unittest.TestCase):
         finally:
             W.STOP_FILE.unlink(missing_ok=True)
 
+    def test_stop_from_before_the_start_is_ignored(self):  # another wave's STOP: kept for it, not obeyed here
+        ctl = wave_game.wave_ctl
+        try:
+            ctl.write_stop(W.STOP_FILE)
+            ctl.started(W.STOP_FILE)
+            self.assertEqual(self.r.pool([[PY, "-c", "pass"]], 30, 1), [0])
+            self.assertTrue(W.STOP_FILE.exists())
+            ctl.write_stop(W.STOP_FILE)  # `wave.py stop` now: this wave stops
+            with self.assertRaises(SystemExit) as e:
+                self.r.pool([[PY, "-c", "import time; time.sleep(30)"]], 60, 1)
+            self.assertEqual(e.exception.code, 3)
+        finally:
+            W.STOP_FILE.unlink(missing_ok=True)
+            ctl._seen.pop(str(W.STOP_FILE), None)
+
 
 class Route(unittest.TestCase):
     """The steps with fake children: what each step runs, and what it leaves to the next."""
@@ -165,10 +180,34 @@ class Route(unittest.TestCase):
         self.assertEqual([t for t, _ in self.ran], ["refine.py", "refine.py"])  # readable, then verify
         self.assertIsNone(r2.st.get("stuck"))
 
-    def test_reuse_off_refused(self):
+    def test_reuse_off_refused(self):  # a person's decision (no check proves it): the message names the file to set
         r = wave_game.Run(self.ws, opts())
-        with mock.patch.object(r, "ask", lambda what, *a: False), self.assertRaises(SystemExit):
+        with mock.patch.object(r, "ask", lambda what, *a: False), self.assertRaises(SystemExit) as e:
             r.go()
+        self.assertIn(f'"harness_reuse": true in {r.ws / "project.json"}', str(e.exception.code))
+
+    def test_go_keeps_an_older_stop(self):  # a start no longer deletes the STOP another running wave may still read
+        W.STOP_FILE.write_text("", encoding="utf-8")
+        try:
+            r = wave_game.Run(self.ws, opts())
+            with self.fake(r, [[(a, "readable") for a in self.SCOPE]]):
+                self.assertEqual(r.go(), 0)
+            self.assertTrue(W.STOP_FILE.exists())
+            self.assertFalse(r.stopped())  # written before this start
+            W.STOP_FILE.write_text("again", encoding="utf-8")
+            self.assertTrue(r.stopped())  # written since: obeyed
+        finally:
+            W.STOP_FILE.unlink(missing_ok=True)
+
+    def test_unreadable_state_stops(self):  # present but unreadable: never a silent restart from step 1
+        f = self.ws / "state" / "wave_game.json"
+        for bad in ("{", "[]", '{"hours": {}}'):
+            f.write_text(bad, encoding="utf-8")
+            with self.assertRaises(SystemExit) as e:
+                wave_game.Run(self.ws, opts())
+            self.assertIn(str(f), str(e.exception.code))
+        f.unlink()
+        self.assertEqual(wave_game.Run(self.ws, opts()).st["steps"], {})  # missing: a first start
 
 
 class Entry(unittest.TestCase):

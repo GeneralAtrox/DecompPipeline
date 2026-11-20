@@ -32,7 +32,7 @@ typedef struct FrameConsts {
     f32 wide[4]; /* x: 1 / port_widescreen(), y: 1 / port_tallscreen() */
 } FrameConsts;
 
-static PvrScene g_scene;
+static PvrScene g_scenes[PVR_SLOTS], *g_sc = g_scenes; /* a scene per slot of the frame (pvr_blend_hold.c) */
 static ID3D11VertexShader *g_vs;
 static ID3D11PixelShader *g_ps;
 static ID3D11InputLayout *g_layout;
@@ -42,7 +42,7 @@ static u32 g_vb_cap, g_bb_cap;
 static ID3D11Texture2D *g_depth;
 static ID3D11DepthStencilView *g_dsv;
 static u32 g_depth_w, g_depth_h;
-static ID3D11ShaderResourceView **g_srv;
+static ID3D11ShaderResourceView **g_srv, **g_kept; /* kept: an in-between frame's slot's own (prepare_batches) */
 static GpuBatch *g_gpu;
 static u32 g_srv_cap;
 static int g_failed, g_gpu_blend, g_vb_own; /* --interp-gpu: this frame blends on the GPU; g_vb holds the scene */
@@ -130,7 +130,7 @@ static int upload(ID3D11Buffer *b, const void *data, u32 bytes)
 /* Textures for every batch (decoded on first use), and the batch states the pixel shader reads. */
 static int prepare_batches(void)
 {
-    PvrScene *s = &g_scene;
+    PvrScene *s = g_sc;
     u32 n = s->nbatch ? s->nbatch : 1u;
     if (n > g_srv_cap) {
         void *a = realloc(g_srv, n * sizeof *g_srv), *b;
@@ -144,12 +144,13 @@ static int prepare_batches(void)
     memset(g_gpu, 0, sizeof *g_gpu);
     for (u32 i = 0; i < s->nbatch; i++) {
         const PvrBatch *bt = &s->batch[i];
-        g_srv[i] = bt->flags & PVR_BF_TEXTURE ? pvr_tex_get(bt->tcw, bt->tsp) : NULL;
+        g_srv[i] = g_kept ? g_kept[i] : bt->flags & PVR_BF_TEXTURE ? pvr_tex_get(bt->tcw, bt->tsp) : NULL;
         g_gpu[i].isp = bt->isp;
         g_gpu[i].tsp = bt->tsp;
         g_gpu[i].tcw = bt->tcw;
         g_gpu[i].flags = g_srv[i] ? bt->flags : bt->flags & ~PVR_BF_TEXTURE;
     }
+    pvr_wide_scene(s);
     if (g_bb_srv && n * sizeof(GpuBatch) > g_bb_cap) {
         ID3D11ShaderResourceView_Release(g_bb_srv);
         g_bb_srv = NULL;
@@ -167,33 +168,15 @@ static int prepare_batches(void)
     return upload(g_bb, g_gpu, n * (u32)sizeof(GpuBatch));
 }
 
-static void argb_float(u32 argb, f32 out[4])
-{
-    out[0] = (f32)((argb >> 16) & 0xffu) / 255.0f;
-    out[1] = (f32)((argb >> 8) & 0xffu) / 255.0f;
-    out[2] = (f32)(argb & 0xffu) / 255.0f;
-    out[3] = (f32)(argb >> 24) / 255.0f;
-}
-
-static f32 fog_density(u32 reg)
-{
-    f32 d = (f32)((reg >> 8) & 0xffu) / 128.0f;
-    s32 e = (s32)(s8)(reg & 0xffu);
-    for (; e > 0; e--) d *= 2.0f;
-    for (; e < 0; e++) d *= 0.5f;
-    return d;
-}
-
 static f32 frame_consts(void)
 {
     FrameConsts c;
-    f32 top = g_scene.max_z > g_pvr_drawn->bg_xyz[0][2] ? g_scene.max_z : g_pvr_drawn->bg_xyz[0][2];
     memset(&c, 0, sizeof c);
-    c.depth_scale = top > 0.0f ? 1.0f / top : 1.0f;
-    c.fog_density = fog_density(g_pvr_drawn->fog_density);
+    c.depth_scale = pvr_depth_scale(g_sc->max_z, g_pvr_drawn->bg_xyz[0][2]);
+    c.fog_density = pvr_fog_density(g_pvr_drawn->fog_density);
     c.punch_ref = PUNCH_REF;
     c.shadow_alpha = g_pvr_drawn->shadow < 0 ? 0.0f : 1.0f - (f32)g_pvr_drawn->shadow / 256.0f;
-    argb_float(g_pvr_drawn->fog_color, c.fog_color);
+    pvr_argb_float(g_pvr_drawn->fog_color, c.fog_color);
     for (u32 i = 0; i < 128u; i++) c.fog_table[i] = g_pvr_debug & PVR_DBG_NOFOG ? 0u : g_pvr_drawn->fog_table[i];
     c.wide[0] = 1.0f / port_widescreen();
     c.wide[1] = 1.0f / port_tallscreen();
@@ -201,32 +184,18 @@ static f32 frame_consts(void)
     return c.depth_scale;
 }
 
-void pvr_scissor(const PvrBatch *b)
-{
-    D3D11_RECT r;
-    u32 x0 = b->clip[0] > g_pvr_drawn->clip[0] ? b->clip[0] : g_pvr_drawn->clip[0];
-    u32 y0 = b->clip[1] > g_pvr_drawn->clip[1] ? b->clip[1] : g_pvr_drawn->clip[1];
-    u32 x1 = b->clip[2] < g_pvr_drawn->clip[2] + 1u ? b->clip[2] : g_pvr_drawn->clip[2] + 1u;
-    u32 y1 = b->clip[3] < g_pvr_drawn->clip[3] + 1u ? b->clip[3] : g_pvr_drawn->clip[3] + 1u;
-    r.left = pvr_draw_x(x0, x0 == 0u && x1 >= 640u);
-    r.top = pvr_draw_y(y0, y0 == 0u && y1 >= 480u);
-    r.right = pvr_draw_x(x1, x0 == 0u && x1 >= 640u);
-    r.bottom = pvr_draw_y(y1, y0 == 0u && y1 >= 480u);
-    ID3D11DeviceContext_RSSetScissorRects(g_gfx.ctx, 1, &r);
-}
-
 /* Fills the frame with the background colour; with a global clip smaller than the screen only inside it, so the rest
  * keeps what earlier scenes drew there, as the hardware's frame buffer does (split-screen views drawn on alternate
  * frames). In a wider or taller frame a scene that draws nothing past the screen (a menu's 2D art) has the border
- * colour around it: the plane there was hidden by the art on the console, and its colour would show as bars. A scene
- * that draws nothing at all fills the frame (it showed the plane over the whole screen, a grey box between bars). */
+ * colour around it (the plane there was hidden by the art); a scene drawing nothing fills the frame (a grey box). */
+int g_pvr_framed; /* the scene drawn last left the bars around the screen to the border colour (gfx.h) */
 static void clear_background(const f32 bg[4])
 {
     ID3D11DeviceContext1 *c1;
     D3D11_RECT r;
     u32 x0 = g_pvr_drawn->clip[0], y0 = g_pvr_drawn->clip[1], x1 = g_pvr_drawn->clip[2] + 1u, y1 = g_pvr_drawn->clip[3] + 1u;
     int full = x0 == 0u && x1 >= 640u, fully = y0 == 0u && y1 >= 480u;
-    int framed = full && fully && !g_scene.beyond && g_scene.nvtx && (port_widescreen() > 1.0f || port_tallscreen() > 1.0f);
+    int framed = g_pvr_framed = full && fully && !g_sc->beyond && g_sc->nvtx && (port_widescreen() > 1.0f || port_tallscreen() > 1.0f);
     if ((full && fully && !framed) ||
         FAILED(ID3D11DeviceContext_QueryInterface(g_gfx.ctx, &IID_ID3D11DeviceContext1, (void **)&c1))) {
         ID3D11DeviceContext_ClearRenderTargetView(g_gfx.ctx, g_gfx.draw_rtv, bg);
@@ -234,7 +203,7 @@ static void clear_background(const f32 bg[4])
     }
     if (framed) {
         f32 border[4];
-        argb_float(gfx_border() | 0xff000000u, border);
+        pvr_argb_float(gfx_border() | 0xff000000u, border);
         ID3D11DeviceContext_ClearRenderTargetView(g_gfx.ctx, g_gfx.draw_rtv, border);
         full = fully = 0;
     }
@@ -242,18 +211,19 @@ static void clear_background(const f32 bg[4])
     r.right = pvr_draw_x(x1 < 640u ? x1 : 640u, full);
     r.top = pvr_draw_y(y0, fully);
     r.bottom = pvr_draw_y(y1 < 480u ? y1 : 480u, fully);
+    pvr_frame_share_clip(&r);
     ID3D11DeviceContext1_ClearView(c1, (ID3D11View *)g_gfx.draw_rtv, bg, &r, 1);
     ID3D11DeviceContext1_Release(c1);
 }
 
 static void draw_list(u32 pass, u32 list)
 {
-    const PvrScene *s = &g_scene;
+    const PvrScene *s = g_sc;
     for (u32 i = s->range[pass][list][0]; i < s->range[pass][list][1]; i++) {
         const PvrBatch *b = &s->batch[i];
         ID3D11SamplerState *smp;
         if (!b->count || ((b->isp >> ISP_DEPTH_SHIFT) & 7u) == DEPTH_NEVER) continue;
-        smp = pvr_sampler_state(b->tsp, b->uv_out);
+        smp = pvr_sampler_state(b->tsp, b->uv_out, pvr_tex_pack_mode(g_srv[i]));
         ID3D11DeviceContext_PSSetShaderResources(g_gfx.ctx, 0, 1, &g_srv[i]);
         ID3D11DeviceContext_PSSetSamplers(g_gfx.ctx, 0, 1, &smp);
         ID3D11DeviceContext_OMSetBlendState(g_gfx.ctx, pvr_blend_state(list, b->tsp), NULL, 0xffffffffu);
@@ -287,14 +257,14 @@ static void bind_pipeline(void)
 
 static void draw_translucent(const PvrPass *pass, u32 p)
 {
-    const u32 *r = g_scene.range[p][PVRX_LIST_TRANSLUCENT];
+    const u32 *r = g_sc->range[p][PVRX_LIST_TRANSLUCENT];
     if (pass->autosort && r[1] > r[0] && pvr_oit_begin(g_dsv)) {
         draw_list(p, PVRX_LIST_TRANSLUCENT);
-        if (pvr_modvol_trans_needed(&g_scene, p)) pvr_modvol_trans_draw(&g_scene, p);
+        if (pvr_modvol_trans_needed(g_sc, p)) pvr_modvol_trans_draw(g_sc, p);
         pvr_oit_resolve();
         bind_pipeline();
     } else {
-        if (pvr_modvol_trans_needed(&g_scene, p)) pvr_todo("pvr: translucent modifier volumes without autosort");
+        if (pvr_modvol_trans_needed(g_sc, p)) pvr_todo("pvr: translucent modifier volumes without autosort");
         draw_list(p, PVRX_LIST_TRANSLUCENT);
     }
 }
@@ -303,23 +273,23 @@ static int draw_scene(const PvrPass *passes, int reuse)
 {
     ID3D11DeviceContext *cx = g_gfx.ctx;
     f32 bg[4], scale;
-    if (!init_pipeline() || !ensure_depth() || (!reuse && !prepare_batches())) return 0;
-    if (g_scene.nvtx && !(reuse == 2 && g_vb_own) && (!ensure_buffer(&g_vb, &g_vb_cap, g_scene.nvtx * (u32)sizeof(PvrVtx),
-        D3D11_BIND_VERTEX_BUFFER, 0) || !upload(g_vb, g_scene.vtx, g_scene.nvtx * (u32)sizeof(PvrVtx))))
+    if (!init_pipeline() || !ensure_depth() || ((!reuse || reuse == 3) && !prepare_batches())) return 0;
+    if (g_sc->nvtx && !(reuse == 2 && g_vb_own) && (!ensure_buffer(&g_vb, &g_vb_cap, g_sc->nvtx * (u32)sizeof(PvrVtx),
+        D3D11_BIND_VERTEX_BUFFER, 0) || !upload(g_vb, g_sc->vtx, g_sc->nvtx * (u32)sizeof(PvrVtx))))
         return 0;
-    g_vb_own = reuse != 1; /* 2: the scene's own vertices, blended on the GPU */
+    g_vb_own = !(reuse & 1); /* 2: the scene's own vertices, blended on the GPU; 3: a slot's, blended */
     scale = frame_consts();
-    argb_float(g_pvr_drawn->bg_argb[0] | 0xff000000u, bg);
-    clear_background(bg);
+    pvr_argb_float(g_pvr_drawn->bg_argb[0] | 0xff000000u, bg);
+    if (!g_pvr_keep) clear_background(bg); /* port_render_keep_frame: the frame as it is (pvr_frame_bars) */
     bind_pipeline();
-    for (u32 p = 0; p < g_scene.passes; p++) {
+    for (u32 p = 0; p < g_sc->passes; p++) {
         if (p == 0 || passes[p].z_clear)
             ID3D11DeviceContext_ClearDepthStencilView(cx, g_dsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL,
-                                                      g_pvr_drawn->bg_xyz[0][2] * scale, 0);
+                                                      g_pvr_drawn->bg_xyz[0][2] * scale > 1.0f ? 1.0f : g_pvr_drawn->bg_xyz[0][2] * scale, 0);
         draw_list(p, PVRX_LIST_OPAQUE);
         draw_list(p, PVRX_LIST_PUNCH);
-        if (g_scene.range[p][PVRX_LIST_OPAQUE_MOD][1] > g_scene.range[p][PVRX_LIST_OPAQUE_MOD][0]) {
-            pvr_modvol_draw(&g_scene, p, g_cb);
+        if (g_sc->range[p][PVRX_LIST_OPAQUE_MOD][1] > g_sc->range[p][PVRX_LIST_OPAQUE_MOD][0]) {
+            pvr_modvol_draw(g_sc, p, g_cb);
             bind_pipeline();
         }
         draw_translucent(&passes[p], p);
@@ -329,19 +299,17 @@ static int draw_scene(const PvrPass *passes, int reuse)
 }
 
 const PvrState *g_pvr_drawn = &g_pvr;
-static PvrPass g_last_passes[PVRX_MAX_PASSES]; /* the passes of the scene in g_scene, for in-between frames */
-
 int pvr_render(const PvrPass *passes, u32 count)
 {
     u64 pt = prof_begin(PROF_D3D);
-    int early = pvr_blend_early_parse(&g_scene, passes, count); /* --interp-early: parsed and paired already */
+    int early = pvr_slot_alone() && pvr_blend_early_parse(g_scenes, passes, count); /* --interp-early: parsed, paired */
     gfx_lock();
+    pvr_slot_begin(), g_sc = &g_scenes[pvr_slot()]; /* a split screen's view: its own slot */
     port_extra_thread_hold(); /* no in-between frame until this one has been counted (--present-thread) */
     play_stats_draw(1);
-    pvr_hold_reset();
-    if (!early && extra_scene()) pvr_blend_keep(&g_scene); /* the scene before this one (--interp-scene) */
-    early ? pvr_blend_early_take(&g_scene) : ta_parse(&g_scene, passes, count);
-    memcpy(g_last_passes, passes, (count < PVRX_MAX_PASSES ? count : PVRX_MAX_PASSES) * sizeof *passes);
+    pvr_hold_reset(), pvr_take_keep();
+    if (!early && extra_scene()) pvr_blend_keep(g_sc); /* the scene before this one (--interp-scene) */
+    early ? pvr_blend_early_take(g_sc) : ta_parse(g_sc, passes, count);
     if (!g_gfx.frame_rtv) {
         prof_end(pt);
         play_stats_draw(0);
@@ -355,46 +323,65 @@ int pvr_render(const PvrPass *passes, u32 count)
     }
     if (g_failed) gfx_clear(g_pvr.bg_argb[0]);
     else gfx_resolve();
-    if (extra_scene() && !g_failed) pvr_retain(g_srv, g_scene.nbatch);
-    pvr_keep_frame();
+    if (extra_scene() && !g_failed) pvr_retain(g_srv, g_sc->nbatch, passes, count);
+    pvr_keep_frame(), pvr_frame_bars();
     prof_gpu_end();
     prof_end(pt);
     play_stats_draw(0);
-    port_extra_thread_rendered();
+    if (!pvr_slot_partial()) port_extra_thread_rendered();
     gfx_unlock();
     return !g_failed;
 }
 
-/* An in-between frame (--interp-scene): the scene drawn last, its vertices moved part of the way back (pvr_blend.c) */
-int pvr_blend_draw(f32 alpha)
+/* One slot of an in-between frame: its scene blended (pvr_blend.c), with the textures and registers it was drawn with
+ * (the game may be writing g_pvr: --present-thread). Of several, each puts its batch states up again, blended by the CPU */
+static int draw_slot(u32 slot, f32 alpha, int multi)
 {
-    PvrVtx *own = g_scene.vtx;
-    ID3D11ShaderResourceView **srv = g_srv;
+    PvrScene *s = g_sc = &g_scenes[slot];
+    PvrVtx *own = s->vtx;
+    ID3D11ShaderResourceView **srv = g_srv, **kept;
+    const PvrPass *passes;
     const PvrVtx *mixed;
-    u32 kept;
+    f32 top = s->max_z;
+    u32 n;
     int ok;
-    u64 pt = prof_begin(PROF_D3D);
-    g_srv = pvr_retained(&kept);
-    if (!g_gfx.frame_rtv || g_failed || kept != g_scene.nbatch) {
-        g_srv = srv;
-        return 0;
-    }
-    g_pvr_drawn = pvr_retained_state(); /* as the scene was drawn: the game may be writing g_pvr (--present-thread) */
-    pvr_hold_begin();
-    g_gpu_blend = pvr_blend_gpu_ready(&g_scene, alpha); /* --interp-gpu */
-    mixed = g_gpu_blend ? NULL : pvr_blend_vertices(&g_scene, alpha, NULL);
-    if (mixed) g_scene.vtx = (PvrVtx *)mixed;
-    ok = draw_scene(g_last_passes, g_gpu_blend ? 2 : 1);
-    g_scene.vtx = own, g_srv = srv, g_pvr_drawn = &g_pvr, g_gpu_blend = 0;
-    prof_end(pt);
-    if (ok) gfx_resolve();
-    pvr_hold_end();
-    if (!ok) return 0;
-    gfx_capture_extra();
-    gfx_show();
-    return 1;
+    g_pvr_drawn = pvr_retained(slot, &kept, &n, &passes, &g_pvr_keep);
+    if (n != s->nbatch) return 0;
+    *(multi ? &g_kept : &g_srv) = kept;
+    g_gpu_blend = !multi && pvr_blend_gpu_ready(s, alpha); /* --interp-gpu */
+    mixed = g_gpu_blend ? NULL : pvr_blend_vertices(s, alpha, NULL);
+    if (mixed) s->vtx = (PvrVtx *)mixed;
+    for (u32 i = 0; mixed && i < s->nvtx; i++) /* a vertex the tick before had nearer (a floor the eye was over): */
+        if (mixed[i].z > s->max_z && mixed[i].z <= top * 4.0f) s->max_z = mixed[i].z; /* in the depth range, not clipped */
+    ok = draw_scene(passes, multi ? 3 : g_gpu_blend ? 2 : 1);
+    s->vtx = own, s->max_z = top, g_srv = srv, g_kept = NULL, g_gpu_blend = 0;
+    return ok;
 }
 
-/* Whether an in-between frame can be drawn now: there is an old scene, and no movie is laid over the picture (the
- * overlay is drawn when a frame is counted, not by an in-between frame). */
-int pvr_blend_ready(void) { return !g_failed && pvr_blend_have() && !gfx_movie_on(); }
+/* An in-between frame (--interp-scene): every slot of the frame drawn last, each blended */
+int pvr_blend_draw(f32 alpha)
+{
+    PvrScene *cur = g_sc;
+    u32 slots = pvr_slots();
+    int keep = g_pvr_keep, ok = 1;
+    u64 pt;
+    if (!g_gfx.frame_rtv || g_failed || slots > PVR_SLOTS) return 0;
+    pt = prof_begin(PROF_D3D);
+    pvr_hold_begin();
+    for (u32 i = 0; ok && i < slots; i++) ok = draw_slot(i, alpha, slots > 1u);
+    g_sc = cur, g_pvr_drawn = &g_pvr, g_pvr_keep = keep;
+    prof_end(pt);
+    if (ok) { gfx_resolve(); if (g_pvr_framed && gfx_edges_on()) gfx_carry_edges(); }
+    if (ok) gfx_capture_extra(), gfx_show();
+    return ok != 0;
+}
+
+/* Whether an in-between frame can be drawn now: the frame is whole, there is an old scene (of several slots, each blends
+ * by its parts), its first render cleared the frame, and no movie overlay (drawn when a frame is counted) is on. */
+int pvr_blend_ready(void)
+{
+    u32 n = pvr_slots();
+    int ok = !g_failed && !pvr_slot_partial() && n <= PVR_SLOTS && pvr_blend_have() && !gfx_movie_on();
+    for (u32 i = 0; ok && n > 1u && i < n; i++) ok = g_scenes[i].has_from;
+    return ok && (n > 1u ? !pvr_slot_keeps(0u) : !g_pvr_keep);
+}

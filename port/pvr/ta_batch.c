@@ -124,6 +124,7 @@ static void emit(PvrScene *s, const PvrVtx *a, const PvrVtx *b, const PvrVtx *c)
     widen_full_screen(o, bt->flags, bt->tsp);
     for (u32 i = 0; i < 3u; i++) {
         o[i].batch = s->nbatch - 1u;
+        if (o[i].z > PVR_DEPTH_TOP) o[i].z = PVR_DEPTH_TOP; /* a GPU's interpolation overflows at w = 1/z near FLT_MIN */
         if (o[i].u < -UV_SLOP || o[i].u > 1.0f + UV_SLOP) bt->uv_out |= PVR_UVO_U;
         if (o[i].v < -UV_SLOP || o[i].v > 1.0f + UV_SLOP) bt->uv_out |= PVR_UVO_V;
         if (o[i].z > s->max_z) s->max_z = o[i].z;

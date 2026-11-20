@@ -11,10 +11,12 @@
 #include "platform.h"
 #include "work_count.h"
 #include "play_stats.h"
+#include "port_config.h"
+#include "gdi_int.h"
 
 #define HD_LBA 45000u
 #define RAW 2352u
-#define DATA 2048u
+#define DATA GDI_DATA
 #define HEAD 16u
 #define MAX_TRACKS 32
 
@@ -46,7 +48,7 @@ static void add_toc(PortDisc *d, u32 num, u32 lba, u32 data)
     d->toc[d->ntoc++].data = data;
 }
 
-static void dir_of(const char *path, char *out, size_t cap)
+void gdi_dir_of(const char *path, char *out, size_t cap)
 {
     strncpy_s(out, cap, path, _TRUNCATE);
     char *s = strrchr(out, '/'), *b = strrchr(out, '\\');
@@ -152,7 +154,7 @@ PortDisc *disc_open(const char *path)
         free(d);
         return NULL;
     }
-    dir_of(path, dir, sizeof dir);
+    gdi_dir_of(path, dir, sizeof dir);
     size_t n = strlen(path);
     if (n > 4 && !_stricmp(path + n - 4, ".gdi")) parse_gdi(d, f, dir);
     else parse_cue(d, f, dir);
@@ -173,9 +175,13 @@ void disc_close(PortDisc *d)
     free(d);
 }
 
-static int read_sectors(PortDisc *d, u32 lba, u32 count, u8 *out)
+static int read_locked(PortDisc *d, u32 lba, u32 count, u8 *out)
 {
     for (u32 k = 0; k < count; k++, lba++) {
+        if (lba >= LOOSE_LBA) {
+            if (!loose_read(lba, out + (size_t)k * DATA)) return 0;
+            continue;
+        }
         Track *t = NULL;
         for (int i = d->n - 1; i >= 0 && !t; i--)
             if (lba >= d->t[i].lba) t = &d->t[i];
@@ -193,6 +199,14 @@ static int read_sectors(PortDisc *d, u32 lba, u32 count, u8 *out)
     return 1;
 }
 
+/* The game thread and a read behind (disc_fill.c) share the image's files: one read at a time. */
+static int read_sectors(PortDisc *d, u32 lba, u32 count, u8 *out)
+{
+    disc_lock(1);
+    int ok = read_locked(d, lba, count, out);
+    return disc_lock(0), ok;
+}
+
 int disc_boot_name(PortDisc *d, char *out, int cap)
 {
     u8 ip[DATA];
@@ -205,7 +219,7 @@ int disc_boot_name(PortDisc *d, char *out, int cap)
 
 static u32 le32(const u8 *p) { return p[0] | (p[1] << 8) | (p[2] << 16) | ((u32)p[3] << 24); }
 
-static int root_dir(PortDisc *d, u32 *lba, u32 *size)
+int gdi_root_dir(PortDisc *d, u32 *lba, u32 *size)
 {
     u8 pvd[DATA];
     if (!read_sectors(d, HD_LBA + 16, 1, pvd) || memcmp(pvd + 1, "CD001", 5)) return 0;
@@ -216,16 +230,16 @@ static int root_dir(PortDisc *d, u32 *lba, u32 *size)
 
 /* Reads the directory at lba/size and calls visit for each record (its name without ";1"; "." and ".." for the
  * self and parent records) until visit returns nonzero. Returns -1 if it cannot be read, else visit's last result. */
-typedef int (*DirVisit)(void *ctx, const HostDirEnt *e);
 static int walk_dir(PortDisc *d, u32 lba, u32 size, DirVisit visit, void *ctx)
 {
     u32 sectors = (size + DATA - 1) / DATA;
     u8 *buf = (u8 *)malloc((size_t)sectors * DATA);
-    int stop = 0;
+    int stop;
     if (!buf || !read_sectors(d, lba, sectors, buf)) {
         free(buf);
         return -1;
     }
+    stop = loose_visit(lba, visit, ctx); /* this directory's loose files first */
     for (u32 i = 0; i < size && !stop;) {
         u32 n = buf[i];
         if (!n) {
@@ -245,7 +259,7 @@ static int walk_dir(PortDisc *d, u32 lba, u32 size, DirVisit visit, void *ctx)
             memcpy(e.name, r + 33, len);
             e.name[len] = 0;
         }
-        stop = visit(ctx, &e);
+        if (!loose_hidden(lba, e.name)) stop = visit(ctx, &e);
         i += n;
     }
     free(buf);
@@ -267,7 +281,7 @@ static int find_visit(void *ctx, const HostDirEnt *e)
 }
 
 /* Finds name (one path component, case-insensitive) in the directory at lba/size. */
-static int find_entry(PortDisc *d, u32 lba, u32 size, const char *name, size_t len, HostDirEnt *out)
+int gdi_find_entry(PortDisc *d, u32 lba, u32 size, const char *name, size_t len, HostDirEnt *out)
 {
     FindCtx f = {name, len, out};
     return walk_dir(d, lba, size, find_visit, &f) == 1;
@@ -276,10 +290,10 @@ static int find_entry(PortDisc *d, u32 lba, u32 size, const char *name, size_t l
 u8 *disc_read_file(PortDisc *d, const char *path, u32 *size_out)
 {
     HostDirEnt e;
-    if (!root_dir(d, &e.lba, &e.size)) return NULL;
+    if (!gdi_root_dir(d, &e.lba, &e.size)) return NULL;
     for (const char *p = path; *p;) {
         size_t len = strcspn(p, "/");
-        if (!find_entry(d, e.lba, e.size, p, len, &e)) return NULL;
+        if (!gdi_find_entry(d, e.lba, e.size, p, len, &e)) return NULL;
         p += len;
         if (*p == '/') p++;
     }
@@ -297,19 +311,21 @@ u8 *disc_read_file(PortDisc *d, const char *path, u32 *size_out)
 static PortDisc *g_run_disc;
 
 void disc_set_run(PortDisc *d) { g_run_disc = d; }
-
-int host_disc_root(u32 *lba, u32 *size) { return g_run_disc && root_dir(g_run_disc, lba, size); }
+PortDisc *gdi_run_disc(void) { return g_run_disc; }
+int host_disc_root(u32 *lba, u32 *size) { return g_run_disc && gdi_root_dir(g_run_disc, lba, size); }
 
 int host_disc_read(u32 lba, u32 count, void *out)
 {
     work_add(WC_DISC_BYTES, count * 2048u);
     play_stats_disc(count * 2048u); /* a load: the play verdict leaves its frames out */
-    return g_run_disc && read_sectors(g_run_disc, lba, count, (u8 *)out);
+    return host_disc_read_quiet(lba, count, out);
 }
+
+int host_disc_read_quiet(u32 lba, u32 count, void *out) { return g_run_disc && read_sectors(g_run_disc, lba, count, out); }
 
 int host_disc_find(u32 lba, u32 size, const char *name, HostDirEnt *out)
 {
-    return g_run_disc && find_entry(g_run_disc, lba, size, name, strlen(name), out);
+    return g_run_disc && gdi_find_entry(g_run_disc, lba, size, name, strlen(name), out);
 }
 
 typedef struct {

@@ -21,7 +21,6 @@
 #define FS_ERR_DISC (-5)
 #define FS_ERR_DIRREC (-6)
 #define FS_ERR_NOTFOUND (-8)
-#define FS_ERR_NOHNDL (-9)
 #define FS_ERR_ILLHNDL (-10)
 #define FS_ERR_NOTDIR (-11)
 #define FS_ERR_DIROVER (-12)
@@ -283,6 +282,7 @@ s32 gdFsSeek(GDFS gdfs, s32 offset, s32 origin)
 }
 
 s32 gdFsTell(GDFS gdfs) { return valid(gdfs) ? gdfs->pos : FS_ERR_ILLHNDL; }
+u32 gdfs_lba(GDFS gdfs) { return valid(gdfs) ? gdfs->lba + (u32)gdfs->pos : 0u; } /* platform.h: for a read behind */
 
 /* Reads whole sectors from the position; a read that runs past the end stops there and zero-fills the rest. */
 s32 gdFsRead(GDFS gdfs, s32 sectors, void *buffer)

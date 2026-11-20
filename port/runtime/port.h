@@ -13,6 +13,12 @@
 #define GUEST_RAM_SIZE 0x01000000u /* 16 MB main RAM */
 #define GUEST_MIRROR_BASE 0x0c000000u /* the same RAM in its P0 form (MMU off) */
 #define GUEST_UNCACHED_BASE 0xac000000u /* and in its P2 (uncached) form */
+/* game.json extra_ram (PORT_EXTRA_RAM): a second 16 MB the console does not have, in area 2 (unused on a Dreamcast), for
+ * data a port moves out of the full main RAM (more fighters' tables). P1, P0 and P2 forms like the main RAM, since games
+ * strip pointers with & 0x1fffffff or & 0x0fffffff. */
+#define GUEST_EXTRA_BASE 0x88000000u
+#define GUEST_EXTRA_MIRROR 0x08000000u
+#define GUEST_EXTRA_UNCACHED 0xa8000000u
 /* The SH-4 store-queue window, 0xe0000000..0xe3ffffff: with QACR0/1 set to area 3, as the SDKs leave them, a
  * store-queue write to 0xe0000000 + offset lands in area 3 at offset, where the 16 MB of RAM repeats four times.
  * Games write their PowerVR vertex lists this way (an uncached list address XOR 0x4c000000) and read them back
@@ -29,6 +35,7 @@
 
 /* guest_mem.c */
 int guest_mem_init(void);
+extern unsigned int g_move_count[32]; /* game.json move_tables counts: 0 = the original entry count */
 int guest_is_ram(u32 addr);
 u32 guest_fold(u32 addr); /* 0x0c... -> 0x8c... */
 int guest_load(u32 addr, const u8 *data, u32 size);
@@ -41,6 +48,7 @@ void disc_close(PortDisc *d);
 int disc_boot_name(PortDisc *d, char *out, int cap); /* IP.BIN's boot file name */
 /* Reads a file of the ISO 9660 volume (path relative to the root, '/' separated) into a malloc'd buffer. */
 u8 *disc_read_file(PortDisc *d, const char *path, u32 *size_out);
+void disc_loose_start(const char *image); /* game.json loose_dir / --loose-dir, beside image (gdi.c) */
 void disc_set_run(PortDisc *d); /* the disc gdFs reads at run time (platform.h host_disc_*) */
 
 /* host.c (the rest is in platform.h and base.h) */
@@ -88,6 +96,7 @@ u32 pvr_pack_choices(const char *const **labels, const char *const **values); /*
 int pvr_pack_choice(void);
 void pvr_pack_set_choice(int choice);
 int pvr_pack_available(void); /* there is a pack to choose */
+void pvr_pack_refresh(void);   /* read the packs again: a setting an index line's if= word names changed */
 
 /* port_stub.c */
 void port_stub_report(void);

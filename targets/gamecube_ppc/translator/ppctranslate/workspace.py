@@ -11,6 +11,11 @@ from .translate import Facts, Signature
 TARGET = pathlib.Path(__file__).resolve().parents[2] / "target.json"  # targets/gamecube_ppc, which holds this translator
 
 
+def body_of(ranges, meta):
+    """ranges [(lo, hi_exclusive)] plus meta.json's "switch_body" [["lo", "hi"], ...] (TcSwitchBody), sorted."""
+    return sorted(list(ranges) + [(int(lo, 16), int(hi, 16)) for lo, hi in (meta or {}).get("switch_body") or []])
+
+
 class Workspace:
     def __init__(self, root, target=TARGET):
         self.root = pathlib.Path(root)
@@ -24,6 +29,12 @@ class Workspace:
             t = ln.split()
             if len(t) == 3:
                 self.bodies.setdefault(int(t[0], 16), []).append((int(t[1], 16), int(t[2], 16)))
+
+    def body(self, addr, meta=None):
+        """addr's body: its state/function_bodies.txt ranges plus the jump-table cases outside them that the oracle ran
+        as body (meta.json "switch_body", DP TcSwitchBody), so the translator and the judge see the same body.
+        meta: the function's meta.json, read from its harness when not given."""
+        return body_of(self.bodies[addr], self.meta(addr) if meta is None else meta)
 
     def meta(self, addr):
         if not hasattr(self, "_harnessed"):  # one listing, not a file check per function (returns.analyse asks all)

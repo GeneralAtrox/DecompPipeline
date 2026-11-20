@@ -119,7 +119,7 @@ abstract class TcVmxTables extends TcVmxOp {
         for (Map<Integer, String> m : List.of(VA4, VC4, VX4, OP31, VX128_1, VX128_5, VX128_6R, VX128_6, VX128_6U)) {
             ALL.addAll(m.values());
         }
-        ALL.addAll(List.of("vperm128", "vsldoi128", "vpermwi128", "vrlimi128", "vpkd3d128"));
+        ALL.addAll(List.of("vperm128", "vsldoi128", "vpermwi128", "vrlimi128", "vpkd3d128", "vupkhsh128", "vupklsh128"));
     }
 
     /** True when exec() implements the mnemonic (every vector op except the estimate ops). */

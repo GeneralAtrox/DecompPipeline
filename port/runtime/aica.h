@@ -38,6 +38,11 @@ int aica_voice_playing(u32 v);
  * the chip plays on between blanks, so a voice read mid-blank has moved on by that part of the next mix's frames. */
 u32 aica_voice_position(u32 v, u32 phase);
 void aica_next_frames(u32 frames); /* gfx_audio.c: the frames the next blank's mix plays (735 or 736; 735 at first) */
+/* Catch-up mixing (game.json audio_catchup, --audio-catchup on|off): a voice's position read mid-blank first mixes the
+ * blank up to that point, so sound the game sees as played has been mixed, as on the chip, and a ring the game refills
+ * up to the read position is never overwritten before it plays. The positions read are the same either way. Not with
+ * the slice hook (aica_arm.c), whose sound processor runs per slice. */
+void aica_catchup(int on);
 
 void aica_cd_level(u32 left, u32 right); /* 0..15 each */
 void aica_cd_pan(u32 left, u32 right);   /* DIPAN each */

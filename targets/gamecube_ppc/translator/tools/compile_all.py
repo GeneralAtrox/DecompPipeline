@@ -43,7 +43,7 @@ def worker(spec):
             row = {"addr": a}
             try:
                 sig = ws.signature(ad)
-                src, ft = translate_function(ws.dol, ad, sig, ws.facts, ws.bodies[ad], returns=kinds)
+                src, ft = translate_function(ws.dol, ad, sig, ws.facts, ws.body(ad), returns=kinds)
                 errs = lint(src, {"name": sig.name, "signature": sig.text})
                 (cdir / f"{a}.c").write_text(src, encoding="utf-8")
                 row.update(status="lint" if errs else "ok", lint=errs[:3], bytes=len(src), notes=ft.notes[:5],

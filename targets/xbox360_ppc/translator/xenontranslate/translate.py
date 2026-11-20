@@ -16,10 +16,12 @@ The guest model is DecompPipeline's Xbox 360 judge model (target.json "abi", TcO
 - a call (bl, bctrl, a branch that leaves the body: a tail call) is tc_call / tc_callf with r3..r10, f1..f13 and the
   eight stack doublewords at r1+0x50 in TcArgs; afterwards r3 (or f1) is the result and r0, r4..r12, f0, f2..f13 and
   CTR are 0, as the oracle's mocked callee leaves them; CR, XER, the vector registers, r14..r31 and f14..f31 are kept;
+  (the port form keeps the vector register file v0..v127 in the thread's tc_vr, fn_parts.vector_abi, and hands registers read before set on through tc_gr / tc_fr, fn_parts.hand_over)
 - the compiler's register save/restore helpers (__savegprlr_N, __restgprlr_N and the FPR / VMX families: the
   catalog's helper_ranges) run inline, as in the oracle; a branch (not a call) to a helper returns afterwards;
-- a computed branch through a table inside the body (bctr after a bounded index and a table load) is a switch;
-- single-precision results are (f64)(f32)(double operation); stfs stores with the architecture's conversion (wrf32d);
+- a computed branch through a table (bctr after a bounded index and a table load) is a switch; a table inside the body is never read (jtab.py);
+- single-precision results are (f64)(f32)(double operation); lfs widens bit for bit (px_lfs) and stfs stores with the
+  architecture's conversion (wrf32d, by bits), so a single copied through an FPR keeps its bits, a signalling NaN too;
   the multiply-adds use DP's helpers (the build's fma switch); the vector unit is vmx.py.
 
 Nothing here is specific to one game or address: everything comes from the machine code, the signature and the
@@ -34,6 +36,7 @@ from . import expr as X
 from .decode import Insn, VECTOR_OPS, disasm
 from .expr import Call, Const, Var, ZERO, FZERO, u, s, q, load
 from .ir import Assign, Block, CallS, Comment, Goto, If, Ret, Store, Switch
+from . import jtab
 
 
 class TranslateError(Exception):
@@ -50,6 +53,8 @@ class Facts:
     helpers: list = field(default_factory=list)     # [(family, lo, hi_exclusive)]: frame helpers
     stack_args: int = 0x50
     port: bool = False      # the port kit's form: r1 is the caller's real stack pointer (TcArgs.sp), not the judge's constant
+    exit_state: bool = False    # the judge's exit-state form (exit_form.py): every written register recorded at each return
+    exit_seed: bool = False     # with exit_state, tools/x360_vote.py only: every r/f/v register read is seeded (tcv_in_*)
 
     @classmethod
     def from_target(cls, tj, fixed, helper_ranges=()):
@@ -290,9 +295,9 @@ class FunctionTranslator:
             a += 4
         return None
 
-    def explore(self):
-        seen, leaders, work = set(), {self.entry}, [self.entry]
-        self.tables = {}
+    def explore(self, roots=()):
+        seen, leaders, work = set(), {self.entry, *roots}, [self.entry, *roots]   # roots: catch continuations (eh.py), reached only by a landing
+        self.tables, self.jt_plans, self.jt_loads = {}, {}, set()   # jump tables; those switched on the index (jtab.py)
         while work:
             a = work.pop()
             while a not in seen:
@@ -353,12 +358,17 @@ class FunctionTranslator:
         return [a + 4], False
 
     # ------------------------------------------------------------------------------------------- jump tables
-    def trace_back(self, a, n=48):
+    def trace_back(self, a, n=128):
         """The instructions before a (newest first), back to a call or a branch other than a conditional one."""
         out = []
         p = a - 4
         while len(out) < n and self.in_body(p) and self.dol.has(p, 4):
             i = self.dol.insn(p)
+            if i.op == "b" and not i.lk and self.dol.has(p - 4, 4):   # "ble +8; b default" before the table: the compare is further back
+                prev = self.dol.insn(p - 4)
+                if prev.op == "bc" and not prev.lk and prev.target == p + 4:
+                    p -= 4
+                    continue
             if i.op in ("b", "bcctr") or (i.op in ("bc", "bclr") and i.lk) or (i.op == "bclr" and i.bo & 0x14 == 0x14):
                 break
             out.append(i)
@@ -371,7 +381,7 @@ class FunctionTranslator:
         tr = self.trace_back(i.addr)
         k = next((j for j, x in enumerate(tr) if x.op == "cmpli" and x.l == 0), None)
         if k is None:
-            return None
+            return self.joined_table(i)
         cmpi = tr[k]
         n = cmpi.uimm + 1
         if n > 4096:
@@ -382,13 +392,99 @@ class FunctionTranslator:
         for idx in range(n):
             ctr = self.mini_eval(code, at, cmpi.ra, idx)
             if ctr is None or ctr & 3 or not self.in_body(ctr):
-                return None
+                return self.joined_table(i)
             out.append(ctr)
-        return out
+        return jtab.keep(self, i, code, at, cmpi.ra, out)
 
-    def mini_eval(self, code, at, reg, idx):
+    def joined_table(self, i):
+        """A table whose bounding compare is behind a join: the straight-line code before the bctr starts at a block other
+        branches reach, and every way into it passes the same cmplwi rI,N with rI unchanged since (first: Too Human's
+        82aa9b54 under 82aa9648, a halfword table bounded by `cmplwi r9,14` at 82aa9ac8, before a byte table at 82aa9af8
+        whose cases come back to it). The first compare in the straight-line code was on another register."""
+        preds = self.preds_in_body()
+        code, q = [], i.addr - 4
+        while self.in_body(q) and self.dol.has(q, 4):
+            x = self.dol.insn(q)
+            if x.op in ("b", "bc", "bcctr", "bclr"):
+                break
+            code.append(x)
+            if preds.get(q, set()) - {q - 4}:
+                break
+            q -= 4
+        if not code:
+            return None
+        code.reverse()                       # oldest first
+        start = code[0].addr
+        for r in range(3, 32):
+            if r in (12, 13):
+                continue
+            first = self.mini_eval(code, 0, r, 0)
+            if first is None or first == self.mini_eval(code, 0, r, 1):
+                continue
+            n = self.bound_on_paths(start, r, preds)
+            if n is None or n > 4096:
+                continue
+            out = []
+            for idx in range(n):
+                ctr = self.mini_eval(code, 0, r, idx)
+                if ctr is None or ctr & 3 or not self.in_body(ctr):
+                    break
+                out.append(ctr)
+            else:
+                return jtab.keep(self, i, code, 0, r, out)
+        return None
+
+    def preds_in_body(self):
+        """Address -> the addresses control comes to it from: the one before when that falls through, every branch in the
+        body to it and every table already found holding it."""
+        preds = {}
+        for lo, hi in self.body:
+            for a in range(lo, hi, 4):
+                if not self.dol.has(a, 4):
+                    continue
+                try:
+                    x = self.dol.insn(a)
+                except Exception:  # noqa: BLE001  (data in the body: no edge)
+                    continue
+                if x.op in ("b", "bc") and not x.lk:
+                    preds.setdefault(x.target, set()).add(a)
+                ends = (x.op == "b" and not x.lk) or (x.op == "bcctr" and not x.lk) or (x.op == "bclr" and x.bo & 0x14 == 0x14 and not x.lk) \
+                    or (x.op == "bc" and not x.lk and x.bo & 0x14 == 0x14)
+                if not ends:
+                    preds.setdefault(a + 4, set()).add(a)
+        for site, targets in self.tables.items():
+            for t in targets:
+                preds.setdefault(t, set()).add(site)
+        return preds
+
+    def bound_on_paths(self, start, r, preds):
+        """N + 1 when every way back from start meets the same cmplwi r,N before anything writes r (a call writes r0 and
+        r3..r12); None otherwise, or when a way reaches the entry."""
+        bounds, seen, work = set(), set(), sorted(preds.get(start, ()))
+        if not work:
+            return None
+        while work:
+            q = work.pop()
+            if q in seen:
+                continue
+            seen.add(q)
+            if len(seen) > 4000 or not self.in_body(q):
+                return None
+            x = self.dol.insn(q)
+            if x.op == "cmpli" and x.l == 0 and x.ra == r:
+                bounds.add(x.uimm + 1)
+                continue
+            if r in gpr_writes(x) or (getattr(x, "lk", 0) and (r == 0 or 3 <= r <= 12)):
+                return None
+            back = preds.get(q)
+            if not back or q == self.entry:
+                return None
+            work.extend(back)
+        return bounds.pop() if len(bounds) == 1 else None
+
+    def mini_eval(self, code, at, reg, idx, trace=None):
         """CTR after code (straight-line, oldest first) with GPR reg = idx from code[at] on; None when it does not
-        come out a constant. Loads read the image."""
+        come out a constant. Loads read the image. trace: gets "loads" [(pc, address)] and "rv" (jtab.py)."""
         rv = {}
         ctr = None
         img = self.dol
@@ -449,6 +545,8 @@ class FunctionTranslator:
                     val = None if b is None else (b & 0xFFFFFFFF) - ((b & 0x80000000) << 1) & M64
                 elif o in ("lwzx", "lbzx", "lhzx", "lhax", "lwz", "lbz", "lhz", "lha"):
                     addr = ea(x.ra, g(x.rb)) if o.endswith("x") else ea(x.ra, x.d)
+                    if addr is not None and trace is not None:
+                        trace["loads"].append((x.addr, addr))
                     if addr is not None:
                         if o.startswith("lw"):
                             val = img.u32(addr)
@@ -461,13 +559,15 @@ class FunctionTranslator:
                 elif o == "mtspr" and x.spr == 9:
                     ctr = g(x.rd)
                     continue
-            except Exception:  # noqa: BLE001  (a read outside the image: no table)
-                return None
+            except Exception:  # noqa: BLE001  (a read outside the image, like a pointer in bss seen as 0: that value is unknown)
+                val = None
             for r in w:
                 if val is None:
                     rv.pop(r, None)
                 else:
                     rv[r] = val & M64
+        if trace is not None:
+            trace["rv"] = rv
         return ctr
 
     # -------------------------------------------------------------------------------------------- helpers
@@ -516,8 +616,12 @@ class FunctionTranslator:
                     elif rg[0] == "s":
                         args.append(("s", k, self.stack_arg(k)))
         out = [CallS(target, args, addr, auto=auto)]
-        # the mock leaves alone the volatile registers the callee never writes (meta "keeps"); the rest it zeroes
+        # the mock leaves alone the volatile registers the callee never writes (meta "keeps"); the rest it zeroes. The
+        # judge's keeps are those of a bl (TcPrepare.keeps): a tail branch, like a call through a register, zeroes them
+        # all (TcOracle.clobbered), which the exit-state form sees (Too Human 82e72728's b 82dbf070 kept r4..r8, f2..f12)
         keeps = (self.sig.keeps or {}).get(target.v & 0xFFFFFFFF, ()) if isinstance(target, Const) else ()
+        if tail and not self.facts.port:
+            keeps = ()
         out += [Clobber(r, FZERO if r[0] == "f" else q(0)) for r in CALL_CLOBBERS if r not in keeps]
         if not tail:
             out.append(Assign("lr", q(addr + 4)))
@@ -531,7 +635,12 @@ class FunctionTranslator:
 
     # ------------------------------------------------------------------------------------------------ build
     def build(self):
-        self.explore()
+        from .eh import land_of
+        conts = land_of(self.facts, self.entry) or ()
+        for c in conts:                    # gen-time validation put them in the parent's range; the body must hold them too
+            if not self.in_body(c):
+                raise TranslateError(f"catch continuation {c:08x} is outside the function's body")
+        self.explore(conts)
         addrs = sorted(self.reach)
         entry = Block("L_entry")
         st = entry.stmts
@@ -609,7 +718,10 @@ class FunctionTranslator:
         c = Const(1, "bool")
         if not bo & 4:
             stmts.append(Assign("ctr", X.sub(Var("ctr", U64), q(1))))
-            c = X.compare("==" if bo & 2 else "!=", Var("ctr", U64), q(0))
+            # The test sees CTR's low 32 bits (32-bit mode, MSR[SF]=0): a count made by neg of a zero-extended word (Too Human's float formatter
+            # 82a62d10, memset(p, '0', -decpt)) has its high half set, and a 64-bit test ran memset's byte loop past the count and
+            # its word loop 0x0fffffff times (the "0000" fill)
+            c = X.compare("==" if bo & 2 else "!=", lo32(Var("ctr", U64)), Const(0, "u32"))
         if not bo & 0x10:
             b = CR(bi) if bo & 8 else X.lnot(CR(bi))
             c = X.logic("&&", c, X.truthy(b)) if not isinstance(c, Const) else X.truthy(b)
@@ -696,6 +808,9 @@ class FunctionTranslator:
                     return Goto(self.fall(i))
                 nxt = self.fall(i)
                 return If(c, self.synth(calls, Goto(nxt), f"{a:08x}_call"), nxt)
+            if always and a in self.jt_plans:
+                s2, t = self.tail(Var("g_", "u32"), a)
+                return jtab.switch(self, a, s2 + [t])
             if always and a in self.tables:
                 cases = []
                 for t in dict.fromkeys(self.tables[a]):
@@ -718,10 +833,14 @@ class FunctionTranslator:
 
     # ------------------------------------------------------------------------------------------------- lift
     def cr0(self, x):
-        """CR0 of a dotted operation: from the 64-bit result (64-bit mode)."""
-        return [Assign("c0lt", X.compare("<", s64(x), Const(0, "s64"))),
-                Assign("c0gt", X.compare(">", s64(x), Const(0, "s64"))),
-                Assign("c0eq", X.compare("==", x, q(0))), Assign("c0so", SO())]
+        """CR0 of a dotted operation: from the low 32 bits of the result, signed (32-bit mode, MSR[SF]=0,
+        shown by the game's own code below). The compiler counts with ints whose high word is left over from a zero-extending lwz:
+        Too Human's _fptostr 82a6cce0 ends its digit loop with addic. r5,r5,-1; bgt, where r5 = decpt (lwz) + ndigits
+        has the high word set when decpt is negative. A 64-bit test never ended the loop and wrote past the stack top.
+        The CTR test in bc_cond reads the low 32 bits for the same reason."""
+        return [Assign("c0lt", X.compare("<", s32(x), Const(0, "s32"))),
+                Assign("c0gt", X.compare(">", s32(x), Const(0, "s32"))),
+                Assign("c0eq", X.compare("==", lo32(x), Const(0, "u32"))), Assign("c0so", SO())]
 
     def cr1_fp(self):
         fp = Var("fpscr", "u32")
@@ -759,6 +878,8 @@ class FunctionTranslator:
             return self.fp_store(i)
         if o in FP_A or o in FP_X:
             return self.fp_op(i)
+        if o in FENCES and self.facts.port:   # guest threads run at once on host threads: the barrier is real (tc_rt.h)
+            return [Store(FENCES[o], ZERO, ZERO)]
         if o in NOPS:
             return [Comment(o)] if self.comments else []
         raise TranslateError(f"unsupported instruction {o} at {i.addr:08x} ({disasm(i)})")
@@ -772,24 +893,26 @@ class FunctionTranslator:
 
     def op_addic(self, i):
         a = R(i.ra)
-        return [Assign("ca", X.compare("<", X.add(a, q(i.simm)), a)), Assign(f"r{i.rd}", X.add(a, q(i.simm)))]
+        # CA is the carry out of the low 32 bits: the Xbox 360 runs its code in 32-bit mode (MSR[SF] = 0; Book I 3.3.9:
+        # "in 32-bit mode CA reflects the carry out of bit 32"), the same mode cr0() and the CTR test are written for.
+        return [Assign("ca", X.compare("<", lo32(X.add(a, q(i.simm))), lo32(a))), Assign(f"r{i.rd}", X.add(a, q(i.simm)))]
 
     def op_addic_dot(self, i):
         return self.op_addic(i) + self.cr0(R(i.rd))
 
     def op_subfic(self, i):
         a = R(i.ra)
-        return [Assign("ca", X.compare("<=", a, q(i.simm))), Assign(f"r{i.rd}", X.sub(q(i.simm), a))]
+        return [Assign("ca", X.compare("<=", lo32(a), u(i.simm & 0xFFFFFFFF))), Assign(f"r{i.rd}", X.sub(q(i.simm), a))]
 
     def op_mulli(self, i):
         return [Assign(f"r{i.rd}", X.binop("*", R(i.ra), q(i.simm), U64))]
 
     def carry_chain(self, d, x, y, cin):
-        """rD = x + y + cin with CA = the carry out of the 64-bit sum (x, y: u64; cin: flag)."""
+        """rD = x + y + cin with CA = the carry out of the sum's low 32 bits (32-bit mode, op_addic; x, y: u64; cin: flag)."""
         t1, t2 = self.temp(U64), self.temp(U64)
         v1, v2 = Var(t1, U64), Var(t2, U64)
         return [Assign(t1, X.add(x, y)), Assign(t2, X.add(v1, X.cast(U64, cin))),
-                Assign("ca", X.flag_or(X.compare("<", v1, x), X.compare("<", v2, v1))), Assign(f"r{d}", v2)]
+                Assign("ca", X.flag_or(X.compare("<", lo32(v1), lo32(x)), X.compare("<", lo32(v2), lo32(v1)))), Assign(f"r{d}", v2)]
 
     def xo_arith(self, i):
         o, d = i.op, i.rd
@@ -805,7 +928,7 @@ class FunctionTranslator:
         elif o == "addc":
             r = X.add(a, b)
             ov = (a, b, r)
-            out += [Assign("ca", X.compare("<", r, a)), Assign(f"r{d}", r)]
+            out += [Assign("ca", X.compare("<", lo32(r), lo32(a))), Assign(f"r{d}", r)]
         elif o in ("adde", "addme", "addze", "subfe", "subfme", "subfze"):
             x = X.bnot(a) if o.startswith("subf") else a
             y = b if o in ("adde", "subfe") else q(-1) if o.endswith("me") else q(0)
@@ -817,7 +940,7 @@ class FunctionTranslator:
         elif o == "subfc":
             r = X.sub(b, a)
             ov = (X.bnot(a), b, r)
-            out += [Assign("ca", X.compare("<=", a, b)), Assign(f"r{d}", r)]
+            out += [Assign("ca", X.compare("<=", lo32(a), lo32(b))), Assign(f"r{d}", r)]
         elif o == "neg":
             if i.oe:
                 out += [Assign("ov", X.compare("==", a, q(1 << 63))), Assign("so", X.flag_or(SO(), OV()))]
@@ -1068,6 +1191,8 @@ class FunctionTranslator:
     # memory -----------------------------------------------------------------------------------------------
     def int_load(self, i):
         o = i.op
+        if i.addr in self.jt_loads:
+            return jtab.lift_load(self, i)
         upd = o.endswith("u") or o.endswith("ux")
         sm = self.sum_x(i) if "rb" in i.f else self.sum_d(i)
         out = []
@@ -1094,6 +1219,9 @@ class FunctionTranslator:
             e = X.cast(U64, Call("rd32r", [ea], "u32", load=True))
         else:
             raise TranslateError(o)
+        if base in ("lwarx", "ldarx") and self.facts.port:   # guest threads run at once: the reservation holds the value read
+            out += [Store("tc_" + base, ea, ZERO), Assign(f"r{i.rd}", Call("tc_resv", [ea], U64, load=True))]
+            return out
         if base in ("lwarx", "ldarx"):
             self.notes.append(f"{base} at {i.addr:08x}: a plain load (the reservation is not modelled)")
         out.append(Assign(f"r{i.rd}", e))
@@ -1107,6 +1235,11 @@ class FunctionTranslator:
         rs = R(i.rs if "rs" in i.f else i.rd)
         base = o if o in ("stwcx.", "stdcx.", "stwbrx", "sthbrx") else o.rstrip("x").rstrip("u")
         out = []
+        if base in ("stwcx.", "stdcx.") and self.facts.port:   # stores only if memory still holds the reserved value
+            out.append(Store("tc_" + base[:-1], ea, lo32(rs) if base == "stwcx." else rs))
+            if upd:
+                out.append(Assign(f"r{i.ra}", sm))
+            return out + self.setcmp(0, ZERO, ZERO, Call("tc_resv_ok", [ea], "u32", load=True))
         if base in ("stw", "stwcx."):
             out.append(Store("wr32", ea, lo32(rs)))
         elif base in ("std", "stdcx."):
@@ -1166,7 +1299,9 @@ class FunctionTranslator:
             sm = R(i.ra)
         ea = lo32(sm)
         if o.startswith("lfs"):
-            out.append(Assign(f"f{i.rd}", X.cast("f64", load("rdf32", ea))))
+            # px_lfs (emit.py): bit for bit, a signalling NaN too. Built round the load, so a store the forwarding answers it
+            # from (wrf32d: ppc_single_bits, which narrows by bits) is widened the same way.
+            out.append(Assign(f"f{i.rd}", Call("px_lfs", [load("rdf32", ea)], "f64")))
         else:
             out.append(Assign(f"f{i.rd}", load("rdf64", ea)))
         return out
@@ -1197,11 +1332,11 @@ class FunctionTranslator:
         out = []
         sgl = False
         if o in ("fadd", "fadds"):
-            e, sgl = X.binop("+", a, b, "f64"), o.endswith("s")
+            e, sgl = Call("px_fadd", [a, b], "f64"), o.endswith("s")   # emit.py: the sum with PowerPC's NaN result
         elif o in ("fsub", "fsubs"):
-            e, sgl = X.binop("-", a, b, "f64"), o.endswith("s")
+            e, sgl = Call("px_fsub", [a, b], "f64"), o.endswith("s")
         elif o in ("fmul", "fmuls"):
-            e, sgl = X.binop("*", a, c, "f64"), o.endswith("s")
+            e, sgl = Call("px_fmul", [a, c], "f64"), o.endswith("s")
         elif o in ("fdiv", "fdivs"):
             e, sgl = Call("px_fdiv", [a, b], "f64"), o.endswith("s")
         elif o in ("fmadd", "fmsub", "fnmadd", "fnmsub", "fmadds", "fmsubs", "fnmadds", "fnmsubs"):
@@ -1294,6 +1429,9 @@ FP_A = {"fadd", "fadds", "fsub", "fsubs", "fmul", "fmuls", "fdiv", "fdivs", "fma
         "fnmadd", "fnmadds", "fnmsub", "fnmsubs", "fres", "frsqrte", "fsel", "fsqrt", "fsqrts"}
 FP_X = {"fcmpu", "fcmpo", "frsp", "fctiw", "fctiwz", "fctid", "fctidz", "fcfid", "fneg", "fmr", "fnabs", "fabs",
         "mffs", "mtfsf", "mtfsfi", "mtfsb0", "mtfsb1", "mcrfs"}
+# Memory barriers (Power ISA Book II, 4.4.3 and 4.4.1): in the port form each is a statement no load or store is moved
+# across. isync orders nothing in memory (it is context synchronisation) and stays a no-op, as do the cache hints.
+FENCES = {"sync": "tc_sync", "lwsync": "tc_lwsync", "eieio": "tc_eieio"}
 NOPS = {"sync", "lwsync", "isync", "eieio", "dcbf", "dcbi", "dcbst", "dcbt", "dcbtst", "icbi", "tlbsync"}
 
 
@@ -1311,7 +1449,7 @@ def all_stmts(blocks):
 def translate_function(dol, entry, sig, facts, body, comments=False, structured=True, optimise=True, returns=None):
     """(C text, FunctionTranslator) for the function at entry whose body is [(lo, hi_exclusive)]. returns: the
     whole executable's return kinds (returns.analyse), for callees DP's meta does not describe."""
-    from .fn_parts import fill_auto_args, generic_ret, is_funclet, var_types  # noqa: E402  (in their own file: the cap)
+    from .fn_parts import fill_auto_args, generic_ret, hand_over, is_funclet, uncarried, unhanded, var_types, vector_abi  # noqa: E402  (in their own file: the cap)
     from . import emit, passes
     if returns:
         sig.returns = {**returns, **(sig.returns or {})}
@@ -1324,6 +1462,8 @@ def translate_function(dol, entry, sig, facts, body, comments=False, structured=
             ft = FunctionTranslator(dol, entry, sig, facts, body, comments=comments)
             blocks = ft.build()
     fill_auto_args(ft, blocks)
+    from .eh import land_of, records_ip, wire, LAND, SP
+    eh_ip, land = records_ip(facts, entry), land_of(facts, entry)
     if facts.port:                      # the callee starts on the caller's stack pointer
         for s_ in all_stmts(blocks):
             if isinstance(s_, CallS):
@@ -1332,20 +1472,48 @@ def translate_function(dol, entry, sig, facts, body, comments=False, structured=
                 if isinstance(s_.target, Const) and is_funclet(ft.dol, s_.target.v & 0xFFFFFFFF):
                     for k in range(18):         # the funclet runs on the parent's registers
                         s_.args.append(("nv", k, R(14 + k)))
+                if eh_ip:                       # eh.json: the runtime's frame walk reads each live frame's call site (runtime/xb_eh.h)
+                    s_.args.append(("ip", 0, Const(s_.addr & 0xFFFFFFFF, "u32")))
                 if isinstance(s_.target, Const):    # known before the passes: what a callee leaves alone keeps its value through them (keeps.py)
                     t_ = s_.target.v & 0xFFFFFFFF
+                    jm = getattr(facts, "jumps", {}).get(t_)   # port/games/<game>/jumps.json: emit.py makes these a host setjmp / xb_longjmp
+                    for k in range({"setjmp": 1, "longjmp": 2}.get(jm, 0)):
+                        if not any(f == "r" and i == k for f, i, _ in s_.args):
+                            s_.args.append(("r", k, R(3 + k)))
                     k_ = (sig.returns or {}).get(t_)
                     if k_ in ("r", "f", "v"):
                         s_.kind = k_
                         s_.keep_other = {"r": "f1", "f": "r3"}.get(k_) in (sig.keeps or {}).get(t_, ())
+    params = {n for n, _, _, _ in sig.params} | ({"sp0", "tcr12", "tcr13"} | {f"tcnv{k}" for k in range(18)} if facts.port else set())
+    if land:
+        params |= {LAND, SP}
+    ft.read_first = uncarried(blocks, params)   # before vector_abi: what a scan counts as carried
+    if facts.port:   # the vector file through tc_vr, the rest a caller hands on through tc_gr / tc_fr
+        ft.read_first += hand_over(blocks, ft.read_first, getattr(facts, "read_first_map", {}), params)
+        vector_abi(blocks)
+    ft.uncarried = uncarried(blocks, params) + unhanded(blocks, getattr(facts, "read_first_map", {})) if facts.port else ft.read_first   # a hand-over dropped shows
+    if ft.uncarried and not facts.port and not getattr(facts, "exit_seed", False):   # the judge: what the vector seeds, read from it; the rest refused
+        from .exit_form import seed_judge; ft.uncarried = seed_judge(ft, blocks, ft.uncarried)  # noqa: E702
+    if ft.uncarried:
+        ft.notes.append(f"reads {', '.join(ft.uncarried)} before setting them: taken as 0 (not handed over by the caller)")
+    if land:                            # eh.py: the landing, after the scans (only the runtime reaches a continuation)
+        try:
+            wire(ft, blocks, land)
+        except ValueError as e:
+            raise TranslateError(str(e)) from None
+    if getattr(facts, "exit_state", False):   # exit_form.py: the judge's record of the registers at each return
+        from .exit_form import apply as exit_form; exit_form(ft, blocks, params)  # noqa: E702
     types = var_types(ft, blocks)
     fn = passes.Fn(blocks, types, (facts.stack_lo, facts.stack_hi))
-    params = {n for n, _, _, _ in sig.params} | ({"sp0", "tcr12", "tcr13"} | {f"tcnv{k}" for k in range(18)} if facts.port else set())
     entry_vals = {n: passes.zero(t) for n, t in types.items()
                   if n not in params and n not in ft.temps and n != "g_" and t != "xv"}
-    if optimise:
-        passes.optimise(fn, entry_vals, ft.notes, returns=sig.returns, port=bool(facts.port))
+    if optimise and not land:
+        passes.optimise(fn, entry_vals, ft.notes, returns=sig.returns, port=bool(facts.port),
+                        keep_stack=getattr(facts, "exit_state", False))
     else:
+        # a landing function is not optimised: a continuation is reached from every call in a try block with the registers as
+        # they stood there (volatile locals), which the passes' flow from the entry does not see; its stack stores too may be
+        # read only by a catch funclet through r12
         passes.remove_unreachable(fn)
         from .other_result import choose_calls; choose_calls(fn, ft.notes, sig.returns, port=bool(facts.port))  # noqa: E702
     src = emit.function_text(ft, fn, structured)

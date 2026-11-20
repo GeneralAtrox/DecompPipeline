@@ -50,7 +50,7 @@ def operand_values(insn):
             vals.add((v << 2) | insn.f["mask"])
         if k == "d" and insn.op in ("ld", "ldu", "lwa", "std", "stdu"):
             vals.add(v & 0xFFFC)
-    if insn.op in ("vupkhsb128", "vupklsb128"):
+    if insn.op in ("vupkhsb128", "vupklsb128", "vupkhsh128", "vupklsh128"):
         vals.add(96)                         # the reference prints the fixed vA field (0x60) as an operand
     return vals
 

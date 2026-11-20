@@ -1,0 +1,5 @@
+{
+  "name": "Too Human",
+  "binary_sha256": "8f197c63dd0ab6488258dcc05f64975e391e18c467d7be60d905034f1e6dbf79",
+  "hints": "oracle/hints/<addr>.txt of a workspace of this image: tools/x360setup.py setup copies them in (tools/game_hints.py)"
+}

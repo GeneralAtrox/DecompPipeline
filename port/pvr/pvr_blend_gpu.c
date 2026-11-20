@@ -92,7 +92,7 @@ static int from_vertices(const PvrScene *cur)
 int pvr_blend_gpu_ready(const PvrScene *cur, f32 t)
 {
     f32 c[4] = {t, cur->has_from ? 1.0f : 0.0f, 0.0f, 0.0f}; /* y: --interp-parts, blend in (x w, y w, w) */
-    if (!g_on || !cur->nvtx || (cur->has_from && pvr_parts_holds()) || !init() || !from_vertices(cur)) return 0;
+    if (!g_on || !cur->nvtx || (cur->has_from && (pvr_parts_holds() || pvr_parts_hold_frame())) || !init() || !from_vertices(cur)) return 0;
     return put(g_cb, c, sizeof c);
 }
 

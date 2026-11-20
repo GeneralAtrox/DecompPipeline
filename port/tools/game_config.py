@@ -11,7 +11,11 @@ import re
 import subprocess
 import sys
 import time
+import tx_edits  # noqa: E402 (game.json extra_ram, move_tables, tx_edits)
 import part_draw  # noqa: E402 (beside this file, as every importer of game_config has it on the path)
+import play_keys  # noqa: E402 (game.json coop, pads, game_menu)
+import pack_builds as _pack_builds  # noqa: E402 (game.json pack_builds, vram_init)
+from contract_doc import GAME_KEYS, SATURN_KEYS  # noqa: E402,F401 (each kit's game.json keys with their meanings)
 
 KIT = pathlib.Path(__file__).resolve().parents[1]  # DecompPipeline/port
 PIPELINE = KIT.parent
@@ -19,10 +23,7 @@ SDK_DIR = KIT / "sdk"
 ADDR = re.compile(r"[0-9a-f]{8}")
 NAME = re.compile(r"[A-Za-z_]\w*")
 REQUIRED = ("name", "decomp", "entry", "image_base")
-KNOWN = set(REQUIRED) | {"boot_file", "disc", "fsca_table", "must_work", "sdk", "sources", "hardware", "wrap",
-                         "console", "id", "boot_sha256", "arrows", "left_stick", "widescreen", "wide_cull", "part_draw", "interp_scene", "present_thread", "aica_arm", "aica_arm_fast", "aica_arm_native", "kamui1", "lockstep_sample_pcs",
-                         "lockstep_rtc_pcs", "lockstep_scene_pcs", "translator_c", "tx_first", "spin_words", "not_code", "texture_pack", "vram_init", "sq_queue_only", "sq_fast", "game_o2",
-                         "contract"}
+KNOWN = set(GAME_KEYS)  # the keys load() accepts, REQUIRED among them
 CONSOLE = ("country", "language", "broadcast")
 CONTRACT_DOC = KIT / "CONTRACT.md"  # its "Contract version: X.Y.Z" line is the kit's version, the only copy
 _warned_no_contract = []
@@ -61,9 +62,7 @@ def vcvars32():
     if os.environ.get("VCVARS32"):
         given = pathlib.Path(os.environ["VCVARS32"])
         return given if given.is_file() else None
-    sys.path.insert(0, str(PIPELINE))
-    from core import toolcfg  # noqa: E402  (no imports from the rest of core)
-    vc = toolcfg.load(PIPELINE).get("vcvars")
+    vc = toolchain().get("vcvars")
     found = pathlib.Path(vc).with_name("vcvars32.bat") if vc else None
     return found if found and found.is_file() else None
 
@@ -81,9 +80,7 @@ def vcpkg_root():
     "vcpkg"; None when neither names a folder with scripts/buildsystems/vcpkg.cmake."""
     given = os.environ.get("VCPKG_ROOT")
     if not given:
-        sys.path.insert(0, str(PIPELINE))
-        from core import toolcfg  # noqa: E402
-        given = toolcfg.load(PIPELINE).get("vcpkg")
+        given = toolchain().get("vcpkg")
     root = pathlib.Path(given) if given else None
     return root if root and (root / "scripts" / "buildsystems" / "vcpkg.cmake").is_file() else None
 
@@ -140,6 +137,8 @@ def load(game_dir):
     game_dir = pathlib.Path(game_dir).resolve()
     raw = json.loads((game_dir / "game.json").read_text(encoding="utf-8"))
     missing = [k for k in REQUIRED if k not in raw]
+    if "present_pace" in raw:  # 2.14.0: one presenting behaviour for every game (runtime/frame_thread.c)
+        raise ConfigError("game.json present_pace: removed in contract 2.14.0, every game presents the same way; delete the key")
     unknown = sorted(set(raw) - KNOWN)
     if missing or unknown:
         raise ConfigError(f"game.json: missing {missing}, unknown {unknown}")
@@ -200,41 +199,32 @@ def load(game_dir):
                           "(true: the game widens its culling by port_widescreen())")
     present_thread = raw.get("present_thread", False)
     if not isinstance(present_thread, bool):
-        raise ConfigError(f"game.json present_thread: {present_thread!r} is not true or false")
+        raise ConfigError(f"game.json present_thread: {present_thread!r} (true or false)")
     interp_scene = raw.get("interp_scene", False)
     if not isinstance(interp_scene, bool):
         raise ConfigError(f"game.json interp_scene: {interp_scene!r} "
                           "(true: in-between frames blend the scenes, not the game's draw function: runtime/frame_extra.c)")
+    if raw.get("loose_dir") is not None and (not isinstance(raw["loose_dir"], str) or not raw["loose_dir"]):
+        raise ConfigError("game.json loose_dir: a folder name")
     if raw.get("texture_pack") is not None and not isinstance(raw["texture_pack"], str):
         raise ConfigError(f"game.json texture_pack: {raw['texture_pack']!r} (a folder, relative to game.json, that "
                           "holds a texture pack's index.txt: pvr/pvr_pack.c; it may be built later)")
-    # bytes the game reads from texture memory that nothing it uploads covers (the console holds the frame buffers or
-    # leftovers there, which the port keeps elsewhere): {byte offset in texture memory: hex bytes}
-    vi = raw.get("vram_init", {})
-    if not isinstance(vi, dict):
-        raise ConfigError('game.json vram_init: {"byte offset in texture memory": "hex bytes"}')
-    vram_init = []
-    for a, h in vi.items():
-        if not re.fullmatch(r"[0-9a-fA-F]{1,6}", str(a)):
-            raise ConfigError(f"game.json vram_init: {a!r} is not a hex byte offset in the 8 MB texture memory")
-        at = int(a, 16)
-        if not isinstance(h, str) or not re.fullmatch(r"([0-9a-fA-F]{2})+", h) or at + len(h) // 2 > 0x800000:
-            raise ConfigError(f"game.json vram_init {a}: hex bytes inside the 8 MB texture memory, got {h!r}")
-        vram_init.append((at, h.lower()))
-    sq_queue_only = raw.get("sq_queue_only", False)
-    if not isinstance(sq_queue_only, bool):
-        raise ConfigError(f"game.json sq_queue_only: {sq_queue_only!r} (true: a store into the store-queue window 0xe0000000.. stays in the "
-                          "queue the translated code models, it does not also land in RAM)")
-    sq_fast = raw.get("sq_fast", False)
-    if not isinstance(sq_fast, bool):
-        raise ConfigError(f"game.json sq_fast: {sq_fast!r} (true: the translated store-queue helpers a block at a time, tools/tx_sqfast.py)")
-    game_o2 = raw.get("game_o2", False)
-    if not isinstance(game_o2, bool):
-        raise ConfigError(f"game.json game_o2: {game_o2!r} (true: the game's own C at /O2, not the judge's /O1; build.py)")
-    aica_arm = raw.get("aica_arm", False)
-    if not isinstance(aica_arm, bool):
-        raise ConfigError(f"game.json aica_arm: {aica_arm!r} (true: the game's own sound driver runs on the kit's "
-                          "AICA ARM7, runtime/aica_arm.c)")
+    pack_builds = _pack_builds.config(raw.get("pack_builds", {}), game_dir, ConfigError)  # packs it makes beside port.exe
+    texture_pack_choice = _pack_builds.texture_pack_choice(raw.get("texture_pack_choice"), ConfigError)  # pvr/pvr_pack.c
+    vram_init = _pack_builds.vram_init(raw.get("vram_init", {}), ConfigError)  # texture memory the game reads but never fills
+    sprite_fields = _pack_builds.sprite_fields(raw.get("sprite_fields", []), ADDR, ConfigError)  # wrapping backdrops
+    for key, means in (("sq_queue_only", "a store into the store-queue window 0xe0000000.. stays in the queue the translated "
+                                         "code models, it does not also land in RAM"),
+                       ("sq_fast", "the translated store-queue helpers a block at a time, tools/tx_sqfast.py"),
+                       ("game_o2", "the game's own C at /O2, not the judge's /O1; build.py"),
+                       ("aica_arm", "the game's own sound driver runs on the kit's AICA ARM7, runtime/aica_arm.c"),
+                       ("audio_catchup", "a voice read mid-blank first mixes the blank up to it, runtime/aica.c"),
+                       ("border_edges", "bars beside the screen take its edge pixels, base/present_edges.c")):
+        if not isinstance(raw.get(key, False), bool):
+            raise ConfigError(f"game.json {key}: {raw[key]!r} (true: {means})")
+    sq_queue_only, sq_fast, game_o2, aica_arm, audio_catchup, border_edges = (raw.get(k, False) for k in (
+        "sq_queue_only", "sq_fast", "game_o2", "aica_arm", "audio_catchup", "border_edges"))
+    players = play_keys.config(raw, ConfigError)  # coop, pads, game_menu, keys, key_ramp
     aica_arm_fast = raw.get("aica_arm_fast", False)
     if not isinstance(aica_arm_fast, bool) or (aica_arm_fast and not aica_arm):
         raise ConfigError(f"game.json aica_arm_fast: {aica_arm_fast!r} (true, with aica_arm: the ARM skips its idle scan "
@@ -300,7 +290,7 @@ def load(game_dir):
             "fsca_table": path("fsca_table"), "must_work": path("must_work"),
             "sdk": [mods[m] for m in sdk], "sources": sources, "hardware": hardware, "wrap": wrap, "wide_cull": wide_cull,
             "part_draw": part_draw.config(raw.get("part_draw"), wrap, hardware, wide_cull, ConfigError),
-            "sq_fast": sq_fast, "game_o2": game_o2, "console": console, "arrows": arrows, "left_stick": left_stick, "widescreen": widescreen, "interp_scene": interp_scene, "present_thread": present_thread, "texture_pack": path("texture_pack"), "aica_arm": aica_arm, "aica_arm_fast": aica_arm_fast, "aica_arm_native": native_c, "kamui1": kamui1, "vram_init": vram_init, "sq_queue_only": sq_queue_only,
+            "sq_fast": sq_fast, "game_o2": game_o2, **players, "console": console, "arrows": arrows, "left_stick": left_stick, "widescreen": widescreen, "interp_scene": interp_scene, "present_thread": present_thread, "audio_catchup": audio_catchup, "border_edges": border_edges, "loose_dir": raw.get("loose_dir"), "texture_pack": path("texture_pack"), "pack_builds": pack_builds, "texture_pack_choice": texture_pack_choice, "aica_arm": aica_arm, "aica_arm_fast": aica_arm_fast, "aica_arm_native": native_c, **tx_edits.configs(raw, game_dir, ConfigError), "kamui1": kamui1, "vram_init": vram_init, "sprite_fields": sprite_fields, "sq_queue_only": sq_queue_only,
             "lockstep_sample_pcs": pcs, "lockstep_rtc_pcs": rtc, "lockstep_scene_pcs": scene,
             "translator_c": tc, "tx_first": first, "spin_words": spin, "not_code": not_code, "contract": contract}
 
@@ -323,22 +313,27 @@ def port_config_h(cfg, own_crt=(), bu_image=False):
     lines.append(f"#define PORT_ARROWS_STICK {stick} /* 1: the arrow keys move only the stick (game.json arrows) */")
     left_stick = ("off", "choice", "on").index(cfg.get("left_stick", "off"))
     lines.append(f"#define PORT_LEFT_STICK {left_stick} /* the left stick as movement: 0 not offered, 1 a choice, 2 on until changed (game.json left_stick) */")
-    lines.append(f"#define PORT_WIDESCREEN {int(bool(cfg.get('widescreen')))} /* 1: Hor+ in play runs (game.json) */")
-    lines += [f"#define PORT_INTERP_SCENE {int(bool(cfg.get('interp_scene')))} /* 1: in-between frames by scene blending (game.json) */", f"#define PORT_PART_DRAW {int(bool(cfg.get('part_draw')))} /* 1: those frames from object parts (game.json part_draw) */"]
-    lines.append(f"#define PORT_PRESENT_THREAD {int(bool(cfg.get('present_thread')))} /* 1: those frames on a thread of their own (game.json) */")
+    lines += [f"#define PORT_WIDESCREEN {int(bool(cfg.get('widescreen')))} /* 1: Hor+ in play runs (game.json) */", f"#define PORT_INTERP_SCENE {int(bool(cfg.get('interp_scene')))} /* 1: in-between frames by scene blending (game.json) */", f"#define PORT_PART_DRAW {int(bool(cfg.get('part_draw')))} /* 1: those frames from object parts (game.json part_draw) */", f"#define PORT_PRESENT_THREAD {int(bool(cfg.get('present_thread')))} /* 1: those frames on a thread of their own (game.json) */", f"#define PORT_AUDIO_CATCHUP {int(bool(cfg.get('audio_catchup')))} /* 1: a voice read mid-blank mixes up to it first (game.json) */", f"#define PORT_BORDER_EDGES {int(bool(cfg.get('border_edges')))} /* 1: bars beside the screen take its edge pixels (game.json) */"] + play_keys.defines(cfg)
     if cfg.get("vram_init"):  # pvr/pvr_state.c: texture memory starts with these bytes (game.json vram_init)
         lines.append("#define PORT_VRAM_INIT " + ", ".join(
             "{0x%xu, %s}" % (at, c_string(h)) for at, h in cfg["vram_init"]) + ", {0, 0}")
+    if cfg.get("sprite_fields"):  # pvr/ta_parse.c: tiled sprite backdrops that repeat past the screen (game.json sprite_fields)
+        lines.append("#define PORT_SPRITE_FIELDS " + ", ".join("{0x%su, %d, %d, %d, %d}" % f for f in cfg["sprite_fields"]))
     if cfg.get("sq_queue_only"):  # runtime/tx/tx_rt.c: translated stores into the store-queue window do not land in RAM
         lines.append("#define PORT_SQ_QUEUE_ONLY 1")
+    if cfg.get("loose_dir"):  # runtime/gdi_loose.c: the loose-file folder beside the disc (game.json loose_dir)
+        lines.append(f"#define PORT_LOOSE_DIR {c_string(str(cfg['loose_dir']))}")
     if cfg.get("texture_pack"):  # pvr/pvr_pack.c: the pack folder the renderer reads (game.json texture_pack)
         lines.append(f"#define PORT_TEXTURE_PACK {c_string(str(cfg['texture_pack']).replace(chr(92), '/'))}")
+    if cfg.get("texture_pack_choice"):  # pvr/pvr_pack.c: the optional pack shown until the player chooses (game.json)
+        lines.append(f"#define PORT_TEXTURE_PACK_CHOICE {c_string(cfg['texture_pack_choice'])}")
     if cfg.get("aica_arm"):  # runtime/aica_arm.c: the game's sound driver runs on the AICA's ARM7 (off: no ARM)
         lines.append("#define PORT_AICA_ARM 1")
         if cfg.get("aica_arm_native"):  # runtime/aica_arm.c runs the driver as the translated blocks (the interpreter stays selectable)
             lines.append("#define PORT_AICA_ARM_NATIVE 1")
         if cfg.get("aica_arm_fast"):  # runtime/arm7_scan.c on by default (the environment can still switch it)
             lines.append("#define PORT_AICA_ARM_FAST 1")
+    lines.append(f"#define PORT_EXTRA_RAM {int(bool(cfg.get('extra_ram')))} /* 1: a second 16 MB at 0x88000000 (game.json extra_ram) */")
     if cfg["console"]:
         lines += [f"#define PORT_CONSOLE_{k.upper()} 0x{v:x}" for k, v in cfg["console"].items()]
     if cfg.get("kamui1", {}).get("list_word"):  # sdk/kamui1_scene.c: where the game reads Kamui 1's list table word
@@ -354,11 +349,16 @@ def port_config_h(cfg, own_crt=(), bu_image=False):
 
 
 def commit(folder):
-    """The folder's git commit (12 digits, "-dirty" with uncommitted changes), or "unknown" outside git."""
+    """The folder's git commit (12 digits, "-dirty" with uncommitted changes), or "unknown" outside git. Workspace state/
+    folders don't count: the live line lays them over the checkout from rows.tar, whose hash is in live.json."""
     try:
-        out = subprocess.run(["git", "-C", str(folder), "describe", "--always", "--dirty", "--abbrev=12"],
+        out = subprocess.run(["git", "-C", str(folder), "describe", "--always", "--abbrev=12"],
                              capture_output=True, text=True, timeout=30)
-        return out.stdout.strip() if out.returncode == 0 and out.stdout.strip() else "unknown"
+        if out.returncode != 0 or not out.stdout.strip():
+            return "unknown"
+        changed = subprocess.run(["git", "-C", str(folder), "status", "--porcelain", "--untracked-files=no", "--", ":/",
+                                  ":(top,exclude,glob)**/state/**"], capture_output=True, text=True, timeout=30)
+        return out.stdout.strip() + ("-dirty" if changed.stdout.strip() else "")
     except (OSError, subprocess.TimeoutExpired):
         return "unknown"
 

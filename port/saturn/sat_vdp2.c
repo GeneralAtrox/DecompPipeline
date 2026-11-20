@@ -25,8 +25,7 @@ static Nbg g_n[5]; /* NBG0..NBG3, RBG0 */
 static u32 g_hist[2048]; /* NBG1 colour indexes drawn (a test aid) */
 static u32 g_spctl, g_ccctl, g_clofen, g_clofsl, g_ramctl, g_tvmd;
 static int g_off[2][3]; /* colour offsets A and B: r, g, b */
-static u32 g_cram[2048]; /* colour memory as RGB, made once a frame: it cannot change while the picture is composed */
-static u32 g_cram_mask;
+u32 sat_cram[2048], sat_cram_mask; /* colour memory as RGB, made once a frame: it cannot change while the picture is composed */
 /* each band of the picture's own scratch (bands.h): the name last read from a layer's map, so the rest of that cell's
  * dots need not read it again; RBG0's line; the NBG1 colour indexes it drew */
 typedef struct {
@@ -44,26 +43,19 @@ static u32 vb(u32 a) { return sat_v2_vram[a & 0x7ffffu]; }
 static u32 vw(u32 a) { return (vb(a) << 8) | vb(a + 1u); }
 static u32 vl(u32 a) { return (vw(a) << 16) | vw(a + 2u); }
 
-static u32 rgb555(u32 w)
-{
-    u32 r = w & 31u, g = (w >> 5) & 31u, b = (w >> 10) & 31u;
-    return ((r << 3 | r >> 2) << 16) | ((g << 3 | g >> 2) << 8) | (b << 3 | b >> 2);
-}
 static void cram_load(void)
 {
     u32 mode = (g_ramctl >> 12) & 3u, n = mode == 1u ? 2048u : 1024u;
-    g_cram_mask = n - 1u;
+    sat_cram_mask = n - 1u;
     for (u32 i = 0; i < n; i++) {
         if (mode == 2u) {
             u32 o = i * 4u, w = ((u32)sat_v2_cram[o] << 24) | ((u32)sat_v2_cram[o + 1] << 16) | ((u32)sat_v2_cram[o + 2] << 8) | sat_v2_cram[o + 3];
-            g_cram[i] = ((w & 0xffu) << 16) | (w & 0xff00u) | ((w >> 16) & 0xffu);
+            sat_cram[i] = ((w & 0xffu) << 16) | (w & 0xff00u) | ((w >> 16) & 0xffu);
         } else {
-            g_cram[i] = rgb555(((u32)sat_v2_cram[i * 2u] << 8) | sat_v2_cram[i * 2u + 1u]);
+            sat_cram[i] = sat_rgb555(((u32)sat_v2_cram[i * 2u] << 8) | sat_v2_cram[i * 2u + 1u]);
         }
     }
 }
-
-static u32 cram_rgb(u32 idx) { return g_cram[idx & g_cram_mask]; }
 
 /* the sprite layer's registers, read once a frame */
 static const u8 *g_spr_fb;
@@ -227,10 +219,10 @@ named:
         }
     }
     switch (g->cc) {
-    case 0: if (dot == 0 && !g->tpon) return 0; idx = ((pal & 0x7fu) << 4) | dot; *rgb = cram_rgb(idx + (u32)g->craoff); return 1;
-    case 1: if (dot == 0 && !g->tpon) return 0; idx = ((pal & 0x70u) << 4) | dot; if (g == &g_n[1]) b->hist[(idx + (u32)g->craoff) & 0x7ffu]++; *rgb = cram_rgb(idx + (u32)g->craoff); return 1;
-    case 2: if ((dot & 0x7ffu) == 0 && !g->tpon) return 0; *rgb = cram_rgb((dot & 0x7ffu) + (u32)g->craoff); return 1;
-    case 3: if (!(dot & 0x8000u) && !g->tpon) return 0; *rgb = rgb555(dot); return 1;
+    case 0: if (dot == 0 && !g->tpon) return 0; idx = ((pal & 0x7fu) << 4) | dot; *rgb = sat_cram_rgb(idx + (u32)g->craoff); return 1;
+    case 1: if (dot == 0 && !g->tpon) return 0; idx = ((pal & 0x70u) << 4) | dot; if (g == &g_n[1]) b->hist[(idx + (u32)g->craoff) & 0x7ffu]++; *rgb = sat_cram_rgb(idx + (u32)g->craoff); return 1;
+    case 2: if ((dot & 0x7ffu) == 0 && !g->tpon) return 0; *rgb = sat_cram_rgb((dot & 0x7ffu) + (u32)g->craoff); return 1;
+    case 3: if (!(dot & 0x8000u) && !g->tpon) return 0; *rgb = sat_rgb555(dot); return 1;
     default: if (!(dot & 0x80000000u) && !g->tpon) return 0; *rgb = ((dot & 0xffu) << 16) | (dot & 0xff00u) | ((dot >> 16) & 0xffu); return 1;
     }
 }
@@ -242,7 +234,7 @@ static int spr_dot(u32 x, u32 y, u32 *rgb, int *prio, int *ccen, int *ratio)
     const u8 *fb = g_spr_fb;
     u32 o = (((y << g_spr_sh) + x + g_spr_ox) * 2u) & g_spr_mask, w = ((u32)fb[o] << 8) | fb[o + 1], type = g_spctl & 15u, pr, cc, dc, code;
     if ((g_spctl & 0x20u) && (w & 0x8000u)) { /* RGB data */
-        *rgb = rgb555(w);
+        *rgb = sat_rgb555(w);
         pr = 0;
         cc = 0;
     } else {
@@ -258,7 +250,7 @@ static int spr_dot(u32 x, u32 y, u32 *rgb, int *prio, int *ccen, int *ratio)
         default: pr = (w >> 7) & 1u; cc = 0; dc = w & 0x7fu; break;
         }
         if (dc == 0) return 0;
-        *rgb = cram_rgb(dc + g_spr_craoff);
+        *rgb = sat_cram_rgb(dc + g_spr_craoff);
     }
     code = pr;
     *prio = g_spr_prio[code & 7u];
@@ -322,7 +314,7 @@ static void rows(void *ctx, unsigned band, unsigned bands)
         u32 back = ((R(0xac) & 7u) << 16 | R(0xae)) * 2u, *out = sat_frame + y * g_ww;
         int act[5], each[6], na = 0, spr;
         SatWinLine wl;
-        back = rgb555(vw(back + (bklines ? y * 2u : 0u)));
+        back = sat_rgb555(vw(back + (bklines ? y * 2u : 0u)));
         sat_win_line(&wl, y, g_n);
         spr = (sat_layer_mask & 1u) && !sat_win_span(&wl, 0, x0, g_ww, &each[5]);
         for (int i = 0; i < g_nact; i++)
@@ -388,6 +380,10 @@ void sat_compose(void)
     for (unsigned b = 0; b < bands_count(); b++)
         for (u32 i = 0; i < 2048u; i++) g_hist[i] += g_band[b].hist[i];
 }
+
+/* after a compose, for a kit screen (sat_screen.c): plane n's registers (NBG0..NBG3, RBG0); the sprite layer at a dot */
+const SatPlane *sat_v2_plane(int n) { return &g_n[n]; }
+int sat_v2_sprite(u32 x, u32 y, u32 *rgb) { int pr, cc, ratio; return spr_dot(x, y, rgb, &pr, &cc, &ratio); }
 
 void sat_v2_hist_report(void)
 {

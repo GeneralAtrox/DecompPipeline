@@ -30,6 +30,7 @@ void pvr_set_fog_color(u32 argb);               /* FOG_COL_RAM */
 void pvr_set_fog_density(u32 reg);              /* FOG_DENSITY: mantissa << 8 | exponent */
 void pvr_set_background(const f32 xyz[3][3], const u32 argb[3]); /* the background plane: 3 vertices, colours */
 void pvr_set_clip(u32 x0, u32 y0, u32 x1, u32 y1); /* global tile clip, in pixels (inclusive) */
+void pvr_set_clip_opens_frame(int on); /* a clip below 640x480 is a share of the whole frame: a wipe that ends at the frame's edges */
 void pvr_set_stride(u32 width);                    /* TEXT_CONTROL: the row width of stride textures, texels */
 void pvr_set_border(u32 argb);                     /* the border colour, around the picture */
 /* pvr_pal.c: palette RAM, what palettized textures (pixel formats 5 and 6) index */
@@ -41,6 +42,14 @@ void pvr_set_cheap_shadow(s32 intensity);
 
 /* pvr_pack.c: --texture-pack DIR|on|off (texture packs: replacement images, host-side only); the arguments taken */
 int pvr_pack_option(const char *arg, const char *value);
+/* pvr_pack_load.c, from the SDK's kmLoadTexture as a texture's bytes land: its pack image (if any) starts loading on the
+ * loader's thread, ahead of the frame that first draws it. tcw: the format bits and address the game's TCW will have. */
+void pvr_pack_hint(u32 tcw, u32 w, u32 h, u32 stride);
+/* pvr_pack_load.c, from the SDK's kmCreateTextureSurface (w 0: kmFreeTexture): a texture surface's TCW (format bits and
+ * address) and size, so a write a game's own library makes into texture memory (port_texture_written: it copies the
+ * bytes itself, not through kmLoadTexture) hints it too: pvr_pack_written, the write that reaches its last texel byte. */
+void pvr_pack_surface(u32 tcw, u32 w, u32 h);
+void pvr_pack_written(u32 offset, u32 size);
 
 /* pvr_parts.c, from the SDK: where each TA list's write position is kept (uncached addresses, PVRX_LISTS of them),
  * and the start of a scene (the parts of the one before are spent). */
@@ -49,6 +58,7 @@ void pvr_parts_scene(void);
 
 /* pvr_draw.c: draws a scene's passes into the frame target. Returns 0 when nothing could be drawn. */
 int pvr_render(const PvrPass *passes, u32 count);
+void pvr_render_part(void); /* the next render draws a view into the frame, not its last (KM_RENDER_NOFLIP) */
 int pvr_read_frame(void *rgb565, u32 width, u32 height); /* the last frame, scaled to width x height; 0 if none */
 
 /* The SDK's to-do log: calls reached with arguments the module does not handle yet, each text once per run. */

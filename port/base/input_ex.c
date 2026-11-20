@@ -42,6 +42,7 @@ const char *port_pad_ex_name(u32 bit, int player)
         {HOST_PAD_RS_DOWN, "Right stick down", "RS down", "R-stick down"},
         {HOST_PAD_RS_LEFT, "Right stick left", "RS left", "R-stick left"},
         {HOST_PAD_RS_RIGHT, "Right stick right", "RS right", "R-stick right"},
+        {HOST_PAD_SHARE, "Share", "Share", "Mic"}, /* PlayStation's Share is its Back */
     };
     int style = pad_style();
     (void)player; /* one style for every pad: the one last used */

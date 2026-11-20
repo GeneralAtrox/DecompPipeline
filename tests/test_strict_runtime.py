@@ -117,7 +117,7 @@ RT = {"dreamcast_sh4": (0x8C040000, 0x8C040100, (0x8C010000, 0x8C010100), 0x8CFF
       "gamecube_ppc": (0x80040000, 0x80040100, (0x80003100, 0x80003200), 0x817FFFFE, 0x80020000, 0x817FE000,
                        (1, 2, 3, 4, 18), ("runner.c", "tc_rt.c", "tc_ppc.c"), False, False),
       "xbox360_ppc": (0x40040000, 0x40040100, (0x82000000, 0x82000100), 0x400FFFFE, 0x82020000, 0x700FE000,
-                      (1, 2, 3, 4, 18), ("runner.c", "tc_rt.c", "tc_ppc.c"), False, False)}
+                      (1, 2, 3, 4, 18), ("runner.c", "tc_rt.c", "tc_ppc.c", "tc_exit.c"), False, False)}
 NO_FSCA = ("gamecube_ppc", "xbox360_ppc")  # runners without the SH-4 fsca table argument
 
 
@@ -345,7 +345,7 @@ class X360Judge(unittest.TestCase):
             self.assertEqual((x / n).read_bytes(), (T / "gamecube_ppc" / n).read_bytes(), n)
         cfg = json.loads((x / "target.json").read_text(encoding="utf-8"))
         self.assertTrue({"TcJunk.java", "TcStrict.java"} <= set(cfg["locked_scripts"]))
-        self.assertEqual([cfg[f] for f in FLAGS], [True] * 4)
+        self.assertEqual([cfg[f] for f in FLAGS], [False] * 4)  # off on x360-land until proven on (2026-11-15)
         call = "TcStrict.call(res, emu, calls, zeroed)"  # in clobber's place, which it may still call
         for f, hooks in (("TcOracle", ("TcStrict.of(", call, "TcStrict.exit(res, emu);")),
                          ("TcVectors", ("TcStrict.vec(r)", "TcStrict.exp(r)", "TcStrict.replay(this, v, r, set)")),
@@ -367,7 +367,8 @@ class X360Judge(unittest.TestCase):
             self.assertLess(run.index("} else if (!active) {"), run.index("|| line[0] == 'W'"), r.name)
             self.assertLess(run.index("line[0] == 'J' || line[0] == 'U'"), run.index("} else if (line[0] == 'V') {"))
         self.assertRegex((x / "x360_check.py").read_text(encoding="utf-8"), r"strict = strict_judge\.modes\(cfg\)[^$]*"
-                         r"compare_vector\(.*strict, report := \[\]\)\n\s+strict_judge\.note\(result, s, i, report\)")
+                         r"report = \[\]\n\s+d = cmp\.compare_vector\(meta, image, vecs\[i\], exp\[i\], act\.get\(i\), "
+                         r"strict, report, .*\n.*\n\s+strict_judge\.note\(result, s, i, report\)")
         lines = (g / "TcStrict.java").read_text(encoding="utf-8").splitlines()
         self.assertLessEqual(len(lines), 400)
         self.assertEqual([s for s in lines if len(s) > 120], [])

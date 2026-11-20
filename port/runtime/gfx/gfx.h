@@ -14,7 +14,17 @@ void gfx_vmu_release(void);
 /* gfx_movie.c: a movie's frames over the picture (media.h has the calls that hand them over) */
 int gfx_movie_on(void);   /* a movie is laid over the picture now */
 void gfx_movie_draw(void); /* into the frame, after the renderer, before it is dumped or shown */
+void gfx_movie_lay(void);  /* the current picture into the frame, without choosing a newer one */
+void gfx_movie_check_shown(void); /* --movie-check on: a frame about to be shown while a movie is on, read back */
 void gfx_movie_release(void);
+
+/* gfx_present.c: --border-edges on|off (game.json border_edges): the bars beside the screen take its edge pixels
+ * (base/present.h gfx_carry_edges) after a frame that drew nothing in them. With a movie on, the bars are black instead (base/present.h
+ * gfx_black_bars) */
+int gfx_edges_on(void);
+
+/* pvr_draw.c: the scene drawn last drew nothing past the screen (in a wider or taller frame) */
+extern int g_pvr_framed;
 
 /* gfx_capture.c */
 int gfx_capture_option(const char *arg, const char *value);

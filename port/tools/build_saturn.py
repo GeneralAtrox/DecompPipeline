@@ -4,7 +4,7 @@ Nearest existing: build.py - it drives CMake + vcpkg for the Dreamcast kit (SDL3
 kit so far is plain C against the Windows API, so this calls cl directly with the same flags (/O1 /fp:strict /W4 /WX,
 32-bit). It joins build.py when the Saturn video and audio need SDL3.
 
-  build_saturn.py --gen OUTDIR_OF_gen_saturn --exe PATH [--check] [--asan]   (--check: compile the kit files only, no link)
+  build_saturn.py --gen OUTDIR_OF_gen_saturn --exe PATH [--check] [--asan] [--game-src DIR]   (--check: compile the kit files only, no link)
 
 --asan, or DP_ASAN=1 in the environment (a game's own builder calls this unchanged): AddressSanitizer, as build.py --asan
 (MSVC /fsanitize=address), with its runtime dll copied beside the exe.
@@ -44,7 +44,7 @@ def sdl3(exe, triplet="x86-windows"):
     return root
 
 
-def run(gen, exe, check, jobs, asan=False):
+def run(gen, exe, check, jobs, asan=False, game_src=None):
     vc = game_config.vcvars32()
     if not vc:
         sys.exit("no 32-bit Visual Studio environment (set VCVARS32 or config.local.json vcvars)")
@@ -52,10 +52,12 @@ def run(gen, exe, check, jobs, asan=False):
     exe = pathlib.Path(exe).resolve()
     exe.parent.mkdir(parents=True, exist_ok=True)
     sdl = sdl3(exe)
-    kit = sorted(str(p) for p in KIT.glob("*.c")) + sorted(str(p) for p in BASE.glob("*.c")) + [str(gen / "scene_map.c")]
+    gsrc = pathlib.Path(game_src).resolve() if game_src else None  # the game's own code in the kit (sat_hooks.h's table)
+    hooks = sorted(str(p) for p in gsrc.glob("*.c")) if gsrc else [str(KIT / "none" / "sat_hooks_none.c")]
+    kit = hooks + sorted(str(p) for p in KIT.glob("*.c")) + sorted(str(p) for p in BASE.glob("*.c")) + [str(gen / "scene_map.c")]
     cxx = sorted(str(p) for p in BASE.glob("*.cpp")) + sorted(str(p) for p in BASE.glob("third_party/*.cpp"))  # imgui_build.cpp
     chunks = [] if check else [str(gen / n) for n in (gen / "sat_chunks.txt").read_text().split()] + [str(gen / "sat_table.c"), str(gen / "txextra.c")]
-    inc = ["/I" + str(KIT), "/I" + str(BASE), "/I" + str(TC_RT), "/I" + str(gen), "/I" + str(sdl / "include")]
+    inc = (["/I" + str(gsrc)] if gsrc else []) + ["/I" + str(KIT), "/I" + str(BASE), "/I" + str(TC_RT), "/I" + str(gen), "/I" + str(sdl / "include")]
     obj = exe.parent / "obj"
     obj.mkdir(exist_ok=True)
     asan = asan or os.environ.get("DP_ASAN") == "1"
@@ -85,6 +87,7 @@ if __name__ == "__main__":
     ap.add_argument("--exe", required=True)
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--jobs", type=int, default=4)
+    ap.add_argument("--game-src", help="a folder of the game's own .c files for the kit (its sat_game_table; none: the empty table)")
     ap.add_argument("--asan", action="store_true", help="AddressSanitizer (also DP_ASAN=1)")
     a = ap.parse_args()
-    sys.exit(run(a.gen, a.exe, a.check, a.jobs, a.asan))
+    sys.exit(run(a.gen, a.exe, a.check, a.jobs, a.asan, a.game_src))

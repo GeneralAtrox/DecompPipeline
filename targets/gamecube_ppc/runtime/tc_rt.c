@@ -20,9 +20,13 @@ static u32 *g_wlist;
 static u32 g_wcount;
 static int g_woverflow;
 static u32 g_xr[18];  /* r14..r31 at exit, as the function reported them (tc_xr); 0 when it did not */
+static u32 g_msr = TC_MSR_ENTRY; /* MSR at exit (tc_xmsr) */
 static u64 g_xrf[18]; /* f14..f31's bits (tc_xrf) */
-static u32 g_rets[16];
-static u64 g_frets[16];
+static u32 g_in11;    /* a helper entry's r11 (vectors.txt X: tcrt_set_frame); 0 otherwise */
+static u32 g_inr[18]; /* its r14..r31 at entry */
+static u64 g_inf[18]; /* its f14..f31's bits at entry */
+static u32 g_rets[TCRT_RETS];
+static u64 g_frets[TCRT_RETS];
 static u32 g_ncalls;
 static u32 g_call_int[MAX_CALLS][LOG_INTS]; /* target, r3..r10, s0..s7 */
 static u64 g_call_f[MAX_CALLS][8];          /* f1..f8 */
@@ -196,6 +200,7 @@ static void tcs_write(u32 p, u32 n, const u8 *in)
 static void tcs_scratch(int i, u32 bits) { (void)i, (void)bits; }
 
 #include "tc_strict.h"
+#include "tc_fx.h"
 
 /* The call just logged, as TcOracle.callRecord's fields for tc_strict.h: target, r3..r10 (1..8), s0..s7 (17..24). */
 static void strict_call(u32 target)
@@ -209,19 +214,19 @@ static void strict_call(u32 target)
 
 u32 tc_call(u32 target, const TcArgs *args)
 {
-    u32 rv = g_ncalls < 16 ? g_rets[g_ncalls] : 0;
+    u32 rv = g_ncalls < TCRT_RETS ? g_rets[g_ncalls] : 0;
     log_call(tcrt_fold(target), args);
     strict_call(tcrt_fold(target));
-    g_ncalls++;
+    fx_call(g_ncalls++); /* K: what the callee stores (tc_fx.h) */
     return rv;
 }
 
 f64 tc_callf(u32 target, const TcArgs *args)
 {
-    u64 b = g_ncalls < 16 ? g_frets[g_ncalls] : 0;
+    u64 b = g_ncalls < TCRT_RETS ? g_frets[g_ncalls] : 0;
     log_call(tcrt_fold(target), args);
     strict_call(tcrt_fold(target));
-    g_ncalls++;
+    fx_call(g_ncalls++); /* K: what the callee stores (tc_fx.h) */
     f64 d;
     memcpy(&d, &b, 8);
     return d;
@@ -230,18 +235,21 @@ f64 tc_callf(u32 target, const TcArgs *args)
 /* The last call's other result: its r3 after a tc_callf, its f1 after a tc_call (the mocked callee sets both). */
 u32 tc_lastr(void)
 {
-    return g_ncalls >= 1 && g_ncalls <= 16 ? g_rets[g_ncalls - 1] : 0;
+    return g_ncalls >= 1 && g_ncalls <= TCRT_RETS ? g_rets[g_ncalls - 1] : 0;
 }
 
-/* The last call's r4: the oracle's junk for that call (TcStrict: TcJunk slot 4), or clobber's 0 with mock_junk off. */
+/* The last call's r4: its scripted word (Q, tc_fx.h), else the oracle's junk for that call (TcStrict: TcJunk slot 4),
+ * or clobber's 0 with mock_junk off. */
 u32 tc_lastr4(void)
 {
+    u32 w = 0;
+    if (g_ncalls >= 1 && fx_r4(g_ncalls - 1u, &w)) return w;
     return (g_tcs.flags & 1u) && g_ncalls >= 1 ? (u32)tcs_at(g_tcs.seed, g_tcs.vid, g_ncalls - 1u, 4u) : 0;
 }
 
 f64 tc_lastf(void)
 {
-    u64 b = g_ncalls >= 1 && g_ncalls <= 16 ? g_frets[g_ncalls - 1] : 0;
+    u64 b = g_ncalls >= 1 && g_ncalls <= TCRT_RETS ? g_frets[g_ncalls - 1] : 0;
     f64 d;
     memcpy(&d, &b, 8);
     return d;
@@ -314,23 +322,41 @@ void tcrt_reset(void)
     for (u32 i = 0; i < g_wcount; i++) g_written[g_wlist[i] >> 3] = 0;
     if (g_woverflow) memset(g_written, 0, TCRT_RAM_SIZE / 8);
     memcpy(g_ram, g_pristine, TCRT_RAM_SIZE);
-    g_wcount = 0;
-    g_woverflow = 0;
-    g_ncalls = 0;
-    g_nfaults = 0;
-    g_nio = 0;
-    g_hw_set = 0;
-    g_hw_next = 0;
-    g_code_read = 0;
+    g_wcount = g_ncalls = g_nfaults = g_nio = g_hw_next = g_code_read = 0;
+    g_woverflow = g_hw_set = 0;
     tcrt_strict_reset();
+    fx_reset();
     memset(g_rets, 0, sizeof g_rets);
     memset(g_frets, 0, sizeof g_frets);
     memset(g_xr, 0, sizeof g_xr);
     memset(g_xrf, 0, sizeof g_xrf);
+    g_in11 = 0;
+    memset(g_inr, 0, sizeof g_inr);
+    memset(g_inf, 0, sizeof g_inf);
+    g_msr = TC_MSR_ENTRY;
+}
+
+void tcrt_set_frame(u32 r11, const u32 *gpr, const u64 *fpr)
+{
+    g_in11 = r11;
+    memcpy(g_inr, gpr, sizeof g_inr);
+    memcpy(g_inf, fpr, sizeof g_inf);
+    memcpy(g_xr, gpr, sizeof g_xr); /* the exit frame: the entry values, unless the C reports another (tc_xr) */
+    memcpy(g_xrf, fpr, sizeof g_xrf);
+}
+
+u32 tc_inr(u32 k) { return k == 11 ? g_in11 : (k >= 14 && k < 32 ? g_inr[k - 14] : 0); }
+
+f64 tc_inf(u32 k)
+{
+    f64 d = 0.0;
+    if (k >= 14 && k < 32) memcpy(&d, &g_inf[k - 14], 8);
+    return d;
 }
 
 void tc_xr(u32 k, u32 v) { if (k >= 14 && k < 32) g_xr[k - 14] = v; }
 void tc_xrf(u32 k, f64 v) { if (k >= 14 && k < 32) memcpy(&g_xrf[k - 14], &v, 8); }
+void tc_xmsr(u32 v) { g_msr = v; }
 
 void tcrt_poke(u32 addr, const u8 *data, u32 len)
 {
@@ -339,7 +365,7 @@ void tcrt_poke(u32 addr, const u8 *data, u32 len)
     memcpy(g_ram + (addr - TCRT_RAM_BASE), data, len);
 }
 
-void tcrt_set_call_returns(const u32 rets[16], const u64 frets[16])
+void tcrt_set_call_returns(const u32 rets[TCRT_RETS], const u64 frets[TCRT_RETS])
 {
     memcpy(g_rets, rets, sizeof g_rets);
     memcpy(g_frets, frets, sizeof g_frets);
@@ -354,6 +380,7 @@ static int cmp_u32(const void *a, const void *b)
 void tcrt_report(FILE *out, u32 r3, u64 f1_bits, u32 r4)
 {
     fprintf(out, "RET %08x %016llx %08x\n", r3, (unsigned long long)f1_bits, r4);
+    if (g_msr != TC_MSR_ENTRY) fprintf(out, "MSR %08x\n", g_msr);
     if (g_woverflow) fprintf(out, "FAULT too-many-writes\n");
     qsort(g_wlist, g_wcount, sizeof(u32), cmp_u32);
     u32 i = 0;
@@ -385,7 +412,7 @@ void tcrt_report(FILE *out, u32 r3, u64 f1_bits, u32 r4)
     }
     if (g_ncalls > MAX_CALLS) fprintf(out, "FAULT too-many-calls\n");
     tcrt_strict_report(out); /* CS lines; XR: the exit frame (tc_strict.h) */
-    if (tcrt_strict_flags() & 8) { /* r1; r14..r31 and f14..f31: entry values 0 (TcOracle.setEntry) unless reported */
+    if (tcrt_strict_flags() & 8) { /* r1; r14..r31 and f14..f31: the entry values (0, or X's) unless reported */
         fprintf(out, "XR %08x", TCRT_SP);
         for (int k = 14; k < 32; k++) fprintf(out, " %08x", g_xr[k - 14]);
         for (int k = 14; k < 32; k++) fprintf(out, " %016llx", (unsigned long long)g_xrf[k - 14]);

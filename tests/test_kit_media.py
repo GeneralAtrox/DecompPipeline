@@ -79,6 +79,17 @@ GDFS gdFsOpen(const char *fileName, GDFS_DIRREC dirRec) { (void)dirRec; return s
 s32 gdFsGetFileSize(GDFS gdfs, s32 *size) { (void)gdfs; *size = (s32)g_file_n; return 0; }
 s32 gdFsRead(GDFS gdfs, s32 sectors, void *buffer) { (void)gdfs, (void)sectors; memcpy(buffer, g_file, g_file_n); return 0; }
 void gdFsClose(GDFS gdfs) { (void)gdfs; }
+/* small movies never read behind; "behind" mode fills the file only as asked (media_movie_behind) */
+u32 gdfs_lba(struct GdfsHandle *gdfs) { (void)gdfs; return 0; }
+DiscFill *disc_fill_start(u32 lba, u32 sectors, void *out) { (void)lba, (void)sectors, (void)out; return NULL; }
+int disc_fill_wait_v(void *f, u32 bytes) { (void)f, (void)bytes; return 1; } void disc_fill_end_v(void *f) { (void)f; } void disc_fill_reader(DiscFill *f, int reader) { (void)f, (void)reader; }
+static const u8 *g_src; static u8 *g_dst; static u32 g_have, g_total, g_asks, g_ends;
+static int fake_wait(void *f, u32 b)
+{
+    b = b > g_total ? g_total : b, g_asks++, (void)f;
+    return b > g_have ? (memcpy(g_dst + g_have, g_src + g_have, b - g_have), g_have = b, 1) : 1;
+}
+static void fake_end(void *f) { (void)f; g_ends++; }
 
 static s32 loudness(const s16 *pcm, u32 n)
 {
@@ -175,7 +186,8 @@ int main(int argc, char **argv)
         MediaMovie *mv = media_movie_new();
         u8 *b = media_movie_load(mv, n);
         u32 ended = 0, first = 0;
-        memcpy(b, p, n);
+        if (strcmp(argv[1], "behind")) memcpy(b, p, n);
+        else memset(b, 0, n), g_src = p, g_dst = b, g_total = n, media_movie_behind(mv, &g_total, fake_wait, fake_end);
         if (!media_movie_start(mv, n)) return 1;
         for (g_vb = 1; g_vb < 200 && !ended; g_vb++) {
             g_task(g_task_arg);
@@ -188,6 +200,7 @@ int main(int argc, char **argv)
                g_shown[0], g_shown[1], g_shown[2]);
         media_movie_stop(mv);
         printf("%d %u\n", media_movie_state(mv), g_hides);
+        printf("%u %u %u\n", g_asks > 0, g_have == g_total, g_ends);
     }
     return 0;
 }
@@ -376,6 +389,11 @@ class KitMedia(unittest.TestCase):
         self.assertIn(ended, (60, 61, 62))
         self.assertGreaterEqual(shows, 2)
         self.assertEqual(out[1].split(), ["0", "1"])
+
+    def test_movie_read_behind(self):  # media_movie_behind: plays as read whole; unasked bytes stay zero
+        movie = mpeg1_movie(adx_file([(0, [0] * 32)] * 1379, 44100))
+        whole, behind = self.run_exe("movie", "w.sfd", movie), self.run_exe("behind", "b.sfd", movie)
+        self.assertEqual((behind[:2], behind[2].split()), (whole[:2], ["1", "1", "1"]))
 
 
 if __name__ == "__main__":

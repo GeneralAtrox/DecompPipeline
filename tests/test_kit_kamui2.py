@@ -258,6 +258,9 @@ void pvr_vram_written(u32 offset, u32 size) { (void)offset; (void)size; }
 void pvr_set_stride(u32 width) { (void)width; }
 void pvr_set_clip(u32 x0, u32 y0, u32 x1, u32 y1) { (void)x0; (void)y0; (void)x1; (void)y1; }
 int pvr_render(const PvrPass *passes, u32 count) { (void)passes; (void)count; return 1; }
+void pvr_render_part(void) {}
+void pvr_parts_lists(const u32 *ptrs) { (void)ptrs; }
+void pvr_parts_scene(void) {}
 int pvr_read_frame(void *rgb565, u32 width, u32 height) { (void)rgb565; (void)width; (void)height; return 0; }
 void hw_check_scene(const struct PvrPass *passes, u32 count) { (void)passes; (void)count; }
 void hw_check_rendered(const struct PvrPass *passes, u32 count) { (void)passes; (void)count; }
@@ -276,8 +279,8 @@ void gfx_show(void) {}
 void gfx_capture_extra(void) {}
 u32 k2_frame_lines(void) { return 480u; }
 void k2_run_callback(s32 slot) { (void)slot; }
-void pvr_parts_lists(const u32 *ptrs) { (void)ptrs; }
-void pvr_parts_scene(void) {}
+void pvr_pack_hint(u32 tcw, u32 w, u32 h, u32 stride) { (void)tcw; (void)w; (void)h; (void)stride; }
+void pvr_pack_surface(u32 tcw, u32 w, u32 h) { (void)tcw; (void)w; (void)h; }
 s32 kmCreateTextureSurface(KMSURFACEDESC *surface, u32 width, u32 height, u32 type);
 s32 kmBeginScene(KMSYSTEMCONFIGSTRUCT *config);
 

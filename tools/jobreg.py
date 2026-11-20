@@ -54,7 +54,7 @@ import hashlib
 import json
 import os
 import pathlib
-import platform
+import socket
 import posixpath
 import re
 import shlex
@@ -621,7 +621,7 @@ def job_key(argv, a, cwd=None):
         lines.append(f"changed {a.changed}")
     inputs = hashlib.sha256(("\n".join(lines) + "\n").encode()).hexdigest()
     key = hashlib.sha256(f"inputs {inputs}\nlimits {' | '.join(limits)}\n".encode()).hexdigest()
-    return {"inputs": inputs, "key": key, "host": host or platform.node(), "commit": commit, "limits": limits,
+    return {"inputs": inputs, "key": key, "host": host or socket.gethostname(), "commit": commit, "limits": limits,
             "lines": lines}
 
 
@@ -825,7 +825,7 @@ def hook_reply(payload, mode, exempt, folder=None, record=False):
     if record and folder is not None:
         try:
             _append(folder, {"event": "outside", "at": _now(), "kinds": sorted({h[0] for h in hits}),
-                             "hosts": sorted({h[1] or platform.node() for h in hits}), "denied": deny,
+                             "hosts": sorted({h[1] or socket.gethostname() for h in hits}), "denied": deny,
                              "session": payload.get("session_id"), "cwd": payload.get("cwd"),
                              "jobs": [h[2][:300] for h in hits]}, wait=2)
         except Exception:  # the registry busy or unwritable: the reply still goes out

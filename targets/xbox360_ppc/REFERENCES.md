@@ -17,6 +17,7 @@ read to learn facts and to cross-check results only.
 | XenonRecomp outputs (`External/` beside the projects), and its seed list `extra_seeds.txt` | cross-check only: the seed list was compared with DP's own catalog (7 of 182 seeds are DP entries; 171 lie inside `.pdata` functions); the extracted `default.xex` matched DP's byte for byte | no (XenonRecomp's source was not used) |
 | DP's own `targets/gamecube_ppc/` | the model for the target layout, the judge glue, the runtime API and the tests | DP's own code, adapted |
 | DP's `tests/test_saturn_sh2.py` | the pattern of the offline tests (MSVC through `vcvars`, a runner on a synthetic image) | DP's own code, adapted |
+| Xenos gamma (2026-11-13), learnt from a Xenia trace of Too Human's menu (fetch constants, the final resolve and the swap) and Too Human's own code (SetGammaRamp 8274ef90, 82754110) | the behaviour only: a texture fetch constant's sign 3 marks a gamma channel, which the texture unit turns to linear through the piecewise-linear curve (8-bit v: v below 64, 2v-64 below 96, 4v-256 below 192, else 8v-1024, over 1024); a 2_10_10_10 front buffer goes out through the game's piecewise-linear ramp (128 base/delta pairs a channel, 10-bit, at device +0x3a9c). The kit's `runtime/xb_xenos_gamma.h` and `shader_convert.py` xb_tg are written fresh | no |
 
 Development symbols (PDB and MAP) of other Xbox 360 games, supplied by the user and kept on the main laptop only: used
 to name functions in a game's own workspace, never copied into DP. Which sets were tried, and what they named in

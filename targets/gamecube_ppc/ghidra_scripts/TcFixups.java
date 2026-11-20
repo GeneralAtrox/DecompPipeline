@@ -33,24 +33,20 @@
 //  - fres / frsqrte: the SLEIGH divides and takes a square root exactly; the 750CL looks the result up in a table and
 //    interpolates. The fixup writes TcEstimate's result (the hardware-measured tables) to fD, and to ps1 of fD when
 //    the step wrote it.
-//  - cache and ordering instructions with no register or memory effect a single-threaded program can see (dcbf, dcbst,
-//    dcbt, dcbtst, icbi, sync, isync, eieio) are no-ops: the SLEIGH's CALLOTHERs get empty callbacks (install). dcbz
-//    zeroes the 32-byte block holding the effective address. dcbi is refused: it discards a dirty line, and with no
-//    cache modelled there is no line to discard.
+//  - cache and ordering instructions, dcbz, dcbi, mtmsr / mfmsr and sc: TcCallOther and TcSystem.
+//  - paired singles (ps_*; TcPaired has the rules and the SLEIGH's faults): after the step, both slots of fD are
+//    recomputed from the source registers as they were before it and written over the step's. psq_l / psq_st through
+//    an integer GQR type (4..7) run with an ldexpf callback (install), then the loaded slots or the stored values are
+//    rewritten with the 750CL's dequantize / quantize. The GQR is read from the emulator at the step: its entry value
+//    is a fact (TcFacts), and a function that writes it changes it.
+//    psq_l / psq_st through a float type (0) are plain single loads and stores. The fixups make their NaNs and their
+//    truncated stores the hardware's, as for lfs and stfs.
 //  - refuse: instructions whose p-code is not the hardware's and that nothing here repairs. The function is refused
-//    (TcPrepare "unsupported") rather than tested against a wrong oracle: the paired-single and quantized load/store
-//    families (ps_*, psq_*: ldexpf CALLOTHER, signed conversion of the unsigned GQR types, an unsigned 6-bit scale, no
-//    store saturation), FPSCR moves (the p-code float ops always round to nearest, and the status bits are not kept),
-//    and the system instructions (dcbi, dcbz_l, mfmsr, mtmsr, mftb, sc, rfi, tw, twi: machine state the program does
-//    not own).
-//    Exception: psq_l / psq_st through a GQR whose type and scale fields are 0 (GQR0 in CodeWarrior's prologues and
-//    epilogues, saving ps1 of f14..f31) take the SLEIGH's float path, a plain single load or store with no
-//    CALLOTHER: the hardware's but for rounding (not truncating) the stored singles and for the NaNs, which the
-//    "psq_l" / "psq_st" fixups below make the hardware's.
+//    (TcPrepare "unsupported") rather than tested against a wrong oracle:
+//    - a psq_* whose GQR is not a fact, or whose type is reserved (1..3);
+//    - FPSCR moves (the p-code float ops always round to nearest, and the status bits are not kept);
+//    - the system instructions (dcbz_l, mftb, rfi, tw, twi: machine state the program does not own).
 import ghidra.app.emulator.EmulatorHelper;
-import ghidra.pcode.emulate.BreakCallBack;
-import ghidra.pcode.memstate.MemoryState;
-import ghidra.pcode.pcoderaw.PcodeOpRaw;
 import ghidra.program.model.address.*;
 import ghidra.program.model.pcode.PcodeOp;
 import ghidra.program.model.pcode.Varnode;
@@ -63,70 +59,22 @@ public class TcFixups {
     static String refuse(Instruction in, java.util.Map<String, Long> fixed) {
         String m = in.getMnemonicString().toLowerCase();
         if (m.startsWith("psq_")) {
-            java.util.regex.Matcher g = java.util.regex.Pattern.compile("gqr([0-7])").matcher(in.toString().toLowerCase());
-            Long v = g.find() ? fixed.get("gqr" + g.group(1)) : null;
-            long fields = m.startsWith("psq_l") ? 0x3f070000L : 0x00003f07L; // LD_SCALE|LD_TYPE or ST_SCALE|ST_TYPE
-            if (v != null && (v & fields) == 0) return null;
-            return "paired-single instruction " + m + " (quantized: GQR type or scale not 0)";
+            int[] q = TcPaired.psq(in);
+            Long v = fixed.get("gqr" + q[0]);
+            if (v == null) return "paired-single instruction " + m + " (GQR" + q[0] + " not a fact)";
+            long type = m.startsWith("psq_l") ? (v >>> 16) & 7 : v & 7;
+            if (type >= 1 && type <= 3) return "paired-single instruction " + m + " (reserved GQR type " + type + ")";
         }
-        if (m.startsWith("ps_")) return "paired-single instruction " + m;
         for (PcodeOp op : in.getPcode()) {  // a user-defined p-code op the emulator has no callback for
             if (op.getOpcode() != PcodeOp.CALLOTHER) continue;
             String name = in.getProgram().getLanguage().getUserDefinedOpName((int) op.getInput(0).getOffset());
-            if (!CALLOTHER_HANDLED.contains(name)) return "CALLOTHER " + name + " in " + m + " (no emulator callback)";
+            if (!TcCallOther.HANDLED.contains(name)) return "CALLOTHER " + name + " in " + m + " (no emulator callback)";
         }
         if (m.matches("mtfsf\\.?|mtfsfi\\.?|mtfsb[01]\\.?|mffs\\.?")) return "FPSCR move " + m + " (rounding mode)";
-        if (m.matches("dcbz_l|dcbzl|dcbi|mtmsr|mfmsr|sc|rfi|tw|twi|mftb")) {
+        if (m.matches("dcbz_l|dcbzl|rfi|tw|twi|mftb")) {
             return "cache/system instruction " + m;
         }
         return null;
-    }
-
-    // ---------- CALLOTHER callbacks ----------
-    // cntlzw / cntlzw.: the SLEIGH is A = countLeadingZeros(S:4), a CALLOTHER the emulator does not implement.
-    // The cache and ordering CALLOTHERs below do nothing a program can see (see the header); dataCacheBlockClearToZero
-    // zeroes the 32-byte block.
-    static final java.util.Set<String> NOP_OPS = java.util.Set.of("sync", "instructionSynchronize",
-        "enforceInOrderExecutionIO", "dataCacheBlockFlush", "dataCacheBlockStore", "dataCacheBlockTouch",
-        "dataCacheBlockTouchForStore", "instructionCacheBlockInvalidate");
-    static final java.util.Set<String> CALLOTHER_HANDLED;
-
-    static {
-        java.util.Set<String> h = new java.util.HashSet<>(NOP_OPS);
-        h.add("countLeadingZeros");
-        h.add("dataCacheBlockClearToZero");
-        CALLOTHER_HANDLED = java.util.Set.copyOf(h);
-    }
-
-    static void install(EmulatorHelper emu, AddressSpace ram) {
-        for (String name : NOP_OPS) {
-            emu.registerCallOtherCallback(name, new BreakCallBack() {
-                @Override
-                public boolean pcodeCallback(PcodeOpRaw op) {
-                    return true;
-                }
-            });
-        }
-        emu.registerCallOtherCallback("dataCacheBlockClearToZero", new BreakCallBack() {
-            @Override
-            public boolean pcodeCallback(PcodeOpRaw op) {
-                MemoryState ms = emu.getEmulator().getMemState();
-                long ea = ms.getValue(op.getInput(1)) & 0xffffffe0L;
-                ms.setChunk(new byte[32], ram, ea, 32);
-                return true;
-            }
-        });
-        emu.registerCallOtherCallback("countLeadingZeros", new BreakCallBack() {
-            @Override
-            public boolean pcodeCallback(PcodeOpRaw op) {
-                MemoryState ms = emu.getEmulator().getMemState();
-                Varnode in = op.getInput(1);
-                int bits = 8 * in.getSize();
-                long v = ms.getValue(in) & (bits >= 64 ? -1L : (1L << bits) - 1);
-                ms.setValue(op.getOutput(), v == 0 ? bits : Long.numberOfLeadingZeros(v) - (64 - bits));
-                return true;
-            }
-        });
     }
 
     // ---------- the 750CL results ----------
@@ -180,8 +128,14 @@ public class TcFixups {
     long operand;      // fctiw*, sign, estimate: fB's bits; stfs: fS's bits, before the step
     String op;         // single, double, sign, estimate: the mnemonic without "."; shift: the mnemonic
     long[] srcBits;    // single, double, shift: the source operands' bits, before the step; psq_st: ps0's, ps1's
+    long[][] pairs;    // ps: the source registers' {ps0, ps1}, in assembly order, before the step
+    int qtype;         // psq_l, psq_st: the GQR's type field at the step
+    long qscale;       // psq_l, psq_st: the GQR's scale field at the step
+    boolean qone;      // psq_l, psq_st: W = 1 (one value; psq_l sets ps1 to 1.0)
     String ps1;        // single, lfs: fD's ps1 register when the step writes it, else null
     int fixups;        // how many steps this oracle corrected (TcPrepare reports it)
+    long ea;           // dcbi: the effective address
+    String invalid;    // why this vector cannot be judged (TcOracle drops it), or null; reset per run
 
     static String reg(Instruction in, int op) {
         Object[] o = in.getOpObjects(op);
@@ -204,7 +158,15 @@ public class TcFixups {
         ps1 = null;
         if (in == null) return;
         String m = in.getMnemonicString().toLowerCase();
-        if (m.matches("fctiwz?\\.?")) {
+        if (m.equals("mtmsr")) {
+            String s = reg(in, 0);
+            kind = s == null ? null : "mtmsr";
+            if (s != null) operand = bits(emu, s) & 0xffffffffL;
+        } else if (m.equals("dcbi")) {  // dcbi rA|0, rB
+            String a = reg(in, 0), b = reg(in, 1);
+            kind = b == null ? null : "dcbi";
+            if (b != null) ea = ((a == null || a.equals("r0") ? 0 : bits(emu, a)) + bits(emu, b)) & 0xffffffffL;
+        } else if (m.matches("fctiwz?\\.?")) {
             kind = m.startsWith("fctiwz") ? "fctiwz" : "fctiw";
             dest = reg(in, 0);
             String src = reg(in, 1);
@@ -239,13 +201,26 @@ public class TcFixups {
             kind = dest == null || src == null ? null : "sign";
             if (kind != null) operand = bits(emu, src);
             op = m.replace(".", "");
-        } else if (m.matches("psq_lu?x?")) {  // unquantized (refuse): one or two singles, a NaN kept bit for bit
+        } else if (m.startsWith("ps_") && !m.startsWith("ps_cmp")) {  // both slots recomputed (TcPaired)
+            int n = in.getNumOperands();
+            dest = fpr(reg(in, 0));
+            pairs = new long[n - 1][];
+            for (int i = 1; i < n && dest != null; i++) {
+                String r = fpr(reg(in, i));
+                if (r == null) dest = null;
+                else pairs[i - 1] = new long[] {bits(emu, r), bits(emu, "ps" + r.substring(1) + "_1")};
+            }
+            op = m.replace(".", "");
+            kind = dest == null ? null : "ps";
+        } else if (m.matches("psq_lu?x?")) {  // a float type: one or two singles, a NaN kept bit for bit
             dest = fpr(reg(in, 0));
             kind = dest == null ? null : "psq_l";
-        } else if (m.matches("psq_stu?x?")) {  // unquantized: each word is ps0's or ps1's store-single
+            if (kind != null) TcPaired.gqr(this, emu, in, true);
+        } else if (m.matches("psq_stu?x?")) {  // a float type: each word is ps0's or ps1's store-single
             String src = fpr(reg(in, 0));
             kind = src == null ? null : "psq_st";
             if (src != null) srcBits = new long[] {bits(emu, src), bits(emu, "ps" + src.substring(1) + "_1")};
+            if (kind != null) TcPaired.gqr(this, emu, in, false);
         } else if (m.matches("lfsu?x?")) {
             dest = reg(in, 0);
             kind = dest == null ? null : "lfs";
@@ -293,8 +268,41 @@ public class TcFixups {
         kind = null;
     }
 
+    // Writes v to the register r if it holds something else.
+    void set(EmulatorHelper emu, String r, long v) {
+        if (bits(emu, r) == v) return;
+        emu.writeRegister(r, new BigInteger(Long.toUnsignedString(v)));
+        fixups++;
+    }
+
+    // Writes the low size bytes of v where the store st {address, size, io index or -1} went: memory, or the
+    // hardware-register log.
+    void store(EmulatorHelper emu, AddressSpace ram, TcBank bank, long[] st, int size, long v) {
+        if (st.length > 2 && st[2] >= 0) {
+            long[] io = bank.io.get((int) st[2]);
+            if (io[2] != v) {
+                io[2] = v;
+                fixups++;
+            }
+            return;
+        }
+        byte[] b = new byte[size];
+        for (int i = 0; i < size; i++) b[i] = (byte) (v >>> (8 * (size - 1 - i)));
+        Address a = ram.getAddress(st[0]);
+        if (!java.util.Arrays.equals(emu.readMemory(a, size), b)) {
+            emu.writeMemory(a, b);
+            fixups++;
+        }
+    }
+
     void fix(EmulatorHelper emu, AddressSpace ram, TcBank bank, long[] stored, java.util.List<long[]> reads) {
-        if (kind.startsWith("fctiw")) {
+        if (kind.equals("mtmsr")) {
+            set(emu, TcSystem.msr(emu), operand);
+        } else if (kind.equals("dcbi")) {
+            if (invalid == null) invalid = TcSystem.dcbi(emu, ram, bank, ea);
+        } else if (TcPaired.fix(this, emu, ram, bank, reads)) {  // ps_*, and psq_* through an integer GQR type
+            return;
+        } else if (kind.startsWith("fctiw")) {
             emu.writeRegister(dest, new BigInteger(Long.toUnsignedString(fctiw(operand, kind.equals("fctiwz")))));
             fixups++;
         } else if (kind.equals("single") || kind.equals("double")) {

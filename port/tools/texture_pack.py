@@ -1,8 +1,9 @@
 """Texture packs for the kit's renderer (pvr/pvr_pack.c): the key it computes for a guest texture, and a pack writer.
 
-A pack is a folder: index.txt ("KEY FILE [VARIANT]" per line, '#' comments) and PNG images. VARIANT (xbox or
+A pack is a folder: index.txt ("KEY FILE [VARIANT] [over] [rim=RRGGBB] [wide=W]" per line, '#' comments) and PNG images. VARIANT (xbox or
 playstation) makes the line apply only while that style of controller is in use (base/pad_style.c); a line
-without one applies always, and a variant line wins over it for the same key. KEY is the FNV-1a 64 hash of the
+without one applies always, and a variant line wins over it for the same key. The word if=game.NAME makes a line
+apply only while that game.json menu_checks setting is on (it may be on by default; runtime/console_dc.c). KEY is the FNV-1a 64 hash of the
 TCW's format bits, width, height and stride (little-endian u32s), then the texture memory the decoder reads from the
 TCW address (pvr_texture_bytes; a 16-bit twiddled mip chain from its 1x1 level at +6). A game's pack builder takes
 its texture bytes as the game hands them to kmLoadTexture, gets the bytes at the TCW address with kamui_vram() and
@@ -104,23 +105,27 @@ class Pack:
     def __init__(self, folder, title=""):
         self.dir = pathlib.Path(folder)
         self.dir.mkdir(parents=True, exist_ok=True)
-        self.rows, self.title = {}, title
+        self.rows, self.title, self.wide = {}, title, {}
 
-    def add(self, k, rgba, w, h, name=None, note="", variant="", rim="", over=False):
+    def add(self, k, rgba, w, h, name=None, note="", variant="", rim="", over=False, when=""):
         if variant not in VARIANTS:
             raise ValueError(f"variant {variant!r}: one of {VARIANTS[1:]} or empty")
+        if when and not when.startswith("game.") or any(c in when for c in " \t#"):
+            raise ValueError(f"when {when!r}: a game.NAME setting (game.json menu_checks)")
         if (k, variant) in self.rows:
             return False
         name = name or f"{k:016x}{'-' + variant if variant else ''}.png"
         (self.dir / name).write_bytes(png(rgba, w, h))
-        self.rows[(k, variant)] = (name, note, rim, over)
+        self.rows[(k, variant)] = (name, note, rim, over, when)
         return True
 
     def close(self):
-        lines = ["# texture pack (port/pvr/pvr_pack.c): KEY FILE [xbox|playstation] [over] [rim=RRGGBB]"]
+        lines = ["# texture pack (port/pvr/pvr_pack.c): KEY FILE [xbox|playstation] [if=game.NAME] [over] [rim=RRGGBB] [wide=W]"]
         lines += [f"# {self.title}"] if self.title else []
-        lines += [f"{k:016x} {n}" + (f" {v}" if v else "") + (" over" if over else "") + (f" rim={rim}" if rim else "") + (f"  # {note}" if note else "")
-                  for (k, v), (n, note, rim, over) in sorted(self.rows.items())]
+        lines += [f"{k:016x} {n}" + (f" {v}" if v else "") + (f" if={when}" if when else "") + (" over" if over else "")
+                  + (f" rim={rim}" if rim else "")
+                  + (f" wide={self.wide[(k, v)]}" if (k, v) in self.wide else "") + (f"  # {note}" if note else "")
+                  for (k, v), (n, note, rim, over, when) in sorted((kv, (*r, "")[:5]) for kv, r in self.rows.items())]  # a builder's own 4-word row has no if=
         (self.dir / "index.txt").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
         return len(self.rows)
 
@@ -130,8 +135,12 @@ def read_index(folder):
     word) raises ValueError."""
     rows = {}
     for line in (pathlib.Path(folder) / "index.txt").read_text(encoding="utf-8").splitlines():
-        parts = line.split("#", 1)[0].split()
+        parts = [p for p in line.split("#", 1)[0].split() if not (p.startswith("if=game.") and len(p) > 8)]
         if len(parts) >= 2:
+            if parts[-1].startswith("wide=") and len(parts) > 2:
+                if not parts[-1][5:].isdigit() or not int(parts[-1][5:]):
+                    raise ValueError(f"index line {line!r}: wide=W, W the columns of the image that are the texture")
+                parts.pop()
             if parts[-1].startswith("rim=") and len(parts) > 2:
                 if len(parts[-1]) != 10 or parts[-1][4:].strip("0123456789abcdefABCDEF"):
                     raise ValueError(f"index line {line!r}: rim=RRGGBB")

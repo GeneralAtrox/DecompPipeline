@@ -60,6 +60,7 @@ void port_setting_set_int(const char *key, int value) { (void)key; (void)value; 
 int session_note_replayed(const char *n, void *d, u32 s) { (void)n; (void)d; (void)s; return 0; }
 int session_replaying(void) { return 0; }
 void session_save_read(const char *n, const void *d, u32 s, int f) { (void)n; (void)d; (void)s; (void)f; }
+int port_switch(const char *n, const char *l) { (void)n; (void)l; return 1; }
 #define L HOST_PAD_LEFT
 #define R HOST_PAD_RIGHT
 #define U HOST_PAD_UP
@@ -265,99 +266,18 @@ int main(void)
     CHECK(!strcmp(port_pad_ex_name(HOST_PAD_BACK, 0), "View"));
     g_style = 2;
     CHECK(!strcmp(port_pad_ex_name(HOST_PAD_LB, 0), "L1") && !strcmp(port_pad_ex_name(HOST_PAD_GUIDE, 0), "PS"));
+    CHECK(!strcmp(port_pad_ex_name(HOST_PAD_SHARE, 0), "Mic")); /* the DualSense's MISC1 */
+    g_style = 1;
+    CHECK(!strcmp(port_pad_ex_name(HOST_PAD_SHARE, 0), "Share"));
     g_style = 0;
     CHECK(!strcmp(port_pad_ex_name(HOST_PAD_L3, 0), "Left stick click") && !strcmp(port_pad_ex_name(0x1, 0), ""));
+    pad[1].buttons = HOST_PAD_SHARE;
+    input_ex_note(pad);
+    CHECK(port_pad_ex_held(1) == HOST_PAD_SHARE);
     puts("ok");
     return 0;
 }
 ''', [KIT / "base" / "input_ex.c"], "c")
-
-    def test_assignments(self):
-        self.build_run("as", r'''
-#include <stdio.h>
-#include <string.h>
-#include "base.h"
-#include "session.h"
-#define SLOTS 32
-static char g_key[SLOTS][48];
-static int g_value[SLOTS], g_keys, g_reads, g_writes, g_noted, g_replaying;
-static u8 g_note[HOST_PADS][PORT_PAD_EX_STICK_ROW + 1];
-static int g_has_note;
-int pad_style(void) { return 0; }
-int port_setting_get_int(const char *key, int def)
-{
-    g_reads++;
-    for (int i = 0; i < g_keys; i++)
-        if (!strcmp(g_key[i], key)) return g_value[i];
-    return def;
-}
-void port_setting_set_int(const char *key, int value)
-{
-    g_writes++;
-    for (int i = 0; i < g_keys; i++)
-        if (!strcmp(g_key[i], key)) {
-            g_value[i] = value;
-            return;
-        }
-    strcpy_s(g_key[g_keys], sizeof g_key[0], key);
-    g_value[g_keys++] = value;
-}
-int session_replaying(void) { return g_replaying; }
-int session_note_replayed(const char *name, void *buf, u32 size)
-{
-    if (!g_has_note || strcmp(name, "padex") || size != sizeof g_note) return 0;
-    memcpy(buf, g_note, size);
-    return 1;
-}
-void session_save_read(const char *name, const void *buf, u32 size, int got)
-{
-    (void)buf;
-    if (!strcmp(name, "padex") && size == sizeof g_note && got == 1) g_noted++;
-}
-#define CHECK(c) do { if (!(c)) { printf("fail line %d: %s\n", __LINE__, #c); return 1; } } while (0)
-int main(void)
-{
-    static const u32 codes[3] = {0x10u, 0x20u, 0x40u};
-    HostPad pad[HOST_PADS] = {0};
-    port_pad_ex_assign_load(3);
-    CHECK(g_noted == 0); /* none assigned: the recording is unchanged */
-    pad[1].buttons = HOST_PAD_LB | HOST_PAD_RS_UP;
-    input_ex_note(pad);
-    CHECK(port_pad_ex_assign_codes(1, codes, 3) == 0); /* every row starts unassigned */
-    for (unsigned r = 0; r < PORT_PAD_EX_ROWS; r++) CHECK(port_pad_ex_assign_get(0, r) == 0);
-    CHECK(port_pad_ex_row_bit(0) == HOST_PAD_LB && port_pad_ex_row_bit(6) == HOST_PAD_RS_UP && port_pad_ex_row_bit(PORT_PAD_EX_ROWS) == 0);
-    port_pad_ex_assign_set(1, 0, 2);
-    CHECK(g_writes == 1 && !strcmp(g_key[0], "game.padex.p2.lb") && g_value[0] == 2); /* saved at once, per player */
-    port_pad_ex_assign_set(1, 0, 2);
-    port_pad_ex_assign_set(HOST_PADS, 0, 2);
-    port_pad_ex_assign_set(0, PORT_PAD_EX_STICK_ROW + 1, 2);
-    CHECK(g_writes == 1);
-    CHECK(port_pad_ex_assign_codes(1, codes, 3) == 0x20u);
-    port_pad_ex_assign_set(1, 6, 3);
-    CHECK(port_pad_ex_assign_codes(1, codes, 3) == 0x60u); /* two rows held: ORed */
-    CHECK(port_pad_ex_assign_codes(0, codes, 3) == 0);     /* the other player's rows are their own */
-    pad[1].buttons = HOST_PAD_RB;
-    input_ex_note(pad);
-    CHECK(port_pad_ex_assign_codes(1, codes, 3) == 0);
-    port_pad_ex_assign_set(1, 6, 0); /* unassigning is saved too, and a choice past the game's actions is not taken */
-    CHECK(g_value[1] == 0);
-    port_pad_ex_assign_set(1, 1, 9);
-    port_setting_set_int("game.padex.p1.back", 9);
-    g_noted = 0;
-    port_pad_ex_assign_load(3);
-    CHECK(port_pad_ex_assign_get(1, 0) == 2 && port_pad_ex_assign_get(1, 1) == 0 && port_pad_ex_assign_get(0, 4) == 0);
-    CHECK(port_pad_ex_assign_codes(1, codes, 3) == 0);
-    CHECK(g_noted == 1); /* some assigned: kept with the recording */
-    g_reads = 0;
-    g_replaying = 1;
-    g_has_note = 1;
-    g_note[0][3] = 1;
-    port_pad_ex_assign_load(3);
-    CHECK(g_reads == 0 && port_pad_ex_assign_get(0, 3) == 1 && port_pad_ex_assign_get(1, 0) == 0); /* a replay takes the recording's, no settings */
-    puts("ok");
-    return 0;
-}
-''', [KIT / "base" / "input_ex.c", KIT / "base" / "input_ex_assign.c"], "c")
 
     def test_settings_store(self):
         self.build_run("st", r'''
@@ -365,8 +285,11 @@ int main(void)
 #include <fstream>
 #include <string>
 #include "base.h"
+#include "console.h"
 #include "host_internal.hpp"
 extern "C" void port_log(const char *, ...) {}
+extern "C" void port_log_early(const char *, ...) {}
+extern "C" const PortMenuItem *console_menu_extra(unsigned *n) { *n = 0; return nullptr; } // host_settings.cpp's player_key
 #define CHECK(c) do { if (!(c)) { std::printf("fail line %d: %s\n", __LINE__, #c); return 1; } } while (0)
 int main()
 {
@@ -382,6 +305,62 @@ int main()
     CHECK(port_setting_get_int("game.c", 9) == -4 && port_setting_get_int("game.b", 0) == 6);
     std::vector<std::string> args = host::settings_args("st_settings.txt");
     CHECK(args.size() == 2 && args[0] == "--window"); // game.* are not options
+    std::puts("ok");
+    return 0;
+}
+''', [KIT / "base" / "host_settings.cpp"], "c++20")
+
+    def test_settings_keep_only_player_keys(self):
+        """The user, 2026-11-13: "a settings file should not be controlling how the game behaves". A technical option in
+        settings.txt (the present thread, the swap chain) is ignored and logged; the base's menu keys, the console's own
+        entries' keys, bindings and keyboard keys stay, and game.* stay the game's."""
+        self.build_run("pk", r'''
+#include <cstdarg>
+#include <cstdio>
+#include <fstream>
+#include <string>
+#include "base.h"
+#include "console.h"
+#include "host_internal.hpp"
+static std::string g_log;
+extern "C" void port_log(const char *f, ...)
+{
+    char b[512];
+    va_list a;
+    va_start(a, f);
+    vsnprintf(b, sizeof b, f, a);
+    va_end(a);
+    g_log += b;
+}
+extern "C" void port_log_early(const char *f, ...) // host_settings.cpp's lines from before the log is open
+{
+    char b[512];
+    va_list a;
+    va_start(a, f);
+    vsnprintf(b, sizeof b, f, a);
+    va_end(a);
+    g_log += b;
+}
+extern "C" const PortMenuItem *console_menu_extra(unsigned *n)
+{
+    static PortMenuItem m[1];
+    m[0].menu = "Display";
+    m[0].setting = "vmu-screen";
+    *n = 1;
+    return m;
+}
+#define CHECK(c) do { if (!(c)) { std::printf("fail line %d: %s\n", __LINE__, #c); return 1; } } while (0)
+int main()
+{
+    {
+        std::ofstream o("pk_settings.txt");
+        o << "window=fit\npresent-thread=on\nvmu-screen=beside\nswap-buffers=3\nbind-a=a\nkbm-w=up\nfullscreen-mode=desktop\ngame.x=1\n";
+    }
+    std::string all;
+    for (const std::string &s : host::settings_args("pk_settings.txt")) all += s + " ";
+    CHECK(all == "--window fit --vmu-screen beside --bind-a a --kbm-w up --fullscreen-mode desktop ");
+    CHECK(g_log.find("present-thread is not a player setting") != std::string::npos);
+    CHECK(g_log.find("swap-buffers is not a player setting") != std::string::npos);
     std::puts("ok");
     return 0;
 }

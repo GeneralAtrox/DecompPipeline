@@ -2,9 +2,8 @@
 // the user's own): one SDL3 window for the whole run. Full screen is borderless at the desktop mode (the default);
 // --window picks a window instead, sized WxH, Nx (N times the console's picture) or fit (the largest whole multiple of it whose
 // whole window, title bar and menu bar included, the desktop's usable area holds). Alt+Enter and F11 switch between the two, and the choice is kept in the settings.
-// The output's pixel size goes to the renderer (gfx_resize), which keeps the 4:3 picture pillarboxed whatever the
-// window's shape. The window can also pause the game or mute it while it is not focused, and count frames (on the
-// menu bar: host_counter.cpp).
+// The output's pixel size goes to the renderer (gfx_resize), which keeps the picture's shape whatever the window's. The window
+// can also pause the game or mute it while it is not focused, and count frames (on the title bar: host_counter.cpp).
 // A windowed window is sized and placed by its outer rectangle (title bar, borders and menu bar included) inside the
 // work area of the display it is on (host_place.h), at any display scaling.
 #ifndef NOMINMAX
@@ -103,7 +102,7 @@ void place_window()
     for (int pass = 0; pass < 2; pass++) {
         chrome_size(hwnd, &cw, &ch);
         client_size(work_area(hwnd), cw, ch, &w, &h);
-        SDL_SetWindowSize(g_window, w, h);
+        if (!host::bar_size(hwnd, w + cw, h + ch)) SDL_SetWindowSize(g_window, w, h); // the bar's frame is not SDL's
         SDL_SyncWindow(g_window);
     }
     chrome_size(hwnd, &cw, &ch);
@@ -171,7 +170,11 @@ void handle(const SDL_Event &e)
         if (!e.key.repeat && e.key.key == SDLK_F9) game_log_line("keyboard: F9 (Copy agent prompt)"), scene_dump_request();
         host_text_key(static_cast<int>(e.key.key), static_cast<int>(e.key.mod)); // a console's own text field (host_text.cpp)
         break;
+    case SDL_EVENT_MOUSE_BUTTON_DOWN: case SDL_EVENT_MOUSE_BUTTON_UP: case SDL_EVENT_MOUSE_MOTION: case SDL_EVENT_MOUSE_WHEEL:
+    case SDL_EVENT_TEXT_INPUT: host::mouse_event(e); break; // the mouse, and the game's typing (host_mouse.cpp)
     case SDL_EVENT_WINDOW_FOCUS_LOST:
+        input_kbm_focus_lost();
+        host::mouse_capture_sync(); // lets go of the pointer
         port_log("host: window lost the focus (the keyboard is not read)\n");
         game_log_line("window: lost the focus (the keyboard is not read)");
         if (g_prefs.mute_unfocused) audio_set_volume(audio_volume(), 1);
@@ -179,6 +182,8 @@ void handle(const SDL_Event &e)
         break;
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
         port_log("host: window focused\n");
+        input_kbm_focus_gained();
+        host::mouse_capture_sync();
         game_log_line("window: focused");
         audio_set_volume(audio_volume(), 0);
         if (g_paused) set_paused(false);
@@ -194,9 +199,8 @@ bool on_off(const char *value) { return std::strcmp(value, "off") != 0 && std::s
 namespace host {
 
 Prefs &prefs() { return g_prefs; }
-
+void window_replace() { if (g_window && g_windowed) place_window(); }
 bool window_fullscreen() { return g_window && !g_windowed; }
-
 int window_scale() { return g_fit ? 0 : g_scale ? g_scale : -1; }
 
 void window_set_fullscreen(bool on)
@@ -226,11 +230,21 @@ void window_set_scale(int n)
     }
 }
 
+// The pointer kept (relative mode: hidden, only the mouse's moves come) while the keyboard and mouse layout wants it:
+// a middle drag, or mouse steer on (input_kbm_steer.c). Let go at once when it does not, or the window lost the focus.
+void mouse_capture_sync()
+{
+    if (!g_window) return;
+    bool want = host::mouse_capture_want(g_window); // the layout's, or the game's look (host_mouse.cpp)
+    if (want != SDL_GetWindowRelativeMouseMode(g_window)) SDL_SetWindowRelativeMouseMode(g_window, want);
+}
+
 } // namespace host
 
 extern "C" int host_window_option(const char *arg, const char *value)
 {
     if (int n = level_edit_option(arg, value)) return n; // --level-edit-* (level_edit.cpp)
+    if (int n = host::window_options(arg, value)) return n; // --menu-bar (host_bar.cpp), --fullscreen-mode (host_resolution.cpp)
     if (!value) return 0;
     bool *pref = !std::strcmp(arg, "--fps-counter")       ? &g_prefs.fps_counter
                  : !std::strcmp(arg, "--pause-unfocused") ? &g_prefs.pause_unfocused
@@ -286,10 +300,8 @@ extern "C" int host_window_open(const char *title, unsigned *w, unsigned *h, int
         return 0;
     }
     host::menu_attach(host_window_hwnd());
-    if (g_windowed) {
-        host::menu_show(true);
-        place_window(); // the client area under the menu bar, the whole window inside the work area
-    }
+    host::menu_show(g_windowed);
+    if (g_windowed) place_window(); // the client area under the bar, the whole window inside the work area
     // to the front with the focus, for the keyboard: a launcher that started the game may otherwise keep it (not for a
     // run that plays by itself: raising takes the foreground even from a window that cannot be focused)
     if (take_focus && !SDL_RaiseWindow(g_window)) port_log("host: could not raise the window: %s\n", SDL_GetError());
@@ -354,21 +366,24 @@ extern "C" void host_window_title_extra(const char *extra)
     if (g_window && GetCurrentThreadId() == g_pump_thread && !g_paused) { g_extra_shown = gen; set_title(title_extra()); }
 }
 
-// Window events: closing ends the run, a new pixel size resizes the output, Alt+Enter and F11 switch full screen,
-// and while paused the game thread waits here (still handling events) until the window is focused again. The lock
-// round them is host_gfx_lock.cpp's.
+// Window events: closing ends the run, a new pixel size resizes the output, Alt+Enter and F11 switch full screen, and
+// while paused the game thread waits here (still handling events) until focused again. The lock is host_gfx_lock.cpp's.
+// The events are taken on a fiber of their own (host_modal.cpp), so a menu held open or a drag lends the game its ticks.
 extern "C" void gfx_pump(void)
 {
-    SDL_Event e;
     if (!g_window) return;
     g_pump_thread = GetCurrentThreadId();
     if (!g_paused && g_extra_gen != g_extra_shown) { g_extra_shown = g_extra_gen; set_title(title_extra()); } // another thread's extra
     frame_counter(); /* frames shown by the other thread (--present-thread) count here */
-    while (SDL_PollEvent(&e)) {
-        gfx_lock();
-        handle(e);
-        gfx_unlock();
-    }
+    host::modal_pump([] { // the events on the modal fiber (host_modal.cpp): a menu held open keeps the game running
+        for (SDL_Event ev; SDL_PollEvent(&ev);) {
+            gfx_lock();
+            host::bar_event(&ev); // Esc, Guide, the pointer at a full screen's top: the title bar (host_bar_open.cpp)
+            handle(ev);
+            gfx_unlock();
+        }
+        host::bar_poll(); // a title bar menu asked for: opened here, outside the lock, where the native menu's loop ran
+    });
     if (level_edit_wanted()) { // Game > Level editor (level_edit.cpp): it runs here, the game paused and quiet under it
         gfx_lock();
         audio_set_volume(audio_volume(), 1);
@@ -376,10 +391,10 @@ extern "C" void gfx_pump(void)
         audio_set_volume(audio_volume(), 0);
         gfx_unlock();
     }
+    host::mouse_capture_sync(); /* the game turns mouse steer on and off between pumps */
     if (g_paused) {
         gfx_lock();
-        while (g_paused)
-            if (SDL_WaitEventTimeout(&e, 100)) handle(e);
+        for (SDL_Event e; g_paused;) if (SDL_WaitEventTimeout(&e, 100)) handle(e);
         gfx_unlock();
     }
 }

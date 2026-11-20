@@ -171,6 +171,7 @@ s32 kmRender(u32 flip)
 {
     int extra;
     hw_check_scene(g_passes, g_pass_count);
+    if (flip == K2_RENDER_NOFLIP) pvr_render_part(); /* a view: its own slot of the frame (pvr_blend_hold.c) */
     pvr_render(g_passes, g_pass_count);
     hw_check_rendered(g_passes, g_pass_count);
     g_pass_count = 0;

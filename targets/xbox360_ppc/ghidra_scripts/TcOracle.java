@@ -1,7 +1,6 @@
 // The emulator oracle: runs the ORIGINAL code in Ghidra's p-code emulator (PowerPC:BE:64:64-32addr) on inputs from
 // TcInputs, with the Xenon corrections of TcFixups. LOCKED: the watcher agent may not change this file. Extended by
 // TcVectors.
-//
 // Entry state: r3..r10 and f1..f13 from the vector (64 bits each), r1 = SP, LR = SENTINEL, the project's fixed
 // registers (r13: TcFacts.fixed). The run ends when the PC reaches SENTINEL. Leaving the body is a call when a call
 // instruction (bl, bctrl, blrl) did it, the PC is another function's entry (a tail branch) or the jump is a tail call
@@ -11,14 +10,19 @@
 // vector's scripted results, the other volatile registers the callee may write are zeroed (clobber), and execution
 // continues at LR. The register save/restore helper families (TcBase.isHelper) run inline: they only move registers
 // to and from the frame, and the C code never calls them.
-//
 // Vector instructions (VMX, VMX128): TcSetup replaced each by a stand-in Ghidra decodes (TcBase.VMX_MAP keeps the
 // original word); the oracle runs the original in TcVmx instead of stepping the stand-in: the vector registers start
 // at zero, a compare with Rc sets cr6, loads and stores go through the same memory bank (faults, R8, the written
 // bytes). Mocked calls leave the vector registers alone (the C does too).
-//
 // Memory: the four regions (TcBase.mapped). Reads of the heap, stack and kernel regions start as zero; any access
 // outside the regions faults, and so does a data read of an instruction byte (rule R8), as in the C runner.
+// Exit state (TcFacts.exitState): a second run of each valid vector from seeded r14..r31, f14..f31 and CR2..CR4
+// records every register at exit and the stack writes (TcExit).
+// Entry seeds: r12 and the CR fields the function reads before it sets them (TcFlow.entryReads; a funclet's parent
+// frame in r12, a CR save by mfcr) get a value per vector (TcVectors.drawEntry: r12 a fresh chunk pointer, 32 bits as
+// the port's TcArgs.r12 hands it on; each such field random bits), in every run of that vector, the exit-state run too
+// (whose seeds then replace CR2..CR4). vectors.txt A holds them (runner.c: tcx_in_r(12), tcx_in_cr); a function with
+// none has no A line and every other register starts at 0, as before.
 import ghidra.app.emulator.EmulatorHelper;
 import ghidra.pcode.memstate.DefaultMemoryState;
 import ghidra.pcode.memstate.MemoryFaultHandler;
@@ -40,11 +44,15 @@ public abstract class TcOracle extends TcInputs {
         long faultAddr = -1;
         boolean faultWrite;
         List<long[]> loads = new ArrayList<>(); // the last LOAD_LOG data reads {pc, address, size, value}
+        int seen; List<Integer> callSeen = new ArrayList<>();  // loads logged in all; before each call (TcPtrSeed)
         long outside = -1;
         boolean stepLimited;
         int steps;                        // of a run that reached the sentinel
         TcTrack.Run tr;                   // pointer-call arguments, float NaN words (TcTrack)
         TcStrict strict;                  // the stricter judge's records (TcStrict), null with its flags off
+        String exitIn = "", exit = "";      // the exit state (TcExit): vectors.txt Q G K, expected.txt X lines
+        List<long[]> bctrs = new ArrayList<>();  // {pc, CTR} per bcctr executed in the body (TcSwitchHits; report only)
+        Set<String> cases = new TreeSet<>();     // "pc:case" of the vector ops that saturated or met a denormal (TcSeedx)
 
         // What the checker compares: equal results give equal expected.txt lines.
         String observable() {
@@ -62,6 +70,17 @@ public abstract class TcOracle extends TcInputs {
     String refused = null;                 // TcFixups.refuse of an instruction a run executed
     TcRun.StepBudget budget = new TcRun.StepBudget(STEP_LIMIT);
     TcDirs dirs;                           // null unless branch_coverage or targeted_vectors (TcDirs)
+    TcExit.Seed seed;                      // the exit-state run's entry values (TcExit.seeded), else null
+    boolean seedR12;                       // the entry seeds (findEntrySeeds)
+    long seedCrMask;                       // the 32-bit CR's bits of the CR fields seeded
+    final Map<Vec, long[]> entryVals = new IdentityHashMap<>();  // per vector: {r12, CR, repairs} (TcVectors.drawEntry)
+
+    void findEntrySeeds() {
+        Set<String> in = new TcFlow(currentProgram, monitor, true).entryReads(fn);
+        seedR12 = in.contains("r12");
+        seedCrMask = 0;
+        for (int k = 0; k < 8; k++) if (in.contains("cr" + k)) seedCrMask |= 15L << (28 - 4 * k);
+    }
 
     BigInteger u64(long v) {
         return new BigInteger(Long.toUnsignedString(v));
@@ -188,6 +207,14 @@ public abstract class TcOracle extends TcInputs {
         for (Map.Entry<String, Long> e : facts.fixed.entrySet()) emu.writeRegister(e.getKey(), u64(e.getValue()));
         emu.writeRegister("r1", u64(SP));
         emu.writeRegister("LR", u64(SENTINEL));
+        long[] e = entryVals.get(v);
+        if (e != null) {
+            if (seedR12) emu.writeRegister("r12", u64(e[0]));
+            for (int k = 0; k < 8; k++) {
+                if ((seedCrMask >>> (28 - 4 * k) & 15) != 0) emu.writeRegister("cr" + k, BigInteger.valueOf(TcExit.crField(e[1], k)));
+            }
+        }
+        if (seed != null) seed.apply(emu);
         emu.writeRegister(emu.getPCRegister(), u64(fn.getEntryPoint().getOffset()));
     }
 
@@ -247,10 +274,10 @@ public abstract class TcOracle extends TcInputs {
                     // of the next address (translate.py, fall), so the run ends with the same call.
                     boolean past = !self && TcRun.pastEnd(prev, calls, body.contains(toAddr(pc - 4)));
                     if (!self && !past && !entersCallee(prev, pca)) {
-                        if (prev < 0 && calls > 0) {  // a mocked call "returned" to an address the code put in LR, outside the
-                            // body: this input is invalid, but the body is not incomplete (res.outside stays unset: it
-                            // would refuse the whole function)
-                            res.reason = "returns from a call into code outside its body at " + hex(pc);
+                        if (prev < 0 && calls > 0 || TcRun.intoData(pc)) {  // a mocked call "returned" outside the body, or a
+                            // branch went into data: the input is invalid, the body is not incomplete (res.outside unset)
+                            res.reason = (prev < 0 && calls > 0 ? "returns from a call into code outside its body at " + hex(pc)
+                                : "branches into data at " + hex(pc) + " from " + hex(prev) + " after " + calls + " call(s)");
                             return res;
                         }
                         res.reason = "executes code outside its body at " + hex(pc);
@@ -264,6 +291,7 @@ public abstract class TcOracle extends TcInputs {
                     Set<String> zeroed = clobbered(prev, pca);
                     res.calls.add(callRecord(emu, pc) + TcTrack.call(pc, zeroed));
                     if (prev >= 0) res.sites.add(prev);
+                    res.callSeen.add(res.seen);
                     emu.writeRegister("r3", u64(calls < 16 ? v.rets[calls] : 0));
                     emu.writeRegister("f1", u64(calls < 16 ? v.frets[calls] : 0));
                     if (!TcStrict.call(res, emu, calls, zeroed)) clobber(emu, zeroed);  // mock_junk: junk instead
@@ -293,7 +321,11 @@ public abstract class TcOracle extends TcInputs {
                     bank.beginStep(pc);
                     prev = pc;
                     stepped = stepVector(emu, vm, vop, pc);
+                    if (stepped && vm.event != null && body.contains(pca)) res.cases.add(hex(pc) + ":" + vm.event);
                 } else {
+                    if (TcSwitchHits.isBcctr(in.getInt(0) & 0xffffffffL) && body.contains(pca)) {
+                        res.bctrs.add(new long[] {pc, reg(emu, "CTR")});  // where this run's switch went (TcSwitchHits)
+                    }
                     fix.before(emu, in);
                     bank.beginStep(pc);
                     prev = pc;
@@ -303,21 +335,22 @@ public abstract class TcOracle extends TcInputs {
                         TcTrack.step(emu, in, bank);
                     }
                 }
-                // The load log is for pointer repair, and a frame helper's restores are no input's pointer: a write fault
-                // known only at exit (collect) spent all its repairs on them, each zero value being "near" address 0
-                // (821ca768: 71 of 161 tries).
+                // The load log is for pointer repair, and a frame helper's restores are no input's pointer (821ca768: a write
+                // fault known only at exit spent all its repairs on them, 71 of 161 tries; TcBank.badWrite stops it now).
                 if (!TcRun.logsLoads(inline.contains(pca))) bank.reads.clear();
                 for (long[] ld : bank.reads) {
                     res.loads.add(ld);
+                    res.seen++;
                     if (res.loads.size() > LOAD_LOG) res.loads.remove(0);
                 }
                 if (fix.trapped) {
                     res.reason = "trap taken at " + hex(pc) + " (the original stops here)";
                     return res;
                 }
-                if (bank.codeRead >= 0) {  // rule R8: the C runner fails any such read
-                    res.reason = "fault: read machine code at " + hex(bank.codeRead) + " (R8)";
-                    res.faultAddr = bank.codeRead;
+                if (bank.codeRead >= 0 || bank.badWrite >= 0) {  // rule R8: the C runner fails any such read; or a bad store
+                    res.reason = bank.codeRead >= 0 ? "fault: read machine code at " + hex(bank.codeRead) + " (R8)" : "write outside RAM";
+                    res.faultWrite = bank.codeRead < 0;
+                    res.faultAddr = res.faultWrite ? bank.badWrite : bank.codeRead;
                     return res;
                 }
                 if (!stepped || fault[0] != null) {
@@ -330,7 +363,7 @@ public abstract class TcOracle extends TcInputs {
             }
             bank.pc = -1;
             res.steps = steps;
-            collect(emu, res, bank.written);
+            collect(emu, res, bank.written, vm);
             TcStrict.exit(res, emu);
             return res;
         } catch (Exception e) {
@@ -342,8 +375,9 @@ public abstract class TcOracle extends TcInputs {
     }
 
     // The observable results of a run that reached the sentinel; res.ok unless it wrote outside the regions. Writes
-    // to the stack region are not compared (the frame is the C compiler's own), as in the runner.
-    void collect(EmulatorHelper emu, Result res, AddressSet ws) {
+    // to the stack region are not compared (the frame is the C compiler's own), as in the runner. A seeded run (TcExit)
+    // records the exit state too.
+    void collect(EmulatorHelper emu, Result res, AddressSet ws, TcVmx vm) {
         TcTrack.exit(emu);  // the float NaN words (TcTrack)
         res.r3 = reg64(emu, "r3");
         res.f1 = reg64(emu, "f1");
@@ -360,6 +394,7 @@ public abstract class TcOracle extends TcInputs {
                 if (p[0] < p[1]) res.writes.add(hex(p[0]) + " " + bytesHex(emu.readMemory(toAddr(p[0]), (int) (p[1] - p[0]))));
             }
         }
+        if (seed != null) res.exit = TcExit.of(this, emu, vm, ws);
         res.ok = true;
     }
 }

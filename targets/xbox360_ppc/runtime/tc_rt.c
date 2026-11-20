@@ -387,8 +387,8 @@ void tcrt_report(FILE *out, u64 r3, u64 f1_bits)
             end++;
         }
         i++;
-        if (!r->compared) continue;
-        fprintf(out, "W %08x ", start);
+        if (!r->compared && !tcx_on) continue;
+        fprintf(out, r->compared ? "W %08x " : "XW %08x ", start); /* XW: the stack, for the exit state only */
         for (u32 a = start; a < end; a++) fprintf(out, "%02x", r->mem[a - r->lo]);
         fputc('\n', out);
     }

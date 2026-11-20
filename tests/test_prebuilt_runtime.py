@@ -4,7 +4,9 @@ when its command ends instead of at the next 0.2 s sleep.
 2. runtime_objs: compiled once, then reused without a compile; another runtime content gets another set; a runtime
    that does not compile gives None, and the build then compiles the runtime sources itself as before (wiring);
 3. with Visual Studio's tools (config.local.json "vcvars"): a real build links the cached objects and its runner
-   is the full build's in behaviour (the same listing of work.c).
+   is the full build's in behaviour (the same listing of work.c);
+4. the Xbox 360 judge's build (x360_check.build, for work.c and the exit-state form) links the same cache with its own
+   sources and "fma" define: compiled once over many builds, and again when a runtime source or the define changes.
 Synthetic sources. Run: python -W error tests/test_prebuilt_runtime.py (also from test_tooling.py).
 """
 import os
@@ -96,6 +98,56 @@ class RuntimeObjs(unittest.TestCase):
             self.assertEqual(check.build({}, meta, work, self.d / "bd"), (True, []))
         self.assertIn("/TC", seen[0])
         self.assertTrue(any(str(c).endswith("tc_rt.c") for c in seen[0]))  # the runtime compiled in the build
+
+
+class X360Build(unittest.TestCase):
+    """Fails before x360-judge-lib: x360_check.build compiled every runtime source into every build."""
+    def test_runtime_compiled_once_and_again_when_a_source_changes(self):
+        sys.path.insert(0, str(pathlib.Path(check.__file__).resolve().parents[1] / "targets" / "xbox360_ppc"))
+        import x360_check
+        d = pathlib.Path(tempfile.mkdtemp(dir=TMP))
+        rt = d / "runtime"
+        shutil.copytree(pathlib.Path(x360_check.__file__).parent / "runtime", rt)
+        cl = d / "cl.exe"
+        cl.write_bytes(b"x")
+        meta = {"name": "fn_82010000", "signature": "void fn_82010000(void)", "params": [], "ret": "void"}
+        work = d / "work.c"
+        work.write_text('#include "tc_rt.h"\nvoid fn_82010000(void) {}\n', encoding="utf-8")
+        calls = []
+
+        def run(cmd, timeout, cwd=None, **k):
+            calls.append(cmd)
+            if "/c" in cmd:
+                for s in x360_check.SOURCES:
+                    (pathlib.Path(cwd) / f"{s[:-2]}.obj").write_bytes(b"obj")
+            return 0, "", None
+
+        def build(cfg, n):
+            with mock.patch.object(check, "msvc_env", lambda c: {"PATH": "", "INCLUDE": "inc"}), \
+                    mock.patch.object(shutil, "which", lambda *a, **k: str(cl)), \
+                    mock.patch.object(check.paths, "RUNTIME", rt), mock.patch.object(check.paths, "BUILD", d / "b"), \
+                    mock.patch.object(check.paths, "run_bounded", run):
+                self.assertEqual(x360_check.build(cfg, meta, work, d / f"bd{n}"), (True, []))
+            return [c for c in calls if "/c" in c], calls[-1]
+
+        def objs(link):
+            return [pathlib.Path(c) for c in link if str(c).endswith(".obj")]
+
+        fused = {"fma": "fused"}
+        compiles, link = build(fused, 0)
+        self.assertEqual(len(compiles), 1)
+        self.assertIn("/DTC_FMA_FUSED=1", compiles[0])
+        first = objs(link)
+        self.assertEqual([o.name for o in first], [f"{s[:-2]}.obj" for s in x360_check.SOURCES])
+        self.assertFalse(any(str(c).endswith(s) for c in link for s in x360_check.SOURCES))  # not compiled here
+        self.assertEqual(len(build(fused, 1)[0]), 1)  # reused: no second compile
+        (rt / "tc_ppc.c").write_text((rt / "tc_ppc.c").read_text(encoding="utf-8") + "\n", encoding="utf-8")
+        compiles, link = build(fused, 2)
+        self.assertEqual(len(compiles), 2)  # a runtime source changed: compiled again, into another set
+        self.assertNotEqual(objs(link)[0].parent, first[0].parent)
+        compiles, _ = build({"fma": "two_roundings"}, 3)
+        self.assertEqual(len(compiles), 3)  # another define: another set
+        self.assertIn("/DTC_FMA_FUSED=0", compiles[-1])
 
 
 VCVARS = paths.config().get("vcvars")

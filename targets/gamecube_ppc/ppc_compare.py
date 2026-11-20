@@ -2,7 +2,8 @@
 of one vector (the PowerPC counterpart of core/compare.py, used by ppc_check).
 
 vectors.txt (TcVectors.writeVector): V id set, R r3..r10, F f1..f8 (double bits), C r3 per mocked call, D f1 per
-mocked call (double bits), M addr bytes, E.
+mocked call (double bits), X r11 r14..r31 f14..f31 (a save/restore helper entry's frame, TcVectors.frame), M addr
+bytes, E.
 expected.txt / runner output: V, RET r3 f1 r4, W addr bytes (below STACK_LO), CALL target r3..r10 f1..f8 s0..s7 (25
 fields; expected.txt: a CA line after one through a function pointer), IO addr size value (a store into a hardware
 register: the GX FIFO, the video and DMA registers; in the order made), FN (expected.txt: the words a float store left
@@ -43,9 +44,11 @@ def parse_vectors(path):
         elif t[0] == "F":
             cur["f"] = [int(x, 16) for x in t[1:9]]
         elif t[0] == "C":
-            cur["rets"] = [int(x, 16) for x in t[1:17]]
+            cur["rets"] = [int(x, 16) for x in t[1:]]  # 16, then repaired later calls' (TcOracle.lateOf)
         elif t[0] == "D":
-            cur["frets"] = [int(x, 16) for x in t[1:17]]
+            cur["frets"] = [int(x, 16) for x in t[1:]]
+        elif t[0] == "X":  # a helper entry's frame: r11, r14..r31, f14..f31 (bits)
+            cur["frame"] = [int(x, 16) for x in t[1:38]]
         elif t[0] == "M":
             cur["patches"].append((int(t[1], 16), bytes.fromhex(t[2]) if len(t) > 2 else b""))
     return vecs
@@ -68,6 +71,8 @@ def parse_results(path):
         elif k == "RET":
             cur["r3"], cur["f1"] = int(t[1], 16), int(t[2], 16)
             cur["r4"] = int(t[3], 16) if len(t) > 3 else 0
+        elif k == "MSR":  # MSR at exit, when a mtmsr left it other than the entry value (TcSystem.MSR_ENTRY)
+            cur["msr"] = int(t[1], 16)
         elif k == "W":
             a, data = int(t[1], 16), bytes.fromhex(t[2]) if len(t) > 2 else b""
             for i, b in enumerate(data):
@@ -251,6 +256,9 @@ def compare_vector(meta, sections, vec, exp, act, strict=None, report=None):
     for f in act["faults"]:
         diffs.append(f"invalid guest memory access: {f}")
     diffs += compare_return(meta, exp, act) + compare_memory(sections, vec, exp, act) + compare_io(exp, act)
+    if exp.get("msr") != act.get("msr"):
+        e, a = (f"{x['msr']:08x}" if "msr" in x else "unchanged" for x in (exp, act))
+        diffs.append(f"MSR at exit: expected {e}, got {a}")
     diffs += compare_calls(meta, exp, act)
     return diffs + strict_judge.compare(meta, exp, act, REG_INDEX, strict_judge.XR_PPC, int.__eq__, strict, report,
                                         ">I")
@@ -266,6 +274,8 @@ def describe_inputs(meta, vec):
             parts.append(f"{p['name']}={_d(vec['f'][int(st[1:]) - 1])}")
         else:
             parts.append(f"{p['name']} in {st}")
+    if vec.get("frame"):
+        parts.append(f"r11=0x{vec['frame'][0]:08x} (r14..r31, f14..f31 at entry: tc_inr, tc_inf)")
     if vec["patches"]:
         parts.append(f"{len(vec['patches'])} memory patch(es)")
     return ", ".join(parts)

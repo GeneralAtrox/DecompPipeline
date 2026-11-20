@@ -22,6 +22,16 @@
 #include "host.h"
 #include "host_internal.hpp"
 
+// Hybrid laptops (an Intel or AMD integrated GPU beside an NVIDIA or AMD one): these two exports from the exe ask the
+// drivers to run the program on the discrete GPU. They live here, in the object that holds main(), so every Core-built
+// game has them: the linker always takes this object, also when the Core is a static library (Deathrow's CMake), where
+// a file of its own could be dropped. A game must not define them as well (a duplicate symbol). The log's
+// "gfx: drawing on <card>" (present_device.c) says which GPU a run got. tests/test_native_game.py reads the exe's exports.
+extern "C" {
+__declspec(dllexport) unsigned long NvOptimusEnablement = 1;
+__declspec(dllexport) int AmdPowerXpressRequestHighPerformance = 1;
+}
+
 namespace {
 
 const char *option(int argc, char **argv, const char *name) // the last value of an option, or nullptr
@@ -121,6 +131,12 @@ int main(int argc, char **argv)
         args.insert(args.end(), {"--present", "auto", "--fps", "144", "--game-log", "on"});
         if (!settings || std::strcmp(settings, "none") != 0) {
             std::filesystem::path file = settings ? std::filesystem::path(settings) : host::data_dir() / "settings.txt";
+            if (settings && host::settings_is_json(file)) {
+                port_log_early("settings: %s is an older build's JSON; left as it is (read once to carry over), this build's "
+                               "settings are %s\n", file.string().c_str(), (host::data_dir() / "settings.txt").string().c_str());
+                host::settings_legacy(file);
+                file = host::data_dir() / "settings.txt";
+            }
             std::vector<std::string> saved = host::settings_args(file);
             args.insert(args.end(), saved.begin(), saved.end());
             host::settings_use(file); // the menu's choices go back into it

@@ -19,10 +19,6 @@ static u64 g_start_us; /* when the frame was rendered */
 static u64 g_period_us; /* --present-thread on: from the render before to that one */
 static int g_early;   /* --present-thread on: nothing holds this thread; a render's end restarts its clock */
 static u64 g_slot_us, g_nap_us; /* --fps N: when the next in-between frame is due to be shown; how long until it is */
-static volatile u32 g_render_gen, g_counted_gen, g_backoff_gen; /* renders begun; the last counted; stay out until it is */
-static volatile int g_counts;   /* gfx_frame_done reports the count (port_extra_thread_counted) */
-static u64 g_render_at, g_backoff_at, g_hold_us; /* a render's start; the back-off's; what a frame holds the lock for */
-static u64 g_tick_at, g_lead_us; /* the tick's start (port_extra_thread_tick); from a tick's start to its render */
 static int g_own;               /* the game's own draw function: this thread only shows the last frame again */
 static u64 g_own_shown_us, g_own_nap; /* when a frame was last shown; how long until showing it again is due */
 #define OWN_GRACE_US 1500u      /* past its slot: the tick's own frame comes first unless it is this late */
@@ -78,36 +74,33 @@ static void nap_to_slot(u64 nap)
     while (now_us() < until && !gfx_lock_wanted()) YieldProcessor();
 }
 
-/* The game's thread must not wait for this one. On a 300 Hz desktop (11-07) each Present took 7 ms, 144 a second,
- * all under gfx_lock: the render and the frame's count after it each waited for one, and the game ran 35-50 ticks a
- * second, its sound running dry. So (--present-pace on, the default) this thread takes the lock for a frame only
- * - once the frame rendered last is counted (gfx_frame_done), not between the render and its count;
- * - if what a frame holds the lock for, recently, ends half a millisecond before the next render is due (the last
- *   one's start plus the time between renders);
- * - after a frame the game's thread had to wait for, not until the next render is counted.
- * Each rule lapses after STAY_OUT_US, so a render that is never counted or a long tick cannot stop the frames. */
-#define STAY_OUT_US 25000u
-/* A slow frame (a Present of several ms: the 300 Hz desktop) would still run into a render: renders come every 2-3 ticks
- * (a game drawing at 20-30 a second), so the time since the last one does not say when. Every tick starts on its 1/60 s boundary and a render comes
- * about g_lead_us after; this thread keeps out of the lock from a frame's length before that until the render begins
- * (this tick's, if it has not rendered yet, and the next one's). A short frame (under 2.5 ms) does not use this rule. */
-static int slow_frame_due(u64 now)
+/* No pacing here: the thread takes the device context whenever the game's thread does not want it. Its Present never
+ * waits for the display holding gfx_lock (--present-nowait, base/present.c), so the game's thread waits at most for an
+ * in-between frame's draw and copy. The pacing it replaced (--present-pace, game.json present_pace: stay off the device
+ * around renders, the tick's own frames shown by this thread) cost 60% of the in-between frames for 40 ms of waits in 5 s
+ * (build box A, a battle replay with a 7 ms Present, 2026-11-14), and was one game's switch; removed in contract 2.14.0. */
+/* Every 5 s of real time, beside gfx's own line: how long this thread held gfx_lock, and on what: the copy into the back
+ * buffer and the Present (base/present.c, gfx_lock_split; the Present holds --present-stall-us too), and the draw, which
+ * is the rest. A retry (gfx_present_retry) holds it only for its Present. A measurement only. */
+static u64 g_held_us, g_retry_ticks, g_split_from;
+static void lock_split_line(u64 now)
 {
-    u64 at = g_tick_at + g_lead_us, next = at + 1000000u / PORT_VBLANK_HZ;
-    if (g_render_at < g_tick_at && now + g_hold_us + 500u > at && now < at + 1000u) return 1;
-    return now + g_hold_us + 500u > next && now < next + 1000u;
-}
-
-static int stay_out(u64 now)
-{
-    u64 due = g_render_at + g_period_us;
-    if (!g_early || !gfx_present_paced()) return 0;
-    if (g_counts && g_counted_gen != g_render_gen && now - g_render_at < STAY_OUT_US) return 1;
-    if ((int)(g_backoff_gen - g_counted_gen) > 0 && now - g_backoff_at < STAY_OUT_US) return 1;
-    if (g_hold_us > 2500u && g_tick_at && slow_frame_due(now)) return 1;
-    /* only a slow frame keeps out of the render's predicted time: a short one costs the render under 2.5 ms, and keeping
-     * out cost in-between frames their slots (build box A: 533 late of 5818 against the live exe's 305 of 6144) */
-    return g_hold_us > 2500u && g_period_us && g_period_us < 100000u && now + g_hold_us + 500u > due && now < due + 2000u;
+    static u64 copy0, present0, retry0;
+    u64 copy, present, retry, f;
+    LARGE_INTEGER q;
+    if (!g_split_from) g_split_from = now;
+    if (now - g_split_from < 5000000u) return;
+    QueryPerformanceFrequency(&q);
+    f = (u64)q.QuadPart;
+    gfx_lock_split(&copy, &present);
+    retry = g_retry_ticks;
+    copy -= copy0, present -= present0, retry -= retry0, copy0 += copy, present0 += present, retry0 += retry;
+    copy = copy * 1000000u / f, present = present * 1000000u / f, retry = retry * 1000000u / f;
+    port_log("frame_extra: this thread held the device context %.1f ms in those %.1f s: draw %.1f, copy %.1f, Present %.1f "
+             "(%.1f of it in retries)\n", (g_held_us + retry) / 1000.0, (now - g_split_from) / 1e6,
+             (g_held_us > copy + present - retry ? g_held_us - copy - present + retry : 0u) / 1000.0, copy / 1000.0,
+             present / 1000.0, retry / 1000.0);
+    g_held_us = 0, g_split_from = now;
 }
 
 static DWORD WINAPI present_thread(void *arg)
@@ -119,6 +112,15 @@ static DWORD WINAPI present_thread(void *arg)
         int what = 0, finished = 0;
         u64 held;
         u64 t0 = g_xcost ? xcost_now() : 0u; /* --present-cost */
+        if (gfx_present_pending()) { /* a Present that would have waited (base/present.c): again, no lock held between */
+            u64 c, p0, p1;
+            gfx_lock_split(&c, &p0);
+            if (gfx_lock_wanted() || gfx_present_retry()) pace_sleep_us(250u);
+            gfx_lock_split(&c, &p1);
+            g_retry_ticks += p1 - p0, lock_split_line(now_us());
+            if (t0) xcost_add(XC_SWAP, xcost_now() - t0);
+            continue;
+        }
         if (!g_go) {
             WaitForSingleObject(g_wake, 50);
             if (t0) xcost_add(XC_IDLE, xcost_now() - t0);
@@ -129,11 +131,6 @@ static DWORD WINAPI present_thread(void *arg)
             if (t0) xcost_add(XC_LOCK, xcost_now() - t0);
             continue;
         }
-        if (stay_out(now_us())) {
-            WaitForSingleObject(g_wake, 1); /* a frame's count wakes it (port_extra_thread_counted) */
-            if (t0) xcost_add(XC_LOCK, xcost_now() - t0);
-            continue;
-        }
         gfx_lock();
         held = now_us();
         if (t0) xcost_add(XC_LOCK, xcost_now() - t0);
@@ -141,8 +138,7 @@ static DWORD WINAPI present_thread(void *arg)
             what = port_extra_thread_show(now_us(), g_start_us, &finished);
         if (finished) done = g_start_us;
         gfx_unlock();
-        if (what == 1) g_hold_us = g_hold_us ? (g_hold_us * 3u + now_us() - held) / 4u : now_us() - held;
-        if (gfx_lock_wanted() && g_early) g_backoff_gen = g_render_gen + 1u, g_backoff_at = now_us(); /* it waited for this frame */
+        g_held_us += now_us() - held, lock_split_line(now_us());
         t0 = g_xcost ? xcost_now() : 0u;
         if (what == 2) gfx_show_wait();
         else if (what == 3) nap_to_slot(g_own == 1 ? g_own_nap : g_nap_us); /* --fps: not yet */
@@ -169,6 +165,7 @@ void port_extra_thread_begin(int wanted)
     SetThreadPriority(t, THREAD_PRIORITY_ABOVE_NORMAL);
     CloseHandle(t);
     g_up = 1;
+    gfx_present_nowait(gfx_present_nowait_wanted()); /* a Present never waits for the display holding gfx_lock */
     port_log("frame_extra: in-between frames on a thread of their own (--present-thread)\n");
 }
 
@@ -176,10 +173,6 @@ int port_extra_thread_on(void) { return g_up == 1; }
 
 void port_extra_thread_hold(void)
 {
-    g_render_at = now_us(); /* a render, or the tick's own show, begins: the device is the game's thread's */
-    if (g_tick_at && g_render_at - g_tick_at < 1000000u / PORT_VBLANK_HZ)
-        g_lead_us = g_lead_us ? (g_lead_us * 3u + g_render_at - g_tick_at) / 4u : g_render_at - g_tick_at;
-    g_render_gen++;
     if (!g_early || !pvr_blend_ready()) g_go = 0; /* a movie's overlay goes on the frame target when the frame is counted */
 }
 
@@ -195,26 +188,17 @@ void port_extra_thread_rendered(void)
     now = now_us();
     g_period_us = g_start_us && now > g_start_us ? now - g_start_us : 0u;
     g_start_us = now;
+    gfx_movie_lay_frame(); /* a frame shown again before it is counted has the movie on it */
     g_go = 1;
     SetEvent(g_wake);
 }
 
 u64 port_extra_thread_period(void) { return g_period_us; }
 
-/* --present-pace on, in-between frames on with this thread running: the tick's own frame (none drawn for it, or blending
- * off for a movie) is shown by this thread too, so the tick never makes a Present (on build box A a 7 ms one cost it 8 ms a blank). */
-int extra_interp(void);
-int port_extra_thread_shows(void) { return g_up == 1 && g_early && gfx_present_paced() && extra_interp(); }
-
 void port_extra_thread_counted(void)
 {
-    g_counts = 1;
-    g_counted_gen = g_render_gen;
     if (g_up == 1) SetEvent(g_wake);
 }
-
-/* The host, as a tick starts (its vertical blank's wait is over). */
-void port_extra_thread_tick(void) { if (g_up == 1) g_tick_at = now_us(); }
 
 int port_extra_thread_go(void)
 {

@@ -211,6 +211,33 @@ class Guard(unittest.TestCase):
         self.assertEqual(e.exception.code, 3)
         self.assertEqual(json.loads((self.d / "state.json").read_text(encoding="utf-8"))["steps"], {"hold": 1})
 
+    def test_stop_from_before_the_start_is_ignored(self):  # kept for the waves it was written for, never deleted
+        ctl, stop = wave.wave_ctl, self.d / "STOP"
+        ctl.write_stop(stop)
+        ctl.started(stop)  # what run() does where it deleted the STOP before
+        with mock.patch.object(wave, "ram", return_value=50.0):
+            self.assertEqual(wave.guarded([sys.executable, "-c", "print('ok')"], 60, {}, cwd=self.d), (0, "ok"))
+        self.assertTrue(stop.exists())
+        ctl.write_stop(stop)  # `wave.py stop` now: the wave running stops
+        with mock.patch.object(wave, "ram", return_value=50.0), self.assertRaises(SystemExit) as e:
+            wave.guarded(self.child(), 60, {"steps": {}}, cwd=self.d)
+        self.assertEqual(e.exception.code, 3)
+
+    def hold_fails(self, b, st):
+        with mock.patch.object(wave, "broker_dir", return_value=b), mock.patch.object(wave, "HOLD_WAIT_S", -1), \
+                mock.patch.object(wave, "ghidra_jvms", return_value=[1]), \
+                mock.patch.object(wave, "servers_up", return_value=[]), self.assertRaises(SystemExit) as e:
+            wave.hold(st)
+        self.assertIn("still busy", str(e.exception.code))
+
+    def test_hold_that_times_out_removes_its_hold(self):  # nothing owns it: no Ghidra run may wait on it
+        b, st = self.d / "broker", {"steps": {}}
+        self.hold_fails(b, st)
+        self.assertFalse((b / "HOLD").exists())
+        (b / "HOLD").write_text(json.dumps({"pass": "monitor"}), encoding="utf-8")  # another writer's HOLD before
+        self.hold_fails(b, st)
+        self.assertEqual(json.loads((b / "HOLD").read_text(encoding="utf-8")), {"pass": "monitor"})  # put back
+
     def test_resume_readings(self):  # after a guard kill: 5 readings in a row under 85%, a reading over restarts
         seq = [86.0, 84.0, 84.0, 86.0] + [80.0] * 5
         with mock.patch.object(wave, "ram", side_effect=seq + [80.0]), mock.patch.object(wave.time, "sleep"):

@@ -25,7 +25,8 @@ Steps, each recorded in WS/state/wave_game.json when done, so a run after a stop
                `verified`; the readable step's own PASS is not)
   7 summary    state/wave_game_summary.json: functions by route, readable by status, verified, hours per step
 Every child inherits the run id (core/oplog), so the run is one start in state/operator_steps.jsonl. Exit 0 when every
-step ended (failed functions are results, not stops), 1 when a step was stuck, 3 on `wave.py stop`.
+step ended (failed functions are results, not stops), 1 when a step was stuck, 3 on `wave.py stop` (one written after
+this start: an older STOP is another wave's, core/wave_ctl). A state file that is there but unreadable stops the start.
 """
 import argparse
 import collections
@@ -39,11 +40,14 @@ import sys
 import time
 
 TOOL = pathlib.Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(TOOL))
+from core import filelock, proof, wave_ctl  # noqa: E402  (none reads core.paths: safe before DECOMP_PROJECT is set)
+
 PY = [sys.executable, "-B"]
 CHUNK_S, TRANSLATE_S, AGENT_S, RD_CHUNK_S, POLL_S = 7200, 7200, 10800, 14400, 2.0
-LEDGER_DONE = ("matched", "failed", "skipped")
-RD_DONE = ("readable", "unproven", "needs_review", "failed", "blocked", "harness_stale", "raw_not_matched")  # core/proof
-RD_PASSED = ("readable", "unproven", "needs_review")  # an attempt passed: the file the verify step judges again
+LEDGER_DONE = ("matched", "failed", "skipped")  # the main ledger's final statuses (core/orch), none of core/proof's
+RD_PASSED = proof.PASSED  # an attempt passed (core/proof.readable_state): the file the verify step judges again
+RD_DONE = RD_PASSED + ("failed", "blocked", "harness_stale", "raw_not_matched")  # and the ends a refine run records
 
 
 def wave():
@@ -62,9 +66,15 @@ class Run:
         self.state_file = self.ws / "state" / "wave_game.json"
         self.log_file = self.ws / "state" / "wave_game.log"
         try:
-            self.st = json.loads(self.state_file.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
+            self.st = json.loads(filelock.read_text(self.state_file))
+        except FileNotFoundError:  # a first start: step 1
             self.st = {"steps": {}, "hours": {}}
+        except (OSError, ValueError) as e:
+            self.st = f"{type(e).__name__}: {e}"
+        if not isinstance(self.st, dict) or not isinstance(self.st.get("steps"), dict):  # never a silent step 1
+            raise SystemExit(f"{self.state_file} is unreadable or not a wave_game state ({str(self.st)[:200]}): a run "
+                             "would start again from step 1. Restore or fix it, or delete it to start from step 1")
+        self.st.setdefault("hours", {})
 
     def log(self, msg):
         line = time.strftime("%Y-%m-%d %H:%M:%S ") + msg
@@ -73,15 +83,13 @@ class Run:
             f.write(line + "\n")
 
     def save(self):
-        tmp = self.state_file.with_suffix(".tmp")
-        tmp.write_text(json.dumps(self.st, indent=1), encoding="utf-8")
-        tmp.replace(self.state_file)
+        filelock.write_json(self.state_file, self.st, indent=1)  # atomic: a reader never sees half a state
 
     def env(self):
         return dict(os.environ, DECOMP_PROJECT=str(self.ws), PYTHONUNBUFFERED="1")
 
     def stopped(self):
-        return wave().STOP_FILE.exists()
+        return wave_ctl.stop_asked(wave().STOP_FILE)
 
     # --- children ---
     def start(self, cmd):
@@ -271,17 +279,20 @@ class Run:
                                and (rd.get(a) or {}).get("verified")),
                "no_harness": self.st.get("no_harness", []), "agent_rc": self.st.get("agent_rc"),
                "hours": self.st["hours"], "stuck": self.st.get("stuck"), "run": os.environ.get("DP_RUN")}
-        (self.ws / "state" / "wave_game_summary.json").write_text(json.dumps(out, indent=1), encoding="utf-8")
+        filelock.write_json(self.ws / "state" / "wave_game_summary.json", out, indent=1)
         self.log("summary: " + json.dumps({k: v for k, v in out.items() if k != "no_harness"}))
         return out
 
     def go(self):
         if not self.ask("reuse"):  # else every agent job would prepare its function again
-            raise SystemExit(f"{self.ws}: config harness_reuse is off (project.json \"harness_reuse\": true turns "
-                             "it on for this workspace once its harnesses are proven reusable)")
+            raise SystemExit(
+                f"{self.ws}: config harness_reuse is off. No check proves a workspace's harnesses reusable: the oracle "
+                "stamp does not cover the Ghidra project's own state, so turning it on is a person's decision (proven "
+                "only on gamecube_ppc, whose target.json turns it on; AGENTS.md, harness_reuse). Once decided, set "
+                f"\"harness_reuse\": true in {self.ws / 'project.json'} and run again")
         self.st.setdefault("started", time.time())
         self.st["steps"].pop(str(self.st.pop("stuck", None)).split(":")[0], None)  # a stuck step saved as done (before 64cbabe7)
-        wave().STOP_FILE.unlink(missing_ok=True)
+        wave_ctl.started(wave().STOP_FILE)  # a STOP there now was for the waves before this start: ignored, kept
         for name, fn in (("scope", self.scope), ("prepare", self.prepare), ("translate", self.translate),
                          ("agent", self.agent), ("readable", self.readable_step), ("verify", self.verify)):
             self.step(name, fn)
@@ -336,7 +347,6 @@ def main(cmd, game, rest):
 if __name__ == "__main__":
     if len(sys.argv) > 2 and sys.argv[1].startswith("_"):
         os.environ["DECOMP_PROJECT"] = sys.argv[2]
-        sys.path.insert(0, str(TOOL))
         print(json.dumps(internal(sys.argv[1], sys.argv[2], sys.argv[3:])))
         sys.exit(0)
     sys.exit("run it as: python tools/wave.py run --game WS")

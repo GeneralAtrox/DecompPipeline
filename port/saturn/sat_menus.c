@@ -83,11 +83,26 @@ static u16 cell_in(char ch, u32 slot)
     return (u16)((g ? M.first + 2u * g : M.space) | (p16(M.palettes + 2u * (slot & 15u)) << 12));
 }
 static u16 cell(char ch) { return cell_in(ch, M.palette); }
+u32 sat_menu_cell(char ch, u32 slot) { return cell_in(ch, slot == ~0u ? M.palette : slot); } /* a kit screen's letter */
+u32 sat_menu_map(void) { return M.map; }
 static void text(u32 x, u32 y, const char *s, u32 width)
 {
     for (u32 i = 0; i < width; i++) wr16(M.map + y * M.line + 2u * (x + i), cell(*s ? *s++ : ' '));
 }
 void sat_menu_sound(void) { call(M.sound, M.move_sound, 0, 0, 0); }
+void sat_menu_sfx(u32 id) { call(M.sound, id, 0, 0, 0); } /* another of the game's sounds (its confirm, its cancel) */
+
+/* one frame of a kit screen (sat_tlobby.c): the hub's frame start, the screen's draw (it ends the frame), the game's frame
+ * step; the newly pressed buttons */
+u32 sat_menu_step(void (*draw)(void))
+{
+    g_busy++;
+    call(M.frame_start, sat_peek32(M.frame_arg), 1, 0, 0);
+    draw();
+    call(M.frame, 0, 0, 0, 0);
+    g_busy--;
+    return edges();
+}
 
 /* a line of the small type written straight into the game's text map, `width` cells (spaces past the words), in palette
  * slot `slot` (~0u: the hub items'), outside any hub frame: sat_online.c's status lines and notices */
@@ -184,8 +199,8 @@ static int fight_enter(u32 fn, const TcArgs **a, TcArgs *tmp, u32 *ret)
 {
     static const char *const k_fight[] = {"1 VS 1", "2 VS 2"};
     int c;
-    sat_ladder_enter(fn, *a, g_team_wait);
-    if (fn == M.hub) sat_team_done(); /* a 2 VS 2 is over: the next fight is the game's own again */
+    sat_game_ladder_enter(fn, *a, g_team_wait);
+    if (fn == M.hub) sat_game_team_done(); /* a 2 VS 2 is over: the next fight is the game's own again */
     if (fn != F.select || !g_fight || (*a)->s[0] != F.mode || g_team_wait) return 0;
     g_asked++;
     game_log_line("menus: FIGHT asks 1 VS 1 or 2 VS 2 (vertical blank %u)", sat_vblank_count());
@@ -199,6 +214,13 @@ static int fight_enter(u32 fn, const TcArgs **a, TcArgs *tmp, u32 *ret)
     game_log_line("menus: FIGHT: %s", k_fight[c]);
 #ifdef SAT_MENUS_LADDER
     (void)tmp;
+#ifdef SAT_TLOBBY
+    if (c == 1) { /* the TEAM FIGHT lobby and fight selection in place of the game's robot select (sat_tlobby.c) */
+        *ret = (u32)sat_game_tlobby_run();
+        if (*ret) g_two++, sat_game_team_once(), sat_game_ladder_arm(), game_log_line("menus: 2 VS 2: the ladder's fight, two against two, for this fight");
+        return 1;
+    }
+#endif
     if (c == 1) g_team_wait = 1, fight_title(0); /* the game's own FIGHT: the ladder picks the opponent (sat_ladder.c) */
 #else
     if (c == 1) *tmp = **a, tmp->s[0] = F.team_mode, *a = tmp, g_team_wait = 1, fight_title(0);
@@ -213,13 +235,13 @@ static u32 fight_leave(u32 fn, const TcArgs *a, u32 r)
 #else
     const u32 mode = F.team_mode;
 #endif
-    sat_ladder_leave(fn, a, g_team_wait);
+    sat_game_ladder_leave(fn, a, g_team_wait);
     if (fn != F.select || !g_team_wait || a->s[0] != mode) return r;
     g_team_wait = 0, fight_title(1);
     if (r == 1) { /* a robot and its opponent were chosen: the ladder's fight, two against two (sat_ladder.c) */
-        g_two++, sat_team_once();
+        g_two++, sat_game_team_once();
 #ifdef SAT_MENUS_LADDER
-        sat_ladder_arm();
+        sat_game_ladder_arm();
         game_log_line("menus: 2 VS 2: the ladder's fight, two against two, for this fight");
 #else  /* a robot was chosen: the four-robot path, as the hub's TRAINING sets it, played two against two */
         wr8(F.four, 1), wr16(F.count, 4);
@@ -274,14 +296,14 @@ static void online_leave(u32 fn)
     } else if (fn == M.frame && g_pass) { /* the hub's frame step: its newly pressed buttons are read next */
         g_pass = 0;
         cur = p16(g_cur_at);
-        sat_lobby_note(cur, O.box); /* a match that ended: why, once */
+        sat_game_lobby_note(cur, O.box); /* a match that ended: why, once */
         if (cur < O.rows || !(edges() & (A | C | START))) return;
         wr16(M.edge, (u16)(p16(M.edge) | A | C | START)); /* not the hub's: its entry 12 is a debug screen */
         g_opened++;
         if (sat_net_on()) sat_online_choose();
         else if (session_replaying()) game_log_line("menus: %s: not run while a recording is replayed", cur == O.rows ? "JOIN GAME" : "HOST GAME");
-        else if (cur == O.rows) sat_lobby_join(cur, O.box);
-        else sat_lobby_host(cur, O.box);
+        else if (cur == O.rows) sat_game_lobby_join(cur, O.box);
+        else sat_game_lobby_host(cur, O.box);
         wr16(M.edge, 0xffffu); /* nothing newly pressed when the hub goes on */
     }
 }
@@ -326,6 +348,8 @@ u32 sat_menus_leave(u32 fn, const TcArgs *a, u32 r)
 }
 #else
 int sat_menus_enter(u32 fn, const TcArgs **a, TcArgs *tmp, u32 *ret) { (void)fn, (void)a, (void)tmp, (void)ret; return 0; }
+u32 sat_menu_cell(char ch, u32 slot) { (void)ch, (void)slot; return 0; }
+u32 sat_menu_map(void) { return 0; }
 u32 sat_menus_leave(u32 fn, const TcArgs *a, u32 r) { (void)fn, (void)a; return r; }
 #endif
 

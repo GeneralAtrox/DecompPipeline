@@ -22,6 +22,8 @@ import re
 from collections import Counter
 
 from . import expr as X
+from .rounds import settle_pieces, too_deep
+from .spans import closed_at as _closed_at, list_counts as _list_counts
 LABEL = re.compile(r"^(L_\w+):;$")
 GOTO = re.compile(r"^goto (L_\w+);$")
 IFGOTO = re.compile(r"^if \((.+)\) goto (L_\w+);$")
@@ -31,10 +33,11 @@ IDENT = re.compile(r"^!?[A-Za-z_]\w*$")
 
 
 class U:
-    __slots__ = ("kind", "name", "cond", "lines", "a", "b")
+    __slots__ = ("kind", "name", "cond", "lines", "a", "b", "sm", "parts")   # sm, parts: summary's, kept between rounds
 
     def __init__(self, kind, name=None, cond=None, lines=None, a=None, b=None):
         self.kind, self.name, self.cond, self.lines, self.a, self.b = kind, name, cond, lines, a, b
+        self.sm = self.parts = None
 
 
 def is_comment(u):
@@ -144,29 +147,39 @@ def parse(lines):
 
 
 def summary(u, memo):
-    """(labels inside, gotos inside by target, a break inside that is not bound to a loop inside u)."""
+    """(labels inside, gotos inside by target, a break inside that is not bound to a loop inside u). Kept on u (u.sm)
+    while what it is made of is the same: a label's name and an op's lines never change, a goto's name may (thread), a
+    block's is the same while each of its statements' summaries is the same object. Making every one anew each round
+    was most of 8237bd08's time (50 million summaries and 54 million regex scans)."""
     k = id(u)
     if k in memo:
         return memo[k]
+    r = u.sm
     if u.kind == "label":
-        r = ({u.name}, Counter(), False)
+        r = r or ({u.name}, Counter(), False)
     elif u.kind == "goto":
-        r = (set(), Counter([u.name]), False)
+        r = r if r and u.name in r[1] else (set(), Counter([u.name]), False)
     elif u.kind == "op":
-        text = "\n".join(u.lines)
-        r = (set(LABEL_ANY.findall(text)), Counter(GOTO_ANY.findall(text)), u.lines == ["@BREAK"])
+        if r is None:
+            text = "\n".join(u.lines)
+            r = (set(LABEL_ANY.findall(text)), Counter(GOTO_ANY.findall(text)), u.lines == ["@BREAK"])
     else:
-        labels, gotos, brk = set(), Counter(), False
-        for v in (u.a or []) + (u.b or []):
-            ls, gs, b = summary(v, memo)
-            labels |= ls
-            gotos += gs
-            brk = brk or b
-        if u.kind in ("do", "loop", "while"):
-            brk = False         # its breaks end it
-        r = (labels, gotos, brk)
-    memo[k] = r
+        parts = [summary(v, memo) for v in (u.a or []) + (u.b or [])]
+        if r is None or len(parts) != len(u.parts) or any(x is not y for x, y in zip(parts, u.parts)):
+            labels, gotos, brk = set(), Counter(), False
+            for ls, gs, b in parts:
+                labels |= ls
+                gotos.update(gs)    # counts are positive: += would also rescan all of gotos for ones to drop
+                brk = brk or b
+            r = (labels, gotos, brk and u.kind not in ("do", "loop", "while"))    # a loop's breaks end it
+        u.parts = parts
+    memo[k] = u.sm = r
     return r
+
+
+def only_labels(us, a, b):
+    """us[a:b] is labels and comments only (without copying the slice: a goto to the end made that quadratic)."""
+    return all(us[i].kind == "label" or is_comment(us[i]) for i in range(a, b))
 
 
 def region(us, memo):
@@ -174,15 +187,9 @@ def region(us, memo):
     for u in us:
         ls, gs, b = summary(u, memo)
         labels |= ls
-        gotos += gs
+        gotos.update(gs)
         brk = brk or b
     return labels, gotos, brk
-
-
-def closed(us, refs, memo, skip=()):
-    """No goto from outside us names a label inside it (labels in skip are the caller's to check)."""
-    labels, gotos, brk = region(us, memo)
-    return all(gotos[x] == refs[x] for x in labels if x not in skip), brk
 
 
 def candidates(us, refs, memo, found):
@@ -205,20 +212,20 @@ def candidates(us, refs, memo, found):
                     found.append((h - g, us, g, h + 1, lambda us, s, e, a_=a_, b_=b_, n=u.name:
                                   us[s + 1:e - 1] + [U("goto", n, f"{paren(a_)} || {paren(b_)}")]))
                     continue
-                if p > h and all(w.kind == "label" or is_comment(w) for w in us[h + 1:p]):
+                if p > h and only_labels(us, h + 1, p):
                     found.append((h - g, us, g, h + 1, lambda us, s, e, a_=a_, b_=b_, n=v.name:
                                   us[s + 1:e - 1] + [U("goto", n, f"{paren(neg(a_))} && {paren(b_)}")]))
                     continue
         if p < 0:
             continue
-        if p > g and all(v.kind == "label" or is_comment(v) for v in us[g + 1:p]):
+        if p > g and only_labels(us, g + 1, p):
             # a goto to the next statement (its condition is a flag: no effect)
             found.append((0, us, g, g + 1, lambda us, s, e: []))
             continue
         if p < g:
             if refs[u.name] != 1:
                 continue
-            ok, brk = closed(us[p + 1:g], refs, memo)
+            ok, brk = _closed_at(summary, us, p + 1, g, refs, memo)
             if ok and not brk:
                 if u.cond is None:
                     found.append((g - p, us, p, g + 1, lambda us, s, e: [U("loop", a=us[s + 1:e - 1])]))
@@ -233,7 +240,7 @@ def candidates(us, refs, memo, found):
                 m = pos.get(lc)
                 if m is None or not (p < m < g) or refs[lc] != 1:
                     continue
-                ok, brk = closed(us[p + 1:g], refs, memo, skip=(lc,))
+                ok, brk = _closed_at(summary, us, p + 1, g, refs, memo, skip=m)
                 if not ok or brk:
                     continue
                 c = u.cond
@@ -253,14 +260,14 @@ def candidates(us, refs, memo, found):
             if refs[u.name] == 1 and prev.kind == "goto" and prev.cond is None and prev.name in pos:
                 q = pos[prev.name]
                 if q > p + 1 and p - 1 > g + 1:
-                    ok1, _ = closed(us[g + 1:p - 1], refs, memo)
-                    ok2, _ = closed(us[p + 1:q], refs, memo)
+                    ok1, _ = _closed_at(summary, us, g + 1, p - 1, refs, memo)
+                    ok2, _ = _closed_at(summary, us, p + 1, q, refs, memo)
                     if ok1 and ok2:
                         found.append((q - g, us, g, q,
                                       lambda us, s, e, c=c, p=p: [U("if", cond=neg(c), a=us[s + 1:p - 1],
                                                                     b=us[p + 1:e])]))
                         continue
-            ok, _ = closed(us[g + 1:p], refs, memo)
+            ok, _ = _closed_at(summary, us, g + 1, p, refs, memo)
             if ok:
                 found.append((p - g, us, g, p, lambda us, s, e, c=c: [U("if", cond=neg(c), a=us[s + 1:e])]))
     for u in us:
@@ -285,7 +292,8 @@ def tail_candidates(root, found, limit=4):
     tails = {}
     for name, (us, k) in where.items():
         lines = []
-        for v in us[k + 1:]:
+        for i in range(k + 1, len(us)):     # not us[k + 1:]: a copy per label made this quadratic
+            v = us[i]
             if v.kind == "label":
                 continue
             if v.kind != "op" or v.lines == ["@BREAK"] or any(GOTO_ANY.search(x) or LABEL_ANY.search(x)
@@ -313,10 +321,11 @@ def tail_candidates(root, found, limit=4):
     gotos(root)
 
 
-def lead_labels(us):
-    """The labels at the start of us (before its first statement), and whether us is nothing but labels."""
+def lead_labels(us, k=0):
+    """The labels at the start of us[k:] (before its first statement), and whether it is nothing but labels."""
     out = set()
-    for v in us:
+    for i in range(k, len(us)):
+        v = us[i]
         if is_comment(v):
             continue
         if v.kind != "label":
@@ -333,7 +342,7 @@ def cleanup(us, fall=frozenset()):
     k = 0
     while k < len(us):
         u = us[k]
-        after, only = lead_labels(us[k + 1:])
+        after, only = lead_labels(us, k + 1)
         reach = after | (fall if only else set())
         if u.kind == "goto" and u.name in reach:
             del us[k]
@@ -365,7 +374,8 @@ def thread(root):
     def walk(us):
         for k, u in enumerate(us):
             if u.kind == "label":
-                for v in us[k + 1:]:
+                for i in range(k + 1, len(us)):
+                    v = us[i]
                     if v.kind == "label" or is_comment(v):
                         continue
                     if v.kind == "goto" and v.cond is None and v.name != u.name:
@@ -407,6 +417,9 @@ def ends(u):
         return u.cond is None
     if u.kind == "op" and u.lines != ["@BREAK"]:
         code = [x.strip() for x in u.lines if not x.strip().startswith("/*")]
+        if code and code[-1] == "}":    # a scope ending in a return: a jump table `{ u32 g_ = E; switch (g_) {...} return r3; }`
+            from .cfgstruct import op_ends
+            return op_ends(u.lines)
         return bool(code) and (code[-1].startswith("return") or code[-1] == "tc_halt();")
     return False
 
@@ -433,7 +446,7 @@ def prune(us, refs, memo):
 
 
 def all_refs(us, memo):
-    return region(us, memo)[1]
+    return _list_counts(summary, us, memo)[1]      # region(us)'s gotos, kept for span_index's root list
 
 
 def render(us, ind, refs, out):
@@ -476,33 +489,16 @@ def structure(lines):
         us = parse(lines)
     except ValueError:
         return lines        # not a shape this pass reads: the goto form stays
-    for _ in range(10000):
-        memo = {}
-        refs = all_refs(us, memo)
-        found = []
-        candidates(us, refs, memo, found)
-        if not found:
-            if cleanup(us) | thread(us) | prune(us, refs, memo):
-                continue
-            tail_candidates(us, found)     # only where no shape above fits: copying code is the last resort
-        if not found:
-            break
-        found.sort(key=lambda f: f[0])
-        taken = {}
-        for span, lst, s, e, build in found:
-            rs = taken.setdefault(id(lst), (lst, []))[1]
-            if any(s < e2 and s2 < e for s2, e2, _ in rs):
-                continue
-            rs.append((s, e, build))
-        for lst, rs in taken.values():
-            for s, e, build in sorted(rs, key=lambda r: -r[0]):
-                lst[s:e] = build(lst, s, e)
+    us = settle_pieces(us, lines)    # rounds.py: the rewrites, round after round, piece by piece
     memo = {}
     out = render(us, "    ", all_refs(us, memo), [])
+    if too_deep(out):
+        return lines
     if any(GOTO_ANY.search(x) for x in out):
         # shapes the rewrites above do not fit: lay the whole function out from its control flow graph instead
         from .cfgstruct import structure_cfg
         alt = structure_cfg(lines)
-        if alt is not None:
+        if alt is not None and not too_deep(alt):
             return alt
     return out
+

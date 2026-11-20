@@ -162,24 +162,25 @@ RUNTIME_SRCS = ("runner.c", "tc_rt.c", "tc_fpu.c", "tc_p4.c")
 CL_FLAGS = ("/nologo", "/O1", "/fp:strict", "/W4", "/WX")
 
 
-def runtime_objs(cl, env):
+def runtime_objs(cl, env, srcs=None, extra=()):
     """The runtime's objects, compiled once per content (every runtime file, the compiler, its INCLUDE and the flags)
     into build/runtime_obj/KEY/ and linked by every build after: compiling them was 0.38 s of a 0.59 s build. Each
     translation unit compiles alone, so an object is the same whichever build compiles it. None when they do not
-    compile (a runtime warning under /WX): the full build then reports it as before."""
-    h = hashlib.sha256(repr((CL_FLAGS, cl, os.stat(cl).st_size, os.stat(cl).st_mtime_ns,
+    compile (a runtime warning under /WX): the full build then reports it as before. srcs, extra: x360_check.build's."""
+    h = hashlib.sha256(repr((CL_FLAGS, cl, os.stat(cl).st_size, os.stat(cl).st_mtime_ns, srcs, tuple(extra),
                              next((v for k, v in env.items() if k.upper() == "INCLUDE"), ""))).encode())
     for f in sorted(paths.RUNTIME.iterdir()):
         if f.is_file():
             h.update(f.name.encode() + b"\0" + f.read_bytes() + b"\0")
     d = paths.BUILD / "runtime_obj" / h.hexdigest()[:16]  # build_prune passes it by (not a function folder)
-    objs = [d / f"{s[:-2]}.obj" for s in RUNTIME_SRCS]
+    objs = [d / f"{s[:-2]}.obj" for s in (srcs or RUNTIME_SRCS)]
     if all(o.is_file() for o in objs):
         return objs
     tmp = d.with_name(f"{d.name}.tmp{os.getpid()}_{threading.get_ident()}")
     shutil.rmtree(tmp, ignore_errors=True)
     tmp.mkdir(parents=True)
-    cmd = [cl, "/c", *CL_FLAGS, "/TC", f"/I{paths.RUNTIME}", f"/Fo{tmp}\\", *(str(paths.RUNTIME / s) for s in RUNTIME_SRCS)]
+    cmd = [cl, "/c", *CL_FLAGS, "/TC", *extra, f"/I{paths.RUNTIME}", f"/Fo{tmp}\\",
+           *(str(paths.RUNTIME / s) for s in (srcs or RUNTIME_SRCS))]
     rc, _out, reason = paths.run_bounded(cmd, 120, cwd=tmp, env=env)
     if rc != 0 or reason:
         shutil.rmtree(tmp, ignore_errors=True)

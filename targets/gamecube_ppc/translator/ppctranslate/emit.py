@@ -30,18 +30,31 @@ HELPERS = {
     # fdiv / fdivs: an invalid division (0/0, inf/inf) gives the 750CL's default NaN, +0x7ff8000000000000; x86's is
     # negative (0xfff8...). A NaN operand propagates with its sign on both. No Skies verdict turned on it: a
     # general-correctness fix that the unit test holds (DefaultNaN).
-    "px_fdiv": "static f64 px_fdiv(f64 a, f64 b)\n{\n    f64 r = a / b;\n"
-               "    if (r != r && a == a && b == b) return px_b2f(0x7ff8000000000000ull);\n    return r;\n}",
+    "px_fdiv": "static f64 px_fdiv(f64 a, f64 b)\n{\n    f64 r = a / b;\n    if (r == r) return r;\n"
+               "    if (a == a && b == b) return px_b2f(0x7ff8000000000000ull);\n"
+               "    return px_b2f(px_f2b(a != a ? a : b) | 0x0008000000000000ull);\n}",
     # fadd / fsub / fmul and the fused ops: an invalid operation (inf - inf, 0 * inf) gives the 750CL's default NaN,
     # +0x7ff8...; x86's is negative. Skies 801231f8: frsqrte(inf) = 0, then inf * 0 in the Newton steps reached a call
     # as 0xffc00000 where the original passes 0x7fc00000. A NaN operand propagates with its sign on both.
-    "px_fadd": "static f64 px_fadd(f64 a, f64 b)\n{\n    f64 r = a + b;\n    return r != r && a == a && b == b ? px_b2f(0x7ff8000000000000ull) : r;\n}",
-    "px_fsub": "static f64 px_fsub(f64 a, f64 b)\n{\n    f64 r = a - b;\n    return r != r && a == a && b == b ? px_b2f(0x7ff8000000000000ull) : r;\n}",
-    "px_fmul": "static f64 px_fmul(f64 a, f64 b)\n{\n    f64 r = a * b;\n    return r != r && a == a && b == b ? px_b2f(0x7ff8000000000000ull) : r;\n}",
-    "px_fmadd": "static f64 px_fmadd(f64 a, f64 c, f64 b)\n{\n    f64 r = a * c + b;\n"
-                "    return r != r && a == a && b == b && c == c ? px_b2f(0x7ff8000000000000ull) : r;\n}",
-    "px_fmsub": "static f64 px_fmsub(f64 a, f64 c, f64 b)\n{\n    f64 r = a * c - b;\n"
-                "    return r != r && a == a && b == b && c == c ? px_b2f(0x7ff8000000000000ull) : r;\n}",
+    # With two NaN operands the 750CL (TcNaN.arith) takes frA's, quieted; MSVC may swap a commutative op's operands
+    # and x86 then gives frB's (tests/test_gc_nan.py RuntimeNaN): the NaN is picked explicitly.
+    "px_fadd": "static f64 px_fadd(f64 a, f64 b)\n{\n    f64 r = a + b;\n    if (r == r) return r;\n"
+               "    if (a == a && b == b) return px_b2f(0x7ff8000000000000ull);\n"
+               "    return px_b2f(px_f2b(a != a ? a : b) | 0x0008000000000000ull);\n}",
+    "px_fsub": "static f64 px_fsub(f64 a, f64 b)\n{\n    f64 r = a - b;\n    if (r == r) return r;\n"
+               "    if (a == a && b == b) return px_b2f(0x7ff8000000000000ull);\n"
+               "    return px_b2f(px_f2b(a != a ? a : b) | 0x0008000000000000ull);\n}",
+    "px_fmul": "static f64 px_fmul(f64 a, f64 b)\n{\n    f64 r = a * b;\n    if (r == r) return r;\n"
+               "    if (a == a && b == b) return px_b2f(0x7ff8000000000000ull);\n"
+               "    return px_b2f(px_f2b(a != a ? a : b) | 0x0008000000000000ull);\n}",
+    # fmadd / fmsub with a NaN operand: the first NaN of frA, frB, frC (the fields), quieted (TcNaN.arith, the 750CL);
+    # x86 takes the product's (frC) before the addend's (frB). Skies 80285fd8 (tc_ppc.c fused_nan).
+    "px_fmadd": "static f64 px_fmadd(f64 a, f64 c, f64 b)\n{\n    f64 r = a * c + b;\n    if (r == r) return r;\n"
+                "    if (a == a && b == b && c == c) return px_b2f(0x7ff8000000000000ull);\n"
+                "    return px_b2f(px_f2b(a != a ? a : b != b ? b : c) | 0x0008000000000000ull);\n}",
+    "px_fmsub": "static f64 px_fmsub(f64 a, f64 c, f64 b)\n{\n    f64 r = a * c - b;\n    if (r == r) return r;\n"
+                "    if (a == a && b == b && c == c) return px_b2f(0x7ff8000000000000ull);\n"
+                "    return px_b2f(px_f2b(a != a ? a : b != b ? b : c) | 0x0008000000000000ull);\n}",
     # fnmadd / fnmsub: the 750CL negates the fused result unless it is a NaN, which keeps its sign
     "px_fnm": "static f64 px_fnm(f64 x)\n{\n    return x != x ? x : -x;\n}",
     # fctiw / fctiwz leave the 750CL's upper word: 0xfff80000, or 0xfff80001 for a negative operand giving 0
@@ -53,8 +66,8 @@ HELPERS = {
                 "    if (x > 1.7976931348623157e308) return 0.0;\n"
                 "    y = px_b2f(0x5fe6eb50c7b537a9ull - (px_f2b(x) >> 1));\n"
                 "    for (k = 0; k < 6; k++) y = y * (1.5 - 0.5 * x * y * y);\n    return y;\n}",
-    # quantized store: scale, clamp to the type's range, truncate toward zero
-    "px_quant": "static s32 px_quant(f64 v, f64 m, s32 lo, s32 hi)\n{\n    f64 x = v * m;\n"
+    # quantized store: round to single, scale, clamp to the type's range, truncate toward zero; a NaN gives 0
+    "px_quant": "static s32 px_quant(f64 v, f64 m, s32 lo, s32 hi)\n{\n    f64 x = (f64)(f32)v * m;\n"
                 "    if (x != x) return 0;\n    if (x <= (f64)lo) return lo;\n    if (x >= (f64)hi) return hi;\n"
                 "    return (s32)x;\n}",
     "px_qsize": "static u32 px_qsize(u32 t)\n{\n    return t == 4u || t == 6u ? 1u : t == 5u || t == 7u ? 2u : 4u;\n}",
@@ -77,15 +90,16 @@ for _k in range(4):
     _set = "".join(f"\n    a.r[{j}] = x{j};" for j in range(_k))
     for _n, _t, _f in (("px_c", "u32", "tc_call"), ("px_cf", "f64", "tc_callf")):
         HELPERS[f"{_n}{_k}"] = f"static {_t} {_n}{_k}(u32 t{_ps})\n{{\n    TcArgs a = {{0}};{_set}\n    return {_f}(t, &a);\n}}"
+HELPERS["px_s2w"] = "static u32 px_s2w(f32 f)\n{\n    union { f32 f; u32 w; } v;\n    v.f = f;\n    return v.w;\n}"
 HELPERS["px_l2"] = "static u32 px_l2(u32 p, u32 a, u32 b)\n{\n    return rd32(rd32(p + a) + b);\n}"
 HELPERS["px_l3"] = "static u32 px_l3(u32 p, u32 a, u32 b, u32 c)\n{\n    return rd32(rd32(rd32(p + a) + b) + c);\n}"
-DEPS = {"px_fdiv": ["px_b2f"], **{f"px_f{k}": ["px_b2f"] for k in ("add", "sub", "mul", "madd", "msub")},
+DEPS = {**{f"px_f{k}": ["px_f2b", "px_b2f"] for k in ("div", "add", "sub", "mul", "madd", "msub")},
         "px_ctiw": ["px_f2b", "px_b2f"], "px_rsqrt": ["px_f2b", "px_b2f"], "px_lfs": ["px_b2f"],
         "px_dq": ["px_qscale", "px_lfs", "px_b2f"],
         "px_q": ["px_qscale", "px_quant"]}
 ORDER = ["px_fr", "px_f2b", "px_b2f", "px_lfs", "px_w2f", "px_fdiv", "px_fadd", "px_fsub", "px_fmul", "px_fmadd", "px_fmsub",
          "px_fnm", "px_ctiw", "px_rsqrt", "px_quant", "px_qsize", "px_qscale", "px_dq",
-         "px_q", "px_l2", "px_l3"] + [f"px_c{k}" for k in range(4)] + [f"px_cf{k}" for k in range(4)]
+         "px_q", "px_s2w", "px_l2", "px_l3"] + [f"px_c{k}" for k in range(4)] + [f"px_cf{k}" for k in range(4)]
 
 
 def widen_single(e):
@@ -144,7 +158,8 @@ class Emitter:
         elif isinstance(s, CallS) and s.selfc:
             kinds = {n: k for n, k, _, _ in self.ft.sig.params}
             vals = {k: e for _, k, e in s.args}
-            c = "px_rec(" + ", ".join([self.r(vals["sp_"])] + [self.r(coerce(vals[n], kinds[n])) for n in kinds]) + ")"
+            rf = [self.r(coerce(vals["f1_"], "f64"))] if "f1_" in vals else []  # frames.recursive_f1
+            c = "px_rec(" + ", ".join([self.r(vals["sp_"])] + [self.r(coerce(vals[n], kinds[n])) for n in kinds] + rf) + ")"
             out.append(f"{ind}{c};" if s.note == "dead" else f"{ind}f1 = {c};" if s.kind == "f" else f"{ind}r3 = {c};")
         elif isinstance(s, CallS):
             args = [(fld, k, e) for fld, k, e in s.args if not zero_const(e)]
@@ -219,7 +234,9 @@ class Emitter:
         """The exit-register reports (a value of 0 is the runtime's default) and the return."""
         out = []
         for k, kind, x in t.xr:
-            if not zero_const(x):
+            if kind == "m":
+                out.append(f"    tc_xmsr({self.r(coerce(x, 'u32'))});")
+            elif not zero_const(x):
                 out.append(f"    tc_xr({k}u, {self.r(coerce(x, 'u32'))});" if kind == "r" else
                            f"    tc_xrf({k}u, {self.r(coerce(x, 'f64'))});")
         return out + [f"    {self.ret(t)}"]
@@ -233,7 +250,9 @@ class Emitter:
 DECL_TYPES = ("u32", "u64", "s32", "f64", "f32")
 
 
-def declarations(names, fn):
+def declarations(names, fn, init=None):
+    """init: {name: C text} for a local that starts with something other than 0 (the caller's f1 in px_rec)."""
+    init = init or {}
     by = {}
     for n in sorted(names, key=natural):
         t = CTYPE.get(fn.ty(n), fn.ty(n))
@@ -243,7 +262,7 @@ def declarations(names, fn):
         z = "0.0" if t in X.FLOAT else "0"
         names_ = by[t]
         for k in range(0, len(names_), 12):
-            out.append(f"    {t} " + ", ".join(f"{n} = {z}" for n in names_[k:k + 12]) + ";")
+            out.append(f"    {t} " + ", ".join(f"{n} = {init.get(n, z)}" for n in names_[k:k + 12]) + ";")
     return out
 
 
@@ -314,11 +333,17 @@ def function_text(ft, fn, structured=True, lean=False, dense=False):
     if ft.recursive:
         ps = sig.text[sig.text.index("(") + 1:sig.text.rindex(")")].strip()
         rt = "void" if sig.ret == "void" else "f64" if sig.ret in ("f32", "f64") else "u32"
-        out.append(f"static {rt} px_rec(u32 sp_" + ("" if ps in ("", "void") else ", " + ps) + ")")
+        f1p = ", f64 f1_" if getattr(ft, "rec_f1", False) else ""  # the caller's f1 (frames.recursive_f1)
+        out.append(f"static {rt} px_rec(u32 sp_" + ("" if ps in ("", "void") else ", " + ps) + f1p + ")")
     else:
         out.append(sig.text)
     out.append("{")
-    out += declarations(local, fn)
+    rec_f1 = ft.recursive and getattr(ft, "rec_f1", False)
+    # px_rec's f1 starts as the caller's f1_ (frames.recursive_f1): a local f1 (one a merge keeps) is declared with
+    # it, and f1_ is marked used when nothing reads it (MSVC /W4 /WX C4100)
+    out += declarations(local, fn, {"f1": "f1_"} if rec_f1 else None)
+    if rec_f1 and "f1_" not in named and "f1" not in local:
+        out.append("    (void)f1_;")
     out += ucopies
     if "tc_call" in named or "tc_callf" in named:
         out.append("    TcArgs a = {0};")
@@ -330,7 +355,8 @@ def function_text(ft, fn, structured=True, lean=False, dense=False):
     out += body
     out.append("}")
     if ft.recursive:
-        call = "px_rec(" + ", ".join([f"0x{ft.facts.entry_sp:x}u"] + [p[0] for p in sig.params]) + ")"
+        f1a = ["tc_lastf()"] if getattr(ft, "rec_f1", False) else []
+        call = "px_rec(" + ", ".join([f"0x{ft.facts.entry_sp:x}u"] + [p[0] for p in sig.params] + f1a) + ")"
         conv = {"void": "", "u32": "return ", "f64": "return ", "s32": "return (s32)", "f32": "return (f32)"}
         out += ["", sig.text, "{", f"    {conv[sig.ret]}{call};", "}"]
     return "\n".join(out) + "\n"

@@ -36,6 +36,7 @@ import texture_pack as tp  # noqa: E402
 from test_lockstep import HAVE_VC, NO_VC  # noqa: E402
 
 DRIVER_C = r"""#define _CRT_SECURE_NO_WARNINGS
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -50,15 +51,37 @@ static u8 g_vram[PVRX_VRAM_SIZE];
 static u32 g_out[1u << 20];
 u8 *pvr_vram(void) { return g_vram; }
 void pvr_todo(const char *fmt, ...) { (void)fmt; }
-void port_log(const char *fmt, ...) { (void)fmt; }
+void port_log(const char *fmt, ...) { va_list a; if (!getenv("PACK_LOG")) return; va_start(a, fmt); vfprintf(stderr, fmt, a); va_end(a); }
 void port_extra_undo(void *p, u32 size, PortUndoFn after) { (void)p, (void)size, (void)after; }
 int host_fixed_clock(void) { return getenv("PACK_FIXED") != NULL; } /* a check run, for the test */
 int pvr_keys_option(const char *arg, const char *value) { (void)arg, (void)value; return 0; }
 int pad_style_option(const char *arg, const char *value) { (void)arg, (void)value; return 0; }
 int pvr_tex_option(const char *arg, const char *value) { (void)arg, (void)value; return 0; }
 int pad_style(void) { return getenv("PACK_STYLE") ? atoi(getenv("PACK_STYLE")) : 0; } /* the pad in use, for the test */
-u32 pad_style_serial(void) { return 0; }
+u32 pad_style_serial(void) { return 0; } u32 port_vblank_count(void) { return 0; } void gfx_lock(void) {} void gfx_unlock(void) {} GfxState g_gfx; int g_work_on; u64 g_work_now[WC_N];
 int pad_art_style(void) { return pad_style(); }
+int port_menu_check_on(const char *s) { const char *off = getenv("PACK_CHECK_OFF"); return !(off && !strcmp(off, s)); }
+f32 port_widescreen(void) { return getenv("PACK_FRAME") ? (f32)atof(getenv("PACK_FRAME")) : 1.0f; }
+/* PACK_FRAME: a scene of this texture across the screen, a bar across the screen and a small sprite through pvr_wide_scene */
+static void wide_scene(u32 tcw, u32 tsp)
+{
+    static PvrVtx vtx[6];
+    static PvrBatch batch[3];
+    PvrScene s;
+    memset(&s, 0, sizeof s);
+    memset(batch, 0, sizeof batch);
+    s.vtx = vtx, s.batch = batch, s.nbatch = 3;
+    for (u32 i = 0; i < 3; i++) {
+        f32 x0 = i == 2 ? 100.0f : 0.0f, x1 = i == 2 ? 200.0f : 640.0f;
+        vtx[i * 2].x = x0, vtx[i * 2].u = 0.0f;
+        vtx[i * 2 + 1].x = x1, vtx[i * 2 + 1].u = 1.0f;
+        batch[i].first = i * 2, batch[i].count = 2, batch[i].tsp = tsp;
+        batch[i].flags = i == 1 ? 0 : PVR_BF_TEXTURE;
+        batch[i].tcw = i == 0 ? tcw : tcw ^ 0x1000u;
+    }
+    pvr_wide_scene(&s);
+    for (u32 i = 0; i < 6; i++) printf("%s%.3f %.4f%s", i ? " " : "scene ", vtx[i].x, vtx[i].u, i == 5 ? "\n" : " ");
+}
 static void save(const char *dir, int n, const char *what, const u32 *px, u32 count)
 {
     char path[512];
@@ -81,6 +104,7 @@ int main(int argc, char **argv)
     FILE *f = fopen(argv[1], "rb");
     unsigned tcw, w, h, stride;
     int n = 0, passes = getenv("PACK_SET") ? 2 : 1; /* PACK_SET: the menu's choice before a second pass over the cases */
+    if (getenv("PACK_MIPS")) return pvr_pack_write_mips(getenv("PACK_MIPS"), getenv("PACK_MIPS_CHECK") != NULL);
     if (!f) return 2;
     fread(g_vram, 1, sizeof g_vram, f);
     fclose(f);
@@ -92,15 +116,16 @@ int main(int argc, char **argv)
             pvr_pack_set_choice(atoi(getenv("PACK_SET")));
             rewind(f);
         }
-        if (getenv("PACK_MENU")) show_menu();
+        if (getenv("PACK_MENU")) show_menu(); /* PACK_HINT=1: each case hinted first, as kmLoadTexture does; w: made a surface and its bytes written by a library's own copy (s: all but the last byte) */ if (getenv("PACK_HINT")) { char how = getenv("PACK_HINT")[0]; while (fscanf(f, "%x %u %u %u", &tcw, &w, &h, &stride) == 4) if (how == '1') pvr_pack_hint(tcw, w, h, stride); else pvr_pack_surface(tcw, w, h), pvr_pack_written((tcw & 0x1fffffu) << 3, pvr_texture_bytes(tcw, w, h, stride) - (how == 's')); rewind(f); }
         while (fscanf(f, "%x %u %u %u", &tcw, &w, &h, &stride) == 4) {
             const u32 *px = NULL;
-            u32 pw = 0, ph = 0, levels = pvr_pack_levels(tcw, w, h, stride, &px, &pw, &ph), total = 0;
+            u32 pw = 0, ph = 0, levels = pvr_pack_levels(tcw, w, h, stride, &px, NULL, &pw, &ph), total = 0;
             u32 tsp = 0;
             for (u32 a = w; a > 8u; a >>= 1) tsp += 8u;
             for (u32 a = h; a > 8u; a >>= 1) tsp += 1u;
-            printf("%016llx %u %u %u %08x\n", (unsigned long long)pvr_pack_key(g_vram, tcw, w, h, stride), levels, pw, ph,
-                   pvr_pack_rim(tcw, tsp));
+            printf("%016llx %u %u %u %08x %.4f\n", (unsigned long long)pvr_pack_key(g_vram, tcw, w, h, stride), levels, pw, ph,
+                   pvr_pack_rim(tcw, tsp), pvr_pack_wide(tcw, tsp));
+            if (getenv("PACK_FRAME")) wide_scene(tcw, tsp);
             if (argc > 4) {
                 u32 dl = pvr_decode(tcw, w, h, stride, g_out, (u32)(sizeof g_out / 4));
                 save(argv[4], n, "before", g_out, dl ? w * h : 0);
@@ -110,7 +135,7 @@ int main(int argc, char **argv)
             n++;
         }
     }
-    fclose(f);
+    fclose(f); if (getenv("PACK_LOG")) pvr_pack_load_report(); /* PACK_LOG: the kit's log lines on stderr */
     return 0;
 }
 """
@@ -126,7 +151,7 @@ def build_driver(d, texture_pack=None):
         encoding="utf-8")
     (d / "pack_main.c").write_text(DRIVER_C, encoding="utf-8")
     rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
-    srcs = " ".join(f'"{p}"' for p in [KIT / "pvr" / "pvr_pack.c", KIT / "pvr" / "pvr_pack_bundled.c", KIT / "pvr" / "pvr_pack_png.c", KIT / "pvr" / "pvr_twiddle.c",
+    srcs = " ".join(f'"{p}"' for p in [KIT / "pvr" / "pvr_pack.c", KIT / "pvr" / "pvr_pack_line.c", KIT / "pvr" / "pvr_pack_bundled.c", KIT / "pvr" / "pvr_pack_png.c", KIT / "pvr" / "pvr_pack_load.c", KIT / "pvr" / "pvr_twiddle.c", KIT / "pvr" / "pvr_wide.c",
                                        KIT / "pvr" / "pvr_pal.c", d / "pack_main.c"])
     cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O2 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "pvr"}" /I"{KIT / "base"}" '
           f'/I"{rd}" {srcs} /Fe:pvr_pack_driver.exe /link windowscodecs.lib ole32.lib')
@@ -138,15 +163,17 @@ def build_driver(d, texture_pack=None):
     return d / "pvr_pack_driver.exe"
 
 
-def run_driver(exe, vram, cases, pack=None, out=None, check_run=False, style=None, rims=False):
+def run_driver(exe, vram, cases, pack=None, out=None, check_run=False, style=None, rims=False, check_off=None):
     """cases: [(tcw, w, h, stride)]; returns [(key, levels, w, h)]. check_run: the driver's clock is fixed. style:
-    the pad style in use (1 xbox, 2 playstation). rims: returns each case's pvr_pack_rim instead."""
+    the pad style in use (1 xbox, 2 playstation). rims: returns each case's pvr_pack_rim instead. check_off: the
+    game.NAME setting the stub's port_menu_check_on says is off."""
     d = exe.parent
     (d / "vram.bin").write_bytes(bytes(vram))
     (d / "cases.txt").write_text("".join(f"{c[0]:08x} {c[1]} {c[2]} {c[3]}\n" for c in cases), encoding="ascii")
     args = [str(exe), str(d / "vram.bin"), str(d / "cases.txt")] + ([str(pack)] if pack else []) + \
         ([str(out)] if out else [])
-    env = dict(os.environ, **({"PACK_FIXED": "1"} if check_run else {}), **({"PACK_STYLE": str(style)} if style else {}))
+    env = dict(os.environ, **({"PACK_FIXED": "1"} if check_run else {}), **({"PACK_STYLE": str(style)} if style else {}),
+               **({"PACK_CHECK_OFF": check_off} if check_off else {}))
     r = subprocess.run(args, capture_output=True, text=True, timeout=120, env=env)
     if r.returncode:
         raise RuntimeError(r.stdout + r.stderr)
@@ -237,9 +264,9 @@ class TexturePack(unittest.TestCase):
         out = self.dir / "sheets"
         out.mkdir()
         got = run_driver(self.exe, self.vram, self.cases, pack, out)
-        self.assertEqual([g[1:] for g in got], [(1, 128, 128), (4, 8, 4), (0, 0, 0), (0, 0, 0), (0, 0, 0)])
+        self.assertEqual([g[1:] for g in got], [(8, 128, 128), (4, 8, 4), (0, 0, 0), (0, 0, 0), (0, 0, 0)])  # whole chains
         after = (out / "0_after.rgba").read_bytes()
-        self.assertEqual(after, png_rgba((pack / f"{k_vq:016x}.png").read_bytes())[2])
+        self.assertEqual(after[:128 * 128 * 4], png_rgba((pack / f"{k_vq:016x}.png").read_bytes())[2])
         chain = (out / "1_after.rgba").read_bytes()  # 8x4, 4x2, 2x1, 1x1 of one colour
         self.assertEqual(chain, bytes([200, 100, 50, 255]) * (32 + 8 + 2 + 1))
         for n in (2, 3, 4):                           # misses: the decoder's own output
@@ -272,15 +299,31 @@ class TexturePack(unittest.TestCase):
         self.assertEqual(tp.read_index(pack)[(k0, "xbox")], f"{k0:016x}-xbox.png")
         self.assertEqual(tp.main(["check", str(pack)]), 0)
         rows = lambda style: [g[1:] for g in run_driver(self.exe, self.vram, self.cases[:3], pack, style=style)]  # noqa
-        self.assertEqual(rows(None), [(1, 4, 4), (0, 0, 0), (0, 0, 0)])    # the game's own pad: no variant
-        self.assertEqual(rows(1), [(1, 8, 8), (0, 0, 0), (0, 0, 0)])       # xbox: its image
-        self.assertEqual(rows(2), [(1, 4, 4), (5, 16, 16), (0, 0, 0)])     # playstation: the shared one and its own (mip chain of 5)
+        self.assertEqual(rows(None), [(3, 4, 4), (0, 0, 0), (0, 0, 0)])    # the game's own pad: no variant
+        self.assertEqual(rows(1), [(4, 8, 8), (0, 0, 0), (0, 0, 0)])       # xbox: its image
+        self.assertEqual(rows(2), [(3, 4, 4), (5, 16, 16), (0, 0, 0)])     # playstation: the shared one and its own (every image has its chain)
         text = (pack / "index.txt").read_text(encoding="utf-8")
         (pack / "index.txt").write_text(text + f"{k2:016x} {k0:016x}.png switch\n", encoding="utf-8")
         self.assertEqual(rows(2)[2], (0, 0, 0))                            # the line with the unknown word is skipped
         with self.assertRaises(ValueError):
             tp.read_index(pack)
 
+
+    def test_setting_switched_line(self):
+        """A line's if=game.NAME word: the line applies while the setting is on and is skipped while it is off; the
+        other lines of the pack, and the other words of the line (over), are unchanged."""
+        pack = self.dir / "pack_if"
+        k0, k1 = (tp.key(*c[:3], self.at(c)) for c in (self.cases[0], self.cases[2]))
+        p = tp.Pack(pack, "test")
+        p.add(k0, bytes([9, 9, 9, 255]) * 16, 4, 4)
+        p.add(k1, bytes([0, 0, 0, 0]) * (32 * 64), 32, 64, over=True, when="game.clear")
+        self.assertEqual(p.close(), 2)
+        self.assertIn(f"{k1:016x} {k1:016x}.png if=game.clear over", (pack / "index.txt").read_text(encoding="utf-8"))
+        self.assertEqual(tp.read_index(pack)[(k1, "")], f"{k1:016x}.png")
+        rows = lambda off: [g[1:] for g in run_driver(self.exe, self.vram, [self.cases[0], self.cases[2]], pack, check_off=off)]  # noqa
+        self.assertEqual(rows(None), [(3, 4, 4), (7, 32, 64)])            # on: both (whole chains)
+        self.assertEqual(rows("game.clear"), [(3, 4, 4), (0, 0, 0)])     # off: the switched line is skipped
+        self.assertEqual(rows("game.other"), [(3, 4, 4), (7, 32, 64)])   # another setting: no change
 
     def test_rim(self):
         """A line's rim= word: the texture's rim colour while its line applies, none for another style, another
@@ -302,30 +345,48 @@ class TexturePack(unittest.TestCase):
         with self.assertRaises(ValueError):
             tp.read_index(pack)
 
+    def test_wide(self):
+        """A line's wide= word: draws sample the image's middle, so a 4:3 frame shows what a plain image would; a wider
+        frame grows the draw across the screen and any other that spans it, with no stretch, up to the image's width;
+        a small sprite stays; with the pack off nothing changes; a bad word skips the line and the tool refuses it."""
+        pack = self.dir / "pack_wide"
+        k0 = tp.key(*self.cases[0][:3], self.at(self.cases[0]))
+        p = tp.Pack(pack, "test")
+        p.add(k0, bytes([1, 2, 3, 255]) * (7 * 4), 7, 4)
+        p.wide[(k0, "")] = 4
+        p.close()
+        self.assertEqual(tp.main(["check", str(pack)]), 0)
 
-@unittest.skipUnless(HAVE_VC, NO_VC)
-class TexturePackInCheckRuns(unittest.TestCase):
-    """A game whose game.json names a pack gets it in a play run, not in a check run (fixed clock: regress goldens,
-    lockstep, emulator comparisons); --texture-pack on or DIR asks for it there, off turns it off anywhere."""
+        def scene(frame, with_pack=pack):
+            d = self.exe.parent
+            (d / "vram.bin").write_bytes(bytes(self.vram))
+            (d / "cases.txt").write_text("{:08x} {} {} {}\n".format(*self.cases[0]), encoding="ascii")
+            r = subprocess.run([str(self.exe), str(d / "vram.bin"), str(d / "cases.txt")] + ([str(with_pack)] if with_pack else []),
+                               capture_output=True, text=True, timeout=120, env=dict(os.environ, PACK_FRAME=str(frame)))
+            self.assertEqual(r.returncode, 0, r.stderr)
+            lines = r.stdout.splitlines()
+            return float(lines[0].split()[5]), [float(x) for x in lines[1].split()[1:]]
 
-    def test_check_run_ignores_the_game_default(self):
-        d = pathlib.Path(tempfile.mkdtemp(dir=TOOL / "tests" / ".work" if (TOOL / "tests" / ".work").is_dir() else None))
-        try:
-            vram = bytearray(random.Random(3).getrandbits(8) for _ in range(0x10000)) + bytes(0x7f0000)
-            case = (tp.VQ | 1 << 27, 64, 64, 0)
-            pack = d / "pack"
-            p = tp.Pack(pack, "test")
-            p.add(tp.key(*case[:3], vram[0:tp.texture_bytes(*case)]), bytes([9, 8, 7, 255]) * 16, 4, 4)
-            self.assertEqual(p.close(), 1)
-            exe = build_driver(d, pack)
-            levels = lambda arg=None, check=False: run_driver(exe, vram, [case], arg, check_run=check)[0][1]
-            self.assertEqual(levels(), 1)                      # a play run: the game's pack
-            self.assertEqual(levels(check=True), 0)            # a check run: the original
-            self.assertEqual(levels("on", True), 1)            # asked for
-            self.assertEqual(levels(str(pack), True), 1)
-            self.assertEqual(levels("off"), 0)
-        finally:
-            shutil.rmtree(d, ignore_errors=True)
+        def near(got, want):
+            for x, y in zip(got, want + [100, 0, 200, 1]):  # the small sprite last, never moved
+                self.assertAlmostEqual(x, y, places=3)
+        a, b, k = 0.5 - 0.5 / 1.75, 0.5 + 0.5 / 1.75, 1.5 / 1.75
+        image, got = scene(1)
+        self.assertEqual(image, 1.75)
+        near(got, [0, a, 640, b, 0, 0, 640, 1])  # 4:3: the same picture as a plain image
+        near(scene(1.5)[1], [-160, 0.5 - 0.5 * k, 800, 0.5 + 0.5 * k, -160, 0, 800, 1])  # narrower than the image: the frame's edges
+        near(scene(3)[1], [-240, 0, 880, 1, -240, 0, 880, 1])  # wider than the image: to the image's ends, and the bar with it
+        image, got = scene(3, None)  # no pack: the game's draws, untouched
+        self.assertEqual(image, 0)
+        near(got, [0, 0, 640, 1, 0, 0, 640, 1])
+        text = (pack / "index.txt").read_text(encoding="utf-8")
+        (pack / "index.txt").write_text(text.replace("wide=4", "wide=x"), encoding="utf-8")
+        self.assertEqual(scene(1)[0], 0)
+        with self.assertRaises(ValueError):
+            tp.read_index(pack)
+
+
+# TexturePackInCheckRuns is in tests/test_pvr_pack_bundled.py (this file's 400-line cap).
 
 
 def flat(n):

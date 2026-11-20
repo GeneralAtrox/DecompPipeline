@@ -9,7 +9,10 @@ A change is promoted only if ALL of these hold:
      but one), its dev results are not all identical, and no hidden vector repeats a dev vector.
   3. Regression: the project's reference functions and a sample of matched functions are regenerated with the new
      generator; their accepted C must still PASS, and none may lose block coverage.
-  4. The deliberately broken control must still FAIL against the regenerated tests.
+  4. The deliberately broken control (project.json "broken_control": [ADDR, FILE in reference/], ADDR one of the
+     references) must still FAIL against the regenerated tests. A control that is not set or cannot run fails this
+     check, its reason in the log and the checks: without it nothing shows the new tests still catch wrong C
+     (docs/NEW_GAME.md section 2 sets the controls up; tools/game_setup.py leaves them to that step).
 """
 import difflib
 import json
@@ -138,12 +141,32 @@ def regression(cfg, o, target, ws, tmp, stop_flag, log):
         checks.append((f"regression {a}: accepted C still passes", verdict == "PASS", f"{failing}/{total} differ"))
         checks.append((f"regression {a}: coverage kept", cov_new >= cov_old, f"{cov_new} blocks (was {cov_old})"))
     log(f"[WATCH] regression: {sum(1 for c in checks if c[1])}/{len(checks)} checks passed")
-    b_addr, b_file = cfg["broken_control"]
-    if (tmp / b_addr / "harness" / "vectors.txt").exists():
-        res = check.run_check(cfg, b_addr, str(paths.REFERENCE / b_file), build_dir=tmp / "broken",
-                              harness_dir=tmp / b_addr / "harness", fused=False)
-        checks.append(("broken control still fails", res["verdict"] == "FAIL", f"{res['failing']}/{res['total']} differ"))
+    checks.append(control_check(cfg, tmp, log))
     return checks
+
+
+def control_check(cfg, tmp, log):
+    """Check 4: the broken control against its tests regenerated in tmp (the regression trial of its address). Not
+    set, not one of the references, its trial failed or its check crashed: a failed check saying why, never a skip."""
+    name, bc = "broken control still fails", cfg.get("broken_control")
+    if not bc:
+        why = ("project.json has no broken_control (docs/NEW_GAME.md section 2: a reference's deliberately wrong copy "
+               "that must FAIL, listed as [ADDR, FILE in reference/])")
+    elif not isinstance(bc, (list, tuple)) or len(bc) != 2:
+        why = f"project.json broken_control {bc!r} is not [ADDR, FILE in reference/]"
+    elif bc[0] not in references(cfg):
+        why = f"its address {bc[0]} is not in project.json references, so no regression trial regenerated its tests"
+    elif not (tmp / bc[0] / "harness" / "vectors.txt").exists():
+        why = f"no regenerated tests for {bc[0]} (its regression trial failed)"
+    else:
+        try:
+            res = check.run_check(cfg, bc[0], str(paths.REFERENCE / bc[1]), build_dir=tmp / "broken",
+                                  harness_dir=tmp / bc[0] / "harness", fused=False)
+            return name, res["verdict"] == "FAIL", f"{res['failing']}/{res['total']} differ"
+        except Exception as e:  # noqa: BLE001 - a crash is a failed check
+            why = f"its check crashed: {type(e).__name__}: {e}"[:300]
+    log(f"[WATCH] broken control not run: {why}")
+    return name, False, "not run: " + why
 
 
 def _snapshot(ws, addr, dst):

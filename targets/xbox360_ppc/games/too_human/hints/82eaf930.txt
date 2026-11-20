@@ -1,0 +1,5 @@
+# calls 2 and 3 return a flag byte's address, calls 4 and 5 the float source and destination
+genret 2 0x40000100
+genret 3 0x40000200
+genret 4 0x40000300
+genret 5 0x40000400

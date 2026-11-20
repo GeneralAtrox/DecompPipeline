@@ -192,6 +192,16 @@ int xb_content_import(unsigned ord, const TcArgs *a, u64 *r3)
         *r3 = xb_overlapped_finish((u32)a->r[1], 0, 0);
         return 1;
     }
+    case 615: {   /* XamContentFlush(root name, overlapped): Too Human, first stop 8312eb8c on B out of the main menu's Options (build box A mn15a), its settings written.
+                   * The console commits a package's cached writes to the device. The kit's package files are host files, written through as the game
+                   * writes them and kept by the host, so nothing is held back: done, no error */
+        char root[64];
+        static int told;
+        guest_text((u32)a->r[0], root, sizeof root);
+        if (told++ < 8) port_log("import xam#615 XamContentFlush %s: the package's files are host files, nothing held back\n", root);
+        *r3 = xb_overlapped_finish((u32)a->r[1], 0, 0);
+        return 1;
+    }
     case 603: {   /* XamContentDelete(user, XCONTENT_DATA *, overlapped): the package's files, then its folder */
         char dir[MAX_PATH], path[MAX_PATH];
         WIN32_FIND_DATAA fd;

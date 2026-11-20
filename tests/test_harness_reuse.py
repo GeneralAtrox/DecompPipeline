@@ -121,6 +121,14 @@ class Reusable(unittest.TestCase):
             self.assertIsNotNone(job.reuse_harness({"harness_reuse": True}, A))  # a worker takes it
         self.assertEqual((ws / "packets" / A / "ghidra.c").read_bytes(), b"\n" + BODY)
 
+    def test_check_that_raises_is_logged(self):  # the fallback prepares as before, and one log line says why
+        logs = []
+        with Paths(workspace()), mock.patch.object(oracle_fresh, "Stamper", side_effect=OSError("catalog refused")):
+            self.assertIsNone(job.reuse_harness({"harness_reuse": True}, A, logs.append))
+            self.assertIsNone(job.reusable_harness({}, A))  # no log given (prepare_list, scans): None, as before
+        self.assertEqual(len(logs), 1)
+        self.assertIn(f"{A}: harness reuse check failed (OSError: catalog refused)", logs[0])
+
     def test_status_plate_split(self):  # split with the plate in: the parts would differ from a fresh split
         ws = workspace()
         part = ws / "packets" / A / "ghidra_1.c"
@@ -205,7 +213,7 @@ class Investigate(unittest.TestCase):
             seen["meta"], seen["summary"] = meta, summary
             return {"verdict": "PASS", "work_file": "-", "score": 0, "stage": "compare"}
 
-        def reusable(cfg, addr, take=False):
+        def reusable(cfg, addr, take=False, log=None):
             self.asked.append(addr)
             self.took = take  # a worker takes the harness it reuses (job.reuse_harness: an old plate goes)
             return reused
@@ -266,7 +274,7 @@ class RejudgeReused(test_requeue_rejudge.Rejudge):
         current = ({"signature": "int f(int)"}, {"dev_valid": 48, "hidden_valid": 48, "blocks_hit_all": 4,
                                                  "blocks_total": 4})
         for p in (mock.patch.object(job.ghidra, "slot", no_ghidra), mock.patch.object(job.ghidra, "prepare", no_ghidra),
-                  mock.patch.object(job, "reusable_harness", lambda cfg, addr, take=False: current)):
+                  mock.patch.object(job, "reusable_harness", lambda cfg, addr, **kw: current)):
             p.start()
             self.patches.append(p)
 
@@ -286,7 +294,7 @@ class PrefetchReused(test_prefetch.Prefetch):
         super().setUp()
         self.current = set()
         self.asked = []
-        p = mock.patch.object(job, "reusable_harness", lambda cfg, addr, take=False: self.asked.append(addr) or (
+        p = mock.patch.object(job, "reusable_harness", lambda cfg, addr, **kw: self.asked.append(addr) or (
             {"signature": f"int f_{addr}(int a)"}, dict(test_prefetch.SUMMARY)) if addr in self.current else None)
         p.start()
         self.patches.append(p)

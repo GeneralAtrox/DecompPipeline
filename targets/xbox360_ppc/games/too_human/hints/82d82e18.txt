@@ -1,0 +1,4 @@
+# one family (fn_82d684e0 and its six siblings): param_2 (r4, kept in r29) is a structure read at +0, +4 and +8, and
+# param_1's +0x2c (lwz r31,0x2c(r25), r25 = r3) is an object read at +0: each run spent its 12 repairs before these
+genptr r4
+genptr r3+0x2c

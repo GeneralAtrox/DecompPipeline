@@ -1,6 +1,6 @@
 # Xbox 360 port kit
 
-Design and the rules it follows: `../DESIGN_PORT.md`, `docs/RUNTIME_TARGET.md` ("New console kits start with no hardware model").
+Design and the rules it follows: `../DESIGN_PORT.md`, `../DESIGN_RESOLVE.md` (screen copies), `docs/RUNTIME_TARGET.md` ("New console kits start with no hardware model").
 The kit has no hardware model and writes nothing without a caller: every import, library function and host call exists because a
 run stopped on it.
 
@@ -31,6 +31,8 @@ The log (`OUT/run.log`) ends with `first calls`, `last calls`, `call stack` and 
 - `runtime/xb_mem.c` guest memory, stack, PCR, time base, host objects keyed by guest address; `xb_call.c` `tc_call` and the
   stop trace; `xb_imports.c` the host answers; `xb_main.c` the entry and the watchdog. `console_x360.c` the console's side of the port
   base (`port/base/console.h`). The window, device, log, pads, pacing, menu, settings and play stats are the base's, not copied.
+- `games/<game>/` what the kit knows of one game by address: `boundary.json`, `kept.json`, and `xb_game.h` (its name, its library's state rows, whether the
+  network code applies, and its library entries mapped onto the case labels of `xb_d3d_*.h`). `gen_xbox.py --game` picks it, Mega Man 10 by default.
 - `tools/gen_xbox.py` the demand loop; `tools/survey.py` the survey (`../DESIGN_PORT.md` section 1).
 - `tools/boundary.py` finds the statically linked Direct3D library in an image (writes `boundary.json`: ranges that are never
   translated); `runtime/xb_d3d.c` is the host side of its entry points, one case per stop. `tools/library_share.py` compares a
@@ -66,11 +68,12 @@ widens (Fit window and the other shapes show the game's 16:9 picture inside the 
 | `XB_GAME_DIR` | the extracted package, `game:` (`tools/stfs.py` extracts it; the XEX key stays out of the repo) |
 | `XB_SAVE_DIR` | where saved content goes, default `save` beside the executable. A new folder tests the path a first run takes |
 | `XB_INPUT` | `gen_xbox.py` passes it as the base's `--input` script (`port/base/input.c`), by frame. Without it the pad is idle; a test run reads no real input |
-| `XB_DUMP`, `XB_DUMP_EVERY`, `XB_DUMP_STAGES` | write the shown frame, and the textures each draw uses, as BMP files |
+| `XB_DUMP`, `XB_DUMP_EVERY`, `XB_DUMP_STAGES` | write the shown frame, and the textures each draw uses (at the frames `XB_DUMP_STAGES` lists, commas between), as BMP files |
+| `XB_PROF` | every N microseconds each guest thread's instruction pointer, written to `<log>.prof` at the end for reading against `xbox_run.map` (`runtime/xb_prof.c`): where real-clock time goes |
 | `XB_LOG_FROM` | the frame the per-call log starts at |
 | `XB_WATCH` | hex guest addresses of bytes, logged when they change |
 | `XB_TRACE` | every call, for a hang or a crash in a function |
 
-`port/boundary.json` is the library that is cut, `port/kept.json` the pure arithmetic inside it that is translated anyway.
+`port/games/<game>/boundary.json` is the library that is cut, `kept.json` beside it the pure arithmetic inside it that is translated anyway.
 `OUT/reached.tsv` is the list of functions the run has reached with their verdicts. The runtime's `.h` files beside `xb_d3d.c`,
 `xb_gpu.c` and `xb_imports.c` are parts of those files, included once, for the 400-line cap.

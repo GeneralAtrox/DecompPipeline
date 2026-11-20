@@ -1,0 +1,4 @@
+# r3+0x22c an object whose +0x18 is a pointer; call 0 returns the new node, call 2 a pointer it keeps at +0x2c
+genptr r3+0x22c+0x18
+genret 0 0x40000100
+genret 2 0x40000300

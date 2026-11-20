@@ -9,8 +9,10 @@
 #include "console.h"
 #include "game_log.h"
 #include "scene_dump.h"
+#include "frame_capture.h"   /* fcap_arm: XB_FCAP_AT */
 #include "session.h"
 #include "play_stats.h"
+#include "xv_simd.h"   /* xb_vmx_mode: the vector helpers' route (SSE, the scalar answer key, or both checked) */
 #include "present.h"
 #include "present_cpu.h"
 #include "host.h"
@@ -29,12 +31,48 @@ void xb_report(void)
     }
 }
 
+/* XB_VMX_CHECK=1: per vector helper, the calls and those whose SSE result differs from the scalar one in any of its 16
+ * bytes (the scalar helpers record no VSCR[SAT], so there is no SAT bit to compare) */
+#define VMX_IDS 128
+static volatile LONG64 vmx_calls[VMX_IDS], vmx_bad[VMX_IDS];
+static const char *volatile vmx_names[VMX_IDS];
+void xb_vmx_check(int id, const char *name, const u32 *f, const u32 *s)
+{
+    if (id < 0 || id >= VMX_IDS) return;
+    vmx_names[id] = name;
+    InterlockedIncrement64(&vmx_calls[id]);
+    if (f[0] != s[0] || f[1] != s[1] || f[2] != s[2] || f[3] != s[3]) InterlockedIncrement64(&vmx_bad[id]);
+}
+static void vmx_check_report(const char *when)
+{
+    long long calls = 0, bad = 0;
+    int i;
+    for (i = 0; i < VMX_IDS; i++) {
+        if (!vmx_names[i]) continue;
+        calls += vmx_calls[i];
+        bad += vmx_bad[i];
+        port_log("vmx check: %s %s calls %lld mismatches %lld\n", when, vmx_names[i], (long long)vmx_calls[i], (long long)vmx_bad[i]);
+    }
+    port_log("vmx check: %s all calls %lld mismatches %lld\n", when, calls, bad);
+    port_log_flush();
+}
+static DWORD WINAPI vmx_check_logger(LPVOID p)
+{
+    (void)p;
+    for (;;) {
+        Sleep(5000);
+        vmx_check_report("at");
+    }
+}
+
 void port_exit(const char *why, int code)
 {
     static LONG exiting;
     if (InterlockedExchange(&exiting, 1)) return;
     port_log("exit: %s (%d) after %u frames\n", why, code, xb_frame_number());
+    if (xb_vmx_mode == 2) vmx_check_report("exit");
     xb_report();
+    xb_prof_write();
     xb_sound_close();
     play_stats_report();
     game_log_end(!strcmp(why, "the window was closed") ? "the window was closed by the user" : why, code, code != 0);
@@ -62,8 +100,27 @@ static DWORD WINAPI watchdog(LPVOID p)
 {
     Sleep((DWORD)(UINT_PTR)p * 1000u); /* not the tick: a watchdog */
     port_log("STOP timeout - the run was still going\n");
+    xb_threads_dump();
+    xb_cs_waits_dump();
     port_exit("watchdog", 4);
     return 0;
+}
+
+/* XB_SAMPLE=N: every N seconds, each guest thread's stack and the file reads since the last sample, so a screen that never moves on says whether
+ * the game is loading or waiting (Too Human's quote card stayed 400 s and more after its logos) */
+static DWORD WINAPI sampler(LPVOID p)
+{
+    ULONGLONG t0 = GetTickCount64();
+    for (;;) {
+        Sleep((DWORD)(UINT_PTR)p * 1000u);   /* not the tick: a sampler */
+        port_log("sample at %.0f s, frame %u\n", (GetTickCount64() - t0) / 1000.0, port_vblank_count());
+        xb_file_reads_since();
+        xb_d3d_times_since();
+        xb_import_counts_since();
+        xb_peek_dump();
+        xb_threads_dump();
+        xb_cs_waits_dump();
+    }
 }
 
 /* The kernel's KeTimeStampBundle, which the game's GetTickCount (821b8b48) reads straight from memory, so no call asks the kit: the game's 3-second
@@ -90,6 +147,36 @@ void xb_tick_end(void)
     u32 frame = xb_frame_number();
     game_log_poll(frame);
     scene_dump_poll(frame);
+    {   /* XB_FCAP_AT=f[,f...] with XB_FCAP_DIR (bring-up): the frame capture of the frame after each, into XB_FCAP_DIR\fcap_<f>, several in one run (the
+         * scene dump's --scene-dump-at takes one); scene_dump_poll has just ended the one before */
+        static const char *at = (const char *)1;
+        if (at == (const char *)1) at = getenv("XB_FCAP_DIR") ? getenv("XB_FCAP_AT") : 0;
+        for (const char *p = at; p && *p;) {
+            char *e;
+            unsigned long f = strtoul(p, &e, 10);
+            if (e == p) break;
+            if (f == frame) {
+                char dir[400];
+                sprintf_s(dir, sizeof dir, "%s\\fcap_%05lu", getenv("XB_FCAP_DIR"), f);
+                CreateDirectoryA(getenv("XB_FCAP_DIR"), NULL), CreateDirectoryA(dir, NULL);
+                fcap_arm(dir);
+                port_log("frame capture (XB_FCAP_AT) armed at frame %u into %s\n", frame, dir);
+            }
+            p = *e ? e + 1 : e;
+        }
+    }
+    {   /* XB_SHOT_DIR with XB_SHOT_AT=from:to:step (a diagnostic, never on in play): the shown picture of every step-th frame from..to as
+         * shot_<frame>.bmp, for picture series against a reference (the intro against Xenia's, 2026-11-15) without a scene dump each */
+        static int set = -1;
+        static unsigned long from, to, step;
+        if (set < 0) set = getenv("XB_SHOT_DIR") && getenv("XB_SHOT_AT") && sscanf_s(getenv("XB_SHOT_AT"), "%lu:%lu:%lu", &from, &to, &step) == 3 && step;
+        if (set > 0 && frame >= from && frame <= to && !((frame - from) % step)) {
+            char path[400];
+            CreateDirectoryA(getenv("XB_SHOT_DIR"), NULL);
+            sprintf_s(path, sizeof path, "%s\\shot_%05u.bmp", getenv("XB_SHOT_DIR"), frame);
+            console_capture_bmp(path);
+        }
+    }
     xb_sound_tick();
     play_stats_shown();
     play_stats_wait(1);
@@ -150,6 +237,25 @@ int port_main(int argc, char **argv)
         return 2;
     }
     if (run.seconds) CreateThread(NULL, 0, watchdog, (LPVOID)(UINT_PTR)run.seconds, 0, NULL);
+    { /* the vector helpers (runtime/xv_simd.h): SSE, unless XB_VMX_SCALAR=1 or the host lacks SSSE3 / SSE4.1 (cpuid 1: ecx 9,
+       * 19); XB_VMX_CHECK=1 runs both and counts differing results (xb_vmx_check) */
+        int c[4];
+        __cpuid(c, 1);
+        if ((getenv("XB_VMX_SCALAR") && atoi(getenv("XB_VMX_SCALAR")) > 0) || !(c[2] & (1 << 9)) || !(c[2] & (1 << 19)))
+            xb_vmx_mode = 1;
+        else if (getenv("XB_VMX_CHECK") && atoi(getenv("XB_VMX_CHECK")) > 0) {
+            xb_vmx_mode = 2;
+            CreateThread(NULL, 0, vmx_check_logger, NULL, 0, NULL);
+        }
+        port_log("vector helpers: %s; float multiply-adds: %s\n", xb_vmx_mode == 1 ? "scalar (XB_VMX_SCALAR=1 or no SSSE3 / SSE4.1)"
+                                         : xb_vmx_mode == 2 ? "check (XB_VMX_CHECK=1: SSE and scalar, scalar used)" : "SSE",
+                 xs_fma_ok() ? "FMA3" : "scalar (no FMA3)");
+    }
+    if (getenv("XB_SAMPLE") && atoi(getenv("XB_SAMPLE")) > 0) {
+        xb_import_counts_start();
+        CreateThread(NULL, 0, sampler, (LPVOID)(UINT_PTR)atoi(getenv("XB_SAMPLE")), 0, NULL);
+    }
+    xb_prof_start();
     /* No pad read here: the base decides once whether the host's devices can be read, at the first read, and before the window
      * opens the answer would be no for the whole run. xb_tick_end reads them. */
     time_stamp_update();

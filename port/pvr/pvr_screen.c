@@ -18,3 +18,20 @@ LONG pvr_draw_x(u32 x, int full) { return axis(x, full, g_gfx.draw_w, 640u, port
 
 /* A screen y (0..480) in the draw target; full: the clip spans the screen's height. */
 LONG pvr_draw_y(u32 y, int full) { return axis(y, full, g_gfx.draw_h, 480u, port_tallscreen()); }
+
+void pvr_argb_float(u32 argb, f32 out[4])
+{
+    out[0] = (f32)((argb >> 16) & 0xffu) / 255.0f;
+    out[1] = (f32)((argb >> 8) & 0xffu) / 255.0f;
+    out[2] = (f32)(argb & 0xffu) / 255.0f;
+    out[3] = (f32)(argb >> 24) / 255.0f;
+}
+
+f32 pvr_fog_density(u32 reg)
+{
+    f32 d = (f32)((reg >> 8) & 0xffu) / 128.0f;
+    s32 e = (s32)(s8)(reg & 0xffu);
+    for (; e > 0; e--) d *= 2.0f;
+    for (; e < 0; e++) d *= 0.5f;
+    return d;
+}

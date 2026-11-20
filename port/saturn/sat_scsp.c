@@ -144,7 +144,20 @@ static void timers(void)
     }
 }
 
-/* one video frame of sound: the 68000 and the SCSP in steps of 16 samples (256 clocks a sample at 11.29 MHz) */
+/* samples until the first of the three timers overflows (at least 1). The 68000 runs a step's clocks before the step's
+ * samples are made, so an overflow inside a step was answered only at the next one: a driver that reloads its timer in the
+ * handler lost the rest of the step at every tick, and its music ran slow (Dragon Force's by about 9 %, 2026-11-17). */
+static u32 timer_due(void)
+{
+    u32 due = 0xffffffffu;
+    for (u32 t = 0; t < 3; t++) {
+        u32 per = 1u << (reg16(0x418 + 2 * t) >> 8 & 7u), left = (per - g_tpre[t]) + (0xffu - g_timer[t]) * per;
+        if (left < due) due = left;
+    }
+    return due ? due : 1u;
+}
+
+/* one video frame of sound: the 68000 and the SCSP in steps of at most 16 samples (256 clocks a sample at 11.29 MHz) */
 void sat_scsp_frame(void)
 {
     LARGE_INTEGER t0, t1;
@@ -168,8 +181,23 @@ void sat_scsp_frame(void)
     }
     if (n > 2048) n = 2048;
     while (done < n) {
-        u32 step = n - done < 16u ? n - done : 16u;
-        if (g_cpu_on) work_add(WC_SOUND_CPU, m68k_run(256u * step));
+        static u32 ahead; /* 68000 clocks run past the samples made: a step cut short below, or an instruction's overrun */
+        u32 step = n - done < 16u ? n - done : 16u, due;
+        if (g_cpu_on && m68k.ipl) { /* an interrupt waits: its handler first, so a timer it reloads is counted from here */
+            u32 used = m68k_run(256u);
+            work_add(WC_SOUND_CPU, used);
+            ahead += used;
+        }
+        due = timer_due();
+        if (step > due) step = due; /* a step ends on a timer's overflow: the driver's handler runs at the next sample, as on the chip */
+        if (g_cpu_on && ahead < 256u * step) {
+            u32 used = m68k_run(256u * step - ahead);
+            work_add(WC_SOUND_CPU, used);
+            ahead += used;
+        }
+        due = timer_due(); /* a handler that reloaded its timer later in the step */
+        if (step > due) step = due;
+        ahead = ahead > 256u * step ? ahead - 256u * step : 0u;
         for (u32 k = 0; k < step; k++, done++) {
             s32 l, r;
             timers();

@@ -34,5 +34,10 @@ void tcrt_strict_line(const char *line);
 void tcrt_strict_reset(void);
 int tcrt_strict_flags(void);
 void tcrt_strict_report(FILE *out);
+/* The exit record (tc_exit.c): tcx_on (runner argument "exit") adds the stack writes (XW) to tcrt_report and the
+ * registers (tcx_report: XS, XF, XC, XV); tcx_begin sets the entry values before each vector. */
+extern int tcx_on;
+void tcx_begin(const u64 r[8], const u64 f[TCRT_CALL_FLOATS], const u64 nv[18], const u64 fnv[18], u32 cr, u64 r12);
+void tcx_report(FILE *out);
 
 #endif

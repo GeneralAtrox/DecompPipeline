@@ -4,7 +4,8 @@
  * entries (pvr_palette_stamp) marks it; the next draw compares the bytes and entries with the copy and decodes again
  * only if they differ, so a game that uploads the same texture again each frame keeps it (--tex-recheck off: the old
  * way, decoded again on any such write). A texture pack's image (pvr_pack.c), when it has one, replaces the decoded
- * texels; switching the pack on or off decodes everything again. */
+ * texels, with its whole mip chain, and its view is marked (pvr_tex_pack_mode) for the sampler; switching the pack on or
+ * off decodes everything again. */
 #include <stdlib.h>
 #include <string.h>
 #include "pvr_int.h"
@@ -15,6 +16,8 @@
 #define TCW_NON_TWIDDLED (1u << 26)
 #define TCW_STRIDE (1u << 25)
 #define TCW_ADDR_MASK 0x1fffffu
+#define TCW_MIP (1u << 31)
+static const GUID PACK_MODE = {0x6d1c2a51, 0x3b7e, 0x4f0a, {0x9c, 0x41, 0x2e, 0x88, 0x5a, 0x17, 0xd3, 0x60}};
 #define PAGE_SHIFT 12u
 #define PAGES (PVRX_VRAM_SIZE >> PAGE_SHIFT)
 
@@ -36,6 +39,7 @@ static u32 *g_texels;
 static u32 g_texels_cap;
 static u32 g_pages[PAGES / 32u]; /* pages of texture memory some entry reads (cleared with the cache) */
 static int g_no_recheck; /* --tex-recheck off */
+static int g_pack_views; /* a pack image's view was made: pvr_tex_pack_mode looks */
 static struct {
     u64 writes, skipped, marked, kept, changed, decodes, decode_us, scan_us, pack_us, dec_us, keys_us, d3d_us;
 } g_st;
@@ -215,12 +219,14 @@ static int create(TexEntry *e, u32 w, u32 h)
     D3D11_TEXTURE2D_DESC d;
     D3D11_SUBRESOURCE_DATA init[16];
     const u32 *texels = NULL;
-    u32 need = pvr_decode_texels(e->tcw, w, h), levels, at = 0;
+    ID3D11Texture2D *made = NULL; /* the pack loader's texture: only a view of it is made here */
+    u32 need = pvr_decode_texels(e->tcw, w, h), levels, at = 0, pack = 0;
     u64 t0 = now_us(), t1, t2;
-    levels = pvr_pack_levels(e->tcw, w, h, e->stride, &texels, &w, &h);
+    levels = pvr_pack_levels(e->tcw, w, h, e->stride, &texels, &made, &w, &h);
     g_st.pack_us += (t1 = now_us()) - t0;
     if (levels) {
         if (levels > 16u) levels = 16u;
+        pack = (e->tcw & TCW_MIP) && !(e->tcw & TCW_NON_TWIDDLED) ? PVR_PACK_MIPPED : PVR_PACK_FLAT;
     } else if (need > g_texels_cap) {
         u32 *p = realloc(g_texels, (size_t)need * sizeof *g_texels);
         if (!p) return 0;
@@ -235,7 +241,7 @@ static int create(TexEntry *e, u32 w, u32 h)
         g_st.keys_us += now_us() - t2;
     }
     if (!levels) return 0;
-    for (u32 i = 0; i < levels; i++) {
+    for (u32 i = 0; !made && i < levels; i++) {
         u32 lw = w >> i ? w >> i : 1u, lh = h >> i ? h >> i : 1u;
         init[i].pSysMem = texels + at;
         init[i].SysMemPitch = lw * 4u;
@@ -251,12 +257,15 @@ static int create(TexEntry *e, u32 w, u32 h)
     d.SampleDesc.Count = 1;
     d.Usage = D3D11_USAGE_IMMUTABLE;
     d.BindFlags = D3D11_BIND_SHADER_RESOURCE;
-    ID3D11Texture2D *tex = NULL;
+    ID3D11Texture2D *tex = made;
     t0 = now_us();
-    HRESULT hr = ID3D11Device_CreateTexture2D(g_gfx.dev, &d, init, &tex);
+    if (made) ID3D11Texture2D_AddRef(made);
+    HRESULT hr = made ? S_OK : ID3D11Device_CreateTexture2D(g_gfx.dev, &d, init, &tex);
     if (SUCCEEDED(hr)) {
         hr = ID3D11Device_CreateShaderResourceView(g_gfx.dev, (ID3D11Resource *)tex, NULL, &e->srv);
         ID3D11Texture2D_Release(tex);
+        if (SUCCEEDED(hr) && pack)
+            g_pack_views |= SUCCEEDED(ID3D11ShaderResourceView_SetPrivateData(e->srv, &PACK_MODE, sizeof pack, &pack));
     }
     g_st.d3d_us += now_us() - t0;
     if (FAILED(hr)) {
@@ -265,6 +274,14 @@ static int create(TexEntry *e, u32 w, u32 h)
     }
     pvr_seen("texture %s, pixel format %u, %ux%u", layout_name(e->tcw), (e->tcw >> 27) & 7u, w, h);
     return 1;
+}
+
+u32 pvr_tex_pack_mode(ID3D11ShaderResourceView *srv)
+{
+    u32 mode = 0;
+    UINT bytes = sizeof mode;
+    if (!g_pack_views || !srv || FAILED(ID3D11ShaderResourceView_GetPrivateData(srv, &PACK_MODE, &bytes, &mode))) return 0;
+    return mode;
 }
 
 ID3D11ShaderResourceView *pvr_tex_get(u32 tcw, u32 tsp)
@@ -326,6 +343,7 @@ void pvr_tex_report(void)
              g_no_recheck ? "off" : "on", g_st.decodes, g_st.decode_us / 1000u, g_st.writes, g_st.skipped, g_st.scan_us / 1000u,
              g_st.marked, g_st.kept, g_st.changed, g_st.pack_us / 1000u, g_st.dec_us / 1000u, g_st.keys_us / 1000u,
              g_st.d3d_us / 1000u);
+    pvr_pack_load_report();
     for (u32 k = 0; k < TOP; k++) {
         u32 best = 64u;
         for (u32 i = 0; i < 64u; i++)

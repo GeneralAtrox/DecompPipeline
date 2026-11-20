@@ -29,7 +29,7 @@ u8 rd8(u32 addr);
 u16 rd16(u32 addr);
 u32 rd32(u32 addr);
 u64 rd64(u32 addr);
-f32 rdf32(u32 addr);                 /* lfs reads this (then (f64) of it, exactly) */
+f32 rdf32(u32 addr);                 /* lfs reads this, widened by px_lfs: a plain (f64) cast quiets a signalling NaN on x86 */
 f64 rdf64(u32 addr);                 /* lfd */
 void wr8(u32 addr, u8 value);
 void wr16(u32 addr, u16 value);
@@ -41,7 +41,17 @@ void wrf64(u32 addr, f64 value);     /* stfd */
 
 /* A callee-saved register's value at exit (r14..r31, f14..f31), for the strict judge's exit frame. */
 void tc_xr(u32 k, u32 value);
+/* MSR: the value a translated function enters with, and its value at exit when it ran mtmsr (reported "MSR" when it
+   is not TC_MSR_ENTRY; TcFixups.MSR_ENTRY, translate.MSR_ENTRY). */
+#define TC_MSR_ENTRY 0xB032u
+void tc_xmsr(u32 value);
 void tc_xrf(u32 k, f64 value);
+/* A register save/restore helper entry (CodeWarrior's _savegpr_N / _restgpr_N / _savefpr_N / _restfpr_N chains,
+   which move r14..r31 or f14..f31 to or from the area r11 points at): r11's value at entry (tc_inr(11u)) and r14..r31,
+   f14..f31 as they were at entry. The test vector gives them (vectors.txt X); for every other function, and for any
+   other register, they are 0. A restore reports what it loads with tc_xr / tc_xrf. */
+u32 tc_inr(u32 k);
+f64 tc_inf(u32 k);
 
 /* Calls to other original functions (including calls through function pointers: bctrl, blrl).
  * Fill r[0..7] = r3..r10 and f[0..7] = f1..f8 exactly as the original sets them before the bl, and s[0..7] =

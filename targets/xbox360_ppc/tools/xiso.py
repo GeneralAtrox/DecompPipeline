@@ -7,7 +7,7 @@ directory. A directory is a binary tree of entries, each: left and right child o
 from the directory's start, 0 = none), start sector, size, attributes (0x10 = directory), name length, name;
 entries are 4-byte aligned. All little endian; sectors are 2048 bytes from the partition start.
 
-usage: python xiso.py <disc.iso> [list | extract <name> <out_file>]
+usage: python xiso.py <disc.iso> [list | extract <name> <out_file> | extract-all <out_dir>]
 """
 import pathlib
 import struct
@@ -92,6 +92,9 @@ class Disc:
         path, sector, size, is_dir = self.find(name)
         if is_dir:
             raise DiscError(f"{path} is a directory")
+        return self._write(sector, size, out_file)
+
+    def _write(self, sector, size, out_file):
         out = pathlib.Path(out_file)
         out.parent.mkdir(parents=True, exist_ok=True)
         with open(out, "wb") as fo:
@@ -102,9 +105,19 @@ class Disc:
                 done += n
         return size
 
+    def extract_all(self, out_dir):
+        files, total = 0, 0
+        for path, sector, size, is_dir in self.entries():
+            if is_dir:
+                (pathlib.Path(out_dir) / path).mkdir(parents=True, exist_ok=True)
+            else:
+                total += self._write(sector, size, pathlib.Path(out_dir) / path)
+                files += 1
+        return files, total
+
 
 def main(argv):
-    if len(argv) < 2 or (len(argv) > 2 and argv[2] not in ("list", "extract")):
+    if len(argv) < 2 or (len(argv) > 2 and argv[2] not in ("list", "extract", "extract-all")):
         print(__doc__.strip().splitlines()[-1].strip())
         return 2
     try:
@@ -113,6 +126,8 @@ def main(argv):
                 print(f"partition at 0x{d.base:x}")
                 for path, sector, size, is_dir in d.entries():
                     print(f"{'d' if is_dir else '-'} {size:>10} {path}")
+            elif argv[2] == "extract-all":
+                print(f"xiso: wrote {argv[3]}: %d files, %d bytes" % d.extract_all(argv[3]))
             else:
                 n = d.extract(argv[3], argv[4])
                 print(f"xiso: wrote {argv[4]} ({n} bytes)")

@@ -122,12 +122,19 @@ static void disarm(void)
     g_armed = 0;
 }
 
+/* A helper entry's frame (vectors.txt X), as the raw runtime's: cleared by tcrt_reset. */
+static u32 g_in11, g_inr[18];
+static u64 g_inf[18];
+
 void tcrt_reset(void)
 {
     disarm();
     memcpy(RAM, g_pristine, TCRT_RAM_SIZE);
     rd_calls_reset();
     g_nfaults = 0;
+    g_in11 = 0;
+    memset(g_inr, 0, sizeof g_inr);
+    memset(g_inf, 0, sizeof g_inf);
     /* The PowerPC's default FPSCR: round to nearest, denormals kept (NI = 0), as the 64-bit raw runner's MXCSR. */
     _mm_setcsr(0x1f80u);
     unsigned int x87 = 0;
@@ -263,6 +270,23 @@ void wrf32d(u32 a, f64 v) { wr32(a, ppc_single_bits(v)); }
 /* raw C's exit-register reports: the readable runtime has no exit frame to fill */
 void tc_xr(u32 k, u32 v) { (void)k; (void)v; }
 void tc_xrf(u32 k, f64 v) { (void)k; (void)v; }
+void tc_xmsr(u32 v) { (void)v; }
+
+void tcrt_set_frame(u32 r11, const u32 *gpr, const u64 *fpr)
+{
+    g_in11 = r11;
+    memcpy(g_inr, gpr, sizeof g_inr);
+    memcpy(g_inf, fpr, sizeof g_inf);
+}
+
+u32 tc_inr(u32 k) { return k == 11 ? g_in11 : (k >= 14 && k < 32 ? g_inr[k - 14] : 0); }
+
+f64 tc_inf(u32 k)
+{
+    f64 d = 0.0;
+    if (k >= 14 && k < 32) memcpy(&d, &g_inf[k - 14], 8);
+    return d;
+}
 
 void wrf64(u32 a, f64 v)
 {

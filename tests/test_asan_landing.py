@@ -1,5 +1,6 @@
 """tools/asan_landing.py, with planted faults: a kit host-C commit with no ASan line, a run whose plant was not reported, a
-replay with an ASan error, a core game left out, a line made on another tree; and the live history since the rule landed.
+replay with an ASan error, a core game left out, a line made on another tree, a kit-line run from before the landing or on a
+commit not in the checkout; and the live history since the rule landed.
 Run: python -W error tests/test_asan_landing.py
 """
 import pathlib
@@ -48,6 +49,16 @@ class Trailer(unittest.TestCase):
         _, why = al.trailer("dreamcast", "\n".join(ln for ln in GOOD.splitlines() if "spawn_attract" not in ln), TREE)
         self.assertIn("spawn has no replay", why)
 
+    def test_one_game_on_a_kit_line_merge(self):
+        on = "9f8e7d6c5b4a" + "1" * 28
+        line, why = al.trailer("dreamcast", GOOD, TREE, "spawn", on)
+        self.assertIsNone(why)
+        self.assertEqual(line, "ASan: dreamcast spawn on 9f8e7d6c5b4a: plant caught; spawn_attract 0 errors")
+        _, why = al.trailer("dreamcast", GOOD.replace("run plant_spawn", "run plant_other"), TREE, "spawn", on)
+        self.assertIn("no plant run", why)
+        _, why = al.trailer("dreamcast", GOOD, TREE, "robopit", on)
+        self.assertIn("not a core game of dreamcast", why)
+
 
 class History(unittest.TestCase):
     def setUp(self):
@@ -69,6 +80,19 @@ class History(unittest.TestCase):
         self.git("add", "-A")
         self.git("commit", "-q", "-m", msg)
         return self.git("rev-parse", "HEAD")
+
+    def merge_lines(self, rev, games=("tc", "ps2", "spawn")):
+        return "\n".join(al.trailer("dreamcast", GOOD, "0" * 40, g, rev)[0] for g in games)
+
+    def kit_merge(self):
+        """A kit line from the start, merging the main line: the commit its runs are built from."""
+        main = self.git("rev-parse", "--abbrev-ref", "HEAD")
+        self.git("checkout", "-q", "-b", "kit", self.base)
+        self.commit("port/kit_only.txt", "kit line's own change")
+        self.git("merge", "-q", "--no-edit", main)
+        rev = self.git("rev-parse", "HEAD")
+        self.git("checkout", "-q", main)
+        return rev
 
     def amend_with(self, *consoles, tree=None):
         """The last commit's message gets a line per console, made on its tree (or another)."""
@@ -103,6 +127,37 @@ class History(unittest.TestCase):
         self.commit("port/pvr/pvr_draw.c", "pvr: one")
         self.amend_with("dreamcast", tree="f" * 40)
         self.assertTrue(any("not this commit's" in b for b in self.bad()))
+
+    def test_kit_line_merge_runs_cover_what_they_contain(self):
+        self.commit("port/pvr/pvr_draw.c", "pvr: one")
+        rev = self.kit_merge()
+        self.commit("docs/asan.md", "ASan results\n\n" + self.merge_lines(rev))
+        self.assertEqual(self.bad(), [])
+
+    def test_plant_a_kit_line_run_from_before_the_landing_is_refused(self):
+        rev = self.kit_merge()
+        self.commit("port/pvr/pvr_draw.c", "pvr: one")
+        self.commit("docs/asan.md", "ASan results\n\n" + self.merge_lines(rev))
+        self.assertIn("no ASan: line covers it", " ".join(self.bad()))
+
+    def test_plant_a_core_game_with_no_kit_line_run_is_refused(self):
+        self.commit("port/pvr/pvr_draw.c", "pvr: one")
+        rev = self.kit_merge()
+        self.commit("docs/asan.md", "ASan results\n\n" + self.merge_lines(rev, ("tc", "ps2")))
+        self.assertIn("no ASan: line covers it", " ".join(self.bad()))
+
+    def test_plant_a_kit_line_run_not_in_the_checkout_is_refused(self):
+        self.commit("port/pvr/pvr_draw.c", "pvr: one")
+        self.commit("docs/asan.md", "ASan results\n\n" + self.merge_lines("e" * 40))
+        self.assertIn("not in this checkout", " ".join(self.bad()))
+
+    def test_consoles_can_be_covered_on_different_commits(self):
+        self.commit("port/runtime/frame_extra.c", "runtime: shared")
+        self.amend_with("saturn")
+        self.assertIn("covers dreamcast", self.bad()[0])
+        rev = self.kit_merge()
+        self.commit("docs/asan.md", "ASan results\n\n" + self.merge_lines(rev))
+        self.assertEqual(self.bad(), [])
 
     def test_na_needs_a_reason_and_other_files_need_nothing(self):
         self.commit("port/tools/part_draw.py", "a kit tool, not host C")

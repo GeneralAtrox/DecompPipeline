@@ -1,0 +1,12 @@
+# r3: +0x50 an array of objects, +0x54 its count; call 0 (an allocation) never fails; call 1 returns the new object
+# (its virtual-base offset 0), whose vtable doubles as the vbtable; the two compared virtual calls agree
+genptr r3
+genrange r3+0x54 0 2
+genptr r3+0x50+0x0+0x0
+genptr r3+0x50+0x4+0x0
+genret 0 0x40000700
+genret 1 0x40000800
+genptr 0x40000804
+genrange 0x40000804+0x4 0 0
+genret 2 1
+genret 3 1

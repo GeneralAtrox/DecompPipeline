@@ -84,9 +84,24 @@ void wr32(u32 addr, u32 value) { if (SQ_WINDOW(addr)) return; *(volatile u32 *)(
 void wrf32(u32 addr, f32 value) { wr32(addr, port_tx_f2u(value)); }
 void port_tx_wr32(uint32_t addr, uint32_t value) { wr32(addr, value); }
 
+/* The translated caller's r15 for a call's 8 stack words: where they lie, at or above the innermost translated frame's
+ * floor (from), with room for a word at off: the lowest match. 0: none. */
+static u32 caller_stack(const u32 *s, u32 from, u32 off)
+{
+    for (u32 p = from; p + off + 4u <= TX_STACK_TOP; p += 4u) {
+        int i = 0;
+        while (i < 8 && rd32(p + 4u * (u32)i) == s[i]) i++;
+        if (i == 8) return p;
+    }
+    return 0;
+}
+
 uint32_t port_tx_enter(uint32_t frame, uint32_t args)
 {
     u32 sp = g_sp - args;
+    /* a frame past the 8 words a call carries: the callee reads those words at its sp too, named or not (a body that
+     * hands its entry r15 on, and reads through that), so they come from the caller's stack */
+    u32 from = g_slo_set && args > 32u ? caller_stack(g_slo, g_sp, args - 4u) : 0u;
     if (sp - frame < TX_STACK_TOP - TX_STACK_SIZE || sp - frame > sp) {
         port_log("tx: guest stack overflow: a frame of %u bytes below %08x (floor %08x)\n", frame, sp,
                  TX_STACK_TOP - TX_STACK_SIZE);
@@ -95,6 +110,8 @@ uint32_t port_tx_enter(uint32_t frame, uint32_t args)
     g_sp = sp - frame;
     if (g_slo_set && args >= 32u)
         for (u32 i = 0; i < 8u; i++) wr32(sp + 4u * i, g_slo[i]);
+    if (from)
+        for (u32 off = 32u; off < args; off += 4u) wr32(sp + off, rd32(from + off));
     g_slo_set = 0;
     if (g_sp < g_low) {
         g_low = g_sp;
@@ -253,7 +270,7 @@ static int first_call(int words, u32 target)
     return 1;
 }
 
-static void call_unhooked(u32 target, const PortTcArgs *a, PortTcRet *o, int want_f, const void *site)
+static void call_target(u32 target, const PortTcArgs *a, PortTcRet *o, int want_f, const void *site)
 {
     PortTcGlue g;
     const PortDispatch *d = NULL, *og = NULL;
@@ -317,11 +334,11 @@ static void call_unhooked(u32 target, const PortTcArgs *a, PortTcRet *o, int wan
 
 static void call(u32 target, const PortTcArgs *a, PortTcRet *o, int want_f, const void *site)
 {
-    u32 at = target;
     if (g_prof_on) prof_call(target);
+    u32 at = target;
     work_add(WC_GUEST_CALLS, 1);
     if (!g_ncall_hooks) {
-        call_unhooked(target, a, o, want_f, site);
+        call_target(target, a, o, want_f, site);
         return;
     }
     if (at && !guest_is_ram(at) && guest_of_host(at)) at = guest_of_host(at); /* a host function pointer */
@@ -331,7 +348,7 @@ static void call(u32 target, const PortTcArgs *a, PortTcRet *o, int want_f, cons
         g_call_skip = 0;
         memset(o, 0, sizeof *o);
     } else {
-        call_unhooked(target, a, o, want_f, site);
+        call_target(target, a, o, want_f, site);
     }
     call_hooks(at, 1);
 }
@@ -372,11 +389,8 @@ void port_tx_take_rlo(uint32_t *lo)
 uint32_t port_tx_stack_word(const PortTcArgs *a, uint32_t off)
 {
     static u32 g_misses;
-    for (u32 p = g_sp; p + off + 4u <= TX_STACK_TOP; p += 4u) {
-        int i = 0;
-        while (i < 8 && rd32(p + 4u * (u32)i) == a->s[i]) i++;
-        if (i == 8) return rd32(p + off);
-    }
+    u32 p = caller_stack(a->s, g_sp, off);
+    if (p) return rd32(p + off);
     if (g_misses++ < 16u) port_log("tx: no caller stack holds the call's stack words; stack+%u is 0\n", off);
     return 0;
 }

@@ -58,7 +58,7 @@ def run(vcvars, source, name, strict=False):  # strict: /WX (a plant may leave a
 def text_checks():
     inp = (BASE / "input.c").read_text(encoding="utf-8")
     assert "own = 0, load = autoload_buttons(&own)" in inp, "input.c: player 1's pad does not take the auto-load's presses"
-    assert "if (own) s[0] = (PadState){.b = load}, keys = 0; else s[0].b |= load;" in inp, "input.c: the player's pad not held off"
+    assert "if (own) s[0] = (PadState){.b = load}, kbm = (KbmPad){0}; else s[0].b |= load;" in inp, "input.c: the player's pad not held off"
     call = (ROOT / "port" / "saturn" / "sat_call.c").read_text(encoding="utf-8")
     assert "if (f->addr == autoload_fn && !autoload_leave) autoload_hit();" in call, "sat_call.c: a step's entry not reported"
     assert "if (f->addr == autoload_fn && autoload_leave) autoload_hit();" in call, "sat_call.c: a step's return not reported"

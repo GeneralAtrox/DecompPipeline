@@ -154,6 +154,7 @@ s32 kmCreateTextureSurface(KMSURFACEDESC *surface, u32 width, u32 height, u32 ty
     s->size = bytes;
     s->flags = flags;
     s->address = at;
+    if (!(flags & TCW_STRIDE)) pvr_pack_surface(flags | s->pixel_format | at >> 3, width, height); /* a library's own copy */
     return K2_OK;
 }
 
@@ -178,13 +179,17 @@ s32 kmLoadTexture(KMSURFACEDESC *surface, const void *texture)
     } else {
         load(s->address + lead, texture, s->size);
     }
+    if (!(s->flags & TCW_STRIDE)) pvr_pack_hint(s->flags | s->pixel_format | s->address >> 3, s->width, s->height, 0);
     return K2_OK;
 }
 
 s32 kmFreeTexture(KMSURFACEDESC *surface)
 {
     K2Surface *s = (K2Surface *)surface;
-    if (s->address) release(s->address);
+    if (s->address) {
+        release(s->address);
+        pvr_pack_surface(s->address >> 3, 0, 0);
+    }
     s->address = 0;
     return K2_OK;
 }

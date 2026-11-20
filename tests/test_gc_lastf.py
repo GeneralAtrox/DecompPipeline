@@ -5,7 +5,8 @@ tc_lastr()/tc_lastf() give the last call's other result without a new call. The 
 (tc_rt.c, tc_ppc.c) with a small driver and checks:
   - before any call both are 0; after call n they are the scripted r3 and f1 of call n, after tc_call or tc_callf;
   - they never count as a call (the recorded call count stays as the calls made);
-  - past the 16 scripted results they are 0, as tc_call and tc_callf are.
+  - past the scripted results they are 0, as tc_call and tc_callf are; a later call's result (vectors.txt C past
+    its 16 words, TCRT_RETS in all: tests/test_gc_calls.py) is returned like the first 16's.
 Skipped without config.local.json's vcvars (MSVC).
 usage: python tests/test_gc_lastf.py
 """
@@ -36,8 +37,8 @@ static void show(const char *what)
 
 int main(void)
 {
-    u32 rets[16];
-    u64 frets[16];
+    u32 rets[TCRT_RETS] = {0};
+    u64 frets[TCRT_RETS] = {0};
     for (int i = 0; i < 16; i++) {
         rets[i] = 0x100u + (u32)i;
         frets[i] = 0x4000000000000000ull + (u64)i;
@@ -56,13 +57,17 @@ int main(void)
     show("after_callf");
     for (int i = 2; i < 17; i++) tc_call(0x80003000u, &a);
     show("past16");
+    rets[18] = 0x118u;  /* a repaired later result (TcOracle.lateOf) */
+    tcrt_set_call_returns(rets, frets);  /* 17 calls made: the 18th and 19th */
+    for (int i = 0; i < 2; i++) tc_call(0x80003000u, &a);
+    show("late18");
     return 0;
 }
 """
 WANT = ["none 00000000 0000000000000000",
         "call 00000100", "after_call 00000100 4000000000000000", "again 00000100 4000000000000000",
         "callf 4000000000000001", "after_callf 00000101 4000000000000001",
-        "past16 00000000 0000000000000000"]
+        "past16 00000000 0000000000000000", "late18 00000118 0000000000000000"]
 
 
 @unittest.skipUnless(vcvars(64), "no vcvars (MSVC) on this machine")

@@ -35,6 +35,12 @@ runs that step later:
 python tools/bounded.py 3600 -- python targets/xbox360_ppc/tools/x360setup.py setup DISC.iso WS --name NAME --roots ROOTS.txt
 ```
 
+A game's hand-written oracle hints are tracked here, in `games/<game>/hints/<addr>.txt`, with `games/<game>/game.json`
+naming the image (`binary_sha256`). Setup copies them into the new workspace's `oracle/hints` (`tools/game_hints.py`),
+and setup and `translator/tools/dp_judge.py` print one WARNING line when a workspace's set differs from them (a file
+missing, extra or with other content). Too Human's 8 are in `games/too_human/hints`. A dp_judge check that compared
+every vector, none wrong, on fewer than `min_valid_vectors` in a set is NO_VECTORS (`x360_check.finish`), never PASS.
+
 The steps one by one follow. Make the catalog inputs from the disc or from `default.xex` (about 8 s):
 
 ```

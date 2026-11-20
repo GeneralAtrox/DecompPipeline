@@ -163,6 +163,8 @@ int port_find_image(const char *dir, char *out, size_t cap)
 int port_verify_assets(const char *assets)
 {
     char image[PATH_CAP];
+    int own = console_install(NULL, NULL, assets);
+    if (own >= 0) return own;
     if (!port_find_image(assets, image, sizeof image))
         return port_install_fail(4, "no disc image (.cue or .gdi) in %s", assets);
     int code = check_image(image);
@@ -208,9 +210,13 @@ static void json_escape(const char *s, char *out, size_t cap)
 int port_setup(const char *image, const char *work)
 {
     FileList *l = (FileList *)calloc(1, sizeof *l);
-    char src_dir[PATH_CAP], dst_dir[PATH_CAP], src[2 * PATH_CAP], dst[2 * PATH_CAP], copy[PATH_CAP], text[512];
-    char version[256];
-    int code = check_image(image);
+    char src_dir[PATH_CAP], dst_dir[PATH_CAP], src[2 * PATH_CAP], dst[2 * PATH_CAP], copy[PATH_CAP];
+    int code = console_install(image, work, NULL);
+    if (code >= 0) {
+        free(l);
+        return code;
+    }
+    code = check_image(image);
     if (code || !l) {
         free(l);
         return code ? code : port_install_fail(1, "out of memory");
@@ -237,8 +243,15 @@ int port_setup(const char *image, const char *work)
     if (code) return code;
     _snprintf_s(dst, sizeof dst, _TRUNCATE, "%s%s", dst_dir, base_of(image));
     if ((code = check_image(dst)) != 0) return port_install_fail(1, "the copied image %s does not check out", dst);
+    return port_install_record(work, "assets/disc");
+}
+
+int port_install_record(const char *work, const char *assets)
+{
+    char version[256], where[PATH_CAP], text[2 * PATH_CAP], dst[PATH_CAP];
     json_escape(port_console.version, version, sizeof version);
-    _snprintf_s(text, sizeof text, _TRUNCATE, "{\"version\": \"%s\", \"assets\": \"%s\"}\n", version, "assets/disc");
+    json_escape(assets, where, sizeof where);
+    _snprintf_s(text, sizeof text, _TRUNCATE, "{\"version\": \"%s\", \"assets\": \"%s\"}\n", version, where);
     _snprintf_s(dst, sizeof dst, _TRUNCATE, "%s\\installation.json", work);
     if (!write_text(dst, text)) return port_install_fail(1, "cannot write %s", dst);
     port_log("setup: done, %s\n", dst);

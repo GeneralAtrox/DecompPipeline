@@ -50,6 +50,7 @@ void sat_online_begin(const char *addr)
     for (char *p = g_addr; *p; p++) *p = *p >= 'a' && *p <= 'z' ? (char)(*p - 32) : *p == ':' ? ' ' : *p;
 }
 int sat_online_host(void) { return sat_net.on && sat_net.host; }
+const char *sat_online_addr(void) { return sat_online_host() ? g_addr : ""; } /* the team screens' address, hosting */
 
 static void say(int what, u32 f)
 {
@@ -113,7 +114,7 @@ static void end_match(const char *note, const char *why) /* lock held; does not 
 {
     net_udp_unlock();
     net_udp_finish(2000);
-    sat_lobby_back(note);
+    sat_game_lobby_back(note);
     port_exit(why, 0);
     for (;;) pace_wait_us(1000000); /* another thread is ending the run */
 }
@@ -167,4 +168,7 @@ void sat_online_choose(void)
 
 /* sat_lobby.c, the host's copy: a caller with another version of the game was turned away (its status line says so) */
 void sat_online_refused(void) { say(N_REFUSED, g_frame); }
+#endif
+#ifndef SAT_NETPLAY
+const char *sat_online_addr(void) { return ""; }
 #endif

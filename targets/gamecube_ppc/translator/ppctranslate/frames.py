@@ -5,6 +5,7 @@ import re
 
 from .expr import Call, Var
 from .ir import CallS, Ret, Switch
+from .regs import F
 
 CALLEE_SAVED = re.compile(r"([rf])(1[4-9]|2[0-9]|3[01])")
 
@@ -31,6 +32,8 @@ def attach_exit_regs(blocks, types):
         m = CALLEE_SAVED.fullmatch(n)
         if m:
             xr.append((int(m.group(2)), m.group(1), Var(n, types[n])))
+    if "msr" in w:  # a mtmsr: MSR at exit (tc_xmsr; expected.txt "MSR")
+        xr.append((0, "m", Var("msr", "u32")))
     xr.sort(key=lambda t: (t[1] != "r", t[0]))
     for b in blocks:
         rets = [b.term] if isinstance(b.term, Ret) else []
@@ -44,7 +47,20 @@ def recursive_f1(ft, blocks, entry_vals, has_last):
     """px_rec runs each frame of a self-call as a C call. A body whose f1 only a call sets enters an inner frame with
     the f1 the last mocked call returned (the oracle's callee sets r3 and f1 and the code never touches f1), and a
     pointer call there passes it on: 80211298's hidden vector 96 passed 0.0 where the original passes the previous
-    call's f1 (expected.txt "CA ... f1"). The outermost frame reads tc_lastf()'s 0 before any call."""
-    if ft.recursive and has_last and "f1" in entry_vals and not any(
-            "f1" in s.writes() for b in blocks for s in b.stmts if not isinstance(s, CallS)):
+    call's f1 (expected.txt "CA ... f1"). The outermost frame reads tc_lastf()'s 0 before any call.
+    A body that also sets f1 itself (an lfs) enters an inner frame with the caller's f1 at the self-call, which a
+    pointer call there passes on: px_rec takes it as f1_ (ft.rec_f1) and each self-call passes its live f1. Skies
+    80288de4 (lfs f1 at 80288eb0) passed 0.0 to its callback inside the recursion, where the original passes the
+    outer callback's f1 (r5d vector 20, call #6). The outermost frame gets tc_lastf(), as before."""
+    ft.rec_f1 = False
+    if not (ft.recursive and has_last and "f1" in entry_vals):
+        return
+    if not any("f1" in s.writes() for b in blocks for s in b.stmts if not isinstance(s, CallS)):
         entry_vals["f1"] = Call("tc_lastf", [], "f64")
+        return
+    entry_vals["f1"] = Var("f1_", "f64")
+    ft.rec_f1 = True
+    for b in blocks:
+        for s in b.stmts:
+            if isinstance(s, CallS) and s.selfc:
+                s.args.append(("p", "f1_", F(1)))

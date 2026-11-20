@@ -295,6 +295,24 @@ f64 ppc_frsp(f64 x) { return (f64)(f32)x; }
 
 /* -- multiply-add ---------------------------------------------------------------------------------------------- */
 
+/* PowerPC's NaN result (Book I 4.3.2, 4.4): the first NaN of frA, frB, frC, quieted, its sign kept (so fmsub does not
+ * flip the sign of a NaN frB, and the fnm forms do not negate a NaN); with no NaN operand, an invalid operation gives
+ * 0x7ff8000000000000, where x86 gives 0xfff8000000000000. A single result keeps the top 23 fraction bits. */
+static f64 nan3(f64 a, f64 b, f64 c)
+{
+    if (a != a) return bitsd(dbits(a) | 0x0008000000000000ull);
+    if (b != b) return bitsd(dbits(b) | 0x0008000000000000ull);
+    if (c != c) return bitsd(dbits(c) | 0x0008000000000000ull);
+    return bitsd(0x7ff8000000000000ull);
+}
+
+static f64 fma_res(f64 r, f64 a, f64 c, f64 b, int single)
+{
+    if (r == r) return r;
+    r = nan3(a, b, c);
+    return single ? bitsd(dbits(r) & 0xffffffffe0000000ull) : r;
+}
+
 #if TC_FMA_FUSED
 /* a * c + b rounded once to single: the exact result rounded toward zero to double, with the lowest bit set when
  * that rounding was inexact ("round to odd"), then rounded to single. Double keeps more than 2 * 24 + 2 bits, so
@@ -311,48 +329,53 @@ static f64 fma_single(f64 a, f64 c, f64 b)
     return (f64)(f32)r;
 }
 
-f64 ppc_fmadd(f64 a, f64 c, f64 b) { return fma(a, c, b); }
-f64 ppc_fmsub(f64 a, f64 c, f64 b) { return fma(a, c, -b); }
-f64 ppc_fmadds(f64 a, f64 c, f64 b) { return fma_single(a, c, b); }
-f64 ppc_fmsubs(f64 a, f64 c, f64 b) { return fma_single(a, c, -b); }
+f64 ppc_fmadd(f64 a, f64 c, f64 b) { return fma_res(fma(a, c, b), a, c, b, 0); }
+f64 ppc_fmsub(f64 a, f64 c, f64 b) { return fma_res(fma(a, c, -b), a, c, b, 0); }
+f64 ppc_fmadds(f64 a, f64 c, f64 b) { return fma_res(fma_single(a, c, b), a, c, b, 1); }
+f64 ppc_fmsubs(f64 a, f64 c, f64 b) { return fma_res(fma_single(a, c, -b), a, c, b, 1); }
 #else
 f64 ppc_fmadd(f64 a, f64 c, f64 b)
 {
     f64 p = a * c;
-    return p + b;
+    return fma_res(p + b, a, c, b, 0);
 }
 
 f64 ppc_fmsub(f64 a, f64 c, f64 b)
 {
     f64 p = a * c;
-    return p - b;
+    return fma_res(p - b, a, c, b, 0);
 }
 
 f64 ppc_fmadds(f64 a, f64 c, f64 b)
 {
     f64 p = a * c;
     f64 s = p + b;
-    return (f64)(f32)s;
+    return fma_res((f64)(f32)s, a, c, b, 1);
 }
 
 f64 ppc_fmsubs(f64 a, f64 c, f64 b)
 {
     f64 p = a * c;
     f64 s = p - b;
-    return (f64)(f32)s;
+    return fma_res((f64)(f32)s, a, c, b, 1);
 }
 #endif
 
-f64 ppc_fnmadd(f64 a, f64 c, f64 b) { return ppc_fneg(ppc_fmadd(a, c, b)); }
-f64 ppc_fnmsub(f64 a, f64 c, f64 b) { return ppc_fneg(ppc_fmsub(a, c, b)); }
-f64 ppc_fnmadds(f64 a, f64 c, f64 b) { return ppc_fneg(ppc_fmadds(a, c, b)); }
-f64 ppc_fnmsubs(f64 a, f64 c, f64 b) { return ppc_fneg(ppc_fmsubs(a, c, b)); }
+static f64 fnm(f64 r) { return r == r ? ppc_fneg(r) : r; } /* a NaN result is not negated */
+f64 ppc_fnmadd(f64 a, f64 c, f64 b) { return fnm(ppc_fmadd(a, c, b)); }
+f64 ppc_fnmsub(f64 a, f64 c, f64 b) { return fnm(ppc_fmsub(a, c, b)); }
+f64 ppc_fnmadds(f64 a, f64 c, f64 b) { return fnm(ppc_fmadds(a, c, b)); }
+f64 ppc_fnmsubs(f64 a, f64 c, f64 b) { return fnm(ppc_fmsubs(a, c, b)); }
 
 /* -- other float ----------------------------------------------------------------------------------------------- */
 
-f64 ppc_fsqrt(f64 x) { return sqrt(x); }
+f64 ppc_fsqrt(f64 x)
+{
+    f64 r = sqrt(x);
+    return r == r ? r : nan3(x, x, x); /* a NaN operand quieted, or the default NaN for a negative one */
+}
 
-f64 ppc_fsqrts(f64 x) { return (f64)(f32)sqrt(x); }
+f64 ppc_fsqrts(f64 x) { return (f64)(f32)ppc_fsqrt(x); }
 
 f64 ppc_fsel(f64 a, f64 c, f64 b) { return a >= 0.0 ? c : b; }
 

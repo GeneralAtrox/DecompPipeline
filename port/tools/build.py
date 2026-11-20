@@ -20,11 +20,15 @@ ROOT: the overlays' (gen_overlays.py --tx; default: overlays.json "translator_c"
 NAME_gen, NAME_run, NAME_regress, NAME_lockstep and NAME.log are removed once nothing in them was written for 5 days
 and no process uses them (build_gc.py; also DP_BUILD_GC=0); x86, x86chk, gen, run, regress, reference, this build and
 folders it cannot confirm as builds stay.
+--disc: the disc image for --run and for game.json pack_builds (default: game.json disc). Packs build after a
+successful compile, only when their sources changed (tools/pack_builds.py).
 --asan: AddressSanitizer (MSVC /fsanitize=address, CMakeLists.txt PORT_ASAN) in build/x86asan, or --build-dir NAME; its
 runtime dll is copied beside port.exe. Run it with ASAN_OPTIONS=continue_on_error=1 to have every error reported.
 --progress: the launcher's view (a game's Start Game.bat): one line counting the compiles as they finish, rewritten
 in place, warnings and errors in full as they come, "Game is up to date." when nothing changed; the generator's and
 the compiler's full output go to the build log only.
+--disc: the disc image for --run and for game.json pack_builds (default: game.json disc). Packs build after a
+successful compile, only when their sources changed (tools/pack_builds.py).
 """
 import argparse
 import atexit
@@ -43,6 +47,7 @@ KIT = TOOLS.parent
 sys.path.insert(0, str(TOOLS))
 import build_gc  # noqa: E402
 import game_config  # noqa: E402
+import pack_builds  # noqa: E402
 
 # The 32-bit MSVC environment: $VCVARS32, else vcvars32.bat beside config.local.json's "vcvars" (game_config).
 # NINJA: else the ninja on PATH (e.g. pip install ninja).
@@ -314,10 +319,12 @@ def main():
         if rc:
             print("\n".join(lines[-15:]))
             raise SystemExit(1)
+    disc = a.disc or (str(cfg["disc"]) if cfg["disc"] else None)
+    if cfg.get("pack_builds"):  # game.json pack_builds: the packs a game makes from its own art and the disc, beside port.exe
+        pack_builds.build_all(cfg, bdir, disc, lambda cmd, t: run(cmd, t))
     if a.asan:
         asan_dll(env, bdir)
     if a.run:
-        disc = a.disc or (str(cfg["disc"]) if cfg["disc"] else None)
         if not disc:
             raise SystemExit("--run needs a disc image: --disc, or game.json disc")
         must = a.must_work if a.must_work is not None else str(cfg["must_work"] or "")

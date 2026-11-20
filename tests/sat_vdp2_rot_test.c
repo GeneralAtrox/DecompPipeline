@@ -212,3 +212,11 @@ int main(void)
     printf(g_fail ? "FAIL\n" : "all ok\n");
     return g_fail;
 }
+
+/* the kit pieces this test does not build: the menu panel (sat_panel.c) is off */
+int sat_panel_frame(void) { return 0; }
+u32 sat_panel_dot(u32 (*word)(u32 x, u32 y), u32 x, u32 y, u32 rgb, int spr_pr, int pn, u32 under, u32 left)
+{
+    (void)word, (void)x, (void)y, (void)spr_pr, (void)pn, (void)under, (void)left;
+    return rgb;
+}

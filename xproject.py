@@ -10,6 +10,8 @@
         Spawn gend 8c564b14 from ovl 8c94aeec, without touching the imports staged from the first one).
         Of several exact twins, match tries OLD's matched ones first; against itself it never pairs a
         function with itself. A function NEW has matched is never staged (its import is kept as it is).
+        Dreamcast workspaces only (stage and restage): relocate() knows only Dreamcast RAM addresses, so on any
+        other target (project.json "target") they refuse rather than stage C with none of its addresses relocated.
   python xproject.py --project NEW --from OLD restage [--dry]
         after a relocation fix: rewrite the staged imports today's relocation maps better (restage())
   python xproject.py --project NEW --from OLD names     carry readable names (functions, globals) over to
@@ -27,10 +29,17 @@ import re
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
-from core import xmatch  # noqa: E402
+from core import filelock, xmatch  # noqa: E402
 
 STACK_LO = 0x8CFF0000
 ADDR_RE = re.compile(r"0x([08]c[0-9a-fA-F]{6})(u?)\b")  # RAM at 0x8c... or its P0 mirror 0x0c... (Spawn)
+RELOCATES = "dreamcast_sh4"  # the one target whose addresses STACK_LO and ADDR_RE describe
+
+
+def target_of(ws):
+    """The workspace's target: project.json "target" (Dreamcast when it names none, as core/doctor reads it)."""
+    p = ws / "project.json"
+    return (json.loads(p.read_text(encoding="utf-8")).get("target") if p.exists() else None) or RELOCATES
 
 
 def relocate(text, amap, own_old, own_new):
@@ -155,6 +164,12 @@ def main():
     a = ap.parse_args()
     new_ws, old_ws = pathlib.Path(a.project).resolve(), pathlib.Path(a.old).resolve()
     out = new_ws / "state" / "import.json"
+    if a.cmd in ("stage", "restage"):  # never C reported relocated when none of its addresses could be
+        others = {str(w): t for w in (new_ws, old_ws) if (t := target_of(w)) != RELOCATES}
+        if others:
+            sys.exit(f"{a.cmd} relocates only Dreamcast RAM addresses (0x8c......, 0x0c......), and "
+                     + ", ".join(f"{w} is {t}" for w, t in others.items())
+                     + ": none of its addresses would be relocated, so nothing is staged")
 
     if a.cmd == "match":
         old, new = xmatch.Image(old_ws), xmatch.Image(new_ws)
@@ -162,8 +177,7 @@ def main():
         done = json.loads(oldled.read_text(encoding="utf-8"))["functions"] if oldled.exists() else {}
         matches = xmatch.match(old, new, prefer={x for x, r in done.items() if r.get("status") == "matched"})
         amap = xmatch.address_map(matches)
-        out.write_text(json.dumps({"from": str(old_ws), "matches": matches, "address_map": amap}, indent=0),
-                       encoding="utf-8")
+        filelock.write_json(out, {"from": str(old_ws), "matches": matches, "address_map": amap}, indent=0)
         print(f"{len(matches)} matched functions, {len(amap)} address pairs -> {out}")
         return
     data = json.loads(out.read_text(encoding="utf-8"))
@@ -261,8 +275,7 @@ def main():
         for note in drop_clashes(names, own - {None}):
             print(note)
         kept = sum(e.get("imported_ws") not in (None, str(old_ws)) for t in names.values() for e in t.values())
-        d.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(names, indent=1) + "\n", encoding="utf-8")
+        filelock.write_atomic(path, json.dumps(names, indent=1) + "\n")  # makes d
         print(f"carried over {len(names['functions'])} function and {len(names['globals'])} global name(s)"
               + (f", {kept} of them kept from other projects" if kept else ""))
 

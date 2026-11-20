@@ -97,6 +97,18 @@ void copy_button_attach(void *hwnd_ptr, void *bar)
     SendMessageW(g_tip, TTM_ADDTOOLW, 0, reinterpret_cast<LPARAM>(&g_tool));
 }
 
+void copy_button_tip(void *hwnd_ptr, const void *screen_rect)
+{
+    const RECT *r = static_cast<const RECT *>(screen_rect);
+    if (!g_tip || !r) {
+        tip_hide();
+        return;
+    }
+    SendMessageW(g_tip, TTM_TRACKPOSITION, 0, MAKELPARAM(r->left, r->bottom + scaled(static_cast<HWND>(hwnd_ptr), 4)));
+    if (!g_tip_shown) SendMessageW(g_tip, TTM_TRACKACTIVATE, TRUE, reinterpret_cast<LPARAM>(&g_tool));
+    g_tip_shown = true;
+}
+
 bool copy_button_message(void *hwnd_ptr, unsigned msg, uintptr_t wp, intptr_t lp, intptr_t *result)
 {
     HWND hwnd = static_cast<HWND>(hwnd_ptr);

@@ -71,7 +71,12 @@ u8 *port_texture_window(u32 addr, u32 size)
     return g_vram + a;
 }
 
-void port_texture_written(u32 addr, u32 size) { pvr_vram_written((addr & AREA_MASK) - TEX_WINDOW, size); }
+void port_texture_written(u32 addr, u32 size)
+{
+    u32 offset = (addr & AREA_MASK) - TEX_WINDOW;
+    pvr_vram_written(offset, size);
+    pvr_pack_written(offset, size); /* a texture the library copied itself: its pack image kicked, as kmLoadTexture's is */
+}
 
 /* --dump-vram SCENE (ta_parse.c): the 8 MB of texture memory as the decoder reads it (the linear view), to
  * ta_vram_SCENE.bin beside --ta-dump's ta_scene_SCENE.txt, for decoding a scene's textures by hand
@@ -130,6 +135,33 @@ void pvr_set_clip(u32 x0, u32 y0, u32 x1, u32 y1)
     g_pvr.clip[1] = y0;
     g_pvr.clip[2] = x1;
     g_pvr.clip[3] = y1;
+}
+
+void pvr_set_clip_opens_frame(int on)
+{
+    will_set();
+    g_pvr.clip_opens_frame = on;
+}
+
+static int g_keep_next;
+int g_pvr_keep; /* the render now (or the last one) keeps the frame */
+
+void port_render_keep_frame(void) { g_keep_next = 1; }
+
+void pvr_take_keep(void)
+{
+    g_pvr_keep = g_keep_next;
+    g_keep_next = 0;
+}
+
+/* The bars around the screen (g_pvr_framed) as the frame's first render set them: a render that keeps the frame keeps
+ * them, though renders clipped to a view came between (they leave the bars alone but set g_pvr_framed to 0). */
+static int g_framed_first;
+static u32 g_first_at = ~0u;
+void pvr_frame_bars(void)
+{
+    if (g_pvr_keep) g_pvr_framed = g_framed_first;
+    else if (g_gfx.frames != g_first_at) g_first_at = g_gfx.frames, g_framed_first = g_pvr_framed;
 }
 
 void pvr_set_stride(u32 width)

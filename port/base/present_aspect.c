@@ -80,6 +80,16 @@ void gfx_frame_shape(u32 out_w, u32 out_h, f32 ratio, GfxFrameShape *s)
     s->tall_k = k < 1.0 ? (f32)(1.0 / k) : 1.0f;
 }
 
+/* A point of the output (pixels from its top left) in the 640x480 screen of a frame of shape s placed in it: the menu
+ * pointer (input_kbm_pointer.c). Outside the screen it is below 0 or past 640x480. */
+void gfx_screen_point(f32 px, f32 py, const GfxFrameShape *s, f32 out[2])
+{
+    u32 r[4];
+    gfx_screen_rect(s->w, s->h, s->wide_k, s->tall_k, r);
+    out[0] = (px - (f32)s->x - (f32)r[0]) * 640.0f / (f32)(r[2] ? r[2] : 1u);
+    out[1] = (py - (f32)s->y - (f32)r[1]) * 480.0f / (f32)(r[3] ? r[3] : 1u);
+}
+
 /* The 640x480 screen inside a frame of w x h with these factors: x, y, width, height in frame pixels. */
 void gfx_screen_rect(u32 w, u32 h, f32 wide_k, f32 tall_k, u32 r[4])
 {

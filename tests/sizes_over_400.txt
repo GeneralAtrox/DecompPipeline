@@ -2,7 +2,7 @@
 # shrink (tests/test_sizes.py); after a split run  python tools/sizes.py --ratchet
  3111  targets/dreamcast_sh4/translator/sh4translate/translate.py
  1491  targets/saturn_sh2/translator/sh2translate/translate.py
- 1482  targets/gamecube_ppc/translator/ppctranslate/translate.py
+ 1375  targets/gamecube_ppc/translator/ppctranslate/translate.py
  1354  targets/xbox360_ppc/translator/xenontranslate/translate.py
  1244  targets/dreamcast_sh4/translator/sh4translate/cfgstruct.py
  1226  core/rtx/lift.py
@@ -26,7 +26,7 @@
   624  targets/xbox360_ppc/translator/xenontranslate/expr.py
   621  docs/PROOF_GATES.md
   614  tests/test_batch32.py
-  606  tools/wave.py
+  604  tools/wave.py
   599  core/rtx/fields.py
   596  targets/gamecube_ppc/translator/ppctranslate/expr.py
   587  targets/dreamcast_sh4/runtime/tc_rt.c

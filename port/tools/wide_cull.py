@@ -2,7 +2,7 @@
 
 A renderer that drops a model or part outside the viewport's rectangle culls against the 640x480 screen, so in a wider
 frame the parts past the old edge go missing. Each wrapper calls its function with a viewport centred on the screen
-grown by the frame's share for the call (port_wide_cull_begin and _end, base/present.c), and gen_port wraps the address
+grown by the frame's share for the call (port_wide_cull_begin and _end, base/present_wide.c), and gen_port wraps the address
 as game.json wrap would. At 4:3, or with a view off centre (a split screen, a picture-in-picture), the call is unchanged.
 
 Nearest existing: gen_port.py - writes the game's generated files and takes game.json wrap, but it sits at the 400-line cap.

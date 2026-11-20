@@ -30,7 +30,7 @@ static const struct {
     {"LB", HOST_PAD_LB},     {"RB", HOST_PAD_RB},       {"L3", HOST_PAD_L3}, {"R3", HOST_PAD_R3},
     {"BACK", HOST_PAD_BACK}, {"GUIDE", HOST_PAD_GUIDE}, {"RSUP", HOST_PAD_RS_UP}, {"RSDOWN", HOST_PAD_RS_DOWN},
     {"RSLEFT", HOST_PAD_RS_LEFT}, {"RSRIGHT", HOST_PAD_RS_RIGHT}, {"LT", SCRIPT_L}, {"RT", SCRIPT_R},
-    {"LSUP", SCRIPT_LS_UP},  {"LSDOWN", SCRIPT_LS_DOWN}, {"LSLEFT", SCRIPT_LS_LEFT}, {"LSRIGHT", SCRIPT_LS_RIGHT},
+    {"SHARE", HOST_PAD_SHARE}, {"LSUP", SCRIPT_LS_UP},  {"LSDOWN", SCRIPT_LS_DOWN}, {"LSLEFT", SCRIPT_LS_LEFT}, {"LSRIGHT", SCRIPT_LS_RIGHT},
 };
 
 int input_scripted(void) { return g_script_n != 0; } /* a scripted run: the console's actions take their defaults */
@@ -58,7 +58,7 @@ static u32 button_bit(const char *name, size_t len)
 u32 input_button_bit(const char *name) { return button_bit(name, strlen(name)); }
 
 
-/* One --input entry's optional player prefix "Pn.": returns the player (0..3) and moves *p past it. */
+/* One --input entry's optional player prefix "Pn.": returns the player (0..7) and moves *p past it. */
 static u32 script_player(const char **p)
 {
     const char *s = *p;

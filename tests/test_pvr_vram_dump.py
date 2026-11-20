@@ -50,6 +50,10 @@ int g_work_on;
 u64 g_work_now[WC_N];
 int pvr_yuv_option(const char *value) { (void)value; return 0; }
 u32 pvr_pack_rim(u32 tcw, u32 tsp) { (void)tcw; (void)tsp; return 0; }
+void pvr_pack_written(u32 offset, u32 size) { (void)offset, (void)size; }
+void ta_sprite_field_copies(PvrScene *s, u32 tsp, const PvrVtx v[4]) { (void)s, (void)tsp, (void)v; }
+GfxState g_gfx;
+int g_pvr_framed;
 int g_prof_on;
 u64 prof_enter(int id) { (void)id; return 0; }
 void prof_leave(u64 token) { (void)token; }

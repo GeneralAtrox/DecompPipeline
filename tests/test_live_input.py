@@ -88,10 +88,12 @@ class LiveInputWiring(unittest.TestCase):
         text = self.read("base/input.c")
         body = text[text.index("u32 host_pads_read"):]
         body = body[:body.index("\n}\n")]
-        self.assertRegex(body, r"if \(input_live\(\) && sdl_ready\(\)\) \{\n(\s+pad_virtual_tick\(\);[^\n]*\n)?\s+s\[0\] = read_keyboard")
-        # the only place the keyboard and the devices are read
-        self.assertEqual(len(re.findall(r"\bread_keyboard\(", text)), 2)  # its definition and this call
-        self.assertEqual(len(re.findall(r"\bscan_devices\(", text)), 2)
+        self.assertRegex(body, r"if \(input_live\(\) && input_sdl_ready\(\)\) \{\n(\s+pad_virtual_tick\(\);[^\n]*\n)?\s+s\[0\] = read_keyboard\(SDL_GetKeyboardState")
+        # the only place the real keyboard and the devices are read; a test's injected keys and mouse (NULL) otherwise
+        self.assertEqual(len(re.findall(r"\bread_keyboard\(", text)), 3)  # its definition, this call and the injected one
+        self.assertIn("} else if (input_kbm_injected()) {\n        s[0] = read_keyboard(NULL, &kbm);", body)
+        devices = text + self.read("base/input_device.c")  # the devices themselves, split from input.c
+        self.assertEqual(len(re.findall(r"\binput_scan_devices\(", devices)), 2)  # its definition and that call
 
     def test_main_asks_live_first(self):
         text = self.read("runtime/main.c")

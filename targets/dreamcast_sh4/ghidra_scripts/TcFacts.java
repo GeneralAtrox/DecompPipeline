@@ -38,6 +38,7 @@ public class TcFacts {
     // "mock_write_facts", lines "mock_write callee field size": TcStrict.facts).
     int strict;
     List<String[]> mockWrites = new ArrayList<>();
+    List<String[]> sqCopies = new ArrayList<>();  // project.json "sq_copy_callees", lines "sq_copy callee rK lo-hi" (TcSq.copies)
 
     // A "mock_write callee field size" line's fact as TcStrict uses it, fld the field's record number: {callee, fld,
     // size}; an advance "aA.B:op.a.s:..." (core/strict_judge.advance) {callee, fld, -1, A, B, op, a, s, ...}.
@@ -121,6 +122,7 @@ public class TcFacts {
                 case "call_snapshots": f.strict |= v.equals("1") || v.equals("true") ? 4 : 0; break;
                 case "exit_frame": f.strict |= v.equals("1") || v.equals("true") ? 8 : 0; break;
                 case "mock_write": f.mockWrites.add(w); break;
+                case "sq_copy": f.sqCopies.add(w); break;
                 default: throw new IllegalArgumentException("unknown target fact: " + line);
             }
         }

@@ -22,7 +22,14 @@ static const u32 g_mirrors[] = {GUEST_MIRROR_BASE, GUEST_UNCACHED_BASE, GUEST_SQ
 #define OC_ADDR_ARRAY 0xf4000000u /* SH-4 operand cache address array: 512 entries 0x20 apart, plus the A bit */
 #define OC_ADDR_ARRAY_SIZE 0x10000u
 
+static int map_view_as(HANDLE sec, u32 base, const char *what);
+
 static int map_view(HANDLE sec, u32 base)
+{
+    return map_view_as(sec, base, "guest RAM");
+}
+
+static int map_view_as(HANDLE sec, u32 base, const char *what)
 {
     void *at = (void *)(uintptr_t)base;
     DWORD old;
@@ -30,7 +37,7 @@ static int map_view(HANDLE sec, u32 base)
     DWORD access = base == GUEST_RAM_BASE ? FILE_MAP_ALL_ACCESS | FILE_MAP_EXECUTE : FILE_MAP_ALL_ACCESS;
     if (MapViewOfFileEx(sec, access, 0, 0, GUEST_RAM_SIZE, at) != at
         || (base == GUEST_RAM_BASE && !VirtualProtect(at, GUEST_RAM_SIZE, PAGE_READWRITE, &old))) {
-        port_log("guest RAM: cannot map at %08x (%lu)\n", base, GetLastError());
+        port_log("%s: cannot map at %08x (%lu)\n", what, base, GetLastError());
         return 0;
     }
     return 1;
@@ -44,8 +51,38 @@ static void guard_view(u32 base)
     VirtualAlloc((void *)(uintptr_t)(base + GUEST_RAM_SIZE), 0x10000, MEM_RESERVE, PAGE_NOACCESS);
 }
 
+#if PORT_EXTRA_RAM
+static const u32 g_extra[] = {GUEST_EXTRA_BASE, GUEST_EXTRA_MIRROR, GUEST_EXTRA_UNCACHED};
+#define EXTRA_COUNT (sizeof g_extra / sizeof g_extra[0])
+
+/* game.json move_tables "counts": each counted table's run-time entry count, read where its listed sites had the original
+ * count compiled in (port/tools/move_tables.py); index = the table's place in the list. 0 keeps the original count. */
+unsigned int g_move_count[32];
+
+/* game.json extra_ram: a zeroed 16 MB section of its own in all three forms, required (a game that asks for it has moved
+ * data there), mapped first so nothing else takes the low address 0x08000000 */
+static int extra_ram_init(void)
+{
+    HANDLE sec = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, GUEST_RAM_SIZE, NULL);
+    if (!sec) {
+        port_log("extra RAM: CreateFileMapping failed (%lu)\n", GetLastError());
+        return 0;
+    }
+    for (u32 i = 0; i < EXTRA_COUNT; i++) {
+        if (!map_view_as(sec, g_extra[i], "extra RAM")) return 0;
+        guard_view(g_extra[i]);
+    }
+    port_log("extra RAM: 16 MB at %08x, mirrors at %08x and %08x (game.json extra_ram)\n", g_extra[0], g_extra[1],
+             g_extra[2]);
+    return 1;
+}
+#endif
+
 int guest_mem_init(void)
 {
+#if PORT_EXTRA_RAM
+    if (!extra_ram_init()) return 0;
+#endif
     HANDLE sec = CreateFileMappingW(INVALID_HANDLE_VALUE, NULL, PAGE_EXECUTE_READWRITE, 0, GUEST_RAM_SIZE, NULL);
     if (!sec) {
         port_log("guest RAM: CreateFileMapping failed (%lu)\n", GetLastError());
@@ -87,10 +124,20 @@ u32 guest_fold(u32 addr)
     if (addr - GUEST_RAM_BASE < GUEST_RAM_SIZE) return addr; /* the RAM itself: no mirror covers it (the common case) */
     for (u32 i = 0; i < MIRROR_COUNT; i++)
         if (addr - g_mirrors[i] < GUEST_RAM_SIZE) return addr - g_mirrors[i] + GUEST_RAM_BASE;
+#if PORT_EXTRA_RAM
+    for (u32 i = 1; i < EXTRA_COUNT; i++) /* the extra RAM's P0 and P2 forms fold to its P1 form */
+        if (addr - g_extra[i] < GUEST_RAM_SIZE) return addr - g_extra[i] + GUEST_EXTRA_BASE;
+#endif
     return addr;
 }
 
-int guest_is_ram(u32 addr) { return guest_fold(addr) - GUEST_RAM_BASE < GUEST_RAM_SIZE; }
+int guest_is_ram(u32 addr)
+{
+#if PORT_EXTRA_RAM
+    if (guest_fold(addr) - GUEST_EXTRA_BASE < GUEST_RAM_SIZE) return 1;
+#endif
+    return guest_fold(addr) - GUEST_RAM_BASE < GUEST_RAM_SIZE;
+}
 
 int guest_load(u32 addr, const u8 *data, u32 size)
 {

@@ -1,10 +1,13 @@
 /* Test runner: executes the decompiled function on every vector and prints its observable effects in the
  * oracle's expected.txt format (x360_compare.py documents both formats).
  *
- * usage: runner <image.bin> <code_ranges> <vectors.txt> <dev|hidden|all> <out.txt>
+ * usage: runner <image.bin> <code_ranges> <vectors.txt> <dev|hidden|all> <out.txt> [exit]
+ *   exit: the C is the translator's exit-state form; print its exit record (tc_exit.c) after each vector
  *
  * vectors.txt per vector: V id set / R r3..r10 (64-bit) / F f1..f13 (double bits) / C r3 per mocked call /
- * D f1 per mocked call (double bits) / M addr bytes (memory patches) / E.
+ * D f1 per mocked call (double bits) / M addr bytes (memory patches) / A r12 CR: the entry seeds of a function that reads
+ * r12 or CR fields before setting them (absent: 0) / N r14..r31, G f14..f31 (bits), K CR: the entry values the oracle
+ * seeds for the exit state (absent: 0), whose K replaces A's CR2..CR4 in that run (TcOracle.setEntry) / E.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -14,6 +17,8 @@
 
 /* Generated per function (x360_check.gen_thunk): unpacks the argument registers and calls fn_<addr>. */
 void tc_thunk(const u64 *r, const f64 *f, u64 *out_r3, f64 *out_f1);
+
+#define TCX_CR_EXIT 0x00fff000ull /* CR2..CR4: the exit-state run's seeds (TcExit.CR_SEEDED) */
 
 static int hexval(int c)
 {
@@ -57,10 +62,11 @@ static void dwords(const char *p, u64 *out, int n)
 
 int main(int argc, char **argv)
 {
-    if (argc != 6) {
-        fprintf(stderr, "usage: runner image code_ranges vectors set out\n");
+    if (argc != 6 && !(argc == 7 && strcmp(argv[6], "exit") == 0)) {
+        fprintf(stderr, "usage: runner image code_ranges vectors set out [exit]\n");
         return 2;
     }
+    tcx_on = argc == 7;
     if (!tcrt_init(argv[1], argv[2])) {
         fprintf(stderr, "runner: runtime init failed\n");
         return 2;
@@ -74,8 +80,9 @@ int main(int argc, char **argv)
     const char *want = argv[4];
     static char line[1 << 16];
     static u8 buf[1 << 15];
-    static u64 r[8], fbits[TCRT_CALL_FLOATS], rets[16], frets[16];
+    static u64 r[8], fbits[TCRT_CALL_FLOATS], rets[16], frets[16], nv[18], fnv[18];
     static f64 f[TCRT_CALL_FLOATS];
+    u64 cr = 0, acr = 0, r12 = 0;
     int id = -1, active = 0;
     while (fgets(line, sizeof line, in)) {
         if (line[0] == 'J' || line[0] == 'U') { /* the stricter judge's flags and facts (tc_strict.h) */
@@ -90,6 +97,9 @@ int main(int argc, char **argv)
                 memset(fbits, 0, sizeof fbits);
                 memset(rets, 0, sizeof rets);
                 memset(frets, 0, sizeof frets);
+                memset(nv, 0, sizeof nv);
+                memset(fnv, 0, sizeof fnv);
+                cr = acr = r12 = 0;
                 fprintf(out, "V %d %s\n", id, set);
             }
         } else if (!active) {
@@ -104,6 +114,17 @@ int main(int argc, char **argv)
             dwords(line + 1, rets, 16);
         } else if (line[0] == 'D') {
             dwords(line + 1, frets, 16);
+        } else if (line[0] == 'Q') { /* the exit state's r14..r31 entry values (TcExit; N is tc_strict.h's) */
+            dwords(line + 1, nv, 18);
+        } else if (line[0] == 'G') {
+            dwords(line + 1, fnv, 18);
+        } else if (line[0] == 'A') {
+            u64 a[2] = {0, 0};
+            dwords(line + 1, a, 2);
+            r12 = a[0];
+            acr = a[1];
+        } else if (line[0] == 'K') {
+            dwords(line + 1, &cr, 1);
         } else if (line[0] == 'M') {
             char *p = line + 2;
             u32 addr = (u32)strtoul(p, &p, 16);
@@ -117,6 +138,7 @@ int main(int argc, char **argv)
         } else if (line[0] == 'E') {
             memcpy(f, fbits, sizeof f);
             tcrt_set_call_returns(rets, frets);
+            tcx_begin(r, fbits, nv, fnv, (u32)(tcx_on ? (acr & ~TCX_CR_EXIT) | (cr & TCX_CR_EXIT) : acr), r12);
             u64 r3 = 0;
             f64 f1 = 0.0;
             paint_stack();
@@ -125,6 +147,7 @@ int main(int argc, char **argv)
             u64 b;
             memcpy(&b, &f1, 8);
             tcrt_report(out, r3, b);
+            if (tcx_on) tcx_report(out);
             fprintf(out, "E\n");
             fflush(out);
             active = 0;

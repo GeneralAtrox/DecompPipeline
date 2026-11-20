@@ -16,6 +16,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "xb_net.h"
+#include "xb_game.h"
 #include "net_link.h"
 
 #define PORT_DEFAULT 29710
@@ -43,7 +44,7 @@ static u32 now_ms(void) { return (u32)GetTickCount64(); }
 
 int xb_net_on(void)
 {
-    if (s_on < 0) s_on = getenv("XB_NET") != NULL || getenv("XB_NET_JOIN") != NULL;
+    if (s_on < 0) s_on = XB_GAME_NET && (getenv("XB_NET") != NULL || getenv("XB_NET_JOIN") != NULL);
     return s_on;
 }
 

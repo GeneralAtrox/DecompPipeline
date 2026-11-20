@@ -11,10 +11,25 @@ number is worked by hand:
 4. one part drawn twice in a tick (split screen) pairs first with first and second with second;
 5. --interp-truth: the in-between frame after an odd frame blends the scene two before with it, so at one half it is
    where the frame between was;
-6. a scene where half the parts' vertices or more are new or gone (8 of 11 in the second tick) gets no in-between
+6. a scene where half the parts' vertices or more are new or gone (6 of 12 in the second tick: a part with another
+   count is still that part) gets no in-between
    frames; one where every part paired does;
 7. a part that turned back (x 0, 10, 0) is drawn where it was a tick before, 10, at any t; one on its way (0, 10, 20)
-   blends to 15, and one that moved under a pixel a tick (0, 0.5, 0) blends to 0.25.
+   blends to 15, and one that moved under a pixel a tick (0, 0.5, 0) blends to 0.25;
+8. a split screen (a render per view, pvr_render_part): one part in both views pairs with its own view a tick before,
+   view 0 from x 100 to 110 blending to 105 and view 1 from 400 to 390 to 395, not with the other view's render; a view
+   drawn with another clip than its slot had pairs with nothing, and the frame holds.
+9. a part of two pieces (a helicopter: 15 body vertices 20 on, 8 rotor vertices a quarter turn round as well, one
+   vertex culled) moves by the map of its larger piece, 10 back from where it is, and the rotor's vertices each
+   from their own a tick before, half way;
+10. a scene whose view jumped (64 paired vertices, all 100 on in a tick) gets no in-between frames; 10 on, it does;
+11. a vertex clamped at the near plane in both ticks moves across the screen, still clamped: -9000 to -8000 at -8500.
+12. a part with another count whose vertices sit in one plane in the view (a 4x3 grid, 11 left after one is culled, all at
+   1/w 0.5) plus 4 corners at 1/w 0.25 that a strip draws twice (one key, one place), all 20 on in x: each vertex whose
+   key is at one place both ticks (all 19, the corners' two copies too) comes from its own place a tick before, so at
+   one half every vertex is 10 on in x, y and 1/w as they are (with the same 1/w both ticks the view half way is the
+   screen half way) - the corners at x 110, 120, 130, 140, not thrown out of the plane by a map fitted on the grid
+   alone; the scene is not held.
 Only where Visual Studio's 32-bit tools are found (tests/test_lockstep.py NO_VC says how), skipped elsewhere.
 
 usage: python -W error tests/test_pvr_parts.py
@@ -35,132 +50,7 @@ sys.path.insert(0, str(TOOL / "tests"))
 
 import game_config  # noqa: E402
 from test_lockstep import HAVE_VC, NO_VC  # noqa: E402
-
-DRIVER_C = r"""#include <stdio.h>
-#include <string.h>
-#include <windows.h>
-#include "pvr_int.h"
-#include "platform.h"
-void port_log(const char *fmt, ...) { (void)fmt; }
-static int g_truth, g_frame;
-int pvr_blend_truth_skip(void) { return g_truth && (g_frame & 1); }
-f32 pvr_blend_truth_t(f32 t) { return g_truth ? 0.5f : t; }
-void port_part_begin(const void *obj, const void *part, u32 stamp_at, u32 world_at);
-void port_part_end(void);
-void pvr_parts_lists(const u32 *ptrs);
-void pvr_parts_scene(void);
-
-#define RAM 0x8c000000u
-static u32 g_ptrs[PVRX_LISTS], g_w, g_n;
-static u32 g_addr[64];
-static u8 g_obj[4][64], g_part[4][128]; /* stamp at obj + 0x24, world matrix at part + 0x28 */
-
-static void begin_tick(void) { pvr_parts_scene(); g_w = 0x1000u, g_n = 0; g_ptrs[0] = RAM + g_w; }
-
-static void vtx(f32 x, f32 y, f32 z)
-{
-    u32 *w = (u32 *)(uintptr_t)(RAM + g_w);
-    f32 f[3] = {x, y, z};
-    w[0] = 0xe0000000u;
-    memcpy(&w[1], f, sizeof f);
-    g_addr[g_n++] = RAM + g_w;
-    g_w += 32u;
-    g_ptrs[0] = RAM + g_w;
-}
-
-/* a part draw writing n vertices, x step 10 from x0, at y and 1/w z */
-static void part(int obj, int prt, s16 stamp, u32 n, f32 x0, f32 y, f32 z)
-{
-    memcpy(&g_obj[obj][0x24], &stamp, sizeof stamp);
-    port_part_begin(g_obj[obj], g_part[prt], 0x24u, 0x28u);
-    for (u32 i = 0; i < n; i++) vtx(x0 + 10.0f * (f32)i, y, z);
-    port_part_end();
-}
-
-static PvrVtx g_v[64];
-static u32 g_seq[64];
-static PvrScene g_s;
-
-/* the render: the parse tags each vertex, one scene vertex each */
-static void render(void)
-{
-    g_s.vtx = g_v, g_s.seq = g_seq, g_s.nvtx = g_n, g_s.vcap = g_s.seq_cap = 64u;
-    for (u32 i = 0; i < g_n; i++) {
-        const f32 *f = (const f32 *)(uintptr_t)(g_addr[i] + 4u);
-        pvr_parts_vertex(0u, g_addr[i]);
-        memset(&g_v[i], 0, sizeof g_v[i]);
-        g_v[i].x = f[0], g_v[i].y = f[1], g_v[i].z = f[2];
-        g_seq[i] = pvr_parts_seq();
-    }
-    pvr_parts_from(&g_s);
-}
-
-static void show(const char *name, f32 t)
-{
-    u32 n = 0;
-    const PvrVtx *v = pvr_parts_blend(&g_s, t, &n);
-    printf("%s %d:", name, g_s.has_from);
-    for (u32 i = 0; v && i < g_s.nvtx; i++) printf(" %.4f,%.4f,%.5f", v[i].x, v[i].y, v[i].z);
-    printf("\n");
-}
-
-int main(void)
-{
-    if (!VirtualAlloc((void *)(uintptr_t)RAM, 0x10000u, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE)) {
-        printf("noram\n");
-        return 0;
-    }
-    pvr_parts_lists(g_ptrs);
-    pvr_parts_blend_option("on");
-    /* tick 1: A (obj 0 part 0) one vertex; a 2D vertex; C (obj 1 part 1) 2 vertices; D (obj 2 part 2) stamp 7;
-       E (obj 3 part 3) drawn twice */
-    begin_tick();
-    part(0, 0, 5, 1, 100.0f, 50.0f, 0.1f);
-    vtx(50.0f, 50.0f, 1.0f);
-    part(1, 1, 5, 2, 300.0f, 60.0f, 0.5f);
-    part(2, 2, 7, 1, 400.0f, 70.0f, 0.5f);
-    part(3, 3, 5, 1, 10.0f, 80.0f, 0.5f);
-    part(3, 3, 5, 1, 300.0f, 80.0f, 0.5f);
-    render();
-    /* tick 2: A moved and nearer; the 2D vertex; C has 3 vertices now; D's stamp is 8; E twice, each 10 on; B new */
-    begin_tick();
-    part(0, 0, 5, 1, 200.0f, 50.0f, 0.2f);
-    vtx(50.0f, 50.0f, 1.0f);
-    part(1, 1, 5, 3, 310.0f, 60.0f, 0.5f);
-    part(2, 2, 8, 1, 410.0f, 70.0f, 0.5f);
-    part(3, 3, 5, 1, 20.0f, 80.0f, 0.5f);
-    part(3, 3, 5, 1, 310.0f, 80.0f, 0.5f);
-    part(0, 1, 5, 1, 500.0f, 90.0f, 0.5f);
-    render();
-    printf("hold %d\n", pvr_parts_hold_frame());
-    show("t0", 0.0f);
-    show("t05", 0.5f);
-    show("t1", 1.0f);
-    /* --interp-truth: frames 0..3 with A on its way from tick 2's x 200: 210, 220, 230, 240 */
-    g_truth = 1;
-    for (g_frame = 0; g_frame < 4; g_frame++) {
-        begin_tick();
-        part(0, 0, 5, 1, 210.0f + 10.0f * (f32)g_frame, 50.0f, 0.5f);
-        render();
-    }
-    show("truth", 0.5f);
-    printf("paired %d\n", pvr_parts_hold_frame());
-    /* turns: F (obj 0 part 2) x 0, 10, 0; G (obj 1 part 2) 0, 10, 20; H (obj 2 part 3) 0, 0.5, 0 */
-    g_truth = 0;
-    for (int k = 0; k < 3; k++) {
-        const f32 turn[3] = {0.0f, 10.0f, 0.0f}, wobble[3] = {0.0f, 0.5f, 0.0f};
-        begin_tick();
-        part(0, 2, 5, 1, turn[k], 50.0f, 0.5f);
-        part(1, 2, 5, 1, 10.0f * (f32)k, 60.0f, 0.5f);
-        part(2, 3, 5, 1, wobble[k], 70.0f, 0.5f);
-        render();
-    }
-    printf("turned %d %d\n", pvr_parts_hold_frame(), pvr_parts_holds());
-    show("turn", 0.5f);
-    show("turn1", 1.0f);
-    return 0;
-}
-"""
+from pvr_parts_driver import DRIVER_C  # noqa: E402
 
 
 @unittest.skipUnless(HAVE_VC, NO_VC)
@@ -175,7 +65,8 @@ class PartsBlend(unittest.TestCase):
              "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}), encoding="utf-8")
         (d / "parts_main.c").write_text(DRIVER_C, encoding="utf-8")
         rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
-        srcs = " ".join(f'"{p}"' for p in [KIT / "pvr" / "pvr_parts.c", d / "parts_main.c"])
+        srcs = " ".join(f'"{p}"' for p in [KIT / "pvr" / "pvr_parts.c", KIT / "pvr" / "pvr_parts_fit.c", KIT / "pvr" / "pvr_parts_blend.c",
+                                                d / "parts_main.c"])
         cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O2 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "pvr"}" '
               f'/I"{KIT / "base"}" /I"{rd}" {srcs} /Fe:parts.exe /link /LARGEADDRESSAWARE')
         vc = str(game_config.vcvars32()).replace("/", "\\")
@@ -215,14 +106,15 @@ class PartsBlend(unittest.TestCase):
         self.assertEqual(v[5], (410.0, 70.0, 0.5))  # the stamp changed
         self.assertEqual(v[8], (500.0, 90.0, 0.5))  # new
 
-    def test_a_part_drawn_twice_pairs_in_order(self):
+    def test_a_part_drawn_twice_pairs_with_the_nearest(self):
         self.assertEqual([p[0] for p in self.verts("t05")[1][6:8]], [15.0, 305.0])
+        self.assertEqual([p[0] for p in self.verts("swap")[1]], [315.0, 25.0])  # drawn in the other order: still nearest
 
     def test_truth_blends_the_scene_two_before(self):
         self.assertEqual(self.verts("truth")[1][0][0], 230.0)  # frames 1 and 3 at one half: where frame 2 was
 
     def test_a_scene_mostly_new_or_gone_holds(self):
-        self.assertEqual(self.out["hold"], "1")  # 8 of 11 part vertices new or gone
+        self.assertEqual(self.out["hold"], "1")  # 6 of 12 part vertices new or gone
         self.assertEqual(self.out["paired"], "0")
 
     def test_a_part_that_turned_back_stays_where_it_was(self):
@@ -231,6 +123,73 @@ class PartsBlend(unittest.TestCase):
             self.assertEqual(self.verts(name)[1][0], (10.0, 50.0, 0.5))  # 0, 10, 0: where it was, at any t
         self.assertEqual(self.verts("turn")[1][1][0], 15.0)  # 0, 10, 20: on its way
         self.assertEqual(self.verts("turn")[1][2][0], 0.25)  # 0, 0.5, 0: under a pixel a tick, blended
+
+    def test_split_screen_views_pair_with_their_own_view(self):
+        self.assertEqual(self.verts("view0")[1][0][0], 105.0)
+        self.assertEqual(self.verts("view1")[1][0][0], 395.0)  # not from view 0's render: 250
+        self.assertEqual(self.out["views"], "0")
+        self.assertEqual(self.out["reclip"], "1")  # another view in the slot: nothing pairs
+
+    def test_a_culled_part_moves_by_its_fitted_map(self):  # Toy Commander culls and clips per polygon in software
+        self.assertEqual(self.out["culled"], "0")  # paired through its map: the scene is not held
+        has, v = self.verts("cull")
+        kept = [i for i in range(12) if i not in (2, 6)]
+        want = [(110.0 + 10 * (i % 4), 100.0 + 10 * (i // 4)) for i in kept] + [(140.0, 150.0)]  # the new vertex too
+        self.assertEqual((has, len(v)), (1, len(want)))
+        for got, (x, y) in zip(v, want):
+            self.assertAlmostEqual(got[0], x, delta=0.01)
+            self.assertAlmostEqual(got[1], y, delta=0.01)
+            self.assertAlmostEqual(got[2], 0.5, delta=0.001)
+
+    def test_a_flat_culled_part_keeps_its_repeated_corners(self):  # Toy Commander: a floor strip draws its corners twice
+        self.assertEqual(self.out["flatheld"], "0")  # all 19 vertices paired by place: not held
+        has, v = self.verts("flat")
+        kept = [i for i in range(12) if i != 5]
+        want = [(110.0 + 10 * (i % 4), 100.0 + 10 * (i // 4), 0.5) for i in kept]  # the grid: each 10 on
+        want += [(110.0 + 10 * (j // 2), 140.0, 0.25) for j in range(8)]  # each corner twice, 10 on, not thrown
+        self.assertEqual((has, len(v)), (1, len(want)))
+        for got, w in zip(v, want):
+            for g, e in zip(got, w):
+                self.assertAlmostEqual(g, e, delta=0.01)
+
+    def test_vertices_clamped_at_the_near_plane_stay(self):  # Toy Commander: 1/w 0.1, x and y as projected
+        v = self.verts("clamp")[1]
+        self.assertEqual(v[0], (109.0909, 100.0, 0.0546))  # in perspective, as any vertex
+        self.assertEqual(v[2:4], [(-9000.0, 300.0, 0.1), (9000.0, 300.0, 0.1)])  # no point of the part: as now
+        v = self.verts("clamped")[1]  # a scene with none: the clamp is kept
+        self.assertEqual(v[0], (122.5, 100.0, 0.06))
+        self.assertEqual(v[2:], [(140.0, 100.0, 0.06), (150.0, 100.0, 0.06)])  # clamped a tick before: as now
+
+    def test_a_part_drawn_in_another_order_pairs_by_its_map(self):  # Toy Commander: the floor under the eye
+        self.assertEqual(self.out["reordered"], "0")
+        has, v = self.verts("reorder")
+        want = [(110.0 + 10 * (i % 4), 100.0 + 10 * (i // 4)) for i in ((j + (5 if j < 12 else 7)) % 12 for j in range(24))]
+        self.assertEqual((has, len(v)), (1, 24))
+        for got, (x, y) in zip(v, want):  # not torn: each from where it was, not from the one drawn there before
+            self.assertAlmostEqual(got[0], x, delta=0.01)
+            self.assertAlmostEqual(got[1], y, delta=0.01)
+
+    def test_a_part_of_two_pieces_moves_piece_by_piece(self):  # Toy Commander: a helicopter and its rotor are one part
+        self.assertEqual(self.out["twopiece"], "0")
+        has, v = self.verts("two")
+        rx, ry = [6.0, 4.243, 0.0, -4.243, -6.0, -4.243, 0.0, 4.243], [0.0, 4.243, 6.0, 4.243, 0.0, -4.243, -6.0, -4.243]
+        want = [(210.0 + 10 * (i % 4), 200.0 + 10 * (i // 4)) for i in range(16) if i != 5]  # the body: half way
+        want += [(225.0 + (rx[j] - ry[j]) / 2, 215.0 + (ry[j] + rx[j]) / 2) for j in range(8)]  # the rotor: each vertex from its own
+        self.assertEqual((has, len(v)), (1, len(want)))
+        for got, (x, y) in zip(v, want):
+            self.assertAlmostEqual(got[0], x, delta=0.01)
+            self.assertAlmostEqual(got[1], y, delta=0.01)
+
+    def test_a_scene_whose_view_jumped_holds(self):
+        self.assertEqual(self.out["jump"], "1")  # all 64 vertices 100 on in a tick
+        self.assertEqual(self.out["glide"], "0")  # 10 on
+
+    def test_vertices_clamped_in_both_ticks_move_across_the_screen(self):
+        v = self.verts("both")[1]
+        for got, want in zip(v[2:4], [(-8500.0, 310.0, 0.1), (9200.0, 310.0, 0.1)]):  # still clamped
+            for g, w in zip(got, want):
+                self.assertAlmostEqual(g, w, delta=0.01)
+        self.assertEqual(v[4], (50.0, 50.0, 1.0))
 
 
 if __name__ == "__main__":

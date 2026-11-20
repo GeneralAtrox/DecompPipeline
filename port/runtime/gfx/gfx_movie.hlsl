@@ -1,6 +1,7 @@
 // A movie frame (runtime/gfx/gfx_movie.c) over the picture: its Y, Cb and Cr planes sampled bilinearly (chroma at
 // half size, sited between the luma samples as MPEG-1's are) and turned into RGB by ITU-R BT.601's studio-range
-// matrix. Drawn with pvr_full_vs's full-screen triangle into a viewport the size of the movie's rectangle.
+// matrix. ps_movie_rgba draws a picture already in RGB (a movie the game decodes itself, converted as the renderer
+// converts its textures: port_movie_show_yuv422). Drawn with pvr_full_vs's full-screen triangle into a viewport the size of the movie's rectangle.
 Texture2D<float> plane_y : register(t0);
 Texture2D<float> plane_cb : register(t1);
 Texture2D<float> plane_cr : register(t2);
@@ -19,4 +20,11 @@ float4 ps_movie(float4 pos : SV_Position) : SV_Target
     float cr = plane_cr.Sample(linear_clamp, uv) * 255.0 - 128.0;
     float3 rgb = float3(1.164 * y + 1.596 * cr, 1.164 * y - 0.392 * cb - 0.813 * cr, 1.164 * y + 2.017 * cb);
     return float4(saturate(rgb / 255.0), 1.0);
+}
+
+Texture2D<float4> picture : register(t3);
+
+float4 ps_movie_rgba(float4 pos : SV_Position) : SV_Target
+{
+    return float4(picture.Sample(linear_clamp, (pos.xy - rect.xy) / rect.zw).rgb, 1.0);
 }

@@ -85,6 +85,18 @@ class Restage(unittest.TestCase):
         self.assertIn("was matched against", p.stderr)
         self.assertEqual(self.files(), self.before)
 
+    def test_other_targets_refused(self):  # relocate() knows Dreamcast RAM only: it never reports C relocated there
+        (self.new / "project.json").write_text(json.dumps({"target": "saturn_sh2"}), encoding="utf-8")
+        cmd = [sys.executable, str(TOOL / "xproject.py"), "--project", str(self.new), "--from", str(self.old)]
+        for sub in (["stage"], ["restage"]):
+            p = subprocess.run(cmd + sub, capture_output=True, text=True, timeout=120)
+            self.assertNotEqual(p.returncode, 0)
+            self.assertIn("relocates only Dreamcast RAM addresses", p.stderr)
+            self.assertIn(f"{self.new} is saturn_sh2", p.stderr)
+            self.assertNotIn("relocated;", p.stdout)
+        self.assertEqual(self.files(), self.before)
+        self.assertEqual(xproject.target_of(self.old), "dreamcast_sh4")  # no project.json: Dreamcast
+
 
 if __name__ == "__main__":
     unittest.main()

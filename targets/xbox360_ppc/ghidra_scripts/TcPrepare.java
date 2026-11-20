@@ -86,6 +86,7 @@ public class TcPrepare extends TcVectors {
         }
 
         DecompInterface di = new DecompInterface();
+        di.toggleJumpLoads(true);  // each switch's table: TcJumpTables
         di.openProgram(currentProgram);
         Proto proto = prototypeOf(di, fn);
         DecompileResults dres = di.decompileFunction(fn, 60, monitor);
@@ -94,6 +95,9 @@ public class TcPrepare extends TcVectors {
                 + "). There is no decompiler output: translate asm.txt directly. The signature comes from the\n"
                 + "   registers the code reads before writing them. */\n";
         Files.write(packet.resolve("ghidra.c"), cText.getBytes("UTF-8"));
+        facts.tables = TcJumpTables.of(dres.decompileCompleted() ? dres.getHighFunction() : null,
+            body.getMinAddress().getOffset(), body.getMaxAddress().getOffset() + 1);
+        println("TcPrepare: switch tables read as data: " + facts.tables);
         Map<Function, Proto> called = new LinkedHashMap<>();
         for (Function c : calledBy()) called.put(c, c == fn ? proto : isImport(c) ? importProto(c) : prototypeOf(di, c));
         passThrough(proto, called);
@@ -156,6 +160,7 @@ public class TcPrepare extends TcVectors {
             dirsDev.clear();
             dirsAll.clear();
             blockHits.clear();
+            switchHits.hits.clear();
             println("TcPrepare: unsupported: " + why);
         } else {
             for (Param q : probeWidths(proto)) {
@@ -169,6 +174,9 @@ public class TcPrepare extends TcVectors {
         for (int s = 0; s < 2; s++) {  // chosen vectors whose strict replay failed: not written (TcStrict.replay)
             valid[s] -= TcStrict.dropped[s];
             if (TcStrict.dropped[s] > 0) invalid.merge("strict flags: the replay failed", TcStrict.dropped[s], Integer::sum);
+        }
+        if (seedR12 || seedCrMask != 0) {   // the entry seeds (TcOracle.findEntrySeeds, vectors.txt A); absent: none
+            metaFields.put("entry_seeds", "{\"r12\": " + seedR12 + ", \"cr_mask\": \"" + hex(seedCrMask) + "\"}");
         }
         writeMeta(packet, harness, proto, why);
         Files.write(harness.resolve("vectors.txt"), (TcStrict.header(facts) + vout).getBytes("UTF-8"));  // J, U
@@ -201,6 +209,8 @@ public class TcPrepare extends TcVectors {
         for (String k : new String[] {"callees", "globals", "blocks", "ppc_special", "frame_helpers", "fixed_regs"}) {
             m.append("  \"").append(k).append("\": ").append(metaFields.get(k)).append(",\n");
         }
+        if (metaFields.containsKey("entry_seeds"))
+            m.append("  \"entry_seeds\": ").append(metaFields.get("entry_seeds")).append(",\n");
         m.append("  \"cpu\": \"ppc64\"").append(TcStrict.meta(facts)).append("\n}\n");
         Files.write(packet.resolve("meta.json"), m.toString().getBytes("UTF-8"));
         Files.write(harness.resolve("meta.json"), m.toString().getBytes("UTF-8"));
@@ -222,12 +232,14 @@ public class TcPrepare extends TcVectors {
         return String.format("{\"dev_valid\":%d,\"dev_tried\":%d,\"hidden_valid\":%d,\"hidden_tried\":%d,"
                 + "\"blocks_total\":%d,\"blocks_hit_dev\":%d,\"blocks_hit_all\":%d,\"min_block_hits\":%d,"
                 + "\"repaired\":%d,\"fixups\":%d,%s\"fma_checked\":%d,\"fma_sensitive\":%d,\"widened\":%s,"
-                + "\"hints\":%d,\"call_sites\":{%s},\"invalid\":{%s},\"examples\":%s}\n",
+                + "\"hints\":%d,\"call_sites\":{%s},%s%s\"invalid\":{%s},\"examples\":%s}\n",
             valid[0], tried[0], valid[1], tried[1], blocks.size(), covDev.size(), covAll.size(),
             blockHits.isEmpty() ? 0 : Collections.min(blockHits.values()), repaired, fix.fixups,
             (unhit.isEmpty() ? "" : "\"blocks_unhit\":" + jsonList(unhit) + ",") + (bound != null ? bound + "," : "")
             + (dirs != null && valid[0] + valid[1] > 0 ? dirs.summary(dirsDev, dirsAll) : ""), fmaChecked, fmaSensitive,
-            jsonList(widened), nhints, sites, inv, jsonList(examples));
+            jsonList(widened), nhints, sites,
+            switchHits.hits.isEmpty() ? "" : "\"switch_hits\":" + switchHits.json() + ",", seedxJson(blocks), inv,
+            jsonList(examples));
     }
 
     // The functions fn calls or tail-branches to (helper families excepted: they run inline), sorted by entry; fn

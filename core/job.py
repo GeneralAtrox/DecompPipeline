@@ -33,7 +33,7 @@ class Prefetch:
     def _run(self, o, w):
         t = time.monotonic()
         try:
-            reused = reuse_harness(o.cfg, self.addr)  # current already: no slot and no Ghidra, as investigate
+            reused = reuse_harness(o.cfg, self.addr, o.log)  # current already: no slot and no Ghidra, as investigate
             if reused:
                 self.result, self.reused = reused, True
                 return
@@ -104,13 +104,13 @@ def attempt_summary(att):
     return s + (f"; {att['run_error']}" if att.get("run_error") else "")
 
 
-def reuse_harness(cfg, addr):
+def reuse_harness(cfg, addr, log=None):
     """reusable_harness when config "harness_reuse" is on (project.json over target.json over config.json), else
     None without looking: a target or project where reuse is not proven prepares every function, as before."""
-    return reusable_harness(cfg, addr, take=True) if cfg.get("harness_reuse") else None
+    return reusable_harness(cfg, addr, take=True, log=log) if cfg.get("harness_reuse") else None
 
 
-def reusable_harness(cfg, addr, take=False):
+def reusable_harness(cfg, addr, take=False, log=None):
     """(meta, summary) of addr's harness when a prepare now would make the same one, else None: the packet and every
     harness file exist, and the harness is current by its oracle stamp (core/oracle_stamp: the scripts, facts, hints,
     vector counts, catalog, binary and Ghidra install it was made from are today's, and no callee record drifts).
@@ -126,13 +126,13 @@ def reusable_harness(cfg, addr, take=False):
     if not isinstance(meta, dict) or not meta.get("signature") or not isinstance(summary, dict):
         return None
     try:  # callee harnesses may be mid-write by another worker's prepare: any doubt prepares, as before
-        now = oracle_fresh.Stamper(cfg).today(addr)
-        if oracle_stamp.current(dict(meta, addr=meta.get("addr", addr)), now) is not None:
-            return None
-    except Exception:  # noqa: BLE001  (inputs unreadable: prepare as before)
-        return None
-    if not ghidra.strip_status(paths.PACKETS / addr, write=take):  # an older packet, split with the plate in it
-        return None
+        stale = oracle_stamp.current(dict(meta, addr=meta.get("addr", addr)), oracle_fresh.Stamper(cfg).today(addr))
+    except Exception as e:  # noqa: BLE001  (inputs unreadable: prepare as before, one log line saying why)
+        stale = f"harness reuse check failed ({type(e).__name__}: {e}); preparing it as before"
+        if log is not None:
+            log(f"{addr}: {stale}")
+    if stale is not None or not ghidra.strip_status(paths.PACKETS / addr, write=take):  # strip_status: False for an
+        return None  # older packet split with the plate in it
     return meta, summary
 
 
@@ -162,7 +162,7 @@ def investigate(o, w, addr, pre=None):
                   f" (tier {r['tier']}, score {r['score']}, system {r['system']}); "
                   f"waited {r['prefetch_wait_s']:.1f} s for it")
         else:
-            reused = reuse_harness(cfg, addr)  # decided once, here; a prefetch decides on its own thread
+            reused = reuse_harness(cfg, addr, o.log)  # decided once, here; a prefetch decides on its own thread
             if reused:  # a current harness (an earlier prepare, tools/prepare_list.py): no Ghidra, no slot
                 (meta, summary), reused, r["slot_wait_s"] = reused, True, 0.0
                 o.log(f"[W{w.id}] {addr}: harness is current (oracle stamp); reused without Ghidra "

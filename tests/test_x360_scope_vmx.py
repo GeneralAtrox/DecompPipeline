@@ -31,16 +31,17 @@ class Scope(unittest.TestCase):
 
     def test_entry_names_the_current_script(self):
         # a scoped change names today's file; none is in force after the oracle changes that reach every function.
-        # Today's entry is a42a6551's "prewave_flags" (x360_scope.FLAG_SCOPES), which took over from "vmx"
+        # a42a6551's "prewave_flags" (x360_scope.FLAG_SCOPES) took over from "vmx"; "exit_state" (TcExit:
+        # tests/test_x360_judge_exit.py) and "gate" (TcSeedx GATE) are the Xbox 360 line's
         for e in json.loads((X360 / "target.json").read_text(encoding="utf-8"))["stamp_scopes"]:
             # boundary_vectors: TcBound.java only (tests/test_targeted_vectors.py StampScope); unlisted_call_args:
             # TcTrack.java only (8f72a3fa, core/unchecked_args)
             if e["scope"] in ("boundary_vectors", "unlisted_call_args"):
                 continue
-            self.assertEqual(e["scope"], "prewave_flags")
-            before, after = e["scripts"]["TcVectors.java"]
-            self.assertEqual(after, hashlib.sha256((X360 / "ghidra_scripts" / "TcVectors.java").read_bytes()).hexdigest())
-            self.assertNotEqual(before, after)
+            self.assertIn(e["scope"], ("prewave_flags", "vmx", "exit_state", "gate"))
+            for name, (before, after) in e["scripts"].items():
+                self.assertEqual(after, hashlib.sha256((X360 / "ghidra_scripts" / name).read_bytes()).hexdigest(), name)
+                self.assertNotEqual(before, after)
 
     def test_stamps(self):
         d = tmpdir("x360vmx_")

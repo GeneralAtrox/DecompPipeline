@@ -29,7 +29,9 @@ class Assign:
 
 
 class Store:
-    """wr8/wr16/wr32/wr64/wrf32d/wrf64/wr16r/wr32r(addr, val), or a vector store xv_*(addr, val). removable: a
+    """wr8/wr16/wr32/wr64/wrf32d/wrf64/wr16r/wr32r(addr, val), a vector store xv_*(addr, val), or a reservation (port form: tc_lwarx/tc_ldarx(addr, 0) take one,
+    tc_stwcx/tc_stdcx(addr, val) store only if it holds), or a memory barrier (port form: tc_sync/tc_lwsync/tc_eieio(0, 0);
+    being a Store, no load is carried across it). removable: a
     stack-frame store nothing reads (passes.stack_dce)."""
     __slots__ = ("fn", "addr", "val")
 
@@ -50,7 +52,8 @@ class Store:
 
     def size(self):
         return {"wr8": 1, "wr16": 2, "wr32": 4, "wr64": 8, "wrf32d": 4, "wrf64": 8, "wr16r": 2, "wr32r": 4,
-                "xv_st": 16, "xv_stew": 4, "xv_steh": 2, "xv_steb": 1, "xv_stl": 16, "xv_str": 16}[self.fn]
+                "xv_st": 16, "xv_stew": 4, "xv_steh": 2, "xv_steb": 1, "xv_stl": 16, "xv_str": 16, "xv_stv": 16,
+                "tc_sync": 0, "tc_lwsync": 0, "tc_eieio": 0, "tc_lwarx": 4, "tc_ldarx": 8, "tc_stwcx": 4, "tc_stdcx": 8, "tc_stg": 8, "tc_stf": 8}[self.fn]
 
 
 class CallS:
@@ -71,10 +74,13 @@ class CallS:
         return out
 
     def writes(self):
+        # The other result register too, unless the callee keeps it: other_result gives it tc_lastf() / tc_lastr() after the call. Without it a copy
+        # propagated across the call (r30 = r3 before a float call, read after as r3) took the callee's r3 instead: Too Human's 82ed4988 built a
+        # new object on the global it had passed to 82ef2500, and the loader thread read a float as a pointer
         if self.kind == "r":
-            return {"r3"}
+            return {"r3"} if self.keep_other else {"r3", "f1"}
         if self.kind == "f":
-            return {"f1"}
+            return {"f1"} if self.keep_other else {"f1", "r3"}
         if self.kind == "v":        # port form: the callee is void, so r3 and f1 stay as they were (a constructor returning `this`)
             return set()
         return {"r3", "f1"}

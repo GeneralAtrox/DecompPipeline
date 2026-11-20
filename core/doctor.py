@@ -20,16 +20,61 @@ Fails on:
 Reports, without failing: the proof gates' figure (core/proof.py: verified, matched_low_coverage, weak harnesses),
 readable files whose readable.json status does not describe them (a file with no row or
 with a status other than readable/stale/harness_stale/running, a "readable" row without a file), and the readable
-denominator: readable files of current functions next to the matched functions they rewrite.
+denominator: readable files of current functions next to the matched functions they rewrite. Also, as the claims
+are, what holds runs up (run_notes): the machine's Ghidra HOLD (and whether its writer still runs) and wave STOP file
+(core/wave_ctl), readable rows in harness_stale or infra_error, and a `wave.py run --game` state that ended stuck.
 """
 import collections
+import json
 import pathlib
 import re
+import time
 
-from . import callee_drift, filelock, locations, raw_names, retire, scope, sysassign
+from . import callee_drift, filelock, locations, proof, raw_names, retire, scope, sysassign
 
-# a readable/src file exists for these (unproven, needs_review: core/proof.readable_state)
-FILE_STATUSES = ("readable", "stale", "harness_stale", "running", "unproven", "needs_review")
+# a readable/src file exists for these: every status a readable PASS records (core/proof.readable_state), and these
+FILE_STATUSES = proof.PASSED + ("stale", "harness_stale", "running")
+TOOL = pathlib.Path(__file__).resolve().parents[1]
+
+
+def run_notes(ws, pj, rd, funcs):
+    """Read-only notes on what holds the workspace's runs up -> (notes, facts). The HOLD and STOP are the machine's:
+    the HOLD's folder is the broker's (project.json "ghidra_broker" over the tool's config, core/ghidra_broker)."""
+    from . import ghidra_broker, infra, toolcfg, wave_ctl
+    notes, when = [], lambda t: time.strftime("%Y-%m-%d %H:%M", time.localtime(t))
+    d = ghidra_broker.settings({"ghidra_broker": pj.get("ghidra_broker") or toolcfg.load(TOOL).get("ghidra_broker")})[1]
+    hold = wave_ctl.hold_info(d)
+    if hold is not None:
+        who = (f"pid {hold['pid']}, " + ("running" if hold["alive"] else "not running: a stopped wave keeps it to "
+                                         "resume (wave.py run)") if "alive" in hold else "no pid recorded")
+        since = f" since {when(hold['since'])}" if isinstance(hold.get("since"), (int, float)) else ""
+        notes.append(f"a Ghidra HOLD is in {d} (by {hold.get('by', 'no writer recorded')}{since}; {who}): every Ghidra "
+                     "run on this machine without its pass waits until `python tools/wave.py release` removes it")
+    stop = wave_ctl.stop_mark(wave_ctl.STOP_FILE)
+    if stop is not None:
+        notes.append(f"a wave STOP file is in {wave_ctl.STOP_FILE} (written {when(stop[0] / 1e9)}): a wave running "
+                     "since before then stops; one started after it ignores it")
+    stale = sorted(a for a, r in rd.items() if a in funcs and (r or {}).get("status") == "harness_stale")
+    if stale:
+        notes.append(f"{len(stale)} readable row(s) harness_stale: the matched raw C fails its harness (re-prepare: "
+                     f"python tools/prepare_list.py --project {ws} --harness-stale): " + " ".join(stale[:16]))
+    broke = sorted(a for a in infra.rows(rd) if a in funcs)
+    if broke:
+        notes.append(f"{len(broke)} readable row(s) record an infrastructure error, not a verdict (refine.py status "
+                     "lists them; a plain refine.py run tries them again): " + " ".join(broke[:16]))
+    wg, stuck = ws / "state" / "wave_game.json", None
+    if wg.exists():
+        try:
+            stuck = (json.loads(filelock.read_text(wg)) or {}).get("stuck")
+        except (OSError, ValueError, AttributeError) as e:
+            stuck = "unreadable state"
+            notes.append(f"{wg} is unreadable ({type(e).__name__}): `wave.py run --game` refuses to start until it is "
+                         "restored, fixed or removed")
+        else:
+            if stuck:
+                notes.append(f"`wave.py run --game` ended stuck: {stuck} ({wg}; its next start tries that step again)")
+    return notes, {"hold": hold is not None, "hold_alive": (hold or {}).get("alive"), "wave_stop": stop is not None,
+                   "readable_harness_stale": len(stale), "readable_infra_error": len(broke), "wave_game_stuck": stuck}
 
 
 def check(ws):
@@ -108,8 +153,7 @@ def check(ws):
     from . import call_coverage  # the figure the final audit's calls check judges (tools/call_coverage.py)
     cov = call_coverage.figure(call_coverage.site_rows(sorted(matched), ws / "harness"))
     notes.append(call_coverage.summary_line(cov))
-    from . import proof  # the proof gates' figure (tools/coverage_gate.py, tools/final_audit.py "proof")
-    pcfg = proof.project_cfg(ws)
+    pcfg = proof.project_cfg(ws)  # the proof gates' figure (tools/coverage_gate.py, tools/final_audit.py "proof")
     prf = proof.figure(proof.scan(ws, matched, pcfg))
     notes.append(proof.summary_line(prf, proof.coverage_settings(pcfg)))
     if mismatched:
@@ -129,6 +173,8 @@ def check(ws):
     if held:
         notes.append(f"{len(held)} function(s) claimed now by a running refine run, verify, sync-names or check: "
                      + "; ".join(f"{a}: {filelock.describe(r)}" for a, r in sorted(held.items())[:12]))
+    run, run_facts = run_notes(ws, pj, rd, set(funcs))
+    notes += run
     readable_pass = st["readable"]
     facts = {"orphans": len(plan["items"]), "orphan_addrs": len({i["addr"] for i in plan["items"]}),
              "readable_files": len(files), "readable_files_functions": len(cur), "readable_status": dict(st),
@@ -137,7 +183,8 @@ def check(ws):
              "extras_not_functions": len(no_extra), "raw_named_files": len(raw),
              "raw_unnamed_uses": raw_counts[0], "stale_callee_harnesses": len(drift_matched),
              "stale_callee_harnesses_unmatched": len(drifted) - len(drift_matched),
-             "stale_claims_cleared": len(stale_claims), "claimed": len(held), "call_coverage": cov, "proof": prf}
+             "stale_claims_cleared": len(stale_claims), "claimed": len(held), "call_coverage": cov, "proof": prf,
+             **run_facts}
     others = "".join(f", {n} {k}" for k, n in sorted(st.items()) if k != "readable")
     notes.insert(0, f"readable: {len(files)} file(s) in readable/src, {len(cur)} of current functions "
                     f"({len(files) - len(cur)} not functions); of those {readable_pass} readable{others}; "

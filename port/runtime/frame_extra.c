@@ -366,7 +366,7 @@ void port_extra_land(void)
 {
     if (!g_held) return;
     g_held = 0;
-    if (!g_count) port_extra_thread_shows() ? (void)port_extra_thread_go() : gfx_show(); /* that thread shows it: the tick never Presents */
+    if (!g_count) gfx_show();
 }
 
 int port_extra_idle(u64 deadline_us)

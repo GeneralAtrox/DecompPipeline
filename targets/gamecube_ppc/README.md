@@ -88,7 +88,19 @@ argument registers `TcFlow` finds read before written) and runs the vectors (`Tc
   pointer call compares it there (`TcTrack.call`) and the C passes it on. Without that, a caller that passes its
   own entry f2..f8 on to a later callee (80213fe8 into 80155994) had expected values no C signature can carry;
 - CodeWarrior's register save/restore helpers (`_savegpr_NN` and family, `TcFlow.isSaveHelper`) run inline: they are
-  part of the frame, not calls.
+  part of the frame, not calls. A helper entry is also judged on its own (`TcOracle.selfHelper`): its whole chain to
+  the `blr` runs, entered with a frame from the vector (`TcVectors.frame`, vectors.txt `X r11 r14..r31 f14..f31`): r11
+  points at a save area just below the stack window (moved in 8-byte steps; the 0x200 bytes up to 0x817f0000 random,
+  an M patch), r14..r31 and f14..f31 random. A save is compared by its W lines (the area is below the stack window's
+  cut), a restore by the exit frame (`XR`, r14..r31 and f14..f31). The C reads the entry values with `tc_inr` /
+  `tc_inf` (the runners' `tcrt_set_frame`, which is also the exit frame's default); the translator does so for a helper
+  entry only (`helper_walk`). Every other function's harness and C are byte for byte as before (`tests/test_gc_r11.py`).
+- a mocked call returns the vector's scripted r3 and f1: 16 of each (vectors.txt C and D), then, for calls 16..63, 0
+  unless the run faulted through such a result. Then `TcVectors.lateRepair` makes it and the next 15 fresh chunks
+  (`TcOracle.lateOf`, written after C's 16 words up to the last that is not 0; the runners read up to `TCRT_RETS` = 64,
+  a missing word 0). Skies 8012ab84 (`bl; lwz r3,4(r3)` as the 17th call) and the allocator loops of 801978xx had no
+  valid vector before. A run of 16 calls or fewer, and any vector that never faults through a later result, is byte for
+  byte as before (`tests/test_gc_calls.py`; stamp scope `save_helper_frame`, `hooks.late_calls`).
 - a store into a hardware register (`memory.mmio`: 0xcc000000..0xcc00ffff, the GX FIFO at 0xcc008000 and the video,
   DMA and audio registers; 0xe0000000..0xe0003fff, the locked cache) is not memory. `TcBank` logs it in order (address,
   size, value; a store of the same step to the same address and size, the `stfs` rewrite, replaces the entry) and does
@@ -121,8 +133,8 @@ wrong model gives the same wrong answer twice and passes:
 - `ConvertToSingle` (a double going to a single-precision result or store);
 - the double-rounded `fmadd` family in single precision.
 
-Not modelled, refused by the oracle with their reason: non-zero GQR quantized `psq_l`/`psq_st`, the `ps_*` arithmetic, `mfmsr`,
-`mtmsr`, `mftb`, FPSCR moves (`mffs`, `mtfsf`), `dcbi`, `sc`.
+Not modelled, refused by the oracle with their reason: `psq_l`/`psq_st` through a GQR that is not a fact or has a reserved type (1..3), `mftb`,
+FPSCR moves (`mffs`, `mtfsf`).
 
 A `blr` is a return: a `mtlr` of something other than the saved LR followed by `blr` (5 sites in Skies of Arcadia) is a computed
 jump the C would not make. That fails the judge rather than passing it, when a vector reaches it.
@@ -132,6 +144,29 @@ that callee reads it: a wrong r4 there passes.
 
 Functions that walk long chains of game objects have few or no valid random vectors (`MAX_REPAIRS`): they end as FAIL with 0 vectors.
 
+Switch cases (`TcSwitchPass`, run by `TcPrepare` after the bound pass): for each jump-table `bctr`, the pass slices the selector back
+from the `slwi` to its root (an argument register, a loaded word, a call's r3) and sets that root so each case no vector reached runs once,
+keeping a vector only when the run is valid. Skies of Arcadia, the 215 PASS functions with an unreached case (2026-11-15): cases reached
+1,311 -> 2,291 of 2,749; switches never run 49 -> 35; switches fully hit 50 -> 212; no verdict changed. Round 2 (`TcSwitchSel`: the
+slicer walks past a prologue's `stmw`, reads `lbzu`, `xoris` and two halfwords joined by `or`; guards: the register a branch's compare
+tests, set so the branch goes the way to a switch no vector runs) and round 3 (in a loop the nearer direction is the way; a switch on an
+argument tries every base): 2,291 -> 2,472 -> 2,498 of 2,749, no case lost against master, all 215 still PASS. What stays unreached
+(251, counted by reason in `switch_pass`): 126 in switches no vector runs (the MusyX sequencer loops 802a6398, 80289390, 802a1374: 56,
+guard set but not taken; a guard on a constant or a loop counter: 9 guards; a compare of two registers: 8; a register a call clobbers:
+5), 92 where the set selector did not give the case (another case ran: 43, the switch not reached with the root set: 37, invalid run: 11),
+and 35 undirected (a flag set built with `ori` across branches: 13, a constant or loop counter: 13, add/subf: 6, a table not found: 3).
+A PASS says nothing about those.
+
+Memory is compared as it stands at the exit: every byte either side wrote below the stack window (0x817f0000), its final value
+(`ppc_compare.compare_memory`; the oracle reads each written range at the exit, `TcOracle.collect`, the runtime its RAM, `tcrt_report`).
+There is no page set, seed-image bound or size cap (more than 4 Mi written bytes is a fault). So a store the function itself overwrites
+later, with no mocked call between, is not compared, and needs none: no caller can see it. A mocked call between the two stores could
+read the first value; only a pointer argument's stored bytes are compared there (call snapshots). Checked 2026-11-15 on 800121d8, where a
+1.0 planted for the loaded 0.0 at `r3+0x164` in case 80012368 passed: hidden vector 99 stores it at 0x81003664 seven times, and the code
+after the switch (the same loop over the 14 pointers at 0x80309e24, with no condition) stores the reloaded 0.0 there seven times more
+before any call, on both sides. Its literal plant (0x803481b8 -> 0x803481b9) is reloaded there too. Not a blind spot; the Dreamcast
+(`core/compare.py`) and Xbox 360 (`x360_compare.py`) judges compare memory by the same rule.
+
 ## Runtime and check (runtime/, hooks.py)
 
 `hooks.py` installs the PowerPC check (`ppc_check`, comparison in `ppc_compare`) and agent sandbox (`ppc_agent`)
@@ -139,7 +174,7 @@ through `core/target_hooks`. The runner (`runtime/runner.c`, `tc_rt.c`, `tc_ppc.
 a big-endian guest MEM1 and reports in the oracle's `expected.txt` format. The check is core's (lint R2-R6 with the
 float rule worded for `f64`, a /W4 /WX /fp:strict build, every dev and hidden vector bit for bit; `core/check._finish`).
 
-`translator/tools/dp_judge.py` labels a PASS `thin` when its vectors reached under 70% of the original's blocks, in the results file and the run's summary line. The verdict stays PASS: the label says the proof is weak there (`docs/proofs/2026-11-02/gc-tx-review/RESULT.md`).
+`translator/tools/dp_judge.py` labels a PASS `thin` when its vectors reached under 70% of the original's blocks, in the results file and the run's summary line. The verdict stays PASS: the label says the proof is weak there (`docs/proofs/2026-11-02/gc-tx-review/RESULT.md`). In numbers: `blocks_hit_all * 100 < 70 * blocks_total`, over every valid vector, directed ones (switch pass, bound pass) included; they are real inputs that the original ran, so they count. Skies' 215 switch functions: thin 87 -> 78 after rounds 2 and 3.
 
 ## Readable stage (runtime_rd/, ppc_readable*.py, readable_task.md)
 
@@ -180,7 +215,7 @@ handlers use. Each entry: what the p-code does, and what the target does about i
 |---|---|---|---|
 | fctiwz / fctiw | `trunc()`, sign-extended into the whole FPR | saturates (>= 2^31 -> 0x7fffffff, < -2^31 or NaN -> 0x80000000); upper word 0xfff80000 (0xfff80001 for a negative operand that converts to 0) | **wrong**: `TcFixups` rewrites fD after the step; C uses `ppc_fctiwz` / `ppc_fctiw` |
 | stfs / stfsu / stfsx / stfsux | `float2float` (rounds the double to single) | the store conversion takes the bits without rounding (Dolphin ConvertToSingle) | **wrong** for doubles no single holds: `TcFixups` rewrites the 4 stored bytes; C uses `wrf32d` (exact for every value) |
-| cntlzw / cntlzw. | `countLeadingZeros(S:4)`, a CALLOTHER | count of leading zeros, 32 for 0 | **not emulated** (the run stopped with "Unimplemented CALLOTHER"): `TcFixups.install` registers the callback; C uses `ppc_cntlzw` |
+| cntlzw / cntlzw. | `countLeadingZeros(S:4)`, a CALLOTHER | count of leading zeros, 32 for 0 | **not emulated** (the run stopped with "Unimplemented CALLOTHER"): `TcCallOther.install` registers the callback; C uses `ppc_cntlzw` |
 | any other CALLOTHER | user-defined op, no callback | - | the function is refused (`TcFixups.refuse`: "CALLOTHER name") |
 | frsp | `float2float` twice | round to single | correct, except below the smallest single subnormal: Ghidra's `FloatFormat.getEncoding` gives 0 for every value under 2^-149, IEEE (and the 750CL) gives 0x00000001 above 2^-150. **Wrong** there: `TcFixups` ("single") writes the IEEE result to fD (and ps1) after the step, for this and every single-result instruction below (tests/test_gc_single.py); C's `(f32)` cast is IEEE |
 | fadds / fsubs / fmuls / fdivs | double op, then `float2float` | one rounding to single | equal: the double result of two singles rounded again to single is the correctly rounded single (double has more than 2p+2 bits). The C writes `(f64)(f32)(a op b)`, the same two steps; the tiny results the `float2float` flushes are corrected as for frsp (also fsqrts) |
@@ -192,13 +227,16 @@ handlers use. Each entry: what the p-code does, and what the target does about i
 | fcmpu / fcmpo | ordered/unordered compare into the CR field | the same (fcmpo also sets VXVC, unobserved) | correct |
 | rlwinm / rlwinm. / rlwimi | rotate via `S<<n | S>>(32-n)` (0 at n = 0 in p-code), wrap-around masks, cr0flags | the same | correct; `ppc_rlwinm` / `ppc_rlwimi` |
 | divw / divwu | plain `s/` and `/` | undefined result for /0 and 0x80000000 / -1 | a vector dividing by 0 stops the emulator (invalid vector); the helpers guard both cases |
-| psq_l / psq_st (and u/x forms) | `load_ps` / `store_ps` macros: type from the GQR at run time, an `ldexpf` CALLOTHER when the scale is not 0, the unsigned integer types converted as signed, no store saturation | quantized load/store | **wrong** for quantized types: refused. Allowed when the GQR named has type and scale 0 (float, no scale; GQR0 = 0 in every handler): then the p-code is a plain single load/store, the hardware's but for rounding ps0 on the store, a frame word no check compares and the epilogue's lfd overwrites |
-| ps_* arithmetic | per-slot ops | - | refused (none in the handlers) |
+| psq_l / psq_st (and u/x forms) | `load_ps` / `store_ps` macros: type from the GQR at run time, an `ldexpf` CALLOTHER when the scale is not 0, the unsigned integer types converted as signed, no store saturation | quantized load/store | fixed (TcFixups, TcPaired): an `ldexpf` callback lets the step run, then the loaded slots or stored values are rewritten with the 750CL's dequantize (u8 u16 s8 s16 times 2^-scale in single) or quantize (round to single, scale, saturate, truncate; NaN gives 0), from the GQR at the step. Refused when the GQR is not a fact or its type is reserved |
+| ps_* arithmetic (ps_add ps_sub ps_mul ps_div ps_madd.. ps_muls0/1 ps_madds0/1 ps_sum0/1 ps_res ps_rsqrte; ps_neg ps_abs ps_nabs ps_mr ps_sel ps_merge*) | per-slot double ops with no rounding to single; Ghidra's canonical NaNs (f- and abs too); ps_res / ps_rsqrte exact | single-precision results per slot, hardware NaNs, table estimates | fixed (TcFixups, TcPaired): both slots recomputed from the sources before the step: the scalar single op's rule per slot (TcSingle, TcNaN), fres / frsqrte's tables (ps_rsqrte rounded to single), copies and sign changes bit for bit. Not modelled on either side: Dolphin's Force25Bit on fC (as for fmuls) |
 | fres / frsqrte | exact division / sqrt | table lookup with linear interpolation (relative error under 1/256 for fres, 1/32 for frsqrte) | **wrong**: `TcFixups` ("estimate") writes `TcEstimate`'s result to fD (and ps1) after the step; C uses `ppc_fres` / `ppc_frsqrte` (same tables and algorithm; the tables are the hardware-measured ones Dolphin publishes, not checked against a console here). `tests/test_gc_estimate.py` proves Java, C and a Python version agree and the error bounds hold |
 | mtfsf / mtfsfi / mtfsb0/1 / mffs | FPSCR moves | the rounding mode changes | refused: the p-code float ops always round to nearest |
-| dcbf, dcbst, dcbt, dcbtst, icbi, sync, isync, eieio | CALLOTHERs with no callback | no register or memory effect a single-threaded program sees | **modelled**: `TcFixups.install` registers empty callbacks; the C drops them |
+| dcbf, dcbst, dcbt, dcbtst, icbi, sync, isync, eieio | CALLOTHERs with no callback | no register or memory effect a single-threaded program sees | **modelled**: `TcCallOther.install` registers empty callbacks; the C drops them |
 | dcbz | `dataCacheBlockClearToZero(ea)` CALLOTHER | zeroes the 32-byte block holding ea | **modelled**: the callback zeroes that block in RAM; the C already zeroed it |
-| dcbi, dcbz_l, mtmsr, mfmsr, sc, rfi, tw, twi, mftb | cache/system | dcbi discards a dirty line (no cache is modelled), dcbz_l writes the locked cache, mfmsr/mtmsr touch machine state, mftb reads a clock | refused: none can be modelled faithfully |
+| dcbz_l, rfi, tw, twi, mftb | cache/system | dcbz_l writes the locked cache, rfi/tw/twi leave the function, mftb reads a clock | refused |
+| mtmsr, mfmsr | `MSR = MSR & 0x9000 \| rS` (EE and ME only) | the whole register | fixed (TcFixups): MSR = rS. MSR enters as 0xB032 on both sides (EE ME FP IR DR RI), and its exit value is compared when not that (expected.txt "MSR"; tc_xmsr) |
+| sc | `syscall()` CALLOTHER | the OS handler at 0x80000c00: r9 = HID0, r10 = HID0 \| 8, HID0 restored, rfi | fixed (TcFixups callback); the translator writes r9 and r10 (it called 0x80000c00 as a mocked callee, which clobbered registers the handler keeps) |
+| dcbi | `dataCacheBlockInvalidate(ea)` CALLOTHER | drops the line, a dirty one's writes with it | no-op (memory is the line); a vector whose run wrote the block before the dcbi is invalid and dropped |
 | lmw / stmw | load/store multiple (lmwInstructions.sinc / stmwInstructions.sinc) | the same | correct |
 | crxor 6,6,6 / creqv 6,6,6 | CR bit operation | tells a variadic callee whether floats are passed | correct; skipped in C |
 

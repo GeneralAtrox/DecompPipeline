@@ -448,8 +448,8 @@ def facts_body(cfg):
     if cfg.get("fpu_state"):  # mode-switching functions: every float register, XMTRX and FPSCR mode are state
         lines.append("fpu_state 1")
     lines += strict_judge.facts_lines(cfg)  # the stricter judge's flags and write facts (none while all are off)
-    for name, value in (cfg.get("fixed_regs") or {}).items():  # registers the program keeps fixed (PowerPC r2/r13)
-        lines.append(f"fixed_reg {name} {_hexes([value])}")
+    lines += [f"sq_copy {c} {r} {s}" for c, regs in (cfg.get("sq_copy_callees") or {}).items() for r, s in regs.items()]  # TcSq.copies
+    lines += [f"fixed_reg {n} {_hexes([v])}" for n, v in (cfg.get("fixed_regs") or {}).items()]  # kept fixed (PowerPC r2/r13)
     for lo, hi in cfg.get("global_ranges") or []:  # where vectors may randomise globals (the writable sections)
         lines.append(f"global_range {_hexes([lo, hi])}")
     return "\n".join(lines) + "\n"
@@ -503,6 +503,17 @@ def _swap_in(new, pairs):
         raise
 
 
+SEED_OFFSET_ENV = "DP_SEED_OFFSET"
+
+
+def vector_seed(addr, environ=None):
+    """The vector generator's seed for a function: its address with the top bit cleared. Developer only: the
+    environment variable DP_SEED_OFFSET (a decimal or 0x number, set by prepare_list --seed-offset) adds an offset, to
+    re-run a check on other seeds. Unset or 0 gives the seed every earlier result used. Not a player or game setting."""
+    off = int((environ if environ is not None else os.environ).get(SEED_OFFSET_ENV) or "0", 0)
+    return (int(addr, 16) + off) & 0x7FFFFFFF
+
+
 def _prepare(cfg, addr, on_line, stop_flag, slot_index, staging, clock):
     packet = paths.PACKETS / addr if not staging else staging["packet"]
     harness = paths.HARNESS / addr if not staging else staging["harness"]
@@ -522,7 +533,7 @@ def _prepare(cfg, addr, on_line, stop_flag, slot_index, staging, clock):
                     dst.write(paths.MARKS.read_text(encoding="utf-8"))
                 paths.MARKS.unlink()
     marks = str(inflight) if slot_index == 0 and not staging and inflight.exists() else "-"
-    seed, run_cfg = int(addr, 16) & 0x7FFFFFFF, oracle_limits.run_cfg(cfg, addr)  # run_cfg: its own time budget
+    seed, run_cfg = vector_seed(addr), oracle_limits.run_cfg(cfg, addr)  # run_cfg: its own time budget
     project = paths.GHIDRA_PROJECT if slot_index == 0 else paths.GHIDRA_SLOTS / f"slot{slot_index}"
     scripts = staging["scripts"] if staging else paths.sync_scripts()
     facts, ndev, hints = write_facts(cfg), dev_vectors(cfg, addr), hints if hints and hints.exists() else None

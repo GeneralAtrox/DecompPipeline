@@ -19,6 +19,7 @@
 #include "play_stats.h"
 #include "work_count.h"
 #include "present_cpu.h"
+#include "sat_screen.h"
 
 static int g_headless, g_shot_pending;
 static u32 g_shot_vb, g_shot_every, g_shots_taken;
@@ -123,7 +124,9 @@ static int frame_black(void)
 void sat_present(void)
 {
     LARGE_INTEGER t0, t1, t2;
-    int own = !cpu_present_threaded();
+    int own = !cpu_present_threaded(), scr;
+    const u32 *pic = sat_frame;
+    u32 pw, ph;
     QueryPerformanceCounter(&t0);
     if (own) play_stats_draw(1);
     sat_perf_phase(1);
@@ -139,22 +142,29 @@ void sat_present(void)
         if (sat_black_possible()) sat_black_frame(black);
         if (wide) sat_wide_seen(black); /* the log's "widescreen: shown" lines (sat_wide.c) */
     }
+    pw = sat_frame_w, ph = sat_frame_h;
+    scr = sat_screen_make(&pic, &pw, &ph); /* a kit screen is up (sat_screen.c): its picture, -1 not made yet */
     if (g_shot_pending && sat_vblank_count() >= g_shot_vb) {
         char path[300];
         snprintf(path, sizeof path, g_shot_every ? "%s_%05u.png" : "%s", g_shot_path, sat_vblank_count());
         g_shot_pending = g_shot_every != 0 && ++g_shots_taken < sat_shot_max;
         g_shot_vb += g_shot_every;
         sat_vdp_report();
-        if (sat_png_write(path, sat_frame, sat_frame_w, sat_frame_h))
-            port_log("shot: %s (%ux%u) at vertical blank %u\n", path, sat_frame_w, sat_frame_h, sat_vblank_count());
+        if (sat_png_write(path, pic, pw, ph))
+            port_log("shot: %s (%ux%u) at vertical blank %u\n", path, pw, ph, sat_vblank_count());
     }
     if (g_dump_next < g_dump_n && sat_vblank_count() >= g_dump_at[g_dump_next]) {
         char path[300];
         snprintf(path, sizeof path, "%s/frame_%06u.png", g_dump_dir, g_dump_at[g_dump_next++]);
-        if (sat_png_write(path, sat_frame, sat_frame_w, sat_frame_h)) port_log("dump: %s (%ux%u) at vertical blank %u\n", path, sat_frame_w, sat_frame_h, sat_vblank_count());
+        if (sat_png_write(path, pic, pw, ph)) port_log("dump: %s (%ux%u) at vertical blank %u\n", path, pw, ph, sat_vblank_count());
     }
-    if (sat_inb_live()) sat_inb_post(); /* shown a blank later, after the in-between frames (sat_inb.c) */
-    else if (!g_headless || g_work_on) sat_wide_post(sat_frame, sat_frame_w, sat_frame_h, sat_vblank_count());
+    if (scr) {
+        if (scr > 0 && (!g_headless || g_work_on)) sat_screen_post(sat_vblank_count());
+    } else if (sat_inb_live()) {
+        sat_inb_post(); /* shown a blank later, after the in-between frames (sat_inb.c) */
+    } else if (!g_headless || g_work_on) {
+        sat_wide_post(sat_frame, sat_frame_w, sat_frame_h, sat_vblank_count());
+    }
     if (own) play_stats_draw(0);
     QueryPerformanceCounter(&t2);
     sat_perf_show(t2.QuadPart - t1.QuadPart);

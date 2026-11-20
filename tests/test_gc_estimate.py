@@ -243,21 +243,22 @@ class Wiring(unittest.TestCase):
         fix = (GC / "ghidra_scripts" / "TcFixups.java").read_text(encoding="utf-8")
         self.assertIn('m.matches("fres\\\\.?|frsqrte\\\\.?")', fix)
         self.assertIn("put(emu, op.equals(\"fres\") ? TcEstimate.fres(operand) : TcEstimate.frsqrte(operand));", fix)
-        self.assertIn("TcFixups.install(emu, fn.getEntryPoint().getAddressSpace());",
+        self.assertIn("TcCallOther.install(emu, fn.getEntryPoint().getAddressSpace());",
                       (GC / "ghidra_scripts" / "TcOracle.java").read_text(encoding="utf-8"))
         m = re.search(r'if \(m\.matches\("([^"]*)"\)\) \{', fix[fix.index("static String refuse"):])
         refused = m.group(1).replace("\\\\", "\\")
-        for kept in ("dcbi", "dcbz_l", "dcbzl", "mfmsr", "mtmsr", "mftb"):
+        for kept in ("dcbz_l", "dcbzl", "mftb"):  # dcbi, mfmsr, mtmsr, sc: modelled now (test_gc_system)
             self.assertRegex(kept, "^(" + refused + ")$", kept + " must stay refused")
         for gone in ("dcbz", "dcbf", "dcbst", "dcbt", "dcbtst", "icbi", "sync", "isync", "eieio", "fres", "frsqrte"):
             self.assertNotRegex(gone, "^(" + refused + ")$", gone + " is modelled now")
         # every no-op userop is a name the SLEIGH defines
+        other = (GC / "ghidra_scripts" / "TcCallOther.java").read_text(encoding="utf-8")
         for name in ("sync", "instructionSynchronize", "enforceInOrderExecutionIO", "dataCacheBlockFlush",
                      "dataCacheBlockStore", "dataCacheBlockTouch", "dataCacheBlockTouchForStore",
                      "instructionCacheBlockInvalidate", "dataCacheBlockClearToZero"):
-            self.assertIn('"' + name + '"', fix, name)
-        self.assertIn("long ea = ms.getValue(op.getInput(1)) & 0xffffffe0L;", fix)  # the 32-byte block
-        self.assertIn("ms.setChunk(new byte[32], ram, ea, 32);", fix)
+            self.assertIn('"' + name + '"', other, name)
+        self.assertIn("long ea = ms.getValue(op.getInput(1)) & 0xffffffe0L;", other)  # the 32-byte block
+        self.assertIn("ms.setChunk(new byte[32], ram, ea, 32);", other)
         self.assertIn("ps_rsqrte", (GC / "translator" / "ppctranslate" / "translate.py").read_text(encoding="utf-8"))
         self.assertIn('Call("ppc_frsqrte", [b], "f64")', (GC / "translator" / "ppctranslate" / "translate.py")
                       .read_text(encoding="utf-8"))

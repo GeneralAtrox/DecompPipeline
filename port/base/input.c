@@ -1,27 +1,32 @@
-/* Host input for the controllers on Maple ports A..D (sdk/maple_pad.c), players 1..4: every SDL3 gamepad and
- * joystick and the keyboard, plus scripted presses for automated runs.
+/* Host input for players 1..8: every SDL3 gamepad and joystick and the keyboard, plus scripted presses for automated
+ * runs. A game's own pad layer has players 1..4 (sdk/maple_pad.c's Maple ports A..D); it takes 5..8 from port_pad_player.
  *   Players: a device becomes the next free player the first time it is used (a button, the stick or a trigger),
  *   so an idle virtual pad (Parsec, Steam Input, ViGEm) never takes a player's place. The keyboard is always player 1.
- *   A device unplugged frees its player; the next device used takes the lowest free one. --pads N (1..4, default 4)
- *   caps the players: --pads 1 merges every device into player 1 (buttons together, the stick and triggers from
- *   whichever device moves them most). A player 2..4 with no device and no script has no controller connected.
+ *   A device unplugged frees its player; the next device used takes the lowest free one. --pads N (1..8; default
+ *   game.json "pads", else 4) caps the players: --pads 1 merges every device into player 1 (buttons together, the
+ *   stick and triggers from whichever device moves them most). A player 2..8 with no device and no script has no
+ *   controller connected. Players 5..8 are read only when the cap is over 4: a 4-pad run reads, records and logs
+ *   what it did before there were eight.
  *   Gamepad (Xbox layout): A/B/X/Y are the Dreamcast's (the same places), Start, the d-pad, the left stick, LT/RT
- *   as the analog triggers. Keyboard: Z/X/A/S = A/B/X/Y, Enter = Start, the arrows = the d-pad and also the stick
- *   at full deflection (a keyboard has no stick), I/K/J/L = the d-pad alone, W or Space = the R trigger and Q or
- *   Left Shift = the L trigger, fully pressed (driving games usually accelerate on R and brake on L). A game whose
- *   d-pad does something else than steering sets game.json "arrows": "stick" (PORT_ARROWS_STICK): the arrows
- *   then move only the stick.
+ *   as the analog triggers. Keyboard and mouse (input_kbm.c, player 1): by default Z/X/A/S = A/B/X/Y, Enter =
+ *   Start, the arrows = the d-pad and also the stick at full deflection (a keyboard has no stick), I/K/J/L = the
+ *   d-pad alone, W or Space = the R trigger and Q or Left Shift = the L trigger, fully pressed (driving games usually
+ *   accelerate on R and brake on L), the mouse nothing. A game whose d-pad does something else than steering sets
+ *   game.json "arrows": "stick" (PORT_ARROWS_STICK): the arrows then move only the stick. A game can give its own
+ *   whole layout (game.json "keys"), and the player changes it in Input > Keyboard and mouse.
  *   --input [Pn.]NAME@VBLANK[+N],..   NAME: A B X Y START UP DOWN LEFT RIGHT L R LB RB L3 R3 BACK GUIDE RSUP RSDOWN
  *                                RSLEFT RSRIGHT LSUP LSDOWN LSLEFT LSRIGHT (the left stick alone, no button),
  *                                or a name of the console's own pad (console_actions: C and Z on a
  *                                Saturn: the action's default host button), held from that vertical blank
  *                                for N (default 6); scripted directions move the stick like the arrows. L=V and R=V
- *                                press a trigger part of the way (V 1..255; plain L and R are 255). Pn. (P1..P4)
- *                                is the player (default P1); a player a script names is connected from the start.
+ *                                press a trigger part of the way (V 1..255; plain L and R are 255). Pn. (P1..P8)
+ *                                is the player (default P1); a player a script names is connected from the start
+ *                                (P5..P8 when the cap is that high).
  *   A joystick SDL has no gamepad mapping for is read with a generic layout: buttons 0-3 = A/B/X/Y, 4/5 = L/R
  *   fully pressed, 9 (7 on pads with fewer than 10 buttons) = Start, the first hat = the d-pad, axes 0/1 = the stick.
- * Devices are looked for about once a second, so one plugged in later is picked up; each opened is logged.
- * Headless runs (no SDL video) read only the script. Only player 1 is recorded and replayed (session.c).
+ * The devices themselves (opening, dropping, rumble) are input_device.c.
+ * Headless runs (no SDL video) read only the script. Every player and the right sticks are recorded and replayed
+ * (session.c: player 1's pad, then session_pad_other for players 2..8 and the right sticks).
  * Everything runs on the game thread, which pumps the events. */
 #include <stdlib.h>
 #include <string.h>
@@ -31,49 +36,24 @@
 #include "host.h"
 #include "session.h"
 #include "game_log.h"
+#include "input_priv.h"
 
-#ifndef PORT_ARROWS_STICK
-#define PORT_ARROWS_STICK 0
-#endif
 #define DIRS (HOST_PAD_UP | HOST_PAD_DOWN | HOST_PAD_LEFT | HOST_PAD_RIGHT)
-#define KEY_PAD 1u   /* the key presses its button */
-#define KEY_STICK 2u /* the key moves the stick (directions) */
-#if PORT_ARROWS_STICK
-#define ARROWS KEY_STICK
-#else
-#define ARROWS (KEY_PAD | KEY_STICK)
-#endif
 #define STICK_DEAD 12  /* of 128: a worn host stick's centring noise (the Dreamcast pad reports raw values) */
 #define RS_ON 64 /* of 128: the right stick counts as a direction pressed */
 #define TRIGGER_USED 64 /* of 255: a trigger pressed this far claims a player */
-#define FIND_EVERY 60u /* reads between looks for newly connected devices */
-#define MAX_DEVICES 8
-#define NO_PLAYER (-1)
 
 static u32 g_script_players = 1u; /* bit p: the script names player p + 1 (player 1 is always connected) */
-static int g_sdl = -1; /* -1 not tried, 0 no host devices, 1 gamepads and keyboard */
-static u32 g_reads;
-static int g_pads_max = HOST_PADS; /* --pads */
-
-typedef struct HostDevice {
-    SDL_JoystickID id;
-    SDL_Gamepad *pad;  /* a device SDL has a gamepad mapping for, or */
-    SDL_Joystick *joy; /* a raw joystick, read with the generic layout */
-    int player;        /* 0..3, or NO_PLAYER until it is first used */
-    char desc[128];    /* for the scene dump */
-    int seen, live;    /* a device reporting buttons held from its first read is not in use until its state changes */
-    struct { u32 b; int x, y, l, r; } first;
-} HostDevice;
-
-static HostDevice g_dev[MAX_DEVICES];
-static int g_dev_n;
-static SDL_JoystickID g_failed[MAX_DEVICES]; /* devices that would not open, logged once */
-static int g_failed_n;
 
 typedef struct PadState {
     u32 b;
     int x, y, l, r;
+    int rx, ry; /* the right stick */
 } PadState;
+
+static s8 g_right[HOST_PADS][2]; /* the last host_pads_read's right sticks, recorded or the replay's */
+static HostPad g_pads[HOST_PADS]; /* the last host_pads_read's pads, for port_pad_player */
+static u32 g_pads_on = 1u;        /* and who had a controller */
 
 static const struct {
     SDL_GamepadButton button;
@@ -83,38 +63,34 @@ static const struct {
     {SDL_GAMEPAD_BUTTON_WEST, HOST_PAD_X},        {SDL_GAMEPAD_BUTTON_NORTH, HOST_PAD_Y},
     {SDL_GAMEPAD_BUTTON_START, HOST_PAD_START},   {SDL_GAMEPAD_BUTTON_DPAD_UP, HOST_PAD_UP},
     {SDL_GAMEPAD_BUTTON_DPAD_DOWN, HOST_PAD_DOWN}, {SDL_GAMEPAD_BUTTON_DPAD_LEFT, HOST_PAD_LEFT},
-    {SDL_GAMEPAD_BUTTON_DPAD_RIGHT, HOST_PAD_RIGHT},
+    {SDL_GAMEPAD_BUTTON_DPAD_RIGHT, HOST_PAD_RIGHT}, {SDL_GAMEPAD_BUTTON_MISC1, HOST_PAD_SHARE},
     {SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, HOST_PAD_LB}, {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, HOST_PAD_RB},
     {SDL_GAMEPAD_BUTTON_LEFT_STICK, HOST_PAD_L3},  {SDL_GAMEPAD_BUTTON_RIGHT_STICK, HOST_PAD_R3},
     {SDL_GAMEPAD_BUTTON_BACK, HOST_PAD_BACK},      {SDL_GAMEPAD_BUTTON_GUIDE, HOST_PAD_GUIDE},
 };
 
-static const struct {
-    SDL_Scancode key;
-    u32 bit, how;
-} g_key_map[] = {
-    {SDL_SCANCODE_Z, HOST_PAD_A, KEY_PAD},         {SDL_SCANCODE_X, HOST_PAD_B, KEY_PAD},
-    {SDL_SCANCODE_A, HOST_PAD_X, KEY_PAD},         {SDL_SCANCODE_S, HOST_PAD_Y, KEY_PAD},
-    {SDL_SCANCODE_RETURN, HOST_PAD_START, KEY_PAD}, {SDL_SCANCODE_KP_ENTER, HOST_PAD_START, KEY_PAD},
-    {SDL_SCANCODE_UP, HOST_PAD_UP, ARROWS},        {SDL_SCANCODE_DOWN, HOST_PAD_DOWN, ARROWS},
-    {SDL_SCANCODE_LEFT, HOST_PAD_LEFT, ARROWS},    {SDL_SCANCODE_RIGHT, HOST_PAD_RIGHT, ARROWS},
-    {SDL_SCANCODE_I, HOST_PAD_UP, KEY_PAD},        {SDL_SCANCODE_K, HOST_PAD_DOWN, KEY_PAD},
-    {SDL_SCANCODE_J, HOST_PAD_LEFT, KEY_PAD},      {SDL_SCANCODE_L, HOST_PAD_RIGHT, KEY_PAD},
-    {SDL_SCANCODE_Q, SCRIPT_L, KEY_PAD},           {SDL_SCANCODE_W, SCRIPT_R, KEY_PAD},
-    {SDL_SCANCODE_LSHIFT, SCRIPT_L, KEY_PAD},      {SDL_SCANCODE_SPACE, SCRIPT_R, KEY_PAD},
-    {SDL_SCANCODE_E, HOST_PAD_LB, KEY_PAD},        {SDL_SCANCODE_R, HOST_PAD_RB, KEY_PAD},
-};
-
-static int g_rumble = 1; /* --rumble on|off, and the host's menu */
-
-void input_set_rumble(int on) { g_rumble = on; }
-
-int input_rumble(void) { return g_rumble; }
+/* A key's code by name: SDL's names, and short ones for the keys a layout names most. */
+int input_key_code(const char *name)
+{
+    static const struct {
+        const char *name;
+        SDL_Scancode code;
+    } k_short[] = {
+        {"UP", SDL_SCANCODE_UP}, {"DOWN", SDL_SCANCODE_DOWN}, {"LEFT", SDL_SCANCODE_LEFT}, {"RIGHT", SDL_SCANCODE_RIGHT},
+        {"RETURN", SDL_SCANCODE_RETURN}, {"KP_ENTER", SDL_SCANCODE_KP_ENTER}, {"SPACE", SDL_SCANCODE_SPACE},
+        {"ESCAPE", SDL_SCANCODE_ESCAPE}, {"BACKSPACE", SDL_SCANCODE_BACKSPACE}, {"TAB", SDL_SCANCODE_TAB},
+        {"LSHIFT", SDL_SCANCODE_LSHIFT}, {"RSHIFT", SDL_SCANCODE_RSHIFT}, {"LCTRL", SDL_SCANCODE_LCTRL},
+        {"RCTRL", SDL_SCANCODE_RCTRL}, {"LALT", SDL_SCANCODE_LALT},
+    };
+    for (size_t i = 0; i < sizeof k_short / sizeof k_short[0]; i++)
+        if (!_stricmp(name, k_short[i].name)) return (int)k_short[i].code;
+    return (int)SDL_GetScancodeFromName(name); /* SDL_SCANCODE_UNKNOWN is 0 */
+}
 
 int input_option(const char *arg, const char *value)
 {
     if (!strcmp(arg, "--rumble") && value) {
-        g_rumble = strcmp(value, "off") != 0;
+        input_set_rumble(strcmp(value, "off") != 0);
         return 2;
     }
     if (!strcmp(arg, "--pad-art") && value) {
@@ -128,77 +104,9 @@ int input_option(const char *arg, const char *value)
         return 2;
     }
     if (!strncmp(arg, "--bind-", 7)) return input_bind_option(arg, value);
+    if (!strncmp(arg, "--kbm-", 6)) return input_kbm_option(arg, value);
     return port_twin_option(arg, value) || pad_virtual_option(arg, value) ? 2 : input_script_option(arg, value); /* pad_twin.c, pad_virtual.c */
 }
-
-static int sdl_ready(void)
-{
-    if (g_sdl < 0) {
-        g_sdl = SDL_WasInit(SDL_INIT_VIDEO) != 0 && SDL_InitSubSystem(SDL_INIT_GAMEPAD);
-        if (!g_sdl) port_log("input: no host devices (headless or no SDL gamepad support): scripted input only\n");
-    }
-    return g_sdl;
-}
-
-static int device_connected(const HostDevice *d)
-{
-    return d->pad ? SDL_GamepadConnected(d->pad) : SDL_JoystickConnected(d->joy);
-}
-
-static void open_device(SDL_JoystickID id)
-{
-    HostDevice *d = &g_dev[g_dev_n];
-    const char *name = SDL_GetJoystickNameForID(id);
-    d->id = id;
-    d->joy = NULL;
-    d->player = g_pads_max == 1 ? 0 : NO_PLAYER;
-    d->seen = d->live = 0;
-    if ((d->pad = SDL_IsGamepad(id) ? SDL_OpenGamepad(id) : NULL) == NULL) d->joy = SDL_OpenJoystick(id);
-    if (!d->pad && !d->joy) {
-        if (g_failed_n < MAX_DEVICES) {
-            g_failed[g_failed_n++] = id;
-            port_log("input: cannot open \"%s\": %s\n", name ? name : "?", SDL_GetError());
-        }
-        return;
-    }
-    snprintf(d->desc, sizeof d->desc, "%s \"%s\" (%04x:%04x%s)",
-             d->pad ? "gamepad" : "joystick with no gamepad mapping (generic layout)", name ? name : "?",
-             SDL_GetJoystickVendorForID(id), SDL_GetJoystickProductForID(id),
-             SDL_IsJoystickVirtual(id) ? ", virtual" : "");
-    port_log("input: %s, device %u\n", d->desc, (unsigned)id);
-    g_dev_n++;
-}
-
-/* Drops disconnected devices; every FIND_EVERY reads opens any gamepad or joystick not open yet. */
-static void scan_devices(void)
-{
-    for (int i = 0; i < g_dev_n;) {
-        HostDevice *d = &g_dev[i];
-        if (device_connected(d)) {
-            i++;
-            continue;
-        }
-        port_log("input: device %u disconnected\n", (unsigned)d->id);
-        if (d->pad) SDL_CloseGamepad(d->pad);
-        else SDL_CloseJoystick(d->joy);
-        *d = g_dev[--g_dev_n];
-    }
-    if (g_reads++ % FIND_EVERY) return;
-    int n = 0;
-    SDL_JoystickID *ids = SDL_GetJoysticks(&n);
-    if (g_reads == 1) port_log("input: %d gamepad or joystick device(s) connected\n", ids ? n : 0);
-    for (int i = 0; ids && i < n && g_dev_n < MAX_DEVICES; i++) {
-        int known = 0;
-        for (int k = 0; k < g_dev_n; k++) known |= g_dev[k].id == ids[i];
-        for (int k = 0; k < g_failed_n; k++) known |= g_failed[k] == ids[i];
-        if (!known) open_device(ids[i]);
-    }
-    SDL_free(ids);
-}
-
-int input_device_count(void) { return g_dev_n; }
-
-const char *input_device_desc(int i) { return i >= 0 && i < g_dev_n ? g_dev[i].desc : ""; }
 
 static int stick(Sint16 v)
 {
@@ -223,6 +131,8 @@ static PadState read_device(const HostDevice *d)
         s.y = stick(SDL_GetGamepadAxis(d->pad, SDL_GAMEPAD_AXIS_LEFTY));
         {
             int rx = stick(SDL_GetGamepadAxis(d->pad, SDL_GAMEPAD_AXIS_RIGHTX)), ry = stick(SDL_GetGamepadAxis(d->pad, SDL_GAMEPAD_AXIS_RIGHTY));
+            s.rx = rx;
+            s.ry = ry;
             if (rx < -RS_ON) s.b |= HOST_PAD_RS_LEFT;
             if (rx > RS_ON) s.b |= HOST_PAD_RS_RIGHT;
             if (ry < -RS_ON) s.b |= HOST_PAD_RS_UP;
@@ -275,6 +185,8 @@ static void merge(PadState *into, const PadState *s)
     into->b |= s->b;
     into->x = further(into->x, s->x);
     into->y = further(into->y, s->y);
+    into->rx = further(into->rx, s->rx);
+    into->ry = further(into->ry, s->ry);
     if (s->l > into->l) into->l = s->l;
     if (s->r > into->r) into->r = s->r;
 }
@@ -294,33 +206,32 @@ static void claim_player(HostDevice *d, const PadState *s)
         }
 }
 
-/* The keyboard's state (player 1). */
-static PadState read_keyboard(u32 *keys)
+/* The keyboard and the mouse (player 1), by the layout (input_kbm.c); keys: SDL's state, or NULL for --kbm-inject. */
+static PadState read_keyboard(const bool *keys, KbmPad *k)
 {
     PadState s = {0};
-    const bool *k = SDL_GetKeyboardState(NULL);
-    if (SDL_GetModState() & SDL_KMOD_ALT) return s; /* Alt+Enter is the host's full-screen switch */
-    for (size_t i = 0; i < sizeof g_key_map / sizeof g_key_map[0]; i++)
-        if (game_log_key((unsigned)i, k[g_key_map[i].key], SDL_GetScancodeName(g_key_map[i].key), g_key_map[i].bit), k[g_key_map[i].key]) {
-            if (g_key_map[i].how & KEY_PAD) s.b |= g_key_map[i].bit;
-            if (g_key_map[i].how & KEY_STICK) *keys |= g_key_map[i].bit & DIRS;
-            if (g_key_map[i].bit & SCRIPT_L) s.l = 255; /* a key presses its trigger fully */
-            if (g_key_map[i].bit & SCRIPT_R) s.r = 255;
-        }
-    s.b &= ~(SCRIPT_L | SCRIPT_R);
+    if (keys && SDL_GetModState() & SDL_KMOD_ALT) { /* Alt+Enter is the host's full-screen switch */
+        memset(k, 0, sizeof *k);
+        return s;
+    }
+    input_kbm_read(keys, k);
+    s.b = k->b;
+    s.l = k->l;
+    s.r = k->r;
     return s;
 }
 
-/* One player's pad from its devices' merged state, its script and (player 1) the keyboard's directions. */
-static void make_pad(u32 p, const PadState *s, u32 keys, HostPad *pad)
+/* One player's pad from its devices' merged state, its script and (player 1, k) the keyboard's stick. */
+static void make_pad(u32 p, const PadState *s, const KbmPad *k, HostPad *pad)
 {
-    u32 trig[2], b = input_script_buttons(p, trig) | s->b;
+    u32 trig[2], b = input_script_buttons(p, trig) | s->b, keys = b & DIRS & ~s->b; /* scripted directions: the stick */
     int x = s->x, y = s->y;
-    keys |= b & DIRS & ~s->b; /* scripted directions move the stick */
     pad->l = (u8)s->l;
     pad->r = (u8)s->r;
     if (b & SCRIPT_L) pad->l = (u8)(trig[0] > pad->l ? trig[0] : pad->l);
     if (b & SCRIPT_R) pad->r = (u8)(trig[1] > pad->r ? trig[1] : pad->r);
+    if (k && k->dirs & (HOST_PAD_LEFT | HOST_PAD_RIGHT)) x = k->x;
+    if (k && k->dirs & (HOST_PAD_UP | HOST_PAD_DOWN)) y = k->y;
     if (keys & HOST_PAD_LEFT) x = -128;
     if (keys & HOST_PAD_RIGHT) x = 127;
     if (keys & HOST_PAD_UP) y = -128;
@@ -334,16 +245,35 @@ static void make_pad(u32 p, const PadState *s, u32 keys, HostPad *pad)
     pad->buttons = b & ~(SCRIPT_L | SCRIPT_R | SCRIPT_LS);
 }
 
+/* The game's text, mouse and menu picks (native_game.h), taken at the tick's pad read only (never in an in-between
+ * frame, which leaves them for the next tick) and recorded with it (session_events.c); a replay's come from the file. */
+static void events_read(void)
+{
+    static int said;
+    SessionEvents ev;
+    int tag, index;
+    if (port_extra_drawing()) return;
+    memset(&ev, 0, sizeof ev);
+    ev.text_n = host_text_drain(ev.text, SESSION_TEXT_MAX);
+    ev.mouse_on = input_kbm_game_mouse(&ev.mouse);
+    while (ev.menu_n < SESSION_MENU_MAX && port_menu_drain(&tag, &index))
+        ev.menu[ev.menu_n][0] = tag, ev.menu[ev.menu_n][1] = index, ev.menu_n++;
+    session_events_read(&ev);
+    if (!said && session_events_replayed()) said = 1, game_log_line("session: replay uses text/mouse events");
+}
+
 u32 host_pads_read(HostPad pad[HOST_PADS])
 {
     PadState s[HOST_PADS] = {0};
-    u32 keys = 0, connected = input_script_players(), own = 0, load = autoload_buttons(&own); /* autoload.c: a load it drives */
+    const u32 n = g_pads_max > HOST_GAME_PADS ? (u32)g_pads_max : (u32)HOST_GAME_PADS; /* players 1..4, or as many as the cap */
+    KbmPad kbm = {0};
+    u32 connected = input_script_players(), own = 0, load = autoload_buttons(&own); /* autoload.c: a load it drives */
     pad_style_tick();
-    if (input_live() && sdl_ready()) {
+    if (input_live() && input_sdl_ready()) {
         pad_virtual_tick(); /* --virtual-pad: a test driver's SDL gamepad, pressed before the devices are read */
-        s[0] = read_keyboard(&keys);
-        if (s[0].b || keys) pad_style_used(0u);
-        scan_devices(), console_pads_changed();
+        s[0] = read_keyboard(SDL_GetKeyboardState(NULL), &kbm);
+        if (kbm.any) pad_style_used(0u);
+        input_scan_devices(g_pads_max), console_pads_changed();
         for (int i = 0; i < g_dev_n; i++) {
             PadState one = read_device(&g_dev[i]);
             if (!device_in_use(&g_dev[i], &one)) one = (PadState){0};
@@ -353,48 +283,56 @@ u32 host_pads_read(HostPad pad[HOST_PADS])
             merge(&s[g_dev[i].player], &one);
             connected |= 1u << g_dev[i].player;
         }
+        if (input_kbm_menu_is_open()) { /* the game runs on under an open menu (host_modal.cpp), but the controller and keys
+                                          drive the menu (the slim bar's Guide, A, B, stick): the game reads none of them */
+            memset(s, 0, sizeof s);
+            kbm = (KbmPad){0};
+        }
+    } else if (input_kbm_injected()) {
+        s[0] = read_keyboard(NULL, &kbm); /* a test's keys and mouse, not the real ones */
     }
-    if (own) s[0] = (PadState){.b = load}, keys = 0; else s[0].b |= load; /* while it holds the pad, the player waits */
-    for (u32 p = 0; p < HOST_PADS; p++) make_pad(p, &s[p], p == 0 ? keys : 0u, &pad[p]);
+    if (own) s[0] = (PadState){.b = load}, kbm = (KbmPad){0}; else s[0].b |= load; /* while it holds the pad, the player waits */
+    if (kbm.look && !s[0].rx && !s[0].ry) s[0].rx = kbm.rx, s[0].ry = kbm.ry; /* the mouse look, unless a stick moves */
+    for (u32 p = 0; p < HOST_PADS; p++) {
+        if (p >= n) { /* past the players read: nothing held, and nothing recorded */
+            pad[p] = (HostPad){0};
+            g_right[p][0] = g_right[p][1] = 0;
+            continue;
+        }
+        make_pad(p, &s[p], p == 0 ? &kbm : NULL, &pad[p]);
+        if (p == 0 && kbm.look && s[0].rx == kbm.rx && s[0].ry == kbm.ry) pad[0].buttons |= HOST_PAD_MOUSE_LOOK;
+        /* the right stick, analog; a scripted RS direction (no stick) moves it all the way */
+        g_right[p][0] = (s8)(s[p].rx ? s[p].rx : pad[p].buttons & HOST_PAD_RS_LEFT ? -128 : pad[p].buttons & HOST_PAD_RS_RIGHT ? 127 : 0);
+        g_right[p][1] = (s8)(s[p].ry ? s[p].ry : pad[p].buttons & HOST_PAD_RS_UP ? -128 : pad[p].buttons & HOST_PAD_RS_DOWN ? 127 : 0);
+    }
     input_binds_apply(pad);
     session_pad(&pad[0]); /* recorded, or the replay's */
+    for (u32 p = 0; p < n; p++) /* players 2..8 and the right sticks too, so a game several play replays */
+        connected = session_pad_other((int)p, &pad[p], g_right[p], (connected >> p) & 1u) ? connected | 1u << p
+                                                                                            : connected & ~(1u << p);
+    events_read();
     port_pad_stick_apply(pad);
     input_ex_note(pad);
-    game_log_pads(pad, connected & ((1u << g_pads_max) - 1u));
-    return connected & ((1u << g_pads_max) - 1u);
+    connected &= (1u << g_pads_max) - 1u;
+    game_log_pads(pad, connected);
+    memcpy(g_pads, pad, sizeof g_pads);
+    g_pads_on = connected;
+    return connected;
 }
 
-void host_pad_rumble(u32 player, u32 strength, u32 ms)
+void host_pad_right_stick(u32 player, s8 *x, s8 *y)
 {
-    if (!g_rumble) strength = 0;
-    if (strength > 0xffffu) strength = 0xffffu;
-    for (int i = 0; i < g_dev_n; i++) {
-        if (g_dev[i].player != (int)player) continue;
-        if (g_dev[i].pad) SDL_RumbleGamepad(g_dev[i].pad, (Uint16)strength, (Uint16)strength, strength ? ms : 0u);
-        else SDL_RumbleJoystick(g_dev[i].joy, (Uint16)strength, (Uint16)strength, strength ? ms : 0u);
-    }
+    *x = player < HOST_PADS ? g_right[player][0] : 0;
+    *y = player < HOST_PADS ? g_right[player][1] : 0;
 }
 
-/* Which of the modern buttons (HOST_PAD_MODERN bits) the controllers of player `player` (0..3) have: a gamepad's by what SDL
- * reports (the right stick as its two axes), the keyboard's E and R (player 1, in a live run). A raw joystick without a
- * gamepad mapping has none. */
-u32 port_pad_ex_present(int player)
+/* Player (0..7)'s pad from the last host_pads_read: 1 and the pad while that player has a controller, else 0 and none. */
+int port_pad_player(int player, HostPad *pad)
 {
-    static const struct {
-        SDL_GamepadButton button;
-        u32 bit;
-    } m[] = {{SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, HOST_PAD_LB}, {SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, HOST_PAD_RB},
-             {SDL_GAMEPAD_BUTTON_LEFT_STICK, HOST_PAD_L3},    {SDL_GAMEPAD_BUTTON_RIGHT_STICK, HOST_PAD_R3},
-             {SDL_GAMEPAD_BUTTON_BACK, HOST_PAD_BACK},        {SDL_GAMEPAD_BUTTON_GUIDE, HOST_PAD_GUIDE}};
-    u32 have = 0;
-    if (player < 0 || player >= HOST_PADS || !input_live() || !sdl_ready()) return 0u;
-    if (player == 0) have |= HOST_PAD_LB | HOST_PAD_RB;
-    for (int i = 0; i < g_dev_n; i++) {
-        if (g_dev[i].player != player || !g_dev[i].pad) continue;
-        for (size_t k = 0; k < sizeof m / sizeof m[0]; k++)
-            if (SDL_GamepadHasButton(g_dev[i].pad, m[k].button)) have |= m[k].bit;
-        if (SDL_GamepadHasAxis(g_dev[i].pad, SDL_GAMEPAD_AXIS_RIGHTX) && SDL_GamepadHasAxis(g_dev[i].pad, SDL_GAMEPAD_AXIS_RIGHTY))
-            have |= HOST_PAD_RS_UP | HOST_PAD_RS_DOWN | HOST_PAD_RS_LEFT | HOST_PAD_RS_RIGHT;
-    }
-    return have;
+    const HostPad none = {0};
+    int on = player >= 0 && player < HOST_PADS && (g_pads_on >> player & 1u);
+    if (pad) *pad = on ? g_pads[player] : none;
+    return on;
 }
+
+int port_pads_max(void) { return g_pads_max; }

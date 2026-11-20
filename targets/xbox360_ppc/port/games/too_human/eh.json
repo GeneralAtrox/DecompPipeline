@@ -1,0 +1,5 @@
+{
+ "why": "MSVC C++ exceptions (docs/x360/EXCEPTIONS_AND_LONGJMP.md, part (b)). frame_handler: __CxxFrameHandler, the .pdata handler of 260 functions whose handler data is a FuncInfo with magic 0x19930522 (SpeedTree, the CRT, STL vector growth); port/tools/eh_tables.py reads their tables from the image at gen time. throw: _CxxThrowException (LIBCMT, names from the 2007 PDBs) and 82ed35f0 (std::vector length error, by its callers), which never return. A throw reaches RtlRaiseException through RaiseException 82a6eef0; runtime/xb_eh.h walks it.",
+ "frame_handler": "82a4ff28",
+ "throw": ["82a4fcc0", "82ed35f0"]
+}

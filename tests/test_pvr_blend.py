@@ -11,8 +11,7 @@
 4. a batch that was not in the old scene does not stop the later ones matching theirs (old [A, B], current [X, A, B]);
 5. no old scene, an empty one, or another number of passes: nothing to blend (NULL);
 6. an old batch matches one current batch only (old [A], current [A, A]: the second is drawn as it is);
-7. pvr_blend_keep copies: changing the source scene afterwards does not change the old scene;
-8. alpha 1 gives the current scene exactly, whatever matched.
+7. pvr_blend_keep copies: changing the source scene afterwards does not change the old scene; 8. alpha 1 gives the current scene exactly, whatever matched.
 9. --interp-early: the pairs worked out for a scene before it is current (pvr_blend_pair_next), then taken, blend to the
    same vertices as the pairs the drawing finds itself; dropped, nothing blends until the next scene is taken.
 10. --interp-persp: a triangle the camera comes 2 nearer to, from 10, blends half way to the view at 9 (x/z, y/z,
@@ -48,6 +47,7 @@ int pvr_blend_truth_skip(void) { return 0; }
 f32 pvr_blend_truth_t(f32 t) { return t; }
 const PvrVtx *pvr_parts_blend(const PvrScene *c, f32 t, u32 *n) { return (void)c, (void)t, (void)n, NULL; }
 int pvr_parts_hold_frame(void) { return 0; }
+u32 pvr_slots(void) { return 1; }
 /* each call here is a new current scene */
 #define pvr_blend_vertices(s, t, n) (pvr_blend_new_scene(), pvr_blend_vertices(s, t, n))
 

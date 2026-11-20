@@ -31,7 +31,7 @@ from core import compare, ghidra, paths, strict_judge  # noqa: E402
 import ppc_compare  # noqa: E402
 
 T = ROOT / "targets"
-TARGETS = ("dreamcast_sh4", "saturn_sh2", "gamecube_ppc"); ON_TARGETS = {*TARGETS, "xbox360_ppc"}  # X360: X360Judge
+TARGETS = ("dreamcast_sh4", "saturn_sh2", "gamecube_ppc"); ON_TARGETS = {*TARGETS}  # X360: off on x360-land, 2026-11-15
 FLAGS = list(strict_judge.FLAGS)
 M = (1 << 64) - 1
 WORK = ROOT / "tests" / ".work"
@@ -350,7 +350,7 @@ class Wiring(unittest.TestCase):
 
     def test_lines(self):
         caps = {("dreamcast_sh4", "TcOracle"): 400, ("dreamcast_sh4", "TcVectors"): 400,
-                ("saturn_sh2", "TcOracle"): 413, ("gamecube_ppc", "TcOracle"): 325}
+                ("saturn_sh2", "TcOracle"): 413, ("gamecube_ppc", "TcOracle"): 397}
         for (t, s), n in caps.items():
             self.assertEqual(len(text(T / t / "ghidra_scripts" / f"{s}.java").splitlines()), n, (t, s))
         for f in (T / "dreamcast_sh4" / "ghidra_scripts").glob("*.java"):

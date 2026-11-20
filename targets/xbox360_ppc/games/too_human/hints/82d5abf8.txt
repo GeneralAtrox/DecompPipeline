@@ -1,0 +1,2 @@
+# restores coverage after the pass-through signature change (x360-oracle-fixes): the word at r3+0x34+0x8 is 1..4
+genrange r3+0x34+0x8 1 4

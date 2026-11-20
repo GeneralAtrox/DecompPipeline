@@ -31,7 +31,7 @@ from test_lockstep import HAVE_VC, NO_VC, LockstepCompare, LockstepCounter, Lock
 from test_overlays import OverlayBuilt, OverlayGroups, OverlayWindows  # noqa: E402,F401  (overlays)
 from test_overlay_slots import OverlaySlotWindows, OverlaySlots, OverlaySlotsBuilt  # noqa: E402,F401  (slot overlays)
 
-GAME = {"name": "Fixture Game", "contract": "1.0.0", "decomp": "../decomp", "entry": {"name": "Fx_Main", "addr": "8c011000"},
+GAME = {"name": "Fixture Game", "contract": "2.0.0", "decomp": "../decomp", "entry": {"name": "Fx_Main", "addr": "8c011000"},
         "image_base": "8c010000", "sdk": ["sy_heap"], "sources": ["src/own.c"], "hardware": {"0x8C012000": "Fx_Hw"},
         "console": {"country": "0x32", "language": 1, "broadcast": "0x31"}}
 # Game material the kit must never hold: guest addresses in RAM (P1 0x8c..., P0 0x0c...; only the bases are kept),
@@ -747,7 +747,7 @@ class RuntimeCompiles(unittest.TestCase):
             sys.path.insert(0, str(TOOL))
             from core import fsca  # gen_port.py's fsca_table.c, which sh4_rt.c reads
             (d / "fsca_table.c").write_text(fsca.table_c(), encoding="utf-8")
-            srcs = " ".join(f'"{p}"' for p in sorted((KIT / "runtime").glob("*.c")) + [b for b in sorted((KIT / "base").glob("*.c")) if b.name not in ("input.c", "pad_style.c", "present_cpu.c", "audio_out.c", "pad_virtual.c")] + [d / "fsca_table.c"])
+            srcs = " ".join(f'"{p}"' for p in sorted((KIT / "runtime").glob("*.c")) + [b for b in sorted((KIT / "base").glob("*.c")) if b.name not in ("input.c", "input_device.c", "pad_style.c", "present_cpu.c", "audio_out.c", "pad_virtual.c")] + [d / "fsca_table.c"])
             rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
             cl = (f'cl /nologo /c /TC /std:c11 /fp:strict /arch:SSE2 /W4 /WX /O1 /I"{d}" /I"{KIT / "runtime"}" '
                   f'/I"{KIT / "base"}" /I"{rd}" {srcs}')

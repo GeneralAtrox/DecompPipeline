@@ -234,8 +234,8 @@ static void join_setup(void)
         if (!end && (st == NET_TIMED_OUT || st == NET_CLOSED) && t < 60000) net_udp_reconnect(); /* the host was not up yet */
         net_udp_unlock();
         if (end) break;
-        if (st == NET_REFUSED) sat_lobby_back("other-version"), port_exit("netplay: the host runs a different copy of the game", 7);
-        if (t >= 60000) sat_lobby_back("no-host"), port_exit("netplay: no host answered in 60 s", 7);
+        if (st == NET_REFUSED) sat_game_lobby_back("other-version"), port_exit("netplay: the host runs a different copy of the game", PORT_EXIT_NET_FAILED);
+        if (t >= 60000) sat_game_lobby_back("no-host"), port_exit("netplay: no host answered in 60 s", PORT_EXIT_NET_FAILED);
         if (!said && t > 2000) said = 1, game_log_line("netplay: waiting for the host at %s", g_opt.join);
         if (!sat_video_headless()) gfx_pump(); /* the window stays answering */
         net_udp_wait(50);
@@ -300,7 +300,7 @@ void sat_net_start(const char *image)
     port_log("netplay: the other player is gone after %u ms without a packet (game.json netplay drop_ms)\n", (u32)SAT_NET_DROP_MS);
 #endif
     if (net_udp_start(port, g_opt.join, dg, sat_net_msg, sat_net_link, NULL))
-        sat_lobby_back("no-network"), port_exit("netplay: the network did not start", 7);
+        sat_game_lobby_back("no-network"), port_exit("netplay: the network did not start", PORT_EXIT_NET_FAILED);
     if (g_opt.loss || g_opt.lag || g_opt.jitter)
         game_log_line("netplay: TEST network: %d%% of packets lost, %d ms late, up to %d ms more", g_opt.loss, g_opt.lag, g_opt.jitter);
     if (S.test_frame) game_log_line("netplay: TEST: a planted desync at frame %d (%08x)", S.test_frame, S.test_addr);

@@ -1,21 +1,25 @@
 """The official judge for the Xbox 360 target: lint -> build -> run on the test vectors -> byte-exact comparison
 with the oracle (the counterpart of targets/gamecube_ppc/ppc_check.py, installed by hooks.run_check).
 
-The verdict rules are core/check's (_finish): PASS only when every vector of the requested sets matches. The
+The verdict rules are core/check's (_finish): PASS only when every vector of the requested sets matches. One
+difference, this target's only (finish): a check that ran and compared every vector, none wrong and no runner error,
+but on fewer valid vectors than "min_valid_vectors" in a set is NO_VECTORS, not FAIL (core/check calls it FAIL, as
+every other target still does). NO_VECTORS is never PASS: every consumer that asks for PASS still sees a non-PASS. A
+wrong vector, a lint, build or runner failure stays FAIL. The
 judge facts that differ from the GameCube's: r3 is compared in all 64 bits, integer arguments are 64-bit, f1..f13
 carry float arguments, and the runtime's multiply-add rounding follows target.json "fma" (DESIGN.md).
 """
+import collections
 import pathlib
 import re
 import shutil
 
 from core import check as core_check
 from core import paths, strict_judge
-from core.lint import lint as core_lint
 
 import x360_compare as cmp
 
-SOURCES = ("runner.c", "tc_rt.c", "tc_ppc.c")
+SOURCES = ("runner.c", "tc_rt.c", "tc_ppc.c", "tc_exit.c")
 INT_KINDS = {"u8": "(u8)", "u16": "(u16)", "u32": "(u32)", "s8": "(s8)(u8)", "s16": "(s16)(u16)",
              "s32": "(s32)(u32)", "u64": "", "s64": "(s64)"}
 # How each declared return type fills the 64-bit r3.
@@ -24,21 +28,22 @@ RET_R3 = {"u8": "(u64)", "u16": "(u64)", "u32": "(u64)", "s8": "(u64)(s64)", "s1
 FMA_MODES = {"two_roundings": 0, "fused": 1}
 
 
-MAX_C = 2_000_000  # work.c cap here; core/lint's 60 KB is an agent-readability limit, and 38 Too Human functions
-#                    (2,000 to 8,000 instructions) have translator C past it even in the short form
+from x360_lint import MAX_C, lint  # noqa: E402,F401  (its own file: tools import it without a project)
 
 
-def lint(src, meta):
-    """core/lint's rules (R2-R6), with the float rule worded for this target: f64 is the register type here, and the
-    size cap is MAX_C (core/lint's 60 KB cap is waived up to it)."""
-    out = []
-    for e in core_lint(src, meta):
-        if e == "work.c is larger than 60 KB":
-            if len(src) > MAX_C:
-                out.append(f"work.c is larger than {MAX_C // 1000} KB")
-            continue
-        out.append(e.replace("double precision (use f32 only)", "write f64, the tc_rt.h type, not double"))
-    return out
+def finish(result, sets, summary):
+    """core/check._finish, then its FAIL for too few valid vectors alone (stage compare, no vector wrong, no runner
+    error, a set under "min_valid_vectors") becomes NO_VECTORS with result["why"]: the judge has nothing wrong to show,
+    only too little to judge on."""
+    result = core_check._finish(result, sets, summary)
+    mv = paths.config()["min_valid_vectors"]
+    short = {s: result["vectors"].get(s, {}).get("total", 0) for s in sets}
+    if (result["verdict"] == "FAIL" and result["stage"] == "compare" and not result["failing"]
+            and "run_error" not in result and any(n < mv for n in short.values())):
+        result["verdict"] = "NO_VECTORS"
+        result["why"] = ("too few valid vectors, none wrong: " + ", ".join(f"{s} {n}" for s, n in short.items())
+                         + f" (the judge needs {mv} in each)")
+    return result
 
 
 # A double the declared prototype passes in an integer register (Ghidra's guess for a parameter past f13): the
@@ -110,9 +115,17 @@ def build(cfg, meta, work_file, build_dir):
         raise RuntimeError("cl.exe not found in the Visual Studio environment")
     # Zero-warning build: every warning at /W4 is an error, in work.c and in the runtime alike. /fp:strict: one
     # IEEE operation per C operation, as the PowerPC computes (no contraction into a fused multiply-add).
-    cmd = [cl, "/nologo", "/O1", "/fp:strict", "/W4", "/WX", "/TC", fma_define(cfg), f"/I{paths.RUNTIME}",
-           f"/Fo{build_dir}\\", f"/Fe{build_dir / 'runner.exe'}", str(build_dir / "work.c"), str(build_dir / "thunk.c"),
-           *(str(paths.RUNTIME / s) for s in SOURCES)]
+    # The runtime is compiled once per content and flags (core/check.runtime_objs: the compiler, every runtime file,
+    # these flags with the "fma" define) and its objects linked: compiling it again for every function, and again for
+    # its exit-state form, was most of a build. None (it does not compile): the build compiles it itself, as before.
+    # Objects, not a .lib: a .lib member whose symbols the C under test all defines would be dropped silently; linked
+    # objects keep the duplicate-symbol error.
+    rt = core_check.runtime_objs(cl, env, SOURCES, (fma_define(cfg),))
+    head = [cl, "/nologo", "/O1", "/fp:strict", "/W4", "/WX", fma_define(cfg), f"/I{paths.RUNTIME}",
+            f"/Fo{build_dir}\\", f"/Fe{build_dir / 'runner.exe'}"]
+    cmd = ([*head, "/Tc", str(build_dir / "work.c"), "/Tc", str(build_dir / "thunk.c"), *map(str, rt)] if rt else
+           [*head, "/TC", str(build_dir / "work.c"), str(build_dir / "thunk.c"),
+            *(str(paths.RUNTIME / s) for s in SOURCES)])
     rc, out, reason = paths.run_bounded(cmd, 120, cwd=build_dir, env=env)
     keep = [ln for ln in out.splitlines() if ("error" in ln or "warning" in ln) and ".c" in ln]
     msgs = [re.sub(r"^.*\\work\.c", "work.c", e) for e in keep][:20]
@@ -121,7 +134,13 @@ def build(cfg, meta, work_file, build_dir):
     return True, msgs
 
 
-def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harness_dir=None):
+def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harness_dir=None, exit_file=None):
+    """exit_file: the translator's exit-state form of the same function (xenontranslate/exit_form.py). When the
+    harness has the exit state (target.json "exit_state") it is built and run too, and its exit record is compared per
+    class (x360_compare.compare_exit, core/strict_judge.exit_modes): an enforced class that differs fails the vector,
+    a report-only one goes to "strict_report"; result["exit"]: the vectors per class that differ, the vectors an
+    enforced class fails ("failing") and the first of them. Without exit_file (agent C:
+    no registers to record) the exit state is not compared."""
     harness = pathlib.Path(harness_dir or paths.HARNESS / addr)
     meta = paths.read_json(harness / "meta.json")
     summary = paths.read_json(harness / "oracle_summary.json") or {}
@@ -130,13 +149,13 @@ def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harn
     src = pathlib.Path(work_file).read_text(encoding="utf-8", errors="replace")
     result["lint"] = lint(src, meta)
     if result["lint"]:
-        return core_check._finish(result, sets, summary)
+        return finish(result, sets, summary)
     result["stage"] = "build"
     build_dir = pathlib.Path(build_dir or (paths.BUILD / addr))
     ok, msgs = build(cfg, meta, work_file, build_dir)
     result["build"] = msgs
     if not ok:
-        return core_check._finish(result, sets, summary)
+        return finish(result, sets, summary)
     result["stage"] = "run"
     out = build_dir / "actual.txt"
     which = sets[0] if len(sets) == 1 else "all"
@@ -150,6 +169,13 @@ def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harn
     vecs = cmp.parse_vectors(harness / "vectors.txt")
     exp = cmp.parse_results(harness / "expected.txt")
     act = cmp.parse_results(out)
+    act_x, xmodes = None, None
+    if exit_file and any("xs" in e for e in exp.values()):
+        xmodes = strict_judge.exit_modes(cfg)
+        act_x, err = run_exit(cfg, meta, harness, exit_file, build_dir / "exit", which)
+        if err:
+            result["run_error"] = err
+    xcount, xfail, xfirst = collections.Counter(), 0, None
     image = pathlib.Path(cfg["binary_path"]).read_bytes()
     result["stage"] = "compare"
     strict = strict_judge.modes(cfg)  # report-only call snapshots or exit frame (core/strict_judge)
@@ -157,8 +183,14 @@ def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harn
         ids = [i for i, v in vecs.items() if v["set"] == s]
         fails = []
         for i in ids:
-            d = cmp.compare_vector(meta, image, vecs[i], exp[i], act.get(i), strict, report := [])
+            report = []
+            d = cmp.compare_vector(meta, image, vecs[i], exp[i], act.get(i), strict, report, (act_x or {}).get(i),
+                                   xmodes, xcount)
             strict_judge.note(result, s, i, report)
+            xd = [x for x in d if x.startswith("exit state, ")]
+            if xd:
+                xfail += 1
+                xfirst = xfirst or {"set": s, "vector": i, "diffs": xd[:4]}
             if d:
                 fails.append(i)
                 if s == "dev" and len(result["first_diffs"]) < 3:
@@ -167,6 +199,23 @@ def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harn
         result["vectors"][s] = {"total": len(ids), "failing": len(fails), "failing_ids": fails[:50]}
         result["failing"] += len(fails)
         result["total"] += len(ids)
+    if xmodes is not None:
+        result["exit"] = {"classes": dict(xcount), "modes": xmodes, "failing": xfail, "first": xfirst}
     if not result["first_diffs"] and result["failing"]:
         result["first_diffs"].append({"vector": None, "inputs": "", "diffs": ["(failures are only in the hidden set)"]})
-    return core_check._finish(result, sets, summary)
+    return finish(result, sets, summary)
+
+
+def run_exit(cfg, meta, harness, exit_file, build_dir, which):
+    """(the exit-state form's results by vector, error text or None): built like work.c (the same runtime and flags; no
+    lint: it is the translator's own C, not an answer) and run with the runner's "exit" argument."""
+    ok, msgs = build(cfg, meta, exit_file, build_dir)
+    if not ok:
+        return {}, "exit-state form: build failed: " + " | ".join(msgs[:4])
+    out = build_dir / "actual.txt"
+    cmd = [str(build_dir / "runner.exe"), str(cfg["binary_path"]), str(paths.CODE_RANGES), str(harness / "vectors.txt"),
+           which, str(out), "exit"]
+    rc, log, reason = core_check.run_runner(cmd, cfg["check_timeout_s"], out, core_check.output_cap(harness))
+    err = (f"exit-state form: runner {reason}" if reason else
+           f"exit-state form: runner exited with code {rc}" if rc else None)
+    return cmp.parse_results(out), err

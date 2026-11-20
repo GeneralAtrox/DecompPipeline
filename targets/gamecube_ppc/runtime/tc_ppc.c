@@ -55,11 +55,22 @@ u32 ppc_single_bits(f64 v)
 
 f64 ppc_frsp(f64 x) { return (f64)(f32)x; }
 
+/* A fused op's NaN result (fmadd fD,fA,fC,fB and family): the first NaN of frA, frB, frC (the fields, not the
+ * assembly order), quieted, as the 750CL and the oracle give it (TcNaN.arith); with no NaN operand an invalid
+ * operation, the 750CL's +NaN. x86 takes the product's NaN (frC) before the addend's (frB): Skies 80285fd8, a filter
+ * whose delay line (frC) and input (frB) both held NaNs, kept the delay line's payload where the original stores the
+ * input's. */
+static f64 fused_nan(f64 a, f64 b, f64 c)
+{
+    if (a == a && b == b && c == c) return bitsd(0x7ff8000000000000ull);
+    return bitsd(dbits(a != a ? a : b != b ? b : c) | 0x0008000000000000ull);
+}
+
 f64 ppc_fmadds(f64 a, f64 c, f64 b)
 {
     f64 p = a * c;
     f64 s = p + b;
-    if (s != s && a == a && b == b && c == c) return bitsd(0x7ff8000000000000ull); /* an invalid op: the 750CL's +NaN */
+    if (s != s) s = fused_nan(a, b, c); /* to single below: a NaN keeps its top 23 fraction bits */
     return (f64)(f32)s;
 }
 
@@ -67,7 +78,7 @@ f64 ppc_fmsubs(f64 a, f64 c, f64 b)
 {
     f64 p = a * c;
     f64 s = p - b;
-    if (s != s && a == a && b == b && c == c) return bitsd(0x7ff8000000000000ull);
+    if (s != s) s = fused_nan(a, b, c);
     return (f64)(f32)s;
 }
 

@@ -41,7 +41,7 @@ public class TcPrepare extends TcVectors {
         if (!marks.equals("-") && Files.exists(Paths.get(marks))) applyMarks(Paths.get(marks));
         fn = fm.getFunctionAt(toAddr(entry));
         if (fn == null) throw new IllegalArgumentException("no function at " + a[0]);
-        body = fn.getBody();
+        body = switchBody(fn.getBody());  // jump-table cases outside Ghidra's body (TcSwitchBody)
         String name = "fn_" + hex(entry);
         findInline();
 
@@ -128,9 +128,10 @@ public class TcPrepare extends TcVectors {
         String meta = String.format("{\n  \"addr\": \"%s\",\n  \"name\": \"%s\",\n  \"bytes\": %d,\n  \"signature\": \"%s\",\n"
                 + "  \"params\": [%s],\n  \"ret\": \"%s\",\n  \"unsupported\": %s,\n  \"callees\": [%s],\n"
                 + "  \"globals\": [%s],\n  \"blocks\": [%s],\n  \"ppc_special\": [%s],\n  \"fixed_regs\": {%s},\n"
-                + "  \"cpu\": \"ppc\"%s\n}\n",
+                + "  \"cpu\": \"ppc\"%s%s\n}\n",
             hex(entry), name, body.getNumAddresses(), esc(cSignature(name, proto)), params, proto.ret, unsupported,
-            callees, gl, bl, sp, fx, TcStrict.meta(facts));
+            callees, gl, bl, sp, fx, TcStrict.meta(facts),
+            switchExt.isEmpty() ? "" : ",\n  \"switch_body\": " + TcSwitchBody.json(switchExt));
         writeMeta(packet, harness, meta);
         if (proto.unsupported != null) {
             println("TcPrepare: unsupported: " + proto.unsupported);
@@ -151,11 +152,13 @@ public class TcPrepare extends TcVectors {
             dirsDev.clear();
             dirsAll.clear();
             blockHits.clear();
+            switchHits.hits.clear();
             meta = meta.replace("\"unsupported\": null,", "\"unsupported\": \"" + esc(why) + "\",");
             writeMeta(packet, harness, meta);
             println("TcPrepare: unsupported: " + why);
         }
         bound = why == null ? TcBoundPass.run(this, proto, seed, new ArrayList<>(globals)) : null;  // TcBound
+        swpass = why == null ? TcSwitchPass.run(this, seed) : null;  // directed vectors for unreached switch cases
         for (int s = 0; s < 2; s++) {  // chosen vectors whose strict replay failed: not written (TcStrict.replay)
             valid[s] -= TcStrict.dropped[s];
             if (TcStrict.dropped[s] > 0) invalid.merge("strict flags: the replay failed", TcStrict.dropped[s], Integer::sum);
@@ -172,6 +175,7 @@ public class TcPrepare extends TcVectors {
     }
 
     String bound;  // the targeted-vector pass's summary fragment (TcBoundPass), or null
+    String swpass;  // the directed switch pass's summary fragment (TcSwitchPass), or null
 
     String summary(List<long[]> blocks, int nhints) {
         StringBuilder inv = new StringBuilder();
@@ -190,11 +194,13 @@ public class TcPrepare extends TcVectors {
         }
         return String.format("{\"dev_valid\":%d,\"dev_tried\":%d,\"hidden_valid\":%d,\"hidden_tried\":%d,"
                 + "\"blocks_total\":%d,\"blocks_hit_dev\":%d,\"blocks_hit_all\":%d,\"min_block_hits\":%d,"
-                + "\"repaired\":%d,\"fixups\":%d,%s\"hints\":%d,\"call_sites\":{%s},\"invalid\":{%s},\"examples\":[%s]}\n",
+                + "\"repaired\":%d,\"fixups\":%d,\"work\":[%d,%d],%s\"hints\":%d,\"call_sites\":{%s},\"invalid\":{%s},\"examples\":[%s]}\n",
             valid[0], tried[0], valid[1], tried[1], blocks.size(), covDev.size(), covAll.size(),
-            blockHits.isEmpty() ? 0 : Collections.min(blockHits.values()), repaired, fix.fixups,
+            blockHits.isEmpty() ? 0 : Collections.min(blockHits.values()), repaired, fix.fixups, workSteps, workRuns,
             (unhit.length() > 0 ? "\"blocks_unhit\":[" + unhit + "]," : "") + (bound != null ? bound + "," : "")
-            + (dirs != null && valid[0] + valid[1] > 0 ? dirs.summary(dirsDev, dirsAll) : ""), nhints, sites, inv, ex);
+            + (swpass != null ? swpass + "," : "")
+            + (dirs != null && valid[0] + valid[1] > 0 ? dirs.summary(dirsDev, dirsAll) : "")
+            + (switchHits.hits.isEmpty() ? "" : "\"switch_hits\":" + switchHits.json() + ","), nhints, sites, inv, ex);
     }
 
     // The functions fn calls or tail-branches to (save helpers excepted: they run inline), sorted by entry.
@@ -205,7 +211,9 @@ public class TcPrepare extends TcVectors {
         }
         for (Instruction in : listing.getInstructions(body, true)) {
             for (Reference r : in.getReferencesFrom()) {
-                if (!r.getReferenceType().isJump()) continue;
+                boolean call = r.getReferenceType().isCall() && switchSet.contains(in.getAddress())  // a case's call
+                    && !TcFlow.isSaveHelper(listing, r.getToAddress());
+                if (!r.getReferenceType().isJump() && !call) continue;
                 Function t = fm.getFunctionAt(r.getToAddress());
                 if (t != null && t != fn && !called.contains(t) && !body.contains(r.getToAddress())) called.add(t);
             }
@@ -263,6 +271,40 @@ public class TcPrepare extends TcVectors {
             bm.setBookmark(ad, BookmarkType.NOTE, "TC " + p[1], p[2]);
             listing.setComment(ad, CodeUnit.PLATE_COMMENT, "TC decomp: " + p[1] + "\n" + p[2]);
         }
+    }
+
+    List<long[]> switchExt = new ArrayList<>();  // the ranges switchBody added (meta.json "switch_body")
+    AddressSet switchSet = new AddressSet();
+
+    // fn's body plus the jump-table cases outside it that no other function owns (TcSwitchBody), disassembled where
+    // Ghidra left them undefined; Ghidra's body unchanged when there are none.
+    AddressSetView switchBody(AddressSetView ghidra) {
+        List<long[]> ranges = new ArrayList<>();
+        for (AddressRange r : ghidra) ranges.add(new long[] {r.getMinAddress().getOffset(), r.getMaxAddress().getOffset() + 1});
+        switchExt = TcSwitchBody.extend(a -> {
+            try {
+                return currentProgram.getMemory().getInt(toAddr(a)) & 0xffffffffL;
+            } catch (Exception e) {
+                return null;
+            }
+        }, ranges, a -> {
+            Function o = fm.getFunctionContaining(toAddr(a));
+            return (o != null && o != fn) || fm.getFunctionAt(toAddr(a)) != null;
+        });
+        if (switchExt.isEmpty()) return ghidra;
+        AddressSet b = new AddressSet(ghidra);
+        for (long[] r : switchExt) {
+            for (long p = r[0]; p < r[1]; p += 4) {
+                if (listing.getInstructionAt(toAddr(p)) == null) {
+                    new ghidra.app.cmd.disassemble.DisassembleCommand(toAddr(p), new AddressSet(toAddr(p), toAddr(p + 3)), false)
+                        .applyTo(currentProgram);
+                }
+            }
+            b.add(toAddr(r[0]), toAddr(r[1] - 1));
+            switchSet.add(toAddr(r[0]), toAddr(r[1] - 1));
+        }
+        println("TcPrepare: switch cases outside the body added: " + TcSwitchBody.json(switchExt));
+        return b;
     }
 
     // A word that holds a code address (a switch table, a function-pointer table): never randomised, or the code

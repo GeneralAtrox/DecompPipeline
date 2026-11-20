@@ -119,8 +119,9 @@ class DefaultNaN(unittest.TestCase):
         """fdivs f1,f1,f2 with 0/0 gives +QNaN on the 750CL, not x86's negative default NaN."""
         src = translate([0xEC211024, BLR])  # fdivs f1,f1,f2; blr
         self.assertIn("px_fdiv(", src)
-        self.assertIn("if (r != r && a == a && b == b) return px_b2f(0x7ff8000000000000ull);", src)
+        self.assertIn("    if (r == r) return r;\n    if (a == a && b == b) return px_b2f(0x7ff8000000000000ull);", src)
         self.assertLess(src.index("static f64 px_b2f("), src.index("static f64 px_fdiv("))
+        self.assertLess(src.index("static u64 px_f2b("), src.index("static f64 px_fdiv("))
 
 
 class FnmNaN(unittest.TestCase):
@@ -140,9 +141,11 @@ class InvalidOpNaN(unittest.TestCase):
         src = translate([0xEC2100B2, 0xFC4118FA, 0xFC2110BC, BLR])  # fmuls f1,f1,f2; fmadd f2,f1,f3,f2; fnmsub; blr
         for h in ("px_fmul(", "px_fmadd(", "px_fnm(px_fmsub("):
             self.assertIn(h, src)
-        self.assertIn("return r != r && a == a && b == b ? px_b2f(0x7ff8000000000000ull) : r;", src)
+        self.assertIn("    if (a == a && b == b) return px_b2f(0x7ff8000000000000ull);\n", src)
+        self.assertIn("    if (a == a && b == b && c == c) return px_b2f(0x7ff8000000000000ull);\n", src)
         ppc = (GC / "runtime" / "tc_ppc.c").read_text(encoding="utf-8")
-        self.assertEqual(ppc.count("if (s != s && a == a && b == b && c == c) return bitsd(0x7ff8000000000000ull);"), 2)
+        self.assertIn("if (a == a && b == b && c == c) return bitsd(0x7ff8000000000000ull);", ppc)  # fused_nan
+        self.assertEqual(ppc.count("if (s != s) s = fused_nan(a, b, c);"), 2)
 
 
 class RecursiveF1(unittest.TestCase):

@@ -129,6 +129,13 @@ void console_watch(u32 word, u32 tick)
     (void)tick;
 }
 
+int console_poke(u32 addr, u8 value)
+{
+    (void)addr;
+    (void)value;
+    return 0;
+}
+
 /* ---- the answer-key emulator: none for the Saturn ---- */
 int console_lockstep_pad(HostPad *pad)
 {
@@ -209,6 +216,14 @@ void extra_set_fps(unsigned fps) { cpu_present_set_fps(fps); } /* the menu's cap
 unsigned extra_fps(void) { return cpu_present_fps(); }
 
 /* ---- the launcher contract: is this disc the game (base/install.c does the rest) ---- */
+int console_install(const char *image, const char *work, const char *assets) /* the disc copy (install.c) */
+{
+    (void)image;
+    (void)work;
+    (void)assets;
+    return -1;
+}
+
 int console_check_image(const char *image)
 {
     u8 raw[SAT_SECTOR];

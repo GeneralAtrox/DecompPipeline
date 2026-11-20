@@ -46,6 +46,16 @@ static void shape(u32 w, u32 h, const char *t)
            s.wide_k, s.tall_k, r[0], r[1], r[2], r[3]);
 }
 
+static void point(u32 w, u32 h, const char *t, f32 px, f32 py)
+{
+    GfxFrameShape s;
+    f32 ratio = 0.0f, at[2];
+    gfx_aspect_parse(t, &ratio);
+    gfx_frame_shape(w, h, ratio, &s);
+    gfx_screen_point(px, py, &s, at);
+    printf("point %ux%u %s %.0f,%.0f: %.1f,%.1f\n", w, h, t, px, py, at[0], at[1]);
+}
+
 static void draw(f32 wide, f32 tall)
 {
     g_gfx.draw_w = 2560;
@@ -70,6 +80,12 @@ int main(void)
     shape(1000, 2000, "fit");
     shape(5120, 1440, "32:9");
     shape(1280, 720, "4:3");
+    point(2560, 1600, "16:9", 320.0f, 80.0f);
+    point(2560, 1600, "16:9", 2240.0f, 1520.0f);
+    point(2560, 1600, "fit", 1280.0f, 800.0f);
+    point(2560, 1600, "fit", 0.0f, 0.0f);
+    point(2560, 1600, "3:4", 680.0f, 350.0f);
+    point(1280, 720, "4:3", 1120.0f, 720.0f);
     draw(1.0f, 1.0f);
     draw(1.2f, 1.0f);
     draw(1.0f, 1.5f);
@@ -155,6 +171,15 @@ class GfxAspect(unittest.TestCase):
     def test_narrower_than_4_3_shows_more_above_and_below(self):
         self.assertEqual(self.line("shape 2560x1600 3:4:"),
                          "shape 2560x1600 3:4: frame 1200x1600 at 680,0 wide 1.0000 tall 1.7778 screen 0,350 1200x900")
+
+    def test_output_point_to_screen(self):
+        # the menu pointer (input_kbm_pointer.c): the screen's corners at any shape, the bars outside it
+        self.assertEqual(self.line("point 2560x1600 16:9 320,80:"), "point 2560x1600 16:9 320,80: 0.0,0.0")
+        self.assertEqual(self.line("point 2560x1600 16:9 2240,1520:"), "point 2560x1600 16:9 2240,1520: 640.0,480.0")
+        self.assertEqual(self.line("point 2560x1600 fit 1280,800:"), "point 2560x1600 fit 1280,800: 320.2,240.0")
+        self.assertEqual(self.line("point 2560x1600 fit 0,0:"), "point 2560x1600 fit 0,0: -63.9,0.0")
+        self.assertEqual(self.line("point 2560x1600 3:4 680,350:"), "point 2560x1600 3:4 680,350: 0.0,0.0")
+        self.assertEqual(self.line("point 1280x720 4:3 1120,720:"), "point 1280x720 4:3 1120,720: 640.0,480.0")
 
     def test_screen_maps_into_the_middle_of_the_target(self):
         self.assertEqual(self.line("draw 1.00 1.00:"), "draw 1.00 1.00: x 0 1280 2560 2560 | y 0 800 1600 1600")

@@ -28,7 +28,7 @@ for p in (str(TOOL / "tools"), str(TOOL)):
     if p not in sys.path:
         sys.path.insert(0, p)
 
-from core import doctor, fn_claim, paths, refine, usage  # noqa: E402
+from core import doctor, fn_claim, paths, refine, usage, wave_ctl  # noqa: E402
 from core import retire as core_retire  # noqa: E402
 import retire as retire_tool  # noqa: E402  (tools/retire.py)
 
@@ -190,6 +190,35 @@ class Doctor(unittest.TestCase):
         self.assertEqual(facts["status_mismatch"], 1)
         put(ws, "project.json", {"references": [X]})
         self.assertFalse(doctor.check(ws)[0])
+
+    def test_what_holds_runs_up(self):  # the HOLD, a wave STOP, rows and a stuck wave_game: notes, never failures
+        ws = make_ws("doc4")
+        core_retire.apply(ws, core_retire.scan(ws))
+        pj = json.loads((ws / "project.json").read_text(encoding="utf-8"))
+        put(ws, "project.json", dict(pj, ghidra_broker={"dir": str(ws / "broker")}))
+        keys = ("hold", "hold_alive", "wave_stop", "readable_harness_stale", "readable_infra_error", "wave_game_stuck")
+        with mock.patch.object(wave_ctl, "STOP_FILE", ws / "STOP"):
+            ok, lines, facts = doctor.check(ws)
+            self.assertTrue(ok, lines)
+            self.assertEqual([facts[k] for k in keys], [False, None, False, 0, 0, None])
+            put(ws, "broker/HOLD", {"pass": "k", "by": "tools/wave.py", "since": 0, "pid": os.getpid()})
+            wave_ctl.write_stop(ws / "STOP")
+            put(ws, "state/readable.json", {A: {"status": "harness_stale"}, B: {"status": "infra_error", "note": "x"}})
+            put(ws, "state/wave_game.json", {"steps": {}, "stuck": "step 3 failed twice"})
+            ok, lines, facts = doctor.check(ws)
+            self.assertTrue(ok, lines)
+            self.assertEqual([facts[k] for k in keys], [True, True, True, 1, 1, "step 3 failed twice"])
+            text = "\n".join(lines)
+            for want in (f"a Ghidra HOLD is in {ws / 'broker'} (by tools/wave.py", f"pid {os.getpid()}, running",
+                         f"a wave STOP file is in {ws / 'STOP'}", "1 readable row(s) harness_stale", f": {A}",
+                         "infrastructure error, not a verdict", f"them again): {B}",
+                         "ended stuck: step 3 failed twice"):
+                self.assertIn(want, text)
+            put(ws, "state/wave_game.json", "{")
+            ok, lines, facts = doctor.check(ws)
+        self.assertTrue(ok, lines)
+        self.assertEqual(facts["wave_game_stuck"], "unreadable state")
+        self.assertTrue(any("wave_game.json is unreadable (JSONDecodeError)" in x for x in lines), lines)
 
 
 def fail_check(*a, **k):

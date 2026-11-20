@@ -16,7 +16,7 @@ def load_map(path, objects=False):
         if m:
             base = int(m.group(1), 16)
             continue
-        m = re.match(r"\s*[0-9a-fA-F]{4}:[0-9a-fA-F]{8}\s+(\S+)\s+([0-9a-fA-F]{8})\s+f?\s+(\S*)", ln)
+        m = re.match(r"\s*[0-9a-fA-F]{4}:[0-9a-fA-F]{8}\s+(\S+)\s+([0-9a-fA-F]{8,16})(?:\s+f)?(?:\s+i)?\s+(\S*)", ln)  # "f i": an inline function's row; 16 digits: a 64-bit exe
         if m and int(m.group(2), 16) >= base:
             syms.append((int(m.group(2), 16) - base, m.group(1)) + ((m.group(3),) if objects else ()))
     syms.sort()

@@ -13,6 +13,7 @@ public class TcFacts {
     Map<String, Long> fixed = new LinkedHashMap<>(); // register name -> value at entry (r13)
     BitSet code = new BitSet(); // bit (addr - IMAGE_LO): an instruction byte (code lives only in the image)
     boolean haveCode;
+    TcJumpTables tables = new TcJumpTables(); // the function's resolved switch tables: R8 reads them as data (TcPrepare)
     long oracleDeadlineS, oracleRescueS;
     int minValid;
     boolean targetedVectors; // "targeted_vectors": boundary-value vectors for untaken branch directions (TcBound)
@@ -22,6 +23,8 @@ public class TcFacts {
     // "mock_write_facts", lines "mock_write callee field size": TcStrict.facts).
     int strict;
     List<String[]> mockWrites = new ArrayList<>();
+    boolean exitState;  // target.json "exit_state": record the exit state (TcExit)
+    int seedExtra;      // "seed_extra": extra vectors per set from the op-aware classes (TcSeedx; 0 none)
 
     static TcFacts defaults() {
         TcFacts f = new TcFacts();
@@ -74,6 +77,8 @@ public class TcFacts {
                 case "call_snapshots": f.strict |= v.equals("1") || v.equals("true") ? 4 : 0; break;
                 case "exit_frame": f.strict |= v.equals("1") || v.equals("true") ? 8 : 0; break;
                 case "mock_write": f.mockWrites.add(w); break;
+                case "exit_state": f.exitState = v.equals("1"); break;
+                case "seed_extra": f.seedExtra = Integer.parseInt(v); break;
                 default: throw new IllegalArgumentException("unknown target fact: " + line);
             }
         }

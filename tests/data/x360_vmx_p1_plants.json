@@ -1,0 +1,112 @@
+{
+ "82dddd80": [
+  "r\\.w\\[k\\] = b\\.w\\[n & 3\\];",
+  "r.w[k] = b.w[3 - (n & 3)];",
+  "a lane: vspltw takes lane 3-i"
+ ],
+ "82e3c528": [
+  "r\\.w\\[k\\] = b\\.w\\[n & 3\\];",
+  "r.w[k] = b.w[3 - (n & 3)];",
+  "a lane: vspltw takes lane 3-i"
+ ],
+ "827bd5a8": [
+  "r\\.w\\[2 \\* k\\] = a\\.w\\[k\\];(\\s*)r\\.w\\[2 \\* k \\+ 1\\] = b\\.w\\[k\\];",
+  "r.w[2 * k] = b.w[k];\\1r.w[2 * k + 1] = a.w[k];",
+  "a lane: vmrghw swaps hi and lo"
+ ],
+ "82a1d008": [
+  "r\\.w\\[2 \\* k\\] = a\\.w\\[k\\];(\\s*)r\\.w\\[2 \\* k \\+ 1\\] = b\\.w\\[k\\];",
+  "r.w[2 * k] = b.w[k];\\1r.w[2 * k + 1] = a.w[k];",
+  "a lane: vmrghw swaps hi and lo"
+ ],
+ "82cbc588": [
+  "x \\+ y < -32768 \\? -32768 : x \\+ y > 32767 \\? 32767 : x \\+ y",
+  "x + y",
+  "a saturation: vaddshs wraps"
+ ],
+ "8314fd30": [
+  "x \\+ y < -32768 \\? -32768 : x \\+ y > 32767 \\? 32767 : x \\+ y",
+  "x + y",
+  "a saturation: vaddshs wraps"
+ ],
+ "83152790": [
+  "x - y < -32768 \\? -32768 : x - y > 32767 \\? 32767 : x - y",
+  "x - y",
+  "a saturation: vsubshs wraps"
+ ],
+ "8314dba8": [
+  "x - y < -32768 \\? -32768 : x - y > 32767 \\? 32767 : x - y",
+  "x - y",
+  "a saturation: vsubshs wraps"
+ ],
+ "8314fc70": [
+  "v > 255 \\? 255 : v",
+  "v > 32767 ? 32767 : v",
+  "a saturation: vpkshus clamps at 0x7fff"
+ ],
+ "83185808": [
+  "v > 255 \\? 255 : v",
+  "v > 32767 ? 32767 : v",
+  "a saturation: vpkshus clamps at 0x7fff"
+ ],
+ "82e1a760": [
+  "if \\(\\(w & 0x7f800000u\\) == 0\\) w &= 0x80000000u;",
+  "",
+  "a rounding: denormal input not flushed (vaddfp)"
+ ],
+ "82e1f9e8": [
+  "if \\(\\(w & 0x7f800000u\\) == 0\\) w &= 0x80000000u;",
+  "",
+  "a rounding: denormal input not flushed (vaddfp)"
+ ],
+ "82de74f0": [
+  "if \\(\\(w & 0x7f800000u\\) == 0\\) w &= 0x80000000u;",
+  "",
+  "a rounding: denormal input not flushed (vmaddfp)"
+ ],
+ "82dc0e10": [
+  "if \\(\\(w & 0x7f800000u\\) == 0\\) w &= 0x80000000u;",
+  "",
+  "a rounding: denormal input not flushed (vmaddfp)"
+ ],
+ "82de7510": [
+  "if \\(\\(v\\.w & 0x7f800000u\\) == 0\\) v\\.w &= 0x80000000u;",
+  "",
+  "a rounding: denormal result not flushed (vmaddfp)"
+ ],
+ "82de7878": [
+  "if \\(\\(v\\.w & 0x7f800000u\\) == 0\\) v\\.w &= 0x80000000u;",
+  "",
+  "a rounding: denormal result not flushed (vmaddfp)"
+ ],
+ "82e4f240": [
+  "int k, n = 16 - \\(int\\)\\(ea & 15u\\);(\\s*)for \\(k = 0; k < n; k\\+\\+\\) xv_sb\\(&r, k, rd8",
+  "int k, n = 15 - (int)(ea & 15u);\\1for (k = 0; k < n; k++) xv_sb(&r, k, rd8",
+  "a CBEA: lvlx loads one byte short"
+ ],
+ "82e242c8": [
+  "int k, n = 16 - \\(int\\)\\(ea & 15u\\);(\\s*)for \\(k = 0; k < n; k\\+\\+\\) xv_sb\\(&r, k, rd8",
+  "int k, n = 15 - (int)(ea & 15u);\\1for (k = 0; k < n; k++) xv_sb(&r, k, rd8",
+  "a CBEA: lvlx loads one byte short"
+ ],
+ "82e3c450": [
+  "int k, n = \\(int\\)\\(ea & 15u\\);(\\s*)u32 b = ea & ~15u;(\\s*)for \\(k = 0; k < n; k\\+\\+\\) xv_sb",
+  "int k, n = (int)(ea & 15u) - 1;\\1u32 b = ea & ~15u;\\2for (k = 0; k < n; k++) xv_sb",
+  "a CBEA: lvrx loads one byte short"
+ ],
+ "82758100": [
+  "int k, n = \\(int\\)\\(ea & 15u\\);(\\s*)u32 b = ea & ~15u;(\\s*)for \\(k = 0; k < n; k\\+\\+\\) xv_sb",
+  "int k, n = (int)(ea & 15u) - 1;\\1u32 b = ea & ~15u;\\2for (k = 0; k < n; k++) xv_sb",
+  "a CBEA: lvrx loads one byte short"
+ ],
+ "82de13c8": [
+  "\\bv127(?=[,)])",
+  "v31",
+  "b field: va high bits dropped (v127 read as v31, vxor128 at 82de1628)"
+ ],
+ "82d82e18": [
+  "\\bv127(?=[,)])",
+  "v31",
+  "b field: va high bits dropped (v127 read as v31, vmulfp128 at 82d864a0)"
+ ]
+}

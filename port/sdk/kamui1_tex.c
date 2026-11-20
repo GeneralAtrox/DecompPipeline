@@ -156,6 +156,13 @@ static u32 surface_bytes(const K1Surface *s)
 /* A 16-bit twiddled mip chain: loaded MIP16_LEAD bytes in. */
 static int mip16(u32 flags) { return (flags & (FLAG_TWIDDLED | FLAG_MIPMAP | FLAG_VQ | FLAG_PALETTE)) == (FLAG_TWIDDLED | FLAG_MIPMAP); }
 
+/* The TCW the game builds from the surface (format bits and address): its pack image's, kicked early. */
+static u32 surface_tcw(const K1Surface *s)
+{
+    return (s->flags & FLAG_MIPMAP ? 1u << 31 : 0u) | (s->flags & FLAG_VQ ? 1u << 30 : 0u) | s->pixel_format |
+           (s->flags & FLAG_TWIDDLED ? 0u : 1u << 26) | s->surface >> 3;
+}
+
 KMSTATUS kmCreateTextureSurface(KMSURFACEDESC *surface, s32 width, s32 height, u32 textureType)
 {
     K1Surface *s = (K1Surface *)surface;
@@ -202,6 +209,7 @@ KMSTATUS kmCreateTextureSurface(KMSURFACEDESC *surface, s32 width, s32 height, u
         return K1_NOT_ENOUGH_MEMORY;
     }
     s->surface = at;
+    if (!(s->flags & (FLAG_STRIDE | FLAG_PALETTE))) pvr_pack_surface(surface_tcw(s), w, h); /* a library's own copy */
     return K1_OK;
 }
 
@@ -230,13 +238,18 @@ KMSTATUS kmLoadTexture(KMSURFACEDESC *surface, const u32 *texture, s32 bAutoMipM
     } else {
         load(s->surface, src, s->size);
     }
+    if (!(s->flags & (FLAG_STRIDE | FLAG_PALETTE))) /* the TCW the game builds from the surface: its pack image, early */
+        pvr_pack_hint(surface_tcw(s), s->width, s->height, 0);
     return K1_OK;
 }
 
 KMSTATUS kmFreeTexture(KMSURFACEDESC *surface)
 {
     K1Surface *s = (K1Surface *)surface;
-    if (s->surface) release(s->surface);
+    if (s->surface) {
+        release(s->surface);
+        pvr_pack_surface(s->surface >> 3, 0, 0);
+    }
     s->surface = 0;
     return K1_OK;
 }

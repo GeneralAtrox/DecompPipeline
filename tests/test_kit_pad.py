@@ -60,6 +60,10 @@ u32 host_pads_read(HostPad pad[HOST_PADS])
 }
 void host_pad_rumble(u32 player, u32 strength, u32 ms) { (void)player, (void)strength, (void)ms; }
 void host_vmu_lcd(u32 card, const u8 *dots) { (void)card, (void)dots; }
+char *const *host_args(int *argc) { static char *const none[1] = {0}; *argc = 1; return none; }
+void session_mark(const char *word) { (void)word; }
+int session_marked(const char *word) { (void)word; return 0; }
+int session_replaying(void) { return 0; }
 
 static void show(const char *what, u32 port)
 {

@@ -4,10 +4,10 @@
  * tools' headless runs have it) ignores the game's default pack, like widescreen, so it sees the original;
  * --texture-pack on, NAME or DIR asks for it there.
  *
- * A release carries its packs beside port.exe (tools/package_release.py): packs/<folder>. The game's default pack is
- * looked for there first, under the last part of its game.json path, since that path only exists on the machine that
- * built it. Every other folder there is an optional pack: --texture-pack NAME (the Display menu's Texture pack entry,
- * saved in settings.txt) shows it over the game's default, whose images still show for the keys it lacks.
+ * A release carries its packs in packs/<folder> beside port.exe; the game's default is looked for there first, under its
+ * game.json folder's name. Every other folder is an optional pack (--texture-pack NAME, the Display menu, settings.txt),
+ * shown over the game's default; game.json "texture_pack_choice" names the one a play run starts with until one is chosen.
+ * A default pack the build could not make leaves packs/<folder>.skipped (tools/pack_builds.py): its reason is logged.
  *
  * A pack is a folder: index.txt, one "KEY FILE" per line ('#' starts a comment), FILE a PNG beside it (any size: the
  * renderer samples by normalized coordinates, so a higher-resolution image just works). KEY, 16 hex digits, is the
@@ -18,14 +18,15 @@
  * indices and another codebook is another key. port/tools/texture_pack.py computes the same key from a texture's
  * bytes and writes packs (docs: port/README.md, Texture packs).
  *
- * pvr_tex.c asks when it decodes a texture, which is only after the guest wrote its memory: an unchanged texture is
- * never hashed again. A hit's image is read once and kept with its mip chain (box-filtered, for mip-mapped guests).
- * A palettized texture (pixel formats 5 and 6) has no pack image: its texels depend on palette RAM, not hashed.
- * A line's word over keeps the game's own texture under the image: where the image's alpha is 0 the game's texel shows
- * (the image is any whole multiple of the texture's size), and every other pixel is the image's. So a pack can change part
- * of a texture without holding the rest of the game's art; alpha 1 clears a pixel.
- * A line's rim=RRGGBB is for a model that draws its sides untextured right after the textured face: those vertices
- * take that colour, scaled by their strongest channel so the game's lighting stays (the button icons' lower edge).
+ * pvr_tex.c asks when it decodes a texture (after the guest wrote its memory). A hit's image, with its whole mip chain
+ * (FILE.mips, else built) whatever the guest's mip-map bit, is loaded on the loader's thread (pvr_pack_load.c), kicked
+ * by kmLoadTexture or else the draw; an over line's too, its game texels decoded where it is kicked.
+ * Palettized textures (formats 5, 6) have none: their texels depend on palette RAM.
+ * A line's words: over keeps the game's own texture under the image where its alpha is 0; rim=RRGGBB colours the
+ * untextured sides a model draws right after the textured face; wide=W marks the image's middle W columns as the texture
+ * and the rest as art for a frame wider than 4:3 (pvr_wide.c). port/TEXTURE_PACKS.md has them in full.
+ * if=game.NAME switches a line with that setting (port_menu_check_on: a game.json menu_checks entry, maybe on by
+ * default); off, the line is skipped, and a change reloads the pack at once.
  * Nearest existing: pvr_tex.c's decoded-texture cache (keyed by TCW, not by content; this sits under it). */
 #include <stdio.h>
 #include <stdlib.h>
@@ -39,6 +40,11 @@
 #else
 #define PACK_DEFAULT ""
 #endif
+#ifdef PORT_TEXTURE_PACK_CHOICE
+#define PACK_CHOICE PORT_TEXTURE_PACK_CHOICE /* game.json texture_pack_choice: the optional pack until one is chosen */
+#else
+#define PACK_CHOICE ""
+#endif
 #define TCW_MIP (1u << 31)
 #define TCW_VQ (1u << 30)
 #define TCW_NON_TWIDDLED (1u << 26)
@@ -50,28 +56,29 @@
 #define MAX_PATH_TEXT PVR_PACK_PATH
 enum { LAYER_CHOSEN, LAYER_GAME, LAYERS };
 #define MAX_RIMS 16u
-#define RIM_SET 0x1000000u
+#define RIM_SET PVR_PACK_RIM_SET
 
 typedef struct PackEntry {
     u64 key;
     char *file;
-    u32 *texels; /* the image's levels, top first; NULL: not read yet */
-    u32 w, h, levels, mipped, failed;
+    u32 w, h, failed;
     u32 variant; /* the pad style the image is for (base/pad_style.c): 0 for every style, 1 xbox, 2 playstation */
     u32 layer;   /* whose image: LAYER_CHOSEN comes before LAYER_GAME */
     u32 rim;     /* RIM_SET | RRGGBB from the line's rim= word, or 0 */
     u32 over;    /* the line's over word: the image goes over the game's own texture */
+    u32 wide;    /* the line's wide= word: the columns of the image that are the texture, or 0 */
 } PackEntry;
 
-/* The textures decoded with a rim= image. The scene parser asks each time an untextured polygon follows a textured
- * one, so this is a look-up, not a hash; a texture's first scene shows its rim as the game draws it. */
+/* The textures decoded with a rim= or wide= image. The scene parser asks each time an untextured polygon follows a
+ * textured one, so this is a look-up, not a hash; a texture's first scene shows its rim as the game draws it. */
 typedef struct RimRow {
     u32 tcw, w, h, rim;
+    f32 wide; /* the image's width over the columns that are the texture; 0: no wide= word */
 } RimRow;
 
 static char g_dir[MAX_PATH_TEXT] = PACK_DEFAULT; /* the game's pack, or --texture-pack DIR */
 static int g_dir_given;                          /* it is --texture-pack DIR: not looked for beside port.exe */
-static char g_chosen[PVR_PACK_NAME];             /* --texture-pack NAME: a folder of packs/ beside port.exe */
+static char g_chosen[PVR_PACK_NAME] = PACK_CHOICE; /* --texture-pack NAME: a folder of packs/ beside port.exe */
 static char g_layer_dir[LAYERS][MAX_PATH_TEXT];
 static int g_wanted = -1;           /* -1: the game's default (not in a check run); off: 0; on, NAME or DIR: 1 */
 static volatile LONG g_enabled = -1; /* -1: not loaded yet */
@@ -107,16 +114,6 @@ static int by_key(const void *a, const void *b)
     if (x->key != y->key) return x->key < y->key ? -1 : 1;
     if (x->layer != y->layer) return x->layer < y->layer ? -1 : 1;
     return x->variant < y->variant ? -1 : x->variant > y->variant;
-}
-
-/* An index line's variant word: "" is every style (0), xbox 1, playstation 2; -1 for any other word. */
-static int variant_of(const char *s)
-{
-    s += strspn(s, " \t");
-    if (!*s || *s == '\r' || *s == '\n') return 0;
-    if (!strncmp(s, "xbox", 4) && !s[4 + strspn(s + 4, " \t\r\n")]) return 1;
-    if (!strncmp(s, "playstation", 11) && !s[11 + strspn(s + 11, " \t\r\n")]) return 2;
-    return -1;
 }
 
 /* The entry for the key: the one for the style in use if the first pack holding the key has it, else the one for
@@ -158,7 +155,7 @@ static u32 load_index(const char *dir, u32 layer)
 {
     char path[MAX_PATH_TEXT + 16], line[MAX_PATH_TEXT];
     WCHAR wide[MAX_PATH_TEXT + 16];
-    u32 bad = 0, before = g_count;
+    u32 bad = 0, switched_off = 0, before = g_count;
     snprintf(g_layer_dir[layer], sizeof g_layer_dir[layer], "%s", dir);
     snprintf(path, sizeof path, "%s/index.txt", dir);
     FILE *f = NULL;
@@ -167,31 +164,11 @@ static u32 load_index(const char *dir, u32 layer)
         return 0;
     }
     while (fgets(line, sizeof line, f)) {
-        char *hash = strchr(line, '#'), *end, *file, *rest;
-        unsigned long long key;
-        int variant = 0;
-        u32 rim = 0, over = 0;
-        if (hash) *hash = '\0';
-        key = _strtoui64(line, &end, 16);
-        file = end + strspn(end, " \t");
-        rest = file + strcspn(file, " \t\r\n");
-        if (*rest) {
-            char *word = strstr(rest + 1, "rim="), *stop;
-            if (word) {
-                rim = RIM_SET | strtoul(word + 4, &stop, 16);
-                if (stop != word + 10 || (rim & ~(RIM_SET | 0xffffffu))) variant = -1;
-                *word = '\0';
-            }
-            word = strstr(rest + 1, "over");
-            if (word && strspn(word + 4, " \t\r\n") == strlen(word + 4)) {
-                over = 1;
-                *word = '\0';
-            }
-            if (!variant) variant = variant_of(rest + 1);
-        }
-        *rest = '\0';
-        if (variant < 0 || end == line || file == end || !*file) {
-            bad += strspn(line, " \t\r\n") != strlen(line);
+        PvrPackLine e;
+        int got = pvr_pack_line(line, &e); /* pvr_pack_line.c */
+        if (got < 1) {
+            bad += got == -1;
+            switched_off += got == -2;
             continue;
         }
         if (g_count == g_cap) {
@@ -201,37 +178,52 @@ static u32 load_index(const char *dir, u32 layer)
             g_cap = g_cap ? g_cap * 2u : 256u;
         }
         memset(&g_entry[g_count], 0, sizeof *g_entry);
-        g_entry[g_count].key = key;
-        g_entry[g_count].variant = (u32)variant;
+        g_entry[g_count].key = e.key;
+        g_entry[g_count].variant = (u32)e.variant;
         g_entry[g_count].layer = layer;
-        g_entry[g_count].rim = rim;
-        g_entry[g_count].over = over;
-        g_rim_lines += rim != 0u;
-        g_entry[g_count++].file = _strdup(file);
+        g_entry[g_count].rim = e.rim;
+        g_entry[g_count].over = e.over;
+        g_entry[g_count].wide = e.wide;
+        g_rim_lines += e.rim != 0u || e.wide != 0u;
+        g_entry[g_count++].file = _strdup(e.file);
     }
     fclose(f);
     port_log("pvr: texture pack: %u images in %s%s\n", g_count - before, dir, bad ? " (some lines unreadable)" : "");
+    if (switched_off) port_log("pvr: texture pack: %u lines off by their if= setting\n", switched_off);
     return g_count - before;
 }
 
 static int wanted(void) { return g_wanted < 0 ? !host_fixed_clock() : g_wanted; }
+
+/* The build's note beside the game's default pack it could not make (tools/pack_builds.py), logged; 0: no note */
+static int log_skipped(const char *dir)
+{
+    char path[MAX_PATH_TEXT + 16], why[512] = "";
+    WCHAR wide[MAX_PATH_TEXT + 16];
+    FILE *f = NULL;
+    snprintf(path, sizeof path, "%s.skipped", dir);
+    if (!pack_widen(path, wide, MAX_PATH_TEXT + 16) || _wfopen_s(&f, wide, L"r") != 0 || !f) return 0;
+    fgets(why, sizeof why, f);
+    fclose(f);
+    port_log("pvr: texture pack: the build skipped %s: %.*s; the original picture shows\n", dir, (int)strcspn(why, "\r\n"), why);
+    return 1;
+}
 
 /* What is wanted now into g_entry, sorted by key, dropping what a switch left there. Runs where images are used, so
  * nothing else holds an image (pvr_tex.c copies one into the device at once). */
 static int load_packs(void)
 {
     char dir[MAX_PATH_TEXT];
-    for (u32 i = 0; i < g_count; i++) {
-        free(g_entry[i].file);
-        free(g_entry[i].texels);
-    }
+    pvr_pack_load_reset();
+    for (u32 i = 0; i < g_count; i++) free(g_entry[i].file);
     g_count = g_hits = g_rim_lines = g_rim_rows = 0;
     if (!wanted()) return 0;
     if (g_chosen[0]) {
         pack_bundled_dir(g_chosen, dir, sizeof dir);
         load_index(dir, LAYER_CHOSEN);
     }
-    if (g_dir[0]) load_index(game_pack_dir(dir, sizeof dir), LAYER_GAME);
+    if (g_dir[0] && (g_dir_given || game_pack_dir(dir, sizeof dir) != g_dir || pack_has_index(g_dir) || !log_skipped(dir)))
+        load_index(game_pack_dir(dir, sizeof dir), LAYER_GAME);
     if (g_count) qsort(g_entry, g_count, sizeof *g_entry, by_key);
     return g_count != 0;
 }
@@ -246,14 +238,15 @@ static int enabled(void)
     return g_enabled > 0;
 }
 
-static void note_rim(u32 tcw, u32 w, u32 h, u32 rim)
+static void note_rim(u32 tcw, u32 w, u32 h, u32 rim, f32 wide)
 {
     for (u32 i = 0; i < g_rim_rows; i++)
         if (g_rim[i].tcw == tcw && g_rim[i].w == w && g_rim[i].h == h) {
             g_rim[i].rim = rim;
+            g_rim[i].wide = wide;
             return;
         }
-    if (rim && g_rim_rows < MAX_RIMS) g_rim[g_rim_rows++] = (RimRow){tcw, w, h, rim};
+    if ((rim || wide > 0.0f) && g_rim_rows < MAX_RIMS) g_rim[g_rim_rows++] = (RimRow){tcw, w, h, rim, wide};
 }
 
 u32 pvr_pack_rim(u32 tcw, u32 tsp)
@@ -265,39 +258,57 @@ u32 pvr_pack_rim(u32 tcw, u32 tsp)
     return 0;
 }
 
-u32 pvr_pack_levels(u32 tcw, u32 w, u32 h, u32 stride, const u32 **texels, u32 *pw, u32 *ph)
+f32 pvr_pack_wide(u32 tcw, u32 tsp)
+{
+    u32 w = 8u << ((tsp >> 3) & 7u), h = 8u << (tsp & 7u);
+    if (!g_rim_rows || !enabled()) return 0.0f;
+    for (u32 i = 0; i < g_rim_rows; i++)
+        if (g_rim[i].tcw == tcw && g_rim[i].w == w && g_rim[i].h == h) return g_rim[i].wide;
+    return 0.0f;
+}
+
+/* pvr_pack_hint (pvr_pack_load.c), on the game's thread: the image file for the texture as now in texture memory if one
+ * replaces it (into path; *over_key: its key if it is an over line's, else 0), else NULL; path is left as it was if the
+ * pack is off. */
+const char *pvr_pack_image(u32 tcw, u32 w, u32 h, u32 stride, char *path, size_t cap, u64 *over_key)
+{
+    PackEntry *e = NULL;
+    u64 key = 0;
+    if (!g_enabled || ((tcw >> 27) & 7u) >= 5u) return NULL; /* off, or palettized */
+    gfx_lock(); /* the drawing threads' hold: a switch of pack is loaded under it */
+    if (enabled()) e = find_entry(key = pvr_pack_key(pvr_vram(), tcw, w, h, stride));
+    path[0] = '\0';
+    if (e && !e->failed) snprintf(path, cap, "%s/%s", g_layer_dir[e->layer], e->file);
+    *over_key = e && e->over ? key : 0u;
+    gfx_unlock();
+    return path[0] ? path : NULL;
+}
+
+u32 pvr_pack_levels(u32 tcw, u32 w, u32 h, u32 stride, const u32 **texels, ID3D11Texture2D **tex, u32 *pw, u32 *ph)
 {
     PackEntry *e;
     u64 key;
     char path[MAX_PATH_TEXT * 2 + 2];
-    u32 mipped = (tcw & TCW_MIP) && !(tcw & TCW_NON_TWIDDLED), pal_first, pal_count;
+    u32 pal_first, pal_count, tw = w, th = h, levels;
     if (!enabled() || pvr_palette_range(tcw, &pal_first, &pal_count)) return 0;
     key = pvr_pack_key(pvr_vram(), tcw, w, h, stride);
     e = find_entry(key);
-    if (g_rim_lines) note_rim(tcw, w, h, e ? e->rim : 0u);
+    if (g_rim_lines) note_rim(tcw, tw, th, e ? e->rim : 0u, 0.0f);
     if (!e || e->failed) return 0;
-    if (!e->texels) {
-        snprintf(path, sizeof path, "%s/%s", g_layer_dir[e->layer], e->file);
-        e->texels = pvr_pack_read_png(path, &e->w, &e->h);
-        if (!e->texels) {
-            e->failed = 1;
-            return 0;
-        }
-        if (e->over && !pvr_pack_put_over(e->texels, e->w, e->h, e->file, tcw, w, h, stride)) {
-            e->failed = 1;
-            return 0;
-        }
-        e->levels = 1;
-    }
-    if (mipped && !e->mipped) {
-        e->levels = pvr_pack_mips(e->texels, e->w, e->h);
-        e->mipped = 1;
-    }
+    snprintf(path, sizeof path, "%s/%s", g_layer_dir[e->layer], e->file);
+    levels = pvr_pack_take(path, e->over ? key : 0u, tcw, w, h, stride, texels, tex, &e->w, &e->h); /* the loader's */
+    if (!levels) return e->failed = 1, 0;
+    if (e->wide) note_rim(tcw, tw, th, e->rim, (f32)e->w / (f32)e->wide);
     if (!g_hits++) port_log("pvr: texture pack: first image used (%016llx)\n", (unsigned long long)key);
-    *texels = e->texels;
     *pw = e->w;
     *ph = e->h;
-    return mipped ? e->levels : 1u;
+    return levels;
+}
+
+const char *pvr_pack_entry(u32 i, char *path, size_t cap, u32 *over)
+{
+    if (!enabled() || i >= g_count) return NULL;
+    return *over = g_entry[i].over, snprintf(path, cap, "%s/%s", g_layer_dir[g_entry[i].layer], g_entry[i].file), path;
 }
 
 int pvr_pack_has_style(int style)
@@ -339,14 +350,22 @@ void pvr_pack_set_choice(int choice)
     if (choice < 0 || (u32)choice >= pvr_pack_choices(&labels, &values)) return;
     g_wanted = choice != 0;
     snprintf(g_chosen, sizeof g_chosen, "%s", choice && strcmp(values[choice], "on") ? values[choice] : "");
+    pvr_pack_refresh();
+}
+
+/* The packs read again at the next decode, and every texture decoded again: a choice or an if= line's setting changed. */
+void pvr_pack_refresh(void)
+{
     InterlockedExchange(&g_enabled, -1);
     InterlockedIncrement(&g_generation);
 }
 
-/* --texture-pack NAME (a folder of packs/ beside port.exe) | DIR | on | off */
+/* --texture-pack NAME (a folder of packs/ beside port.exe) | DIR | on | off; --pack-mips[-check] DIR (pvr_pack_png.c) */
 int pvr_pack_option(const char *arg, const char *value)
 {
     if (pvr_keys_option(arg, value) || pad_style_option(arg, value) || pvr_tex_option(arg, value)) return 2;
+    if (value && (!strcmp(arg, "--pack-mips") || !strcmp(arg, "--pack-mips-check")))
+        ExitProcess((UINT)pvr_pack_write_mips(value, arg[11] == '-')); /* a tool's run: it opens nothing */
     if (strcmp(arg, "--texture-pack") || !value) return 0;
     g_chosen[0] = '\0';
     if (!strcmp(value, "off") || !strcmp(value, "on")) {

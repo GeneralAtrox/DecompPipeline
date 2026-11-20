@@ -74,7 +74,7 @@ void port_exit(const char *why, int code)
     if (InterlockedExchange(&g_exiting, 1)) return;
     port_log("exit: %s (%d) after %u vertical blanks\n", why, code, sat_vblank_count());
     sat_net_end();
-    sat_team_end();
+    sat_game_end();
     sat_level_end();
     sat_menus_end();
     play_stats_report();
@@ -97,13 +97,13 @@ static DWORD WINAPI watchdog(LPVOID unused)
     Sleep(g_watch_s * 1000u); /* not the tick: a watchdog or sampler thread */
     port_log("watchdog: %us passed, %u vertical blanks\n", g_watch_s, sat_vblank_count());
     sat_where();
-    port_exit("watchdog", 4);
+    port_exit("watchdog", PORT_EXIT_WATCHDOG);
     return 0;
 }
 
 void sat_frame_limit_check(void)
 {
-    if (g_max_frames && sat_vblank_count() >= g_max_frames) port_exit("frame limit", 0);
+    if (g_max_frames && sat_vblank_count() >= g_max_frames) port_exit("frame limit", PORT_EXIT_OK);
 }
 
 static DWORD WINAPI game_thread(LPVOID unused)
@@ -112,7 +112,7 @@ static DWORD WINAPI game_thread(LPVOID unused)
     sat_video_init(); /* the window belongs to the thread that pumps its events: this one, which also reads the pads */
     sh4_ldc_gbr(SAT_ENTRY_GBR);
     sat_call(SAT_ENTRY_SP, SAT_ENTRY_FN, 0, 0, 0, 0);
-    port_exit("the entry function returned", 2);
+    port_exit("the entry function returned", PORT_EXIT_FAILED); /* a Saturn game never returns: a fault, kept as one */
     return 0;
 }
 
@@ -167,17 +167,11 @@ static int kit_option(const char *a, const char *v, KitRun *r)
     else if (!strcmp(a, "--in-between")) sat_inb_on = !strcmp(v, "on"); /* play runs: on (sat_inb.c) */
     else if (!strcmp(a, "--cd-fast-loads")) sat_cd_fast_loads = strcmp(v, "off") != 0;
     else if (!strcmp(a, "--part-choice")) sat_part_option(v);
-    else if (!strcmp(a, "--team-fight")) sat_team_option(v);
-    else if (!strcmp(a, "--new-heads")) sat_heads_option(v);
     else if (!strcmp(a, "--skip-logos")) sat_logos_option(v);
     else if (!strcmp(a, "--fight-choice")) sat_fight_choice_option(v);
     else if (!strcmp(a, "--online-menu")) sat_online_menu_option(v);
-    else if (!strcmp(a, "--ladder-test-weak")) sat_ladder_test_option(v);
-    else if (!strcmp(a, "--ladder-test-rank")) sat_ladder_rank_option(v);
-    else if (!strcmp(a, "--online-note")) sat_online_note_option(v);
-    else if (!strcmp(a, "--join-address")) sat_join_address_option(v);
     else if (!strcmp(a, "--clipboard-test")) host_text_test(v);
-    else if (!strcmp(a, "--text-test")) sat_text_test_option(v);
+    else if (sat_game_option(a, v)) {} /* the game's own (sat_hooks.h) */
     else if (!strcmp(a, "--input-next")) {} /* a test's presses for the copy the game starts next (base host_online.cpp) */
     else if (!strcmp(a, "--menu-panel")) sat_panel_option(v);
     else if (!strcmp(a, "--layers")) sat_layer_mask = (u32)strtoul(v, NULL, 16);
@@ -270,8 +264,7 @@ int port_main(int argc, char **argv)
     sat_movie_start(!run.headless && !run.fast && !host_fixed_clock(), !g_audio_off);
     sat_logos_start(!run.headless && !run.fast && !host_fixed_clock() && !run.det);
     sat_part_start();
-    sat_heads_start(!run.headless && !run.fast && !host_fixed_clock() && !run.det);
-    sat_team_start();
+    sat_game_start(!run.headless && !run.fast && !host_fixed_clock() && !run.det); /* the game's hooks (sat_hooks.h) */
     sat_menus_start(!run.headless && !run.fast && !host_fixed_clock() && !run.det);
     sat_panel_start(!run.headless && !run.fast && !host_fixed_clock() && !run.det);
     sat_level_start();
@@ -289,7 +282,7 @@ int port_main(int argc, char **argv)
     f = fopen(g_image, "rb");
     if (!f) {
         port_log("cannot open the code image %s\n", g_image);
-        return 1;
+        return PORT_EXIT_FAILED;
     }
     fseek(f, 0, SEEK_END);
     n = ftell(f);
@@ -297,7 +290,7 @@ int port_main(int argc, char **argv)
     buf = (u8 *)malloc((size_t)n);
     if (fread(buf, 1, (size_t)n, f) != (size_t)n) {
         port_log("short read of %s\n", g_image);
-        return 1;
+        return PORT_EXIT_FAILED;
     }
     fclose(f);
     sat_load(SAT_IMAGE_BASE, buf, (u32)n);

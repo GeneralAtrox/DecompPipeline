@@ -82,10 +82,13 @@ int gfx_aspect_parse(const char *text, f32 *ratio);
 const char *gfx_aspect_name(f32 ratio, char buf[16]);
 void gfx_frame_shape(u32 out_w, u32 out_h, f32 ratio, GfxFrameShape *s);
 void gfx_screen_rect(u32 w, u32 h, f32 wide_k, f32 tall_k, u32 r[4]); /* the 640x480 screen in a frame: x, y, w, h */
+void gfx_screen_point(f32 px, f32 py, const GfxFrameShape *s, f32 out[2]); /* an output point in the 640x480 screen */
 
 /* present_device.c */
 int gfx_option(const char *arg, const char *value); /* the arguments one option takes, 0 if not ours */
 int gfx_init(void);                                 /* 0 on failure (logged) */
+int gfx_init_device(ID3D11Device *dev);             /* gfx_init with the game's own device (native_game.h); 0 on failure */
+void gfx_note_shown(void);                          /* a frame was presented: the log's time to the game's first one */
 void gfx_pump(void);                                /* host_window.cpp: window events; closing the window ends the run */
 /* host_window.cpp: --present-thread (runtime/frame_extra.c). The thread that shows in-between frames and the game's thread
  * share the device context: each holds this lock around its use. It does nothing until gfx_lock_on. The lock nests. */
@@ -96,7 +99,7 @@ void gfx_lock_present_thread(void); /* called by that thread, once */
 int gfx_on_present_thread(void);
 int gfx_lock_wanted(void);          /* the game's thread is waiting for the lock: that thread lets it have it */
 unsigned gfx_present_stall_us(void); /* --present-stall-us (present_device.c) */
-int gfx_present_paced(void);         /* --present-pace on (default) or off */
+int gfx_present_nowait_wanted(void); /* --present-nowait on (default) or off (present_device.c) */
 void gfx_set_vsync(int on);
 int gfx_vsync(void);
 
@@ -118,9 +121,31 @@ void gfx_clear(u32 argb);             /* fills the frame with one colour (the al
 int gfx_can_show(void);               /* 1 if the display would take a frame now without blocking */
 void gfx_show_wait(void);             /* --present-thread: waits a moment for that */
 u64 gfx_last_present_us(void);         /* the last Present call's duration (runtime/frame_cost.c) */
+void gfx_lock_split(u64 *copy, u64 *present); /* the thread of in-between frames' copies and Presents so far, counter ticks */
 void present_show(void);              /* the frame onto the window; a frame the display will not take is dropped */
+void gfx_present_nowait(int on);      /* --present-thread's thread is up: a Present that would wait is made again by it */
+int gfx_present_pending(void);        /* a frame whose Present would have waited is in the back buffer */
+int gfx_present_retry(void);          /* that thread, holding no lock: presents it if it can; 1 if it still waits */
 double gfx_presented_fps(void);       /* the last 5 s readout of frames presented a second */
 void gfx_shutdown(void);
+
+/* present_device.c: a vertex shader vs_main and a pixel shader ps_main compiled from HLSL source at start-up, with the
+ * compiler Windows carries (d3dcompiler_47.dll); 0 (logged) if either fails */
+int gfx_shaders(const char *hlsl, const char *name, ID3D11VertexShader **vs, ID3D11PixelShader **ps);
+
+/* present_edges.c: the bars beside (or above and below) the 4:3 screen in a wider (taller) frame take the screen's own
+ * edge pixels, row by row (column by column), instead of the border colour: what the console's picture showed at its
+ * edge carries on to the window's edge. Nothing in a 4:3 frame. A console calls it after a frame whose renderer drew
+ * nothing past the screen (the bars hold only the border colour). */
+void gfx_carry_edges(void);
+/* present_edges.c: the same bars filled black, the screen not touched; nothing in a 4:3 frame. A console calls it while a
+ * movie is on: everything outside a movie's screen is black at every window shape (the user, 2026-11-13: "it should be
+ * black bars"), whatever its renderer, the border colour or the edge colours left there. */
+void gfx_black_bars(void);
+/* present_edges.c, for proofs: of a grid of points in the bars of a read-back RGBA frame (scr: the screen's rectangle),
+ * how many are not black (a channel over 8 of 255); 0 for a frame without bars */
+u32 gfx_bars_lit(const u8 *rows, u32 stride, u32 w, u32 h, const u32 scr[4]);
+void gfx_edges_release(void);
 
 #ifdef __cplusplus
 }

@@ -37,6 +37,7 @@ def pack_files(name, folder, notice):
     missing = [f for f in wanted if not (folder / f).is_file()]
     if missing:
         raise ValueError(f"pack {name}: {folder} has no {', '.join(missing)}")
+    wanted += [f + ".mips" for f in images if (folder / (f + ".mips")).is_file()]  # stored mip chains (port.exe --pack-mips)
     return [(f"packs/{name}/{f}", folder / f) for f in wanted]
 
 

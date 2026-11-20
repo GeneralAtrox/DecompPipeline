@@ -249,7 +249,8 @@ public abstract class TcInputs extends TcBase {
     //                         ("any" picks a random word, "float" a random float's bits)
     //   genret N VAL          mocked call N (0-based) leaves VAL in r3 ("sentinel": the oracle's return address)
     //   genfret N HEX64       and HEX64 (double bits) in f1
-    // LOC is rN or 0xADDR (a global), optionally followed by +0xOFF steps; each step dereferences the pointer before it:
+    // LOC is rN, retN (mocked call N's r3 result, 0-based, N < 16; TcPtrSeed) or 0xADDR (a global), optionally followed
+    // by +0xOFF steps; each step dereferences the pointer before it:
     // "r4+0x1c" is the word at r4+0x1c, "0x82346720+0x10" the word at *(0x82346720)+0x10. Pointers are 32 bits.
     void applyHints(Vec v, List<String> hints) {
         for (String line : hints) {
@@ -299,14 +300,16 @@ public abstract class TcInputs extends TcBase {
     void genPlace(Vec v, String loc, long val) {
         String[] p = loc.split("\\+");
         long slot;
-        if (p[0].matches("r([3-9]|10)")) {
-            int i = Integer.parseInt(p[0].substring(1)) - 3;
+        if (p[0].matches("r([3-9]|10)|ret([0-9]|1[0-5])")) {   // a register, or call N's result: set alike
+            boolean reg = p[0].charAt(1) != 'e';
+            long[] a = reg ? v.r : v.rets;
+            int i = Integer.parseInt(p[0].substring(reg ? 1 : 3)) - (reg ? 3 : 0);
             if (p.length == 1) {
-                v.r[i] = val;
+                a[i] = val;
                 return;
             }
-            if (!genOwned(v.r[i])) v.r[i] = genChunk(v, 0);
-            slot = v.r[i] + genNum(p[1]);
+            if (!genOwned(a[i])) a[i] = genChunk(v, 0);
+            slot = a[i] + genNum(p[1]);
         } else {
             slot = genNum(p[0]);
             if (p.length > 1) slot = genDeref(v, slot) + genNum(p[1]);

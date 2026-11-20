@@ -1,7 +1,8 @@
 // The oracle's RAM bank (not a script itself; TcOracle installs one per run over the emulator's RAM space): every
 // data access of the current step is logged for the oracle:
 //  - reads: {pc, address, size, value} for the load log (pointer repair, TcInputs.repairVec) and rule R8 (the C
-//    runner fails any data read whose first byte is an instruction byte: state/code_ranges.txt);
+//    runner fails any data read whose first byte is an instruction byte: state/code_ranges.txt), except one whole
+//    entry of a switch table Ghidra resolved in the function (TcJumpTables: MSVC puts it in the code range);
 //  - the step's last store {address, size} (TcFixups: stfs), all its stores (TcTrack: float stores), and every byte
 //    stored once `track` is set (after the vector's patches are in): the run's writes, compared by the checker.
 // The emulator's instruction fetches go through the bank too; reads starting in [pc, pc + 16) are taken as fetches.
@@ -19,6 +20,10 @@ public class TcBank extends MemoryBank {
     long[] stored;                                 // this step's last store {address, size}
     final List<long[]> stores = new ArrayList<>(); // this step's stores {address, size}
     long codeRead = -1;                            // the first data read of an instruction byte (R8), or -1
+    // The first tracked store below the image outside the heap, stack and kernel regions, or -1. Such a run is invalid
+    // anyway (TcOracle.collect: "write outside RAM"); TcOracle stops it at the store, so pointer repair sees the loads
+    // that made the pointer, not the run's last ones (TcPtrSeed: Too Human 82df1658 spent 12 repairs on stack words).
+    long badWrite = -1;
     boolean track;                                 // record stores in written
     final AddressSet written = new AddressSet();
 
@@ -41,6 +46,9 @@ public class TcBank extends MemoryBank {
         stored = new long[] {f, size};
         stores.add(stored);
         if (track && size > 0) written.add(getSpace().getAddress(f), getSpace().getAddress(f + size - 1));
+        if (track && size > 0 && badWrite < 0 && f < TcBase.IMAGE_LO && !(TcBase.inRegions(f) && TcBase.inRegions(f + size - 1))) {
+            badWrite = f;
+        }
         in.setChunk(f, size, val);
     }
 
@@ -55,7 +63,7 @@ public class TcBank extends MemoryBank {
         int got = stopOnUninitialized || size == 1 ? in.getChunk(f, size, res, stopOnUninitialized) : whole(f, size, res);
         boolean fetch = pc < 0 || (f >= pc && f < pc + 16);
         if (!fetch) {
-            if (codeRead < 0 && facts.isCode(f)) codeRead = f;
+            if (codeRead < 0 && facts.isCode(f) && !facts.tables.covers(f, size)) codeRead = f;
             long v = 0;
             for (int i = 0; i < Math.min(size, 8); i++) v = v << 8 | (res[i] & 0xffL);
             reads.add(new long[] {pc, f, size, v});

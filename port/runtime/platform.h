@@ -17,6 +17,13 @@
  * original 4:3 (not --aspect, the menu or a play run following the window): a picture upgrade that also applies to a
  * chosen 4:3, where the two above are 1, asks it. */
 f32 port_widescreen(void);
+/* runtime/gfx/gfx_movie.c: a movie the game decodes itself, its picture drawn by the kit in place of the textured quad
+ * it would draw through the emulated renderer. port_movie_native: ask as each movie starts (--movie-native on|off|
+ * always; kept in the recording). port_movie_show_yuv422: each decoded picture, the YUV422 bytes the game would load
+ * into texture memory (stride bytes a row), converted as the renderer converts them; shown until port_movie_hide. */
+int port_movie_native(void);
+void port_movie_show_yuv422(const void *pixels, u32 w, u32 h, u32 stride);
+void port_movie_hide(void);
 f32 port_tallscreen(void);
 /* base/present.c, for game.json "wide_cull" (gen_port's WideCull_ wrappers): a renderer that drops what falls outside
  * the viewport (four floats W, H, X, Y at guest address viewport) sees it grown by the frame's share for one call when
@@ -26,9 +33,13 @@ f32 port_tallscreen(void);
 int port_wide_cull_begin(u32 viewport, f32 saved[4]);
 void port_wide_cull_end(u32 viewport, const f32 saved[4]);
 /* pvr/pvr_parts.c: game.json part_draw's wrapper brackets each call of the game's per-part 3D draw */
-void port_part_begin(const void *obj, const void *part, u32 stamp_at, u32 world_at);
-void port_part_end(void);
+/* live: each TA list's write position now (PVRX order), from game.json part_draw.lists; NULL for the SDK's */
+void port_part_begin(const void *obj, const void *part, u32 stamp_at, u32 world_at, const u32 *live);
+void port_part_end(const u32 *live);
 int port_shape_chosen(void);
+/* pvr_state.c: the next render draws over the frame as it is: no background clear and the bars left as the frame's
+ * earlier renders set them; no in-between frame is blended from it (a co-op overlay over views in their own renders) */
+void port_render_keep_frame(void);
 void port_read_whole_frame(int on); /* pvr_read.c: while on, reading the frame buffer gives the whole frame, squeezed to the size read, not the 640x480 screen in its middle */
 #define PORT_VBLANK_HZ 60u
 void port_wait_vblank(void); /* waits for the next vertical blank (the host clock at 60 Hz) and counts it */
@@ -37,6 +48,7 @@ void port_set_vblank_hook(PortVblankFn fn, void *arg); /* called at each vertica
 /* The time through the current vertical blank, 0..65536 (65536: it is over, the next one is due). look: the game
  * looks at a clock (a sound chip's position), which under --fixed-clock moves the virtual time as host_ticks does. */
 u32 port_vblank_phase(int look);
+int port_clock_nap(u32 polls); /* host.c: a game polling a clock in a loop sleeps up to 2 ms after a burst of polls (real clock only); 1 if it slept */
 void port_spin_word(u32 addr); /* tx/tx_rt.c: a word the game spins on until an interrupt changes it */
 /* tx/tx_rt.c: runs before(target, arg) before and after(target, arg) after each call to guest address addr that goes
  * through translator C's tc_call (any function, translated or not; whatever unit's code that is; either hook may be
@@ -67,6 +79,7 @@ int extra_scene(void);
 int extra_scene_mode(void);
 int pvr_blend_draw(f32 alpha);
 int pvr_blend_ready(void);
+void gfx_movie_lay_frame(void); /* gfx/gfx_present.c: a movie's picture on a rendered frame */
 /* frame_copy.c: guest RAM copied in slices by helper threads (--interp-copy-threads) */
 void extra_copy_init(void);
 void extra_copy_ram(u8 *dst, const u8 *src);
@@ -79,10 +92,7 @@ u32 extra_copy_thread_count(void);
 void port_extra_thread_hold(void);
 void port_extra_thread_early(int on);  /* --present-thread on: hold does nothing, and rendered starts them */
 void port_extra_thread_rendered(void); /* the renderer, holding gfx_lock, at a render's end */
-void port_extra_thread_tick(void);   /* the host, as a tick starts */
-int port_extra_thread_shows(void);    /* --present-pace on: the thread shows the tick's own frames too */
-void port_extra_thread_counted(void);  /* gfx_frame_done: the frame is counted; the thread may take the device again */
-int gfx_present_paced(void);           /* base/present.h: --present-pace */
+void port_extra_thread_counted(void);  /* gfx_frame_done: the frame is counted; the thread wakes */
 u64 port_extra_thread_period(void);    /* --present-thread on: microseconds between the last two renders' ends, 0 unknown */
 int port_extra_thread_is_early(void);
 void port_extra_shown(void);           /* gfx_present, holding gfx_lock: a frame was shown by the tick */
@@ -145,7 +155,7 @@ void host_coro_delete(HostCoro *c);                   /* one that is not running
 typedef void (*PortCodeFn)(void);
 PortCodeFn port_code_function(u32 addr);
 
-/* base/input.c: up to HOST_PADS controllers (base.h) */
+/* base/input.c: up to HOST_PADS controllers; a game's own pad layer has HOST_GAME_PADS, the rest port_pad_player (base.h) */
 s32 session_timer(s32 live); /* session.c: the SDK timer's count as the game sees it (recorded, or replayed) */
 /* sdk/maple_pad.c: the memory card sockets (--vmu A1,B1,..|none; default A1): bit c * 2 + s is connector c's (A..D)
  * socket s + 1. gfx/gfx_vmu.c: a block reached that card's LCD; dots[48 * 32] row by row as the player sees the
@@ -163,7 +173,12 @@ void gfx_show(void);       /* shows the frame without counting it (an in-between
 void gfx_capture_extra(void); /* an in-between frame: dumps it if --dump-extra asks for it */
 int gfx_can_show(void);    /* 1 if the display would take a frame now without blocking (gfx_show drops it if not) */
 void gfx_show_wait(void);  /* --present-thread: waits a moment for that */
+void gfx_present_nowait(int on); /* --present-thread's thread is up: a Present that would wait comes back (base/present.c) */
+int gfx_present_nowait_wanted(void); /* --present-nowait on (default) */
+int gfx_present_pending(void);   /* a frame whose Present would have waited is in the back buffer */
+int gfx_present_retry(void);     /* that thread, holding no lock: presents it if it can; 1 if it still waits */
 u64 gfx_last_present_us(void); /* the last Present call's duration, microseconds */
+void gfx_lock_split(u64 *copy, u64 *present); /* base/present.c: in-between frames' copies and Presents so far, counter ticks */
 void gfx_set_border(u32 argb); /* the colour around the 4:3 picture */
 u32 gfx_border(void);          /* that colour */
 /* pvr_read.c: one pixel of the displayed 640x480 frame buffer as the console's video memory holds it (RGB565, the
@@ -194,12 +209,35 @@ typedef struct HostDirEnt {
 } HostDirEnt;
 int host_disc_root(u32 *lba, u32 *size);
 int host_disc_read(u32 lba, u32 count, void *out); /* 0 on a read error */
+int host_disc_read_quiet(u32 lba, u32 count, void *out); /* the same, not counted as a load; any thread */
 int host_disc_find(u32 lba, u32 size, const char *name, HostDirEnt *out); /* case-insensitive; 0 if absent */
 /* Lists the directory at lba/size without "." and "..": the count, -1 on a read error, -2 if over max. */
 int host_disc_list(u32 lba, u32 size, HostDirEnt *out, int max);
+/* The loose-file folder laid over the disc (game.json loose_dir, --loose-dir), or NULL when there is none: a game
+ * reads its own extra files there; its files also appear in the disc's directories through host_disc_*. */
+const char *host_loose_dir(void);
 int host_disc_toc(u32 *toc); /* u32[102], the high-density area's TOC in the GD-ROM form; 0 if unknown */
 int host_disc_audio(u32 track, u32 *lba, u32 *sectors); /* an audio track's first sector and length; 0 if none */
 int host_disc_read_audio(u32 lba, u32 count, void *out); /* raw 2352-byte CD audio sectors, 588 stereo frames each */
+
+/* disc_fill.c: sectors read into out behind the caller, on a thread of their own, for the kit's own readers of a
+ * large file (a movie). Start counts the read as host_disc_read would; NULL: no thread, read it yourself. Wait
+ * returns once out's first bytes are in (1), or the fill has stopped short of them on a read error (0). End stops
+ * the fill and frees it; out is not written after. The _v forms take it as void * (media.h's callbacks). */
+typedef struct DiscFill DiscFill;
+DiscFill *disc_fill_start(u32 lba, u32 sectors, void *out);
+int disc_fill_wait(DiscFill *f, u32 bytes);
+void disc_fill_end(DiscFill *f);
+int disc_fill_wait_v(void *f, u32 bytes);
+void disc_fill_end_v(void *f);
+/* The waits, for the tick cost line: whose they are (a fill's reader; gdi is disc_lock behind a fill's chunk), the game
+ * thread (prof_tc_begin), and the line's part since the last call (on the game thread; the counts start again). */
+enum { DISC_READER_GDI, DISC_READER_ADX, DISC_READER_MOVIE, DISC_READERS };
+void disc_fill_reader(DiscFill *f, int reader);
+void disc_wait_game_thread(void);
+void disc_wait_line(char *out, size_t cap);
+struct GdfsHandle;
+u32 gdfs_lba(struct GdfsHandle *gdfs); /* sdk/gdfs.c: the disc sector at an open file's position (0: no file) */
 
 /* cdda.c: the drive's CD audio, which the AICA's CD input mixes (aica.h). repeat is the GD-ROM's count: 0 plays the
  * tracks once, 15 for ever. */

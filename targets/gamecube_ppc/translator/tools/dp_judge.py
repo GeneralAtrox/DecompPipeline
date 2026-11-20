@@ -6,6 +6,11 @@ workspace. The workspace is only read: its judge inputs (project.json, the binar
 state/msvc_env.json, state/function_bodies.txt, and each function's harness/ and packets/) are copied into a
 mirror workspace under --out, and DP runs there (its builds write into the mirror, never into the game folder).
 
+A harness the proof refused (meta.json "unsupported", e.g. vector generation out of time) or with a set of no valid
+vectors has nothing to judge: it is ERROR "harness refused: <why>", never FAIL at compare 0/0, so the totals keep
+wrong C apart from missing vectors (the Xbox 360 dp_judge's REFUSED / NO_VECTORS rule). A FAIL with no wrong vector,
+only a set under min_valid_vectors, stays FAIL with a note saying so.
+
 usage: python tools/dp_judge.py --ws <workspace> --out <dir> [--only a,b] [--jobs N] [--baseline] [--all]
   --baseline: judge the workspace's matched (agent-written) C instead of the translation
   --all: every function with a harness, not only the matched ones
@@ -31,6 +36,32 @@ def thin(verdict, cov):
     """A PASS whose vectors reached under THIN_BELOW% of the original's blocks. A label in the report: the verdict stays."""
     hit, total = (cov or {}).get("blocks_hit_all"), (cov or {}).get("blocks_total")
     return verdict == "PASS" and bool(total) and hit is not None and hit * 100 < THIN_BELOW * total
+
+
+def refusal(meta, harness):
+    """Why harness (a function's harness folder) has nothing to judge, or None: the proof refused it, or it holds no
+    expected results, or a set has no valid vector (oracle_summary.json). The judge's PASS rule is unchanged: this only
+    names the verdict of a harness no C can pass."""
+    if (meta or {}).get("unsupported"):
+        return meta["unsupported"]
+    exp = harness / "expected.txt"
+    if not exp.is_file() or not exp.stat().st_size:
+        return "no expected results (preparation unfinished or no valid vector)"
+    summ = harness / "oracle_summary.json"
+    s = json.loads(summ.read_text(encoding="utf-8")) if summ.is_file() else {}
+    empty = [k for k in ("dev", "hidden") if s.get(f"{k}_valid") == 0]
+    if empty:
+        return "no valid vector in the " + " and ".join(empty) + " set: " + json.dumps(s.get("invalid") or {})[:200]
+    return None
+
+
+def thin_note(res, min_valid):
+    """The note for a FAIL with no wrong vector, only too few valid ones (the Xbox 360 dp_judge's)."""
+    v = res.get("vectors") or {}
+    if res["verdict"] == "FAIL" and res["stage"] == "compare" and not res["failing"] and "run_error" not in res:
+        return ["too few valid vectors, none wrong: " + ", ".join(f"{k} {v[k]['total']}" for k in v)
+                + f" (the judge needs {min_valid} in each)"]
+    return []
 
 
 def tree_sig(p):
@@ -99,6 +130,9 @@ def main():
 
     def one(a):
         meta = paths.read_json(paths.HARNESS / a / "meta.json")
+        why = refusal(meta, paths.HARNESS / a)
+        if why:  # nothing to judge: not a FAIL of the C
+            return {"addr": a, "verdict": "ERROR", "why": "harness refused: " + why}
         t0 = time.time()
         notes = []
         if args.baseline:
@@ -106,7 +140,7 @@ def main():
         else:
             try:
                 ad = int(a, 16)
-                src, ft = translate_function(w.dol, ad, Signature.from_meta(meta), w.facts, w.bodies[ad],
+                src, ft = translate_function(w.dol, ad, Signature.from_meta(meta), w.facts, w.body(ad, meta),
                                              comments=args.comments, structured=not args.no_struct,
                                              optimise=not args.raw, returns=kinds)
                 notes = ft.notes
@@ -126,6 +160,7 @@ def main():
         finally:
             shutil.rmtree(bd, ignore_errors=True)
         d = res.get("first_diffs") or []
+        notes = thin_note(res, cfg["min_valid_vectors"]) + notes
         return {"addr": a, "verdict": res["verdict"], "stage": res["stage"], "failing": res["failing"],
                 "total": res["total"], "coverage": res.get("coverage"), "thin": thin(res["verdict"], res.get("coverage")),
                 "lint": res.get("lint", [])[:3], "build": res.get("build", [])[:4],

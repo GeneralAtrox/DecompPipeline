@@ -111,7 +111,7 @@ class FmacLint(unittest.TestCase):
 
     def test_oracle_checks_leave_rule_out(self):
         """The watcher gate's regression and the mutation audit judge the oracle and the comparison: unchanged."""
-        self.assertEqual(inspect.getsource(gate.regression).count("fused=False"), 2)
+        self.assertEqual(sum(inspect.getsource(f).count("fused=False") for f in (gate.regression, gate.control_check)), 2)
         self.assertEqual(inspect.getsource(mutation).count("fused=False"), 1)
 
     def test_preflight_stub_not_held_to_rr8(self):

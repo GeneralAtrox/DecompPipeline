@@ -128,7 +128,8 @@ find_program(PORT_FXC fxc REQUIRED)
 set(PORT_SHADERS "${CMAKE_CURRENT_BINARY_DIR}/shaders")
 set(PORT_SHADER_HEADERS "${PORT_SHADERS}/pvr_vs.h" "${PORT_SHADERS}/pvr_blend_vs.h" "${PORT_SHADERS}/pvr_ps.h" "${PORT_SHADERS}/pvr_gather.h"
     "${PORT_SHADERS}/pvr_full.h" "${PORT_SHADERS}/pvr_resolve.h" "${PORT_SHADERS}/pvr_shadow.h"
-    "${PORT_SHADERS}/pvr_tvolume.h" "${PORT_SHADERS}/pvr_tmerge.h" "${PORT_SHADERS}/gfx_movie_ps.h")
+    "${PORT_SHADERS}/pvr_tvolume.h" "${PORT_SHADERS}/pvr_tmerge.h" "${PORT_SHADERS}/gfx_movie_ps.h"
+    "${PORT_SHADERS}/gfx_movie_rgba_ps.h")
 add_custom_command(OUTPUT ${PORT_SHADER_HEADERS}
   COMMAND ${CMAKE_COMMAND} -E make_directory "${PORT_SHADERS}"
   COMMAND ${PORT_FXC} /nologo /O3 /WX /T vs_5_0 /E vs_main /Vn g_pvr_vs /Fh "${PORT_SHADERS}/pvr_vs.h"
@@ -151,6 +152,8 @@ add_custom_command(OUTPUT ${PORT_SHADER_HEADERS}
           "${CMAKE_CURRENT_SOURCE_DIR}/pvr/pvr_oit.hlsl"
   COMMAND ${PORT_FXC} /nologo /O3 /WX /T ps_5_0 /E ps_movie /Vn g_gfx_movie_ps /Fh "${PORT_SHADERS}/gfx_movie_ps.h"
           "${CMAKE_CURRENT_SOURCE_DIR}/runtime/gfx/gfx_movie.hlsl"
+  COMMAND ${PORT_FXC} /nologo /O3 /WX /T ps_5_0 /E ps_movie_rgba /Vn g_gfx_movie_rgba_ps /Fh "${PORT_SHADERS}/gfx_movie_rgba_ps.h"
+          "${CMAKE_CURRENT_SOURCE_DIR}/runtime/gfx/gfx_movie.hlsl"
   DEPENDS pvr/pvr.hlsl pvr/pvr_oit.hlsl runtime/gfx/gfx_movie.hlsl
   COMMENT "fxc pvr/pvr.hlsl pvr/pvr_oit.hlsl runtime/gfx/gfx_movie.hlsl")
 
@@ -158,8 +161,10 @@ add_executable(port ${PORT_HOST} ${PORT_RUNTIME} ${PORT_TX_RUNTIME} ${PORT_SDK_S
                ${PORT_SHADER_HEADERS})
 target_include_directories(port BEFORE PRIVATE "${PORT_GEN}/include" "${PORT_READABLE_INCLUDE}" runtime runtime/tx pvr
                            sdk base "${PORT_RD_RT}" "${PORT_SHADERS}")
+# base/host_libm.h first in every host C++ file: the CRT's inline sinf etc. under host names, apart from the game's
+# (runtime/port_libm.c); without it the level editor and Dear ImGui fail to link (LNK2005).
 target_compile_options(port PRIVATE "$<$<COMPILE_LANGUAGE:C>:${PORT_C_BASE};/TC>"
-                       "$<$<COMPILE_LANGUAGE:CXX>:${PORT_CXX_FLAGS}>")
+                       "$<$<COMPILE_LANGUAGE:CXX>:${PORT_CXX_FLAGS};/FI${CMAKE_CURRENT_SOURCE_DIR}/base/host_libm.h>")
 # Optimisation per file: the kit's own C at PORT_KIT_OPT; everything that comes from the game or its translation at the
 # judge's flags (with PORT_CHECKED both are /Od /RTC1).
 set(PORT_KIT_C ${PORT_RUNTIME} ${PORT_SDK_SOURCES})

@@ -103,29 +103,9 @@ typedef struct { TcArgs team, lvl, head; } SatFeat;                   /* the arg
 const TcArgs *sat_feat_enter(u32 fn, const TcArgs *a, SatFeat *t); /* before it: the arguments it runs with */
 u32 sat_feat_leave(u32 fn, const TcArgs *a, u32 r);             /* after it: its result */
 
-/* sat_team.c: team fights, two against two (game.json team_fight; Game menu) */
-extern int sat_team_on;
-void sat_team_option(const char *value);                        /* --team-fight on|off */
-void sat_team_start(void);                                      /* at start: the replay's choice or the one asked for */
-const TcArgs *sat_team_enter(u32 fn, const TcArgs *a, TcArgs *tmp); /* sat_call.c, while sat_team_on: before a call */
-u32 sat_team_leave(u32 fn, const TcArgs *a, u32 r);             /* and after it: its result */
-void sat_team_end(void);
-void sat_team_once(void);                                       /* sat_menus.c: on for this fight only */
-void sat_team_done(void);                                       /* and off again (the hub is entered) */
-/* sat_ladder.c: 2 VS 2 on the game's FIGHT ladder (game.json menus fight_choice "ladder") */
-void sat_ladder_arm(void);                                      /* sat_menus.c: the next fight set-up is two against two */
-void sat_ladder_enter(u32 fn, const TcArgs *a, int choosing);   /* sat_menus.c, around each call; choosing: 2 VS 2's select */
-void sat_ladder_leave(u32 fn, const TcArgs *a, int choosing);
-void sat_ladder_test_option(const char *value);                 /* --ladder-test-weak */
-void sat_ladder_rank_option(const char *value);                 /* --ladder-test-rank */
-/* sat_heads.c: new head types after the game's own, one robot each (game.json heads) */
-extern int sat_heads_on;
+/* the switches the game's hooks set (sat_hooks.c holds them; sat_hooks.h is the table) */
+extern int sat_team_on, sat_heads_on;
 extern u8 sat_heads_mark[256];                                  /* the hooked functions, by (address >> 1) & 255: a call checks one byte */
-void sat_heads_option(const char *value);                       /* --new-heads on|off */
-void sat_heads_start(int play_run);                             /* at start: the replay's choice or the one asked for */
-const TcArgs *sat_heads_enter(u32 fn, const TcArgs *a, TcArgs *tmp); /* sat_call.c, while sat_heads_on: before a call */
-u32 sat_heads_leave(u32 fn, const TcArgs *a, u32 r);           /* and after it: its result */
-void sat_heads_bup(u32 name, int wrote);                        /* sat_bup.c: the game wrote (1) or read (0) a file */
 
 /* sat_menus.c: the kit's entries in the game's own menus (game.json menus) */
 extern int sat_menus_on;
@@ -137,17 +117,13 @@ void sat_menus_end(void);
 void sat_online_menu_option(const char *value);                 /* --online-menu on|off: JOIN GAME and HOST GAME in the hub */
 u32 sat_menu_frame(u32 hub_row, const u32 box[3], const char *const *lines, int n, int sel); /* a kit box's frame; sel < 0: no bar */
 void sat_menu_keep(const u32 box[3], int n, int put);           /* the cells under it, kept and put back */
+u32 sat_menu_step(void (*draw)(void));                          /* a kit screen's frame (sat_tlobby.c): the newly pressed buttons */
+void sat_menu_sfx(u32 id);                                      /* one of the game's sounds */
+const char *sat_online_addr(void);                              /* the address a friend joins, when hosting; else "" */
 void sat_menu_sound(void);                                      /* the game's cursor sound */
 
-/* sat_lobby.c: the game's own online screens (game.json netplay "menu": "in-game") */
+/* the game's own online screens (game.json netplay "menu": "in-game"; the game's code, reached through sat_hooks.h) */
 extern int sat_lobby_match;                                     /* --net-menu on: a match they started */
-void sat_online_note_option(const char *value);                 /* --online-note WHY: shown once in the hub */
-void sat_join_address_option(const char *value);                /* --join-address ADDRESS: JOIN GAME starts with it */
-void sat_text_test_option(const char *value);                   /* --text-test KEYS: typed into JOIN GAME's field (a test) */
-void sat_lobby_note(u32 hub_row, const u32 box[3]);
-void sat_lobby_join(u32 hub_row, const u32 box[3]);
-void sat_lobby_host(u32 hub_row, const u32 box[3]);
-void sat_lobby_back(const char *note);
 
 /* sat_online.c: a game the game's own online screens started, while it runs (hosted in the background, status, notices) */
 void sat_online_begin(const char *addr);           /* sat_net_setup.c: the address to show */
@@ -157,6 +133,8 @@ void sat_online_call(u32 fn);                      /* sat_menus.c: a call of the
 void sat_online_choose(void);                      /* sat_menus.c: STOP HOSTING */
 void sat_online_refused(void);                     /* the host turned away another version */
 int sat_menus_online(void);                        /* sat_menus.c: the hub's online lines are on */
+u32 sat_menu_cell(char ch, u32 slot);                           /* sat_menus.c: a letter's map word in the small type */
+u32 sat_menu_map(void);                                         /* the game's text map */
 void sat_menu_line(u32 x, u32 y, const char *s, u32 width, u32 slot); /* sat_menus.c: small type, palette slot (~0u: the hub's) */
 
 /* sat_panel.c: the game's half-transparent menu panel drawn by the presenter (game.json menu_panel) */
@@ -167,6 +145,7 @@ void sat_panel_start(int play_run);
 void sat_panel_mark(u32 pmod, u32 colr);                       /* sat_vdp1.c: each command */
 int sat_panel_frame(void);                                     /* sat_vdp2.c: this picture may show the panel */
 u32 sat_panel_dot(u32 (*word)(u32 x, u32 y), u32 x, u32 y, u32 rgb, int spr_pr, int pn, u32 under, u32 left);
+u32 sat_panel_mix(u32 rgb, u32 x, u32 y);                      /* a kit screen's panel dot (sat_screen.c) */
 u32 sat_panel_shade(u32 c);                                    /* a marked dot as shown */                          /* a match they started that cannot go on: alone again */
 u32 sat_pad_seats(u32 data[4]);                                 /* sat_input.c: all four pads; bit p: pad p + 1 is there */
 
@@ -178,5 +157,7 @@ void sat_level_loaded(void);                                    /* the image is 
 const TcArgs *sat_level_enter(u32 fn, const TcArgs *a, TcArgs *tmp); /* sat_call.c, while sat_level_on: before a call */
 u32 sat_level_leave(u32 fn, const TcArgs *a, u32 r);            /* and after it: its result */
 void sat_level_end(void);
+
+#include "sat_hooks.h"
 
 #endif

@@ -1,0 +1,37 @@
+[
+ [
+  "82740ff8",
+  "827647cc",
+  "XDK Direct3D: tools/boundary.py's Vd* and GPU-window seeds sit in 82744618..82764600, and tools/library_share.py's Mega Man 10 matches start at 82740ff8. About 127 KB, as in Mega Man 10. The tool's wider span from 82673ea8 held engine code: a constructor called 826c64c8"
+ ],
+ [
+  "82765488",
+  "82765ce8",
+  "XDK Direct3D's Clear (82765b00) and its two helpers, above the main range: 82765bc0 reads the bound render target (+0x3098) and 82765488 flushes the device's dirty states through 827479e8 and 82746938, the library's packet writers. First stop 8296a520 after SetRenderTarget. The code between 827647cc and 82765488 is not yet looked at"
+ ],
+ [
+  "829fc210",
+  "829fc6a8",
+  "XDK Direct3D's BeginVertices (device, primitive type, vertex count, stride), linked apart from the main range: first stop 829a6240 with (8, 3, 8). It reads the device's dirty masks (+0x0..+0x28), the bound pixel shader (+0x3198) and flushes shader constants through 82747d80 and 827479e8 before reserving vertex space in the command buffer"
+ ],
+ [
+  "829fc6f0",
+  "829fcbd0",
+  "XDK Direct3D's BeginIndexedVertices (device, primitive type, base vertex, vertex count, index count, 1, stride, index pointer *, vertex pointer * on the stack), linked between BeginVertices and DrawVertices: first stop 829b0650 under 8298aea8 in the level load with (4, 0, 8, 0x24, 1, 0xc). The same flushes through 82747d80 and 827479e8, then reserves vertices and 16-bit indices in the command buffer and writes DRAW_INDX (0xc0032201)"
+ ],
+ [
+  "829fcbd0",
+  "829fcfc0",
+  "XDK Direct3D's DrawVertices (device, primitive type, first vertex, vertex count), linked beside BeginVertices: first stop 82c389a8 with (4, 0, ...), a triangle list. It flushes the dirty states and shader constants through 82747d80 and 827479e8, then writes a DRAW_INDX packet (0xc0012201) with auto indices"
+ ],
+ [
+  "829fcfc0",
+  "829fd410",
+  "XDK Direct3D's DrawIndexedVertices (device, primitive type, base vertex, start index, index count), right after DrawVertices: first stop 82999c98 on the worker 829a6758 while it records a command buffer. The same flushes, then DRAW_INDX (0xc0032201) with the index buffer at device +0x3094; when the device records (+0x2abc bit 0) the packet goes through the command buffer's segment 82745730"
+ ],
+ [
+  "7ffc0000",
+  "7ffc2000",
+  "the kit's own methods, never mapped"
+ ]
+]

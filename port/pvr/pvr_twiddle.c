@@ -176,6 +176,15 @@ static void yuv_row(const u8 *p, u32 at, u32 w, u32 *out)
     if (x < w) *out = yuv(p[1], p[0], p[2]);
 }
 
+/* A YUV422 picture in host memory (a movie's decoded frame as it would be loaded into texture memory: per pair of
+ * texels U, Y0, V, Y1) into RGBA rows by the conversion pvr_decode gives the texture, so a movie drawn natively
+ * (gfx_movie) has the colours the emulated renderer would show. */
+void pvr_yuv422_rgba(const u8 *p, u32 w, u32 h, u32 stride, u32 *out)
+{
+    if (!g_yuv_ready) yuv_tables();
+    for (u32 y = 0; y < h; y++) yuv_row(p + y * stride, 0, w, out + y * w);
+}
+
 static u16 rd16(const u8 *vram, u32 at)
 {
     return (u16)(vram[at & (PVRX_VRAM_SIZE - 1u)] | vram[(at + 1u) & (PVRX_VRAM_SIZE - 1u)] << 8);

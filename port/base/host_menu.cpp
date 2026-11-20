@@ -1,15 +1,19 @@
 // The menu bar, after Lodoss's desktop_stage_menu (MIT, the user's own): a native Win32 menu on the SDL window,
 // reached through a window subclass. Every choice applies at once and goes into the settings file (as the option it
 // stands for), so the next run starts the same way. The menu shows while windowed; full screen hides it.
-//   Display: full screen, window size, aspect (fit the window, 4:3, 16:9, 21:9), VSync,
-//            frame-rate cap, frame-rate counter, then the console's own entries (console_menu_extra: the
-//            Dreamcast's VMU screen and texture pack)
+//   Display: full screen, resolution (host_resolution.cpp), aspect (fit the window, 4:3, 16:9, 21:9), VSync,
+//            frame rate (the cap), frame-rate counter, then the console's own entries (console_menu_extra: the
+//            Dreamcast's VMU screen and texture pack), then the game's (game_menu_extra, game.json game_menu):
+//            host_menu_extra.cpp
 //   Audio:   volume, mute when unfocused, then the console's
-//   Input:   rumble, pause when unfocused, controls (twin-stick, pad_twin.c; each of the console's buttons), then the
+//   Input:   rumble, pause when unfocused, controls (twin-stick, pad_twin.c; each of the console's buttons), keyboard and
+//            mouse (host_menu_kbm.cpp: mouse steer's settings, each key and mouse input of the layout), then the
 //            console's
-//   Game:    auto-load save (autoload.c; greyed for a game that names no load path), then the console's
+//   Game:    auto-load save (autoload.c; greyed for a game that names no load path), then the console's (the Dreamcast's:
+//            the game's own on/off settings, game.json menu_checks)
 //   Online:  a console with online play (host_online.cpp): play alone, host, join; while a match is on, the entries that
 //            would change the game for both players are greyed and refused (Pause when unfocused, Auto-load, Resume)
+//   The Phangrade title bar (host_bar.cpp, the default) draws this menu; menu-bar=native shows the native one again.
 //   Help:    copy agent prompt (F9; the bar's copy icon is the same command: host_copy_button.cpp)
 #include <cctype>
 #include <cstring>
@@ -28,12 +32,13 @@ namespace {
 
 enum : UINT {
     kFullScreen = 100,
-    kSizeFit = 110, // kSizeFit + N: a window N x 640x480
-    kSize4 = 114,
+    // 110..114, 700..763: Display > Resolution (host_resolution.cpp)
     kFpsCounter = 120,
     kVsync,
+    kSlimBar = 125, // Display > Phangrade title bar: host_bar.cpp marks and applies it (kMenuSlimBar)
     kAspect = 170, // kAspect + N: kAspects[N]
     kBind = 4000,  // kBind + 32 * action + source: Input > Controls
+    // 7960..10047: Input > Keyboard and mouse (host_menu_kbm.cpp)
     kFpsCap = 140, // kFpsCap + N: kFpsCaps[N]
     kExtra = 1000, // kExtra + 16 * item + choice: console_menu_extra's entries
     kVolume0 = 200, // kVolume0 + N: N x 25 %
@@ -49,7 +54,7 @@ enum : UINT {
 
 HWND g_hwnd;
 HMENU g_menu;
-const PortMenuItem *g_extra;
+const PortMenuItem *g_extra; // the console's entries, then the game's (host_menu_extra.cpp)
 unsigned g_extra_count;
 
 const char *on_off(bool on) { return on ? "on" : "off"; }
@@ -64,7 +69,7 @@ constexpr AspectChoice kAspects[] = {
 };
 constexpr UINT kAspectCount = sizeof kAspects / sizeof kAspects[0];
 
-// --fps N: what the Frame-rate cap menu offers (0: none, as many as the display takes)
+// --fps N: what the Frame rate menu offers (0: none, as many as the display takes)
 constexpr unsigned kFpsCaps[] = {0, 60, 120, 144, 240};
 constexpr UINT kFpsCapCount = sizeof kFpsCaps / sizeof kFpsCaps[0];
 
@@ -87,7 +92,9 @@ void append_extras(HMENU m, const char *menu)
         if (first) AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
         first = false;
         UINT grey = e.available && !e.available() ? MF_GRAYED : 0u;
-        if (e.kind == PORT_MENU_CHOICE) {
+        if (e.tag && e.kind == PORT_MENU_SUBMENU) { // the game's own list (host_menu_tagged.cpp)
+            AppendMenuW(m, MF_POPUP | grey, reinterpret_cast<UINT_PTR>(host::menu_tagged_popup(i)), wide(e.label).c_str());
+        } else if (e.kind == PORT_MENU_CHOICE || e.kind == PORT_MENU_SUBMENU) {
             HMENU sub = CreatePopupMenu();
             for (unsigned n = 0; n < e.n_choices; n++)
                 AppendMenuW(sub, MF_STRING, kExtra + 16 * i + n, wide(e.choices[n]).c_str());
@@ -100,28 +107,23 @@ void append_extras(HMENU m, const char *menu)
 
 HMENU display_menu()
 {
-    HMENU m = CreatePopupMenu(), size = CreatePopupMenu(), aspect = CreatePopupMenu(), cap = CreatePopupMenu();
+    HMENU m = CreatePopupMenu(), size = static_cast<HMENU>(host::resolution_menu()), aspect = CreatePopupMenu();
+    HMENU cap = CreatePopupMenu();
     AppendMenuW(cap, MF_STRING, kFpsCap, L"&None (as many as the display takes)");
     for (UINT n = 1; n < kFpsCapCount; n++) {
         std::wstring label = L"&" + std::to_wstring(kFpsCaps[n]) + L" frames a second";
         AppendMenuW(cap, MF_STRING, kFpsCap + n, label.c_str());
     }
-    AppendMenuW(size, MF_STRING, kSizeFit, L"&Fit to the desktop");
-    AppendMenuW(size, MF_SEPARATOR, 0, nullptr);
-    for (UINT n = 1; n <= 4; n++) {
-        std::wstring label = L"&" + std::to_wstring(n) + L"x  (" + std::to_wstring(port_console.native_w * n) + L"x" +
-                             std::to_wstring(port_console.native_h * n) + L")";
-        AppendMenuW(size, MF_STRING, kSizeFit + n, label.c_str());
-    }
     for (UINT n = 0; n < kAspectCount; n++) AppendMenuW(aspect, MF_STRING, kAspect + n, kAspects[n].label);
     AppendMenuW(m, MF_STRING, kFullScreen, L"&Full screen\tF11");
-    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(size), L"&Window size");
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(size), L"Re&solution");
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(aspect), L"&Aspect");
     AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
     AppendMenuW(m, MF_STRING, kVsync, L"&VSync");
     AppendMenuW(m, MF_POPUP | (port_console.flags & PORT_CONSOLE_FPSCAP ? 0u : MF_GRAYED), reinterpret_cast<UINT_PTR>(cap),
-                L"Frame-rate c&ap");
+                L"Frame &rate");
     AppendMenuW(m, MF_STRING, kFpsCounter, L"Frame-rate &counter");
+    AppendMenuW(m, MF_STRING, kSlimBar, L"&Phangrade title bar"); // host_bar.cpp; off: the Windows title and menu bar
     append_extras(m, "Display");
     return m;
 }
@@ -158,6 +160,7 @@ HMENU input_menu()
         AppendMenuW(controls, MF_POPUP, reinterpret_cast<UINT_PTR>(one), wide(actions[i].name).c_str());
     }
     AppendMenuW(m, MF_POPUP | (n ? 0u : MF_GRAYED), reinterpret_cast<UINT_PTR>(controls), L"&Controls");
+    AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(host::kbm_menu()), L"&Keyboard and mouse"); // host_menu_kbm.cpp
     append_extras(m, "Input");
     return m;
 }
@@ -186,9 +189,9 @@ void check(UINT id, bool on) { CheckMenuItem(g_menu, id, MF_BYCOMMAND | (on ? MF
 void sync()
 {
     host::Prefs &p = host::prefs();
-    int scale = host::window_scale(), volume = audio_volume();
+    int volume = audio_volume();
     check(kFullScreen, host::window_fullscreen());
-    for (UINT n = 0; n <= 4; n++) check(kSizeFit + n, scale == static_cast<int>(n));
+    host::resolution_sync();
     for (UINT n = 0; n < kAspectCount; n++) check(kAspect + n, gfx_aspect_text() == std::string(kAspects[n].setting));
     check(kVsync, gfx_vsync() != 0);
     for (UINT n = 0; n < kFpsCapCount; n++) check(kFpsCap + n, extra_fps() == kFpsCaps[n]);
@@ -197,7 +200,7 @@ void sync()
         const PortMenuItem &e = g_extra[i];
         if (e.kind == PORT_MENU_CHOICE) {
             for (unsigned n = 0; n < e.n_choices; n++) check(kExtra + 16 * i + n, e.get() == static_cast<int>(n));
-        } else {
+        } else if (e.kind == PORT_MENU_CHECK) {
             check(kExtra + 16 * i, e.get() != 0);
         }
     }
@@ -220,6 +223,7 @@ void sync()
     console_actions(&na);
     for (unsigned i = 0; i < na && i < 32; i++)
         for (unsigned s = 0; s < input_source_count(); s++) check(kBind + 32 * i + s, s ? (input_bind_get(i) >> s & 1u) != 0 : input_bind_get(i) == 0);
+    host::kbm_menu_sync(g_menu);
 }
 
 // A menu choice in words for the game log: "Display > Full screen" (the labels without their & and shortcut text).
@@ -254,8 +258,7 @@ void command(UINT id)
     }
     if (id == kFullScreen) {
         host::window_set_fullscreen(!host::window_fullscreen());
-    } else if (id >= kSizeFit && id <= kSize4) {
-        host::window_set_scale(static_cast<int>(id - kSizeFit));
+    } else if (host::resolution_command(id)) { // Display > Resolution: done and kept (host_resolution.cpp)
     } else if (id >= kAspect && id < kAspect + kAspectCount) {
         gfx_set_aspect(kAspects[id - kAspect].setting);
         host::settings_set("aspect", gfx_aspect_text());
@@ -268,19 +271,9 @@ void command(UINT id)
     } else if (id == kFpsCounter) {
         p.fps_counter = !p.fps_counter;
         host::settings_set("fps-counter", on_off(p.fps_counter));
+    } else if (host::menu_tagged_command(id)) { // a game's list entry: queued for its next tick (host_menu_tagged.cpp)
     } else if (id >= kExtra && (id - kExtra) / 16 < g_extra_count) {
-        const PortMenuItem &e = g_extra[(id - kExtra) / 16];
-        if (e.available && !e.available()) {
-            game_log_line("menu: not applied: %s", host::online_locked() ? host::online_locked() : "the game cannot apply it now");
-            return;
-        }
-        if (e.kind == PORT_MENU_CHOICE) {
-            e.set(static_cast<int>((id - kExtra) % 16));
-            host::settings_set(e.setting, e.values[e.get()]);
-        } else {
-            e.set(!e.get());
-            host::settings_set(e.setting, on_off(e.get() != 0));
-        }
+        host::menu_extra_apply((id - kExtra) / 16, (id - kExtra) % 16);
     } else if (id >= kVolume0 && id <= kVolume100) {
         audio_set_volume(static_cast<int>(id - kVolume0) * 25, 0);
         host::settings_set("volume", std::to_string(audio_volume()));
@@ -307,6 +300,7 @@ void command(UINT id)
         if (level_edit_provider() && !host::online_locked()) level_edit_request();
     } else if (id == kResume) {
         host::resume_start(g_hwnd);
+    } else if (host::kbm_menu_command(id)) { // Input > Keyboard and mouse: done and kept (host_menu_kbm.cpp)
     } else if (id >= kBind) {
         unsigned na = 0, i = (id - kBind) / 32, s = (id - kBind) % 32;
         const PortAction *actions = console_actions(&na);
@@ -323,9 +317,14 @@ void command(UINT id)
 LRESULT CALLBACK subclass(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR, DWORD_PTR)
 {
     intptr_t handled = 0;
+    if (host::bar_message(hwnd, msg, wp, lp, &handled)) return handled; // the Phangrade title bar (host_bar.cpp)
     if (host::copy_button_message(hwnd, msg, wp, lp, &handled) || host::counter_message(hwnd, msg, wp, lp, &handled)) return handled;
     if (msg == WM_INITMENUPOPUP) {
+        host::menu_tagged_sync(g_menu, reinterpret_cast<void *>(wp)); // a game's list that changed, built again
         sync();
+    } else if (msg == WM_ENTERMENULOOP || msg == WM_EXITMENULOOP) {
+        input_kbm_menu_open(msg == WM_ENTERMENULOOP); // the pointer is the player's while a menu is open (mouse steer)
+        host::mouse_capture_sync();
     } else if (msg == WM_SYSKEYDOWN && wp >= 'A' && wp <= 'Z' && !(lp & (1 << 30)) && GetMenu(hwnd)) {
         // Alt+letter opens that menu. SDL translates no keys outside text input, so no WM_SYSCHAR comes to do it.
         DefWindowProcW(hwnd, WM_SYSCOMMAND, SC_KEYMENU, static_cast<LPARAM>(wp | 0x20));
@@ -345,7 +344,7 @@ void menu_attach(void *hwnd)
 {
     g_hwnd = static_cast<HWND>(hwnd);
     if (!g_hwnd) return;
-    g_extra = console_menu_extra(&g_extra_count);
+    g_extra = host::menu_extras(&g_extra_count);
     g_menu = CreateMenu();
     AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(display_menu()), L"&Display");
     AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(audio_menu()), L"&Audio");
@@ -356,14 +355,15 @@ void menu_attach(void *hwnd)
     AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(help_menu()), L"&Help");
     host::counter_attach(g_hwnd, g_menu);
     host::copy_button_attach(g_hwnd, g_menu);
+    host::bar_attach(g_hwnd, g_menu);
     if (!SetWindowSubclass(g_hwnd, subclass, 1, 0)) port_log("host: no menu (the window subclass failed)\n");
 }
 
 void menu_show(bool on)
 {
     if (!g_hwnd || !g_menu) return;
-    SetMenu(g_hwnd, on ? g_menu : nullptr);
+    SetMenu(g_hwnd, on && !bar_on() ? g_menu : nullptr); // the Phangrade title bar draws this menu itself
     DrawMenuBar(g_hwnd);
+    bar_show(on);
 }
-
 } // namespace host

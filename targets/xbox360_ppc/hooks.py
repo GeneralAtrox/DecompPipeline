@@ -14,8 +14,9 @@ import x360_readable  # noqa: E402
 import x360_scope  # noqa: E402
 
 
-def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harness_dir=None):
-    return x360_check.run_check(cfg, addr, work_file, sets=sets, build_dir=build_dir, harness_dir=harness_dir)
+def run_check(cfg, addr, work_file, sets=("dev", "hidden"), build_dir=None, harness_dir=None, exit_file=None):
+    return x360_check.run_check(cfg, addr, work_file, sets=sets, build_dir=build_dir, harness_dir=harness_dir,
+                                exit_file=exit_file)
 
 
 def build_sandbox(cfg, addr, meta, summary, prev_work, previous_text):

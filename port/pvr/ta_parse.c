@@ -262,12 +262,10 @@ static void sprite(Parse *p, const u32 *w)
     for (u32 i = 0; i < 3u; i++) uv16(&v[i], w[13 + i]);
     v[3].u = v[0].u + v[2].u - v[1].u;
     v[3].v = v[0].v + v[2].v - v[1].v;
-    for (u32 i = 0; i < 4u; i++) {
-        v[i].base = p->poly.sprite_col[0];
-        v[i].offset = p->poly.sprite_col[1];
-    }
+    for (u32 i = 0; i < 4u; i++) v[i].base = p->poly.sprite_col[0], v[i].offset = p->poly.sprite_col[1];
     p->vertices += 4u;
     tb_quad(p->s, v);
+    ta_sprite_field_copies(p->s, p->poly.tsp, v);
 }
 
 static void parse_list(Parse *p, u32 start, u32 end)

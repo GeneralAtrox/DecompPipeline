@@ -65,6 +65,10 @@ int audio_option(const char *arg, const char *value)
         aica_cd_mute(!strcmp(value, "off"));
         return 2;
     }
+    if (!strcmp(arg, "--audio-catchup") && value) {
+        aica_catchup(strcmp(value, "off") != 0);
+        return 2;
+    }
     if (!strcmp(arg, "--audio-ahead") && value) {
         g_ahead = strcmp(value, "off") != 0;
         return 2;

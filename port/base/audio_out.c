@@ -3,13 +3,17 @@
 #include <SDL3/SDL.h>
 #include "audio_out.h"
 
-enum { MAX_OUTS = 4, GAP_MS = 100 };
+enum { MAX_OUTS = 8, GAP_MS = 100 };
 #define STEER 0.005 /* audio_out_steer plays this much faster or slower for the queue's distance from its margin */
 #define TRIM 0.01    /* and at most this much in all (a percent, a sixth of a semitone): the rest is a steady trim learnt from it */
 
 struct AudioOut {
     SDL_AudioStream *stream;
     u32 rate;
+    u32 frame_bytes;       /* one sample frame: 4 for 16-bit stereo */
+    float gain;            /* audio_out_gain's (1 unless the game sets one) */
+    void (*need)(void *user, AudioOut *a, u32 bytes);
+    void *need_user;
     float ratio;           /* audio_out_ratio's */
     SDL_AtomicInt put;     /* sample frames put (wrapping) */
     SDL_AtomicInt put_ms;  /* SDL_GetTicks() of the last put (0: resting, the silence after it is meant) */
@@ -36,7 +40,7 @@ static void SDLCALL on_mix(void *user, const SDL_AudioSpec *spec, float *buf, in
     (void)buf;
     if (!pm || (u32)SDL_GetTicks() - pm > GAP_MS || spec->freq <= 0) {
         int q = SDL_GetAudioStreamQueued(a->stream);
-        a->took = put - (q > 0 ? (u32)q / 4u : 0u), a->acc = 0, a->starving = 0;
+        a->took = put - (q > 0 ? (u32)q / a->frame_bytes : 0u), a->acc = 0, a->starving = 0;
         return;
     }
     {
@@ -61,7 +65,7 @@ static void SDLCALL on_mix(void *user, const SDL_AudioSpec *spec, float *buf, in
 
 static void apply_gain(AudioOut *a)
 {
-    SDL_SetAudioStreamGain(a->stream, g_muted ? 0.0f : (float)g_volume / 100.0f);
+    SDL_SetAudioStreamGain(a->stream, g_muted ? 0.0f : a->gain * (float)g_volume / 100.0f);
 }
 
 void audio_set_volume(int percent, int muted)
@@ -74,7 +78,9 @@ void audio_set_volume(int percent, int muted)
 
 int audio_volume(void) { return g_volume; }
 
-AudioOut *audio_out_open(u32 rate)
+AudioOut *audio_out_open(u32 rate) { return audio_out_open_format(rate, 2, 0); }
+
+AudioOut *audio_out_open_format(u32 rate, u32 channels, int is_float)
 {
     SDL_AudioSpec spec;
     AudioOut *a = NULL;
@@ -84,8 +90,12 @@ AudioOut *audio_out_open(u32 rate)
         port_log("audio: more than %d outputs\n", MAX_OUTS);
         return NULL;
     }
-    spec.format = SDL_AUDIO_S16;
-    spec.channels = 2;
+    if (channels < 1 || channels > 8) {
+        port_log("audio: %u channels: not 1..8\n", channels);
+        return NULL;
+    }
+    spec.format = is_float ? SDL_AUDIO_F32 : SDL_AUDIO_S16;
+    spec.channels = (int)channels;
     spec.freq = (int)rate;
     if (!SDL_InitSubSystem(SDL_INIT_AUDIO)) {
         port_log("audio: no SDL audio (%s)\n", SDL_GetError());
@@ -96,6 +106,7 @@ AudioOut *audio_out_open(u32 rate)
         port_log("audio: no output device (%s)\n", SDL_GetError());
         return NULL;
     }
+    a->frame_bytes = channels * (is_float ? 4u : 2u), a->gain = 1.0f, a->need = NULL, a->need_user = NULL;
     a->rate = rate, a->ratio = 1.0f, a->level = 0, a->trim = 0, a->took = 0, a->acc = 0, a->starving = 0;
     SDL_SetAtomicInt(&a->put, 0), SDL_SetAtomicInt(&a->put_ms, 0), SDL_SetAtomicInt(&a->ppm, 1000000);
     SDL_SetAtomicInt(&a->gaps, 0), SDL_SetAtomicInt(&a->gap_us, 0);
@@ -108,7 +119,7 @@ void audio_out_start(AudioOut *a) { SDL_ResumeAudioStreamDevice(a->stream); }
 
 void audio_out_put(AudioOut *a, const void *frames, u32 bytes)
 {
-    SDL_AddAtomicInt(&a->put, (int)(bytes / 4u)); /* counted first: a count ahead of the stream can only miss a gap */
+    SDL_AddAtomicInt(&a->put, (int)(bytes / a->frame_bytes)); /* counted first: a count ahead of the stream can only miss a gap */
     SDL_PutAudioStreamData(a->stream, frames, (int)bytes);
     SDL_SetAtomicInt(&a->put_ms, (int)((Uint32)SDL_GetTicks() | 1u));
 }
@@ -167,6 +178,48 @@ float audio_out_steer(AudioOut *a, u32 queued, u32 target)
 
 float audio_out_trim(AudioOut *a) { return (float)a->trim; }
 u64 audio_out_now_ns(void) { return SDL_GetTicksNS(); }
+
+static void SDLCALL on_need(void *user, SDL_AudioStream *stream, int additional, int total)
+{
+    AudioOut *a = (AudioOut *)user;
+    (void)stream;
+    (void)total;
+    if (a->need && additional > 0) a->need(a->need_user, a, (u32)additional);
+}
+
+void audio_out_pull(AudioOut *a, void (*need)(void *user, AudioOut *a, u32 bytes), void *user)
+{
+    SDL_LockAudioStream(a->stream);
+    a->need = need, a->need_user = user;
+    SDL_UnlockAudioStream(a->stream);
+    SDL_SetAudioStreamGetCallback(a->stream, need ? on_need : NULL, need ? a : NULL);
+}
+
+void audio_out_gain(AudioOut *a, float gain)
+{
+    a->gain = gain < 0 ? 0.0f : gain > 1 ? 1.0f : gain;
+    apply_gain(a);
+}
+
+void audio_out_pause(AudioOut *a) { SDL_PauseAudioStreamDevice(a->stream); }
+
+void audio_out_lock(AudioOut *a, int on)
+{
+    if (!a || !a->stream) return;
+    if (on) SDL_LockAudioStream(a->stream);
+    else SDL_UnlockAudioStream(a->stream);
+}
+
+void audio_out_flush(AudioOut *a) { SDL_FlushAudioStream(a->stream); }
+
+void audio_out_close(AudioOut *a)
+{
+    if (!a || !a->stream) return;
+    SDL_SetAudioStreamGetCallback(a->stream, NULL, NULL);
+    SDL_SetAudioPostmixCallback(SDL_GetAudioStreamDevice(a->stream), NULL, NULL);
+    SDL_DestroyAudioStream(a->stream);
+    a->stream = NULL;
+}
 u32 audio_out_device_us(AudioOut *a)
 {
     SDL_AudioSpec spec;

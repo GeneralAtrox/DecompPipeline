@@ -40,7 +40,9 @@ public final class TcVmx extends TcVmxInt {
     public int exec(Op op, long[] gpr, Mem mem) {
         cr6 = -1;
         satHit = false;
+        event = null;
         String m = op.mn;
+        int[][] in = TcSeedx.watched(m) ? new int[][] {lane(op.va), lane(op.vb), lane(op.vc), lane(op.vd)} : null;
         if (ESTIMATES.contains(m)) {
             throw new UnsupportedOperationException(m + ": hardware estimate table is not modelled");
         }
@@ -58,7 +60,15 @@ public final class TcVmx extends TcVmxInt {
         if (satHit) {
             vscr |= 1;
         }
+        event = in != null || satHit ? TcSeedx.event(m, in != null ? in : new int[4][], satHit) : null;
         return cr6;
+    }
+
+    /** The case the last exec reached (TcSeedx.event: "sat", "den_in", "den_out"), else null. Report only. */
+    public String event;
+
+    private int[] lane(int r) {
+        return r != NONE ? v[r].clone() : null;
     }
 
     private int[] alu(Op op) {

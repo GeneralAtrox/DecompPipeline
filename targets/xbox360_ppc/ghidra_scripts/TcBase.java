@@ -244,7 +244,7 @@ public abstract class TcBase extends GhidraScript {
     TcFlow flow;
 
     static final String ARG_REG = "r([3-9]|10)|f([1-9]|1[0-3])";
-    static final String ENTRY_SCRATCH = "r(0|11|12)";  // volatile, never an argument
+    static final String ENTRY_SCRATCH = "r(0|11)";  // volatile, never an argument (r12 is an entry seed)
     static final String INT_KIND = "u32|s32|u64|s64";
 
     // A stack parameter's doubleword offset (STACK_ARGS + 8N, N < 8) from Ghidra's offset (+4 for a word read from
@@ -262,8 +262,9 @@ public abstract class TcBase extends GhidraScript {
         Proto p = new Proto();
         for (String r : flow.inputs(f, 3)) {
             if (r.matches(ARG_REG)) p.inputs.add(r);
-            // a volatile register no caller sets as an argument, read on entry: an exception funclet's frame base in
-            // r12 (82a513d0), or a non-standard call; no vector can stand for it
+            // a volatile register no caller sets as an argument, read on entry (a non-standard call): no vector can
+            // stand for it. r12 (an exception funclet's frame base, 82a513d0) is not refused: each vector seeds it
+            // (TcOracle entry seeds, vectors.txt A) and the judge form reads it as tcx_in_r(12)
             else if (r.matches(ENTRY_SCRATCH) && p.unsupported == null) {
                 p.unsupported = "reads " + r + " on entry (not an argument register)";
             }
@@ -281,7 +282,7 @@ public abstract class TcBase extends GhidraScript {
                 VariableStorage vs = s.getStorage();
                 if (vs.isRegisterStorage()) {
                     q.storage = String.valueOf(flow.nameOf(vs.getFirstVarnode()));  // r3, also for its low word
-                    if (q.storage.matches("f([1-9]|1[0-3])")) q.kind = "f64";
+                    q.kind = TcSigKind.registerKind(q.storage, q.kind);  // f1..f13 f64; a float in r3..r10 is u32
                     if (!q.storage.matches(ARG_REG)) p.unsupported = "parameter " + q.name + " in " + q.storage;
                 } else if (vs.isStackStorage()) {
                     q.storage = "stack";

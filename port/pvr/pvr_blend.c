@@ -102,7 +102,7 @@ void pvr_blend_keep(const PvrScene *s)
     g_have = s->nvtx != 0;
 }
 
-int pvr_blend_have(void) { return g_have && !pvr_parts_hold_frame(); }
+int pvr_blend_have(void) { return g_have && !(pvr_parts_hold_frame() && pvr_slots() > 1u); } /* one render: blended here */
 
 static int same_state(const PvrBatch *a, const PvrBatch *b)
 {
@@ -348,7 +348,7 @@ const PvrVtx *pvr_blend_vertices(const PvrScene *cur, f32 t, u32 *blended)
 {
     u32 done = 0;
     u64 t0, t1;
-    if (cur->has_from) return pvr_parts_blend(cur, pvr_blend_truth_t(t), blended); /* --interp-parts */
+    if (cur->has_from && !pvr_parts_hold_frame()) return pvr_parts_blend(cur, pvr_blend_truth_t(t), blended); /* --interp-parts */
     if (!g_have || !cur->nvtx || cur->passes != g_from->passes) return NULL;
     if (cur->nvtx > g_out_cap) {
         PvrVtx *v = realloc(g_out, (size_t)cur->nvtx * sizeof *v);

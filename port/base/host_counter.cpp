@@ -117,6 +117,15 @@ void counter_show(bool on, double shown_fps, double game_hz, unsigned target_hz)
     PostMessageW(g_hwnd, kRefresh, 0, 0);
 }
 
+void counter_text(wchar_t *shown, wchar_t *game, bool *slow)
+{
+    AcquireSRWLockShared(&g_lock);
+    wcscpy_s(shown, 32, g_shown);
+    wcscpy_s(game, 32, g_game);
+    *slow = g_slow;
+    ReleaseSRWLockShared(&g_lock);
+}
+
 bool counter_message(void *hwnd_ptr, unsigned msg, uintptr_t wp, intptr_t lp, intptr_t *result)
 {
     HWND hwnd = static_cast<HWND>(hwnd_ptr);
@@ -125,6 +134,7 @@ bool counter_message(void *hwnd_ptr, unsigned msg, uintptr_t wp, intptr_t lp, in
         // changing the item makes the bar measure it again (the text's width changes); then the bar is drawn again
         ModifyMenuW(g_bar, kItem, MF_BYCOMMAND | MF_OWNERDRAW | MF_DISABLED, kItem, nullptr);
         if (GetMenu(hwnd)) DrawMenuBar(hwnd);
+        host::bar_redraw(); // the Phangrade title bar's reading (host_bar.cpp)
         *result = 0;
         return true;
     case WM_MEASUREITEM: {

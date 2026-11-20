@@ -1,14 +1,18 @@
 """One command from an Xbox 360 disc (or default.xex) to a workspace ready to prepare: the hand steps of the Too Human
 proof (PROOF_PLAN.md) in order, the decode audit through the Ghidra broker like every other Ghidra run.
 
-  setup <disc.iso | default.xex | WORKSPACE> <workspace> [--name NAME] [--roots FILE | --pick] [--no-ghidra]
+  setup <disc.iso | default.xex | WORKSPACE> <workspace> [--name NAME] [--roots FILE | --pick] [--feed PORT_JSON] [--no-ghidra]
       1. catalog_inputs.py into the workspace: image.bin, image.json, catalog_inputs.json, code_ranges.txt; from an
-         existing workspace of the same title, those four files are copied (no retail key, no decrypt);
+         existing workspace of the same title, those four files are copied (no retail key, no decrypt); with
+         --feed, catfeed.py then adds the port kit's holes, mid entries and leaf entries (port_functions.json, from
+         `catfeed.py snapshot`) to the catalogue, so they can be roots like any function;
       2. the roots (--roots: a JSON {"functions": [...]} or one address per line; --pick: proof_pick.py's 50, written
          to proof_set.json and proof_set.txt) are copied to setup_roots.json; without roots the whole catalog is set up;
       3. ghidra_setup.py's list beside image.bin (ghidra_setup.txt): the roots and what they reach in 4 calls, or every
          function;
-      4. project.json (never overwritten: an existing one stops setup) and oracle/TcInputs.java from the template;
+      4. project.json (never overwritten: an existing one stops setup), oracle/TcInputs.java from the template and,
+         when games/<game>/game.json names the image, that game's tracked oracle hints (game_hints.py), with a warning
+         when the workspace's hints set then differs from them;
       5. unless --no-ghidra, the `ghidra` step below.
   ghidra <workspace> [--audit all|roots]
       decomp.py's setup (import, TcSetup, TcCatalog), then TcDecodeAudit over every function the setup made (default:
@@ -46,7 +50,9 @@ TARGET = HERE.parent
 TOOL = TARGET.parents[1]
 sys.path.insert(0, str(HERE))
 import catalog_inputs  # noqa: E402
+import catfeed  # noqa: E402
 import decode_audit  # noqa: E402
+import game_hints  # noqa: E402
 import ghidra_setup  # noqa: E402
 import proof_pick  # noqa: E402
 
@@ -96,7 +102,22 @@ def project_fields(ws, name, desc, roots):
     return cfg
 
 
-def setup(src, ws, name=None, roots_file=None, pick=False):
+def write_oracle(ws):
+    """oracle/TcInputs.java from the template (kept when present) and the game's tracked hints (game_hints.install;
+    project.json names the binary). Returns the hint files copied."""
+    oracle = ws / "oracle" / "TcInputs.java"
+    if not oracle.exists():
+        oracle.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(TARGET / "template" / "TcInputs.java", oracle)
+    copied = game_hints.install(ws)
+    g, _ = game_hints.reference(ws)
+    if g is not None:
+        print(f"{ws / 'oracle' / 'hints'}: {len(copied)} hint file(s) copied from {g.relative_to(TOOL).as_posix()}/hints")
+    game_hints.warn(ws, "x360setup")
+    return copied
+
+
+def setup(src, ws, name=None, roots_file=None, pick=False, feed=None):
     ws = pathlib.Path(ws)
     if (ws / "project.json").exists():
         raise SystemExit(f"{ws / 'project.json'} exists: setup never overwrites a workspace")
@@ -107,6 +128,10 @@ def setup(src, ws, name=None, roots_file=None, pick=False):
         cat = json.loads((ws / "catalog_inputs.json").read_text(encoding="utf-8"))
     else:
         cat = catalog_inputs.build(src, ws)
+    if feed:
+        r = catfeed.feed(ws, feed)
+        print(f"{ws / 'catfeed.json'}: kit entries added {r['added']}, {len(r['unfed'])} not fed")
+        cat = json.loads((ws / "catalog_inputs.json").read_text(encoding="utf-8"))
     desc = json.loads((ws / "image.json").read_text(encoding="utf-8"))
     roots = None
     if pick:
@@ -124,15 +149,16 @@ def setup(src, ws, name=None, roots_file=None, pick=False):
             raise SystemExit(f"roots not in the catalog: {', '.join(missing[:20])}")
         (ws / "setup_roots.json").write_text(json.dumps({"functions": roots}, indent=1) + "\n", encoding="utf-8")
     chosen = ghidra_setup.closure(funcs, roots, 4) if roots else None
-    lines = ghidra_setup.lines(cat, chosen)
+    dropped = []
+    lines = ghidra_setup.lines(cat, chosen, roots or (), dropped)
+    if dropped:
+        print(f"setup list: {len(dropped)} function(s) left out, they share words with a root or a kept function "
+              f"({', '.join(f['addr'] for f in dropped[:8])}{' ...' if len(dropped) > 8 else ''})")
     with open(ws / "ghidra_setup.txt", "w", encoding="utf-8", newline="\n") as fh:
         fh.write("# DecompPipeline Xbox 360 setup list (tools/ghidra_setup.py)\n" + "\n".join(lines) + "\n")
     cfg = project_fields(ws, name or pathlib.Path(src).stem, desc, roots)
     (ws / "project.json").write_text(json.dumps(cfg, indent=2) + "\n", encoding="utf-8")
-    oracle = ws / "oracle" / "TcInputs.java"
-    if not oracle.exists():
-        oracle.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(TARGET / "template" / "TcInputs.java", oracle)
+    write_oracle(ws)
     kinds = {k: sum(1 for t in lines if t[0] == k) for k in "FHI"}
     print(f"{ws}: {len(cat['functions'])} catalog functions, setup list {kinds['F']} functions, {kinds['H']} helper "
           f"families, {kinds['I']} import thunks; roots {len(roots) if roots else 'none (whole catalog)'}")
@@ -250,13 +276,14 @@ def main(argv):
     g = s.add_mutually_exclusive_group()
     g.add_argument("--roots")
     g.add_argument("--pick", action="store_true")
+    s.add_argument("--feed", help="port_functions.json (catfeed.py snapshot): add the kit's extra starts to the catalogue")
     s.add_argument("--no-ghidra", action="store_true")
     h = sub.add_parser("ghidra")
     h.add_argument("workspace")
     h.add_argument("--audit", choices=("all", "roots"), default="all")
     a = ap.parse_args(argv[1:])
     if a.cmd == "setup":
-        setup(a.source, a.workspace, a.name, a.roots, a.pick)
+        setup(a.source, a.workspace, a.name, a.roots, a.pick, a.feed)
         return 0 if a.no_ghidra else ghidra_step(a.workspace)
     return ghidra_step(a.workspace, a.audit)
 

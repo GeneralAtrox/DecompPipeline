@@ -4,7 +4,8 @@
  * 16.7 ms and the worst one's sections, the game thread's CPU time against its work and the clock it ran at (its cycles
  * over its CPU time), the in-between thread's CPU time, and the processor's clock as Windows reports it. So a slowdown in
  * a session the user played says whether the game's work grew or the machine slowed (the user's game of 2026-11-08
- * 13:46: fights at 49-55 blanks a second that a replay could not repeat). g_prof_on is 2 while it runs. */
+ * 13:46: fights at 49-55 blanks a second that a replay could not repeat), and the game thread's waits for disc reads
+ * behind it (disc_fill.c). g_prof_on is 2 while it runs. */
 #include <stdio.h>
 #include <string.h>
 #include <windows.h>
@@ -86,6 +87,7 @@ void prof_tc_begin(void)
         g_tc_game = NULL;
     QueryPerformanceFrequency(&f);
     g_tc_qpf = f.QuadPart;
+    disc_wait_game_thread();
     tc_restart();
 }
 
@@ -133,22 +135,23 @@ static void tc_report(void)
     double n = g_tc_n ? (double)g_tc_n : 1.0, secs = (double)(qpc() - g_tc_start) / (double)g_tc_qpf;
     u64 gcpu = thread_cpu_us(g_tc_game) - g_tc_game_cpu, pcpu = thread_cpu_us(g_tc_present) - g_tc_present_cpu;
     ULONG64 cyc = thread_cycles(g_tc_game) - g_tc_cycles;
-    char clock[128];
+    char clock[128], disc[320];
     const u64 *w = g_tc_worst;
     cpu_clock(clock, sizeof clock);
+    disc_wait_line(disc, sizeof disc);
 #define TC_MS(i) ((double)g_tc_sum[i] / n / 1000.0)
     port_log("tick cost: %.1f s, %u blanks, work %.2f ms a blank: game code %.2f, ARM7 sound driver %.2f, sound tick %.2f, "
              "media %.2f, TA parse %.2f, Direct3D %.2f, frame done %.2f, present %.2f, in-between copies %.2f and draw %.2f, "
              "read-back %.2f | %u over 16.7 ms, the worst %.2f ms at vertical blank %u (game code %.2f, ARM7 %.2f, sound %.2f, "
              "TA %.2f, Direct3D %.2f, the rest %.2f) | game thread: CPU time %.0f%% of its work, at %.2f GHz | in-between "
-             "thread: %s%.2f ms of CPU a blank%s | %.0f timed sections a blank\n",
+             "thread: %s%.2f ms of CPU a blank%s | %.0f timed sections a blank%s\n",
              secs, g_tc_n, (double)g_tc_work / n / 1000.0, TC_MS(GAME), TC_MS(PROF_ARM), TC_MS(PROF_AUDIO), TC_MS(PROF_MEDIA),
              TC_MS(PROF_TA), TC_MS(PROF_D3D), TC_MS(PROF_DONE), TC_MS(PROF_PRESENT), TC_MS(PROF_X_COPY), TC_MS(PROF_X_DRAW),
              TC_MS(PROF_READ), g_tc_over, g_tc_worst_work / 1000.0, g_tc_worst_vb, w[GAME] / 1000.0, w[PROF_ARM] / 1000.0,
              w[PROF_AUDIO] / 1000.0, w[PROF_TA] / 1000.0, w[PROF_D3D] / 1000.0,
              (double)(g_tc_worst_work - w[GAME] - w[PROF_ARM] - w[PROF_AUDIO] - w[PROF_TA] - w[PROF_D3D]) / 1000.0,
              g_tc_work ? 100.0 * (double)gcpu / (double)g_tc_work : 0.0, gcpu ? (double)cyc / (double)gcpu / 1000.0 : 0.0,
-             g_tc_present ? "" : "not seen, ", (double)pcpu / n / 1000.0, clock, (double)g_prof_sections / n);
+             g_tc_present ? "" : "not seen, ", (double)pcpu / n / 1000.0, clock, (double)g_prof_sections / n, disc);
 #undef TC_MS
     tc_restart();
 }

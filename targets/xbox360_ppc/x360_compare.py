@@ -7,11 +7,15 @@ expected.txt / runner output: V, RET r3 f1 (64-bit hex each), W addr bytes (outs
 r3..r10 f1..f13 s0..s7 (30 fields; sN = the doubleword at r1+0x50+8N at the call; expected.txt: a CA line after one
 through a function pointer), FN (expected.txt: the words a float store left a NaN in), CJ, CS and XR
 (core/strict_judge; CS fields are STRICT_INDEX's), COV, FAULT, CODEREAD, CRASH, E.
+The exit state (target.json "exit_state", core/strict_judge; expected.txt from TcExit, the runner's from the
+translator's exit-state form run with "exit"): XS r0..r31 (64-bit), XF f0..f31 (double bits), XC CR (32-bit) CA SO OV CTR LR FPSCR,
+XV n w0 w1 w2 w3 (a vector register not 0: the oracle's; one the C wrote: the runner's), XW addr bytes (stack writes).
 """
 import os
 import struct
 
 from core import callee_drift, strict_judge
+from core.strict_judge import EXIT_CLASSES
 
 IMAGE_BASE = 0x82000000
 HEAP = (0x40000000, 0x40100000)
@@ -86,6 +90,14 @@ def parse_results(path):
             cur.setdefault("call_args", {})[len(cur["calls"]) - 1] = t[1:]  # since its entry or last call (TcTrack)
         elif k == "FN":  # the memory words a float store left a NaN in (TcTrack): the only NaN-tolerant words
             cur["float_nan"] = {int(x, 16) for x in t[1:]}
+        elif k in ("XS", "XF", "XC"):
+            cur[k.lower()] = [int(x, 16) for x in t[1:]]
+        elif k == "XV" and len(t) == 6:
+            cur.setdefault("xv", {})[int(t[1])] = tuple(int(x, 16) for x in t[2:])
+        elif k == "XW":
+            a, data = int(t[1], 16), bytes.fromhex(t[2]) if len(t) > 2 else b""
+            for i, b in enumerate(data):
+                cur.setdefault("xw", {})[a + i] = b
         elif k == "COV":
             cur["cov"] = {int(x) for x in t[1:]}
         elif k == "FAULT":
@@ -166,20 +178,23 @@ def arg_name(reg):
     return f"{reg} (args.r[{int(reg[1:]) - 3}])"
 
 
-def compare_memory(image, vec, exp, act):
+def compare_memory(image, vec, exp, act, key="writes"):
+    """The written words outside the stack region (key "writes"), or inside it (key "xw": the exit state's stack
+    writes)."""
     mem = Memory(image, vec)
-    words = sorted({a & ~3 for a in set(exp["writes"]) | set(act["writes"]) if not in_stack(a)})
+    ew, aw = exp.get(key) or {}, act.get(key) or {}
+    words = sorted({a & ~3 for a in set(ew) | set(aw) if in_stack(a) == (key == "xw")})
     bad = []
     for w in words:
-        ev = bytes(exp["writes"].get(w + i, mem.initial(w + i)) for i in range(4))
-        av = bytes(act["writes"].get(w + i, mem.initial(w + i)) for i in range(4))
+        ev = bytes(ew.get(w + i, mem.initial(w + i)) for i in range(4))
+        av = bytes(aw.get(w + i, mem.initial(w + i)) for i in range(4))
         if ev == av:
             continue
         if nan32(struct.unpack(">I", ev)[0]) and nan32(struct.unpack(">I", av)[0]) and w in exp.get("float_nan", ()):
             continue  # a float NaN the original stored: its payload is the FPU's (an integer word compares exactly)
-        bad.append(f"memory 0x{w:08x}: expected {ev.hex()}, got {av.hex()}"
-                   + ("" if any(w + i in act["writes"] for i in range(4)) else " (your code did not write here)")
-                   + ("" if any(w + i in exp["writes"] for i in range(4)) else " (the original does not write here)"))
+        bad.append(f"{'stack ' if key == 'xw' else ''}memory 0x{w:08x}: expected {ev.hex()}, got {av.hex()}"
+                   + ("" if any(w + i in aw for i in range(4)) else " (your code did not write here)")
+                   + ("" if any(w + i in ew for i in range(4)) else " (the original does not write here)"))
     if len(bad) > 6:
         bad = bad[:6] + [f"... and {len(bad) - 6} more differing memory words"]
     return bad
@@ -219,7 +234,59 @@ def compare_calls(meta, exp, act):
     return diffs
 
 
-def compare_vector(meta, image, vec, exp, act, strict=None, report=None):
+def _regs(names, want, have, kind, why):
+    out = []
+    for n, e, a in zip(names, want, have):
+        if e == a or kind == "f" and same_f64(e, a):
+            continue
+        w = 8 if kind == "w" else 16 if kind in ("r", "f") else 1
+        out.append(f"{n} at exit: expected 0x{e:0{w}x}, got 0x{a:0{w}x}{why}")
+    return out
+
+
+def compare_exit(meta, image, vec, exp, act):
+    """The exit state's differences of one vector, {class: [diff]} (core/strict_judge.EXIT_CLASSES; every class has a
+    list, empty when equal). {} when the harness has no exit state (an older harness, or the flag was off)."""
+    if "xs" not in exp:
+        return {}
+    out = {c: [] for c in EXIT_CLASSES}
+    if act is None or not act.get("done") or "xs" not in act:
+        out["callee_saved_gpr"].append("no exit state for this vector (the exit-state form crashed or did not run)")
+        return out
+    ret = meta.get("ret")
+    saved = " (callee-saved: the original restores it before returning)"
+    xs, ys, xf, yf = exp["xs"], act["xs"], exp.get("xf", []), act.get("xf", [])
+    gv = [n for n in [0] + list(range(2, 14)) if not (n == 3 and ret not in ("void", "f32", "f64"))]
+    fv = [n for n in range(14) if not (n == 1 and ret in ("f32", "f64"))]
+    out["callee_saved_gpr"] = _regs([f"r{n}" for n in range(14, 32)], xs[14:32], ys[14:32], "r", saved)
+    out["stack_pointer"] = _regs(["r1"], xs[1:2], ys[1:2], "r", "")
+    out["volatile_gpr"] = _regs([f"r{n}" for n in gv], [xs[n] for n in gv], [ys[n] for n in gv], "r", "")
+    out["callee_saved_fpr"] = _regs([f"f{n}" for n in range(14, 32)], xf[14:32], yf[14:32], "f", saved)
+    out["volatile_fpr"] = _regs([f"f{n}" for n in fv], [xf[n] for n in fv], [yf[n] for n in fv], "f", "")
+    xc, yc = (exp.get("xc") or []) + [0] * 7, (act.get("xc") or []) + [0] * 7
+    field = (lambda c, k: c >> (28 - 4 * k) & 15)
+    for cls, ks in (("cr_nonvolatile", (2, 3, 4)), ("cr_volatile", (0, 1, 5, 6, 7))):
+        out[cls] = _regs([f"cr{k} (lt gt eq so)" for k in ks], [field(xc[0], k) for k in ks],
+                         [field(yc[0], k) for k in ks], "b", "")
+    out["xer"] = _regs(["XER[CA]", "XER[SO]", "XER[OV]"], xc[1:4], yc[1:4], "b", "")
+    out["ctr"] = _regs(["CTR"], xc[4:5], yc[4:5], "r", "")
+    out["lr"] = _regs(["LR"], xc[5:6], yc[5:6], "r", "")
+    out["fpscr"] = _regs(["FPSCR"], xc[6:7], yc[6:7], "w", "")
+    ev, av, z = exp.get("xv") or {}, act.get("xv") or {}, (0, 0, 0, 0)
+    for n in sorted(set(ev) | set(av)):
+        e, a = ev.get(n, z), av.get(n, z)
+        if e != a:
+            out["vector"].append(f"v{n} at exit: expected {' '.join(f'{x:08x}' for x in e)}, "
+                                 f"got {' '.join(f'{x:08x}' for x in a)}")
+    out["stack_writes"] = compare_memory(image, vec, exp, act, key="xw")
+    return {c: d[:4] + ([f"... and {len(d) - 4} more"] if len(d) > 4 else []) for c, d in out.items()}
+
+
+def compare_vector(meta, image, vec, exp, act, strict=None, report=None, exit_act=None, modes=None, classes=None):
+    """One vector's enforced differences. strict: core/strict_judge.modes; report: the list report-only differences
+    (the stricter judge's and the exit state's) go to; exit_act: the exit-state form's run of this vector (None: no
+    exit run, so no exit comparison); modes: core/strict_judge.exit_modes; classes: a Counter of the classes that
+    differ."""
     if act is None or not act["done"]:
         return ["no result for this vector (the C code crashed, hung or timed out)"]
     diffs = []
@@ -230,8 +297,18 @@ def compare_vector(meta, image, vec, exp, act, strict=None, report=None):
     for f in act["faults"]:
         diffs.append(f"invalid guest memory access: {f}")
     diffs += compare_return(meta, exp, act) + compare_memory(image, vec, exp, act) + compare_calls(meta, exp, act)
-    return diffs + strict_judge.compare(meta, exp, act, STRICT_INDEX, strict_judge.XR_PPC, int.__eq__, strict, report,
-                                        ">I")
+    diffs += strict_judge.compare(meta, exp, act, STRICT_INDEX, strict_judge.XR_PPC, int.__eq__, strict, report, ">I")
+    if modes is not None and "xs" in exp:
+        for cls, ds in compare_exit(meta, image, vec, exp, exit_act or {"done": False}).items():
+            if not ds:
+                continue
+            if classes is not None:
+                classes[cls] += 1
+            if modes.get(cls) == "enforce":
+                diffs += [f"exit state, {cls}: {d}" for d in ds]
+            elif report is not None:
+                report += [f"exit_state {cls} (report only): {d}" for d in ds]
+    return diffs
 
 
 def describe_inputs(meta, vec):

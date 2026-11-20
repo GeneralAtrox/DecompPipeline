@@ -1,7 +1,9 @@
-"""The port kit's game contract (port/CONTRACT.md): the document lists exactly the game.json keys, SDK modules, exit
-codes and enhancements the code has, with no second copy of its tables in port/README.md; game.json "contract" is
-checked against its version (another major stops, a missing key warns once); and every enhancement is off in a check
-run (headless or fixed clock). Reads sources only: no build, no game. Run: python -W error tests/test_port_contract.py
+"""The port kit's game contract (port/CONTRACT.md): the document lists exactly the game.json keys (both kits), SDK
+modules, exit codes and enhancements the code has, its generated tables are what port/tools/contract_doc.py writes,
+and there is no second copy of its tables in port/README.md; every exit in both kits is a code of base/exit_codes.h;
+gen_saturn stops on a saturn key the document does not list; game.json "contract" is checked against its version
+(another major stops, a missing key warns once); and every enhancement is off in a check run (headless or fixed
+clock). Reads sources only: no build, no game. Run: python -W error tests/test_port_contract.py
 """
 import contextlib
 import io
@@ -17,6 +19,8 @@ TOOL = pathlib.Path(__file__).resolve().parents[1]
 KIT = TOOL / "port"
 sys.path.insert(0, str(KIT / "tools"))
 import game_config  # noqa: E402
+import contract_doc  # noqa: E402
+import gen_saturn  # noqa: E402
 
 DOC = (KIT / "CONTRACT.md").read_text(encoding="utf-8")
 KNOWN_DOC = (KIT / "KNOWN.md").read_text(encoding="utf-8")
@@ -47,15 +51,19 @@ def sources(*globs):
 
 
 def exit_codes_in_code():
-    """Every literal exit code the runtime and host can end with."""
+    """Every exit code the runtime, the host and the Saturn kit can end with: a number, or a base/exit_codes.h name."""
+    named = {name: code for code, name, _ in contract_doc.exit_codes()}
     pats = (r"port_exit\([^;]*?,\s*(\d+)\)", r"ExitProcess\((\d+)\)", r"(?<![\w.])exit\((\d+)\)", r"\b(?:port_install_)?fail\((\d+),",
             r"^\s*return (\d+);")
     codes = set()
-    for p, text in sources("runtime/**/*.c", "base/*.c", "base/*.cpp", "pvr/*.c", "sdk/*.c").items():
+    for p, text in sources("runtime/**/*.c", "base/*.c", "base/*.cpp", "pvr/*.c", "sdk/*.c", "saturn/**/*.c").items():
         for pat in pats[:4]:
             codes |= {int(c) for c in re.findall(pat, text, re.M)}
         if p.name == "host_main.cpp":  # main() and install() return the process's exit code
             codes |= {int(c) for c in re.findall(pats[4], text, re.M)}
+        for name in re.findall(r"\bPORT_EXIT_\w+", text):
+            assert name in named, f"{p.name}: {name} is not in base/exit_codes.h"
+            codes.add(named[name])
     return codes
 
 
@@ -71,9 +79,16 @@ class ContractDocument(unittest.TestCase):
         self.assertEqual(first_column("SDK modules"), set(game_config.sdk_modules()))
 
     def test_exit_codes(self):
+        """One set for every console: base/exit_codes.h, the table and the codes both kits end with agree."""
         listed = {int(c) for c in first_column("Exit codes")}
-        self.assertTrue(exit_codes_in_code() <= listed, sorted(exit_codes_in_code() - listed))
-        self.assertTrue(listed <= exit_codes_in_code(), sorted(listed - exit_codes_in_code()))
+        self.assertEqual(listed, {code for code, _, _ in contract_doc.exit_codes()})
+        in_code = exit_codes_in_code()
+        self.assertTrue(in_code <= listed, sorted(in_code - listed))
+        self.assertTrue(listed <= in_code, sorted(listed - in_code))
+
+    def test_generated_tables_current(self):
+        self.assertEqual(DOC, contract_doc.render(DOC), "port/CONTRACT.md's generated tables differ from the code: "
+                         f"run {contract_doc.REGENERATE}")
 
     def test_options_exist(self):
         code = "\n".join(sources("runtime/**/*.c", "base/*.c", "base/*.cpp", "pvr/*.c").values())
@@ -87,6 +102,21 @@ class ContractDocument(unittest.TestCase):
         for header in ("| Key | Meaning |", "| SDK module | Replaces |", "| Exit code | Meaning |", "| Id | Option |"):
             self.assertNotIn(header, readme)
         self.assertIn("CONTRACT.md", readme)
+
+
+class SaturnKeys(unittest.TestCase):
+    """contract_doc.SATURN_KEYS (game_config.SATURN_KEYS) is the one list of a saturn object's keys: the document's
+    table is written from it, and gen_saturn stops on any other key, naming it and the known ones."""
+
+    def test_documented(self):
+        self.assertEqual(first_column("Saturn ports"), set(game_config.SATURN_KEYS))
+
+    def test_unknown_key_stops(self):
+        with self.assertRaises(SystemExit) as stop:
+            gen_saturn.check_keys({"image": "x", "entry_stack": "0x060fe000"}, "game.json")
+        self.assertIn("unknown saturn key entry_stack;", str(stop.exception))
+        self.assertIn("entry_sp", str(stop.exception))  # the known keys are named
+        gen_saturn.check_keys(dict.fromkeys(game_config.SATURN_KEYS), "game.json")  # every listed key passes
 
 
 class Enhancements(unittest.TestCase):
@@ -145,7 +175,7 @@ class Enhancements(unittest.TestCase):
         self.assertRegex((KIT / "base/host_window.cpp").read_text("utf-8"), r"(?m)^host::Prefs g_prefs;$")
 
     def test_texture_pack_off_in_checks(self):
-        """A game's default pack is ignored on the fixed clock (the driven run is tests/test_pvr_pack.py
+        """A game's default pack is ignored on the fixed clock (the driven run is tests/test_pvr_pack_bundled.py
         TexturePackInCheckRuns); only --texture-pack on or DIR asks for it there."""
         pack = (KIT / "pvr" / "pvr_pack.c").read_text(encoding="utf-8")
         self.assertRegex(pack, r"static int g_wanted = -1;")
@@ -196,6 +226,36 @@ class ContractKey(unittest.TestCase):
         for bad in ("1", "1.0", "v1.0.0", 1):
             with self.subTest(bad=bad), self.assertRaises(SystemExit):
                 self.load(contract=bad)
+
+    def test_menu_checks(self):
+        good = [{"label": "Extra &fighter", "setting": "game.extra", "needs": r"extra\file.bin"}]
+        h = game_config.port_config_h(self.load(menu_checks=good)[0])
+        self.assertIn('#define PORT_MENU_CHECKS {"Extra &fighter", "game.extra", "extra/file.bin", 0}', h)
+        on = [{"label": "Clearer art", "setting": "game.clear", "default": True}]  # on until chosen (pvr_pack.c if=)
+        self.assertIn('#define PORT_MENU_CHECKS {"Clearer art", "game.clear", "", 1}',
+                      game_config.port_config_h(self.load(menu_checks=on)[0]))
+        self.assertNotIn("PORT_MENU_CHECKS", game_config.port_config_h(self.load()[0]))
+        for bad in ([{"label": "x", "setting": "extra"}], [{"label": "", "setting": "game.x"}],
+                    [{"label": "x", "setting": "game.x", "other": 1}], [{"label": "x", "setting": "game.x"}] * 5,
+                    {"label": "x"}, [{"label": "x", "setting": "game.x", "needs": 1}],
+                    [{"label": "x", "setting": "game.x", "default": "on"}]):
+            with self.subTest(bad=bad), self.assertRaises((game_config.ConfigError, SystemExit)):
+                self.load(menu_checks=bad)
+
+    def test_present_pace_removed(self):
+        """game.json present_pace was removed in 2.14.0 (one presenting behaviour for every game): a game.json that still
+        has it is refused with a message to delete it, and nothing in the kit reads it or --present-pace."""
+        cfg = self.load()[0]
+        self.assertNotIn("present_pace", cfg)
+        self.assertNotIn("PORT_PRESENT_PACE", game_config.port_config_h(cfg))
+        for value in (True, False):
+            with self.subTest(value=value), self.assertRaisesRegex(game_config.ConfigError, "present_pace: removed"):
+                self.load(present_pace=value)
+        for rel in ("base/present_device.c", "runtime/frame_thread.c", "runtime/platform.h", "base/present.h"):
+            text = (KIT / rel).read_text(encoding="utf-8")
+            self.assertNotIn("PORT_PRESENT_PACE", text, rel)
+            self.assertNotIn('"--present-pace"', text, rel)
+            self.assertNotIn("gfx_present_paced", text, rel)
 
     def test_version_from_document(self):
         doc = self.dir / "C.md"

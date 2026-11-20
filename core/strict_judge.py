@@ -30,6 +30,16 @@ config.json (or config.local.json, project.json) "strict_judge": {"call_snapshot
 A fifth judge flag, "junk_ram" (core/junk_ram: a second pass on junk RAM, judged against xemu's run of the original),
 is no oracle input: it adds no facts line, and "strict_judge" {"junk_ram": "report"} is its report mode.
 
+A sixth, the Xbox 360's only (target.json "exit_state", off by default): the exit state of a translated function, every
+register at exit and the stack bytes it wrote (TcOracle/TcExit's expected.txt "XS", "XF", "XC", "XV", "XW"; the
+translator's exit-state form records its own registers' final values: xenontranslate/exit_form.py), compared per
+class (x360_compare.compare_exit, EXIT_CLASSES below). "strict_judge" {"exit_state": {"<class>": "report", ...}} sets
+each class's mode; EXIT_ENFORCED are enforced unless set, the rest report until a re-judge shows which differences are
+real. cr_volatile, xer, volatile_gpr and volatile_fpr were enforced on 2026-11-13: Too Human's 533 re-judged with them
+at 504 PASS / 0 FAIL / 29 NOTRANSLATE, and a wrong value planted in each class's record failed under that class
+(translator/tools/dp_judge.py --plant-exit). FPSCR, CTR, LR, the stack pointer, the vector registers and the stack
+writes still report. Its facts line is "exit_state 1"; it is not in FLAGS (no other target's oracle reads it).
+
 project.json "mock_write_facts": {"<callee hex>": {"<field>": size, ..., "why": "<evidence>"}}: field one of the
 target's integer argument registers (abi int_args) or a stack word s0..s7, size 1..256 bytes, why required (the
 callee's code or a manual that shows the write). The facts file gets "mock_write callee field size" lines only while
@@ -53,6 +63,11 @@ MAX_OPS = 16    # an advance's listed ops (tc_strict.h TCS_MAX_OPS)
 # The exit frame's registers in XR order, and how each compares: a word (the mirror rule's same_word), f32 or f64.
 XR_SH = [("r15", "w")] + [(f"r{i}", "w") for i in range(8, 15)] + [(f"fr{i}", "f32") for i in range(12, 16)]
 XR_PPC = [("r1", "w")] + [(f"r{i}", "w") for i in range(14, 32)] + [(f"f{i}", "f64") for i in range(14, 32)]
+# The Xbox 360 exit state's classes (x360_compare.compare_exit), and those enforced unless config says "report".
+EXIT_CLASSES = ("callee_saved_gpr", "callee_saved_fpr", "cr_nonvolatile", "cr_volatile", "xer", "ctr", "lr", "fpscr",
+                "volatile_gpr", "volatile_fpr", "stack_pointer", "vector", "stack_writes")
+EXIT_ENFORCED = ("callee_saved_gpr", "callee_saved_fpr", "cr_nonvolatile", "cr_volatile", "xer", "volatile_gpr",
+                 "volatile_fpr")
 
 
 def on(cfg, flag):
@@ -121,13 +136,31 @@ def facts_lines(cfg):
     lines = [f"{flag} 1" for flag in FLAGS if on(cfg, flag)]
     if on(cfg, "mock_writes"):
         lines += [f"mock_write {c} {f} {n}" for c, f, n in write_facts(cfg)]
+    if on(cfg, "exit_state"):
+        if cfg.get("target") not in (None, "xbox360_ppc"):
+            raise ValueError('target.json "exit_state": only the Xbox 360 oracle records the exit state')
+        lines.append("exit_state 1")
+    if int(cfg.get("seed_extra") or 0) > 0:  # op-aware extra vectors per set, appended (TcSeedx, the Xbox 360 only)
+        if cfg.get("target") not in (None, "xbox360_ppc"):
+            raise ValueError('"seed_extra": only the Xbox 360 oracle draws op-aware extra vectors (TcSeedx)')
+        lines.append(f"seed_extra {int(cfg['seed_extra'])}")
     return lines
+
+
+def exit_modes(cfg):
+    """{class: mode} of the Xbox 360 exit state (EXIT_CLASSES) from config "strict_judge" {"exit_state": {...}}."""
+    x = (cfg.get("strict_judge") or {}).get("exit_state") or {}
+    if not isinstance(x, dict) or any(k not in EXIT_CLASSES or x[k] not in MODES for k in x):
+        raise ValueError(f'config "strict_judge" "exit_state": {{class: "enforce" or "report"}}, '
+                         f'classes {EXIT_CLASSES}')
+    return {c: x.get(c, "enforce" if c in EXIT_ENFORCED else "report") for c in EXIT_CLASSES}
 
 
 def modes(cfg):
     """{"call_snapshots": mode, "exit_frame": mode} from config "strict_judge" (default "enforce")."""
     sj = cfg.get("strict_judge") or {}
-    if not isinstance(sj, dict) or any(k not in REPORTABLE + ("junk_ram",) for k in sj):  # junk_ram: core/junk_ram
+    # junk_ram: core/junk_ram; exit_state: exit_modes
+    if not isinstance(sj, dict) or any(k not in REPORTABLE + ("junk_ram", "exit_state") for k in sj):
         raise ValueError(f'config "strict_judge": only {" and ".join(REPORTABLE)} have a mode ("enforce" or "report")')
     out = {k: sj.get(k, "enforce") for k in REPORTABLE}
     if any(m not in MODES for m in out.values()):

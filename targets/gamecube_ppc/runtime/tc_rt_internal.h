@@ -27,14 +27,23 @@ static inline int tcrt_mmio(u32 a)
 int tcrt_init(const char *dol, const char *code_ranges);
 void tcrt_reset(void);
 void tcrt_poke(u32 addr, const u8 *data, u32 len);
-void tcrt_set_call_returns(const u32 rets[16], const u64 frets[16]);
+/* Scripted call results per vector (vectors.txt C and D; TcOracle.RETS): 16 words, then any later call's the oracle's
+ * repair or a genretptr hint made a pointer (TcOracle.lateOf). A word a line does not have is 0, and so is a call's
+ * past TCRT_RETS. */
+#define TCRT_RETS 1024
+void tcrt_set_call_returns(const u32 rets[TCRT_RETS], const u64 frets[TCRT_RETS]);
 void tcrt_report(FILE *out, u32 r3, u64 f1_bits, u32 r4);
 void tcrt_set_hw(const u32 *words); /* vectors.txt H: what reads of hardware registers answer, in turn */
+/* vectors.txt X (after tcrt_reset, which clears it): a helper entry's r11, r14..r31 (gpr[0..17]) and f14..f31's bits
+ * (fpr[0..17]) at entry (tc_inr, tc_inf); r14..r31 and f14..f31 are also what the exit frame reports unless tc_xr. */
+void tcrt_set_frame(u32 r11, const u32 *gpr, const u64 *fpr);
 /* tc_strict.h (included by tc_rt.c): the stricter judge's vectors.txt lines J and U (header), N and W (per
  * vector, after tcrt_reset, which forgets them), and its report (CS lines). */
 void tcrt_strict_line(const char *line);
 void tcrt_strict_reset(void);
 int tcrt_strict_flags(void);
 void tcrt_strict_report(FILE *out);
+/* tc_fx.h (included by tc_rt.c): vectors.txt Q and K, per vector after tcrt_reset (which forgets them). */
+void tcrt_fx_line(const char *line);
 
 #endif

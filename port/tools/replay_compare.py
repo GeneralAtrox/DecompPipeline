@@ -35,7 +35,39 @@ def pad_bytes(data):
 
 
 def last_vblank(data):
-    return struct.unpack("<I", data[-4:])[0]
+    """The vertical blank the recording ends at: after the header and four sections come the pad reads and it. A fifth
+    section (players 2..8 and the right sticks) may follow, so it is not the file's last word (base/session.c)."""
+    at = 12 + struct.unpack("<I", data[8:12])[0]
+    for _ in range(4):
+        at += 4 + struct.unpack("<I", data[at:at + 4])[0]
+    return struct.unpack("<I", data[at + 4:at + 8])[0]
+
+
+def sections(data):
+    """A recording's four sections after the header (pad, timer, rtc, saves), its two closing counts (pad reads, vertical blanks),
+    the players 2..8 section when there is one (others) and anything past that (extra), as session.c writes them."""
+    at = 12 + struct.unpack("<I", data[8:12])[0]
+    out = {}
+    for name in ("pad", "timer", "rtc", "saves"):
+        n = struct.unpack("<I", data[at:at + 4])[0]
+        out[name], at = data[at + 4:at + 4 + n], at + 4 + n
+    out["reads"], out["vblanks"] = struct.unpack("<II", data[at:at + 8])
+    at += 8
+    out["others"] = b""  # players 2..8 and the right sticks: an optional fifth section after the counts (session_other.c)
+    if len(data) >= at + 4 and at + 4 + struct.unpack("<I", data[at:at + 4])[0] <= len(data):
+        n = struct.unpack("<I", data[at:at + 4])[0]
+        out["others"], at = data[at + 4:at + 4 + n], at + 4 + n
+    out["extra"] = data[at:]
+    return out
+
+
+def inputs_only(data):
+    """Why a recording holds more than inputs and timing, or "" when it does not: save files read (whole, in the saves section) or
+    bytes past its closing counts. A recording committed to a game's repository as a check's input must pass this."""
+    if data[:8] != b"PORTREC1":
+        return "not a session recording"
+    s = sections(data)
+    return ", ".join(([f"{len(s['saves'])} bytes of save files"] if s["saves"] else []) + ([f"{len(s['extra'])} bytes past the end"] if s["extra"] else []))
 
 
 def pick_recordings(paths):
@@ -54,6 +86,17 @@ def pick_recordings(paths):
 
 def blake(path):
     return hashlib.blake2b(path.read_bytes(), digest_size=12).hexdigest()
+
+
+def done_rows(rows, pair):
+    """results.jsonl's rows by recording, those of this pair of builds and switches only."""
+    return {r["job"]: r for r in rows if r.get("pair") == pair}
+
+
+def differs(row, tail):
+    """A row that is a difference: frames, frame count past --tail, sound, exit code, or no frames at all."""
+    return bool(row["differ"] or abs(row["frames_old"] - row["frames_new"]) > tail or not row["wav_same"]
+                or row["old"]["exit"] != row["new"]["exit"] or not row["frames_old"])
 
 
 def run_side(args, folder, exe, env_items, extra, recording, stop):
@@ -136,12 +179,23 @@ def main():
         print("no recordings")
         return 2
     print("start of a longer recording, not run:", skipped, flush=True)
-    done = {json.loads(l)["job"] for l in results.read_text().splitlines()} if results.exists() else set()
+    # A row counts only for the same two builds and switches: --out reused for another pair once resumed the old pair's
+    # rows and said ALL SAME without running anything.
+    sides = [blake(pathlib.Path(args.old)), blake(pathlib.Path(args.new)), args.old_env, args.new_env, args.old_arg, args.new_arg]
+    pair = hashlib.sha256(json.dumps(sides + [args.stop_at]).encode()).hexdigest()[:16]
+    rows = [json.loads(l) for l in results.read_text().splitlines()] if results.exists() else []
+    done = done_rows(rows, pair)
+    if len(done) < len(rows):
+        print(len(rows) - len(done), "row(s) in", results, "from other builds or switches: run again", flush=True)
     begun = time.time()
     for recording, stop in jobs:
         name = recording.stem
         stop = args.stop_at or stop
         if name in done:
+            r = done[name]
+            if differs(r, args.tail):
+                print(name, "differed when it ran (results.jsonl): DIFFERENCE", flush=True)
+                return 4
             continue
         if time.time() - begun > args.budget:
             print("budget reached, run again to go on", flush=True)
@@ -160,14 +214,14 @@ def main():
             print(name, "a dump was not written, run it again:", a["unwritten"][:1], b["unwritten"][:1], flush=True)
             return 7
         differ =[k for k in sorted(set(fa) & set(fb)) if fa[k] != fb[k]]
-        row = dict(job=name, stop=stop, frames_old=len(fa), frames_new=len(fb), distinct=len(set(fa.values())), differ=len(differ),
+        row = dict(job=name, pair=pair, stop=stop, frames_old=len(fa), frames_new=len(fb), distinct=len(set(fa.values())), differ=len(differ),
                    first=differ[:3], wav_same=a["wav"] == b["wav"], old=a, new=b)
         with open(results, "a") as h:
             h.write(json.dumps(row) + "\n")
         print(name, "stop", stop, "frames", len(fa), len(fb), "distinct", row["distinct"], "differ", len(differ), "sound bytes",
               a["wav_bytes"], "same" if row["wav_same"] else "DIFFERENT", "exit", a["exit"], b["exit"], a["exit_line"], a["faults"][:1],
               "seconds", a["seconds"], b["seconds"], flush=True)
-        if differ or abs(len(fa) - len(fb)) > args.tail or not row["wav_same"] or a["exit"] != b["exit"] or not fa:
+        if differs(row, args.tail):
             print("DIFFERENCE: stopped; folders kept:", name, flush=True)
             return 4
         shutil.rmtree(out / (name + "_old"), ignore_errors=True)

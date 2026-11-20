@@ -18,6 +18,7 @@ static struct {
     u64 worst_us;
 } g_s[SERIES];
 static u64 g_freq, g_frames, g_first, g_last, g_wait_end, g_draw_start, g_draw_acc, g_xdraw_acc;
+static u64 g_idle, g_idle_start; /* clock ticks of sleep inside the current tick (play_stats_idle), and the one going on */
 static u64 g_late, g_late_loading, g_shown_loading, g_disc_start, g_disc_bytes;
 static u64 g_repeat; /* the frame-rate cap's slots (144 uncapped) that showed no new frame, loading screens left out */
 static volatile LONG g_tick_pending;    /* the last tick's work in us + 1, until a shown frame takes it; 0 none */
@@ -26,6 +27,7 @@ static DWORD g_game_tid;                /* the thread of the wait and tick hooks
 static u32 g_depth, g_gaps_more;
 static int g_force, g_in_wait, g_draw_in_tick; /* g_force: --play-summary 1 on, -1 off, 0 auto */
 static u64 g_gap_logged;
+static DWORD g_span_tid; /* a native frame's span open on this thread (play_stats_native), 0 none */
 
 static u64 now(void)
 {
@@ -91,6 +93,15 @@ static void tick_done(u64 us)
     InterlockedExchange(&g_tick_pending, (LONG)(us < 0x7ffffffeu ? us + 1u : 0x7fffffffu));
 }
 
+/* A native tick that ran inside its frame's span (play_stats_native; a game that ticks between pg_native_frame and
+ * pg_native_present): that span is the frame's make time already, so only the part of the tick before the span opened
+ * is the tick's own make time. All inside: the shown frame takes nothing more from it. */
+static void tick_in_span(u64 us, u64 in)
+{
+    add(TICK, us);
+    if (us > in) InterlockedExchange(&g_tick_pending, (LONG)(us - in < 0x7ffffffeu ? us - in + 1u : 0x7fffffffu));
+}
+
 void play_stats_wait_slow(int begin)
 {
     u64 t;
@@ -98,13 +109,21 @@ void play_stats_wait_slow(int begin)
     t = now();
     g_game_tid = GetCurrentThreadId(); /* a draw on this thread outside the wait is the tick's own (its render) */
     if (begin) {
-        if (g_wait_end) tick_done(us_of(t - g_wait_end)); /* the work since the last wait ended; the first has no start */
+        /* the work since the last wait ended, its sleeps left out; the first has no start */
+        if (g_wait_end) tick_done(us_of(t - g_wait_end - (g_idle < t - g_wait_end ? g_idle : t - g_wait_end)));
         g_in_wait = 1;
     } else {
         if (g_wait_end) tick_gap(t - g_wait_end); /* from the end of one wait to the end of the next: one tick */
         g_wait_end = t;
         g_in_wait = 0;
     }
+    g_idle = g_idle_start = 0;
+}
+
+void play_stats_idle_slow(int begin)
+{
+    if (begin) g_idle_start = now();
+    else if (g_idle_start) g_idle += now() - g_idle_start, g_idle_start = 0;
 }
 
 void play_stats_tick_slow(double ms)
@@ -112,26 +131,40 @@ void play_stats_tick_slow(double ms)
     if (!g_play_stats && decide() < 0) return;
     if (ms < 0.0) return;
     g_game_tid = GetCurrentThreadId();
-    tick_done((u64)(ms * 1000.0));
+    if (g_span_tid && g_span_tid == GetCurrentThreadId()) {
+        u64 us = (u64)(ms * 1000.0), open = us_of(now() - g_draw_start);
+        tick_in_span(us, open < us ? open : us);
+    } else {
+        tick_done((u64)(ms * 1000.0));
+    }
     tick_gap((u64)(ms * 1000.0 * (double)g_freq / 1000000.0));
 }
 
 /* The draw behind a shown frame is the outermost span only: pvr_render runs inside an in-between frame's draw. A span
  * the game's thread draws outside the wait is inside a tick, whose work already holds it: left out of the make time. */
-void play_stats_draw_slow(int enter)
+static void draw_span(int enter, int native)
 {
     if (!g_play_stats && decide() < 0) return;
     if (enter) {
         if (g_depth++ == 0) {
             g_draw_start = now();
-            g_draw_in_tick = GetCurrentThreadId() == g_game_tid && !g_in_wait;
+            g_draw_in_tick = !native && GetCurrentThreadId() == g_game_tid && !g_in_wait;
+            g_span_tid = native ? GetCurrentThreadId() : 0;
         }
     } else if (g_depth && --g_depth == 0) {
         u64 d = now() - g_draw_start;
         g_draw_acc += d;
         if (!g_draw_in_tick) g_xdraw_acc += d;
+        g_span_tid = 0;
     }
 }
+
+void play_stats_draw_slow(int enter) { draw_span(enter, 0); }
+
+/* A native game's frame (native_frame.c: pg_native_frame to pg_native_present, before the present and the cap's wait).
+ * It has no wait for a blank, so its draw is never inside a tick: the whole span is make time, and a tick run inside it
+ * is counted once, in the span (tick_in_span). */
+void play_stats_native_slow(int enter) { draw_span(enter, 1); }
 
 void play_stats_disc_slow(u32 bytes)
 {
@@ -184,7 +217,7 @@ void play_stats_restart(void)
 {
     if (g_play_stats <= 0) return;
     memset(g_s, 0, sizeof g_s);
-    g_frames = g_first = g_last = g_wait_end = g_draw_start = g_draw_acc = g_xdraw_acc = 0;
+    g_frames = g_first = g_last = g_wait_end = g_draw_start = g_draw_acc = g_xdraw_acc = g_idle = g_idle_start = 0;
     g_late = g_late_loading = g_shown_loading = g_repeat = 0;
     InterlockedExchange(&g_tick_pending, 0);
 }

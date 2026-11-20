@@ -42,6 +42,7 @@
 
 enum { WS = 1024, ROWS = 256, WBYTES = WS * ROWS * 2, OX_MAX = 256 };
 
+int sat_wide_want; /* the dots each side the window's shape asks for, whether or not this picture is widened (kit screens) */
 int sat_wide_ox;  /* this vertical blank's: dots added on each side of the screen; 0 the Saturn's picture */
 u32 sat_wide_sw;  /* the screen width they were added to */
 int sat_wide_now; /* the picture being composed: its ox (0 when its mode is not the one widened) */
@@ -66,6 +67,12 @@ void sat_wide_frame(void)
     u32 sw = (hres & 2u ? 640u : 320u) + ((hres & 1u) ? (hres & 2u ? 64u : 32u) : 0u);
     f32 k = g_gfx.frame ? port_widescreen() : g_gfx.aspect_set && g_gfx.aspect > 0.0f ? g_gfx.aspect * 0.75f : 1.0f;
     int ox = 0;
+    if (k > 1.0f && sw <= 352u) {
+        u32 ww = ((u32)ceilf((f32)sw * k) + 1u) & ~1u;
+        sat_wide_want = (int)(ww - sw) / 2 > OX_MAX ? OX_MAX : (int)(ww - sw) / 2;
+    } else {
+        sat_wide_want = 0;
+    }
 #if SAT_WIDESCREEN == 2
     if (!(sat_v2_reg[0x21] & 0x10u)) k = 1.0f; /* "rbg0": a picture without RBG0 (BGON bit 4) is a 2D screen: its own width */
 #endif

@@ -138,10 +138,28 @@ static int spinning(u32 port, u32 position, u32 phase)
     return 1;
 }
 
+/* Before the blank's time is used up, a playing voice polled over and over means the game is waiting for the clock to
+ * move (a movie player polled about 13,000 times a blank): after each burst of polls it naps (port_clock_nap), so the
+ * wait sleeps instead of burning a core. The position is then read from the clock as before. */
+static int napped(u32 port, u32 phase)
+{
+    static u32 last_port = ~0u, vblank, polls;
+    if (port != last_port || vblank != port_vblank_count()) {
+        last_port = port;
+        vblank = port_vblank_count();
+        polls = 0;
+    }
+    polls++;
+    if (phase >= 65536u || !aica_voice_playing(port) || !port_clock_nap(polls)) return 0;
+    polls = 0;
+    return 1;
+}
+
 s32 acDigiGetCurrentReadPosition(u32 port, u32 *position)
 {
     if (!port_ok(port) || !position) return 0;
     u32 phase = port_vblank_phase(1);
+    if (napped(port, phase)) phase = port_vblank_phase(1);
     *position = aica_voice_position(port, phase);
     if (spinning(port, *position, phase)) {
         port_wait_vblank();

@@ -2997,14 +2997,14 @@
 },
 "text": "vupkhsb v11,v11"
 },
-"vupkhsb128": {
+"vupkhsh128": {
 "addr": "82a131bc",
 "word": "1bc0ffa5",
 "f": {
 "vd": 62,
 "vb": 63
 },
-"text": "vupkhsb128 v62,v63"
+"text": "vupkhsh128 v62,v63"
 },
 "vupkhsh": {
 "addr": "82997cec",
@@ -3024,14 +3024,14 @@
 },
 "text": "vupklsb v29,v4"
 },
-"vupklsb128": {
+"vupklsh128": {
 "addr": "82a1cc58",
 "word": "1bc0b7e4",
 "f": {
 "vd": 62,
 "vb": 22
 },
-"text": "vupklsb128 v62,v22"
+"text": "vupklsh128 v62,v22"
 },
 "vupklsh": {
 "addr": "82a1c768",

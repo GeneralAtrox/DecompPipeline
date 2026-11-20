@@ -22,6 +22,14 @@ HELPERS = {
     "px_f2b": "static u64 px_f2b(f64 x)\n{\n    union { f64 d; u64 b; } v;\n    v.d = x;\n    return v.b;\n}",
     "px_b2f": "static f64 px_b2f(u64 x)\n{\n    union { f64 d; u64 b; } v;\n    v.b = x;\n    return v.d;\n}",
     "px_w2f": "static f32 px_w2f(u32 x)\n{\n    union { f32 f; u32 w; } v;\n    v.w = x;\n    return v.f;\n}",
+    # lfs / lfsx / lfsu / lfsux: Xenon widens a single exactly, a signalling NaN too (Book I: the fraction is copied, nothing
+    # is quieted); C's (f64) of a float is x86 cvtss2sd, which quiets it (7fa00001 came back 7fe00001 in 82e40fe0). The usual
+    # path is one compare and the cast. GameCube's px_lfs text, inlined: out of line at /O1 it cost the port
+    # +1.75 ms a gameplay frame (lead, 2026-11-14); the rare signalling-NaN path stays in px_b2f.
+    "px_lfs": "static __forceinline f64 px_lfs(f32 f)\n{\n    union { f32 f; u32 w; } v;\n    v.f = f;\n"
+              "    if ((v.w & 0x7f800000u) == 0x7f800000u && (v.w & 0x7fffffu) != 0u)\n"
+              "        return px_b2f(((u64)(v.w >> 31) << 63) | 0x7ff0000000000000ull | ((u64)(v.w & 0x7fffffu) << 29));\n"
+              "    return (f64)f;\n}",
     # the 8 stack-argument doublewords of a call, at r1 + 0x50
     "px_sargs": "static void px_sargs(TcArgs *a, u32 ea)\n{\n    int k;\n"
                 "    for (k = 0; k < 8; k++) a->s[k] = rd64(ea + 8u * (u32)k);\n}",
@@ -39,16 +47,26 @@ HELPERS = {
              + "".join(f"    a->r[{k - 3}] = r{k};\n" for k in range(3, 11))
              + "".join(f"    a->f[{k - 1}] = f{k};\n" for k in range(1, 14))
              + "".join(f"    a->s[{k}] = s{k};\n" for k in range(8)) + "}"),
-    "px_fdiv": "static f64 px_fdiv(f64 a, f64 b)\n{\n    return a / b;\n}",
+    # PowerPC's NaN result of a two-operand float op (Book I 4.3.2, 4.4): frA's NaN, else frB's, quieted, sign kept; an
+    # invalid operation without a NaN operand gives 0x7ff8000000000000 (x86 gives 0xfff8..., and its choice between two
+    # NaNs follows the operand order the compiler picked). No preprocessor lines: the judge's lint (core/lint.py R2)
+    # allows none in generated C.
+    "px_nn": "static f64 px_nn(f64 r, f64 a, f64 b)\n{\n"
+             "    if (r != r) return px_b2f(a != a ? px_f2b(a) | 0x0008000000000000ull : b != b ? px_f2b(b) | 0x0008000000000000ull : 0x7ff8000000000000ull);\n"
+             "    return r;\n}",
+    "px_fadd": "static f64 px_fadd(f64 a, f64 b)\n{\n    return px_nn(a + b, a, b);\n}",
+    "px_fsub": "static f64 px_fsub(f64 a, f64 b)\n{\n    return px_nn(a - b, a, b);\n}",
+    "px_fmul": "static f64 px_fmul(f64 a, f64 c)\n{\n    return px_nn(a * c, a, c);\n}",
+    "px_fdiv": "static f64 px_fdiv(f64 a, f64 b)\n{\n    return px_nn(a / b, a, b);\n}",
     # a / +-0 (sb: the divisor's sign bit): a NaN stays, 0 / 0 is NaN, anything else infinity of the xored sign
-    "px_fdz": "static f64 px_fdz(f64 a, u64 sb)\n{\n    u64 x = px_f2b(a);\n    if (a != a) return a;\n"
+    "px_fdz": "static f64 px_fdz(f64 a, u64 sb)\n{\n    u64 x = px_f2b(a);\n    if (a != a) return px_b2f(x | 0x0008000000000000ull);\n"
               "    if ((x << 1) == 0) return px_b2f(0x7ff8000000000000ull);\n"
               "    return px_b2f(((x ^ sb) & 0x8000000000000000ull) | 0x7ff0000000000000ull);\n}",
     # fctiw / fctiwz leave the 750CL's upper word: 0xfff80000, or 0xfff80001 for a negative operand giving 0
     "px_ctiw": "static f64 px_ctiw(f64 b, s32 w)\n{\n    u64 r = 0xfff8000000000000ull | (u32)w;\n"
                "    if (w == 0 && (px_f2b(b) >> 63) != 0) r |= 0x100000000ull;\n    return px_b2f(r);\n}",
     # 1/sqrt(x) by Newton's method from a bit-level first guess (the estimate instructions' table is not modelled)
-    "px_rsqrt": "static f64 px_rsqrt(f64 x)\n{\n    f64 y;\n    int k;\n    if (x != x || x < 0.0) return px_b2f(0x7ff8000000000000ull);\n"
+    "px_rsqrt": "static f64 px_rsqrt(f64 x)\n{\n    f64 y;\n    int k;\n    if (x != x) return px_b2f(px_f2b(x) | 0x0008000000000000ull);\n    if (x < 0.0) return px_b2f(0x7ff8000000000000ull);\n"
                 "    if (x == 0.0) return px_b2f((px_f2b(x) & 0x8000000000000000ull) | 0x7ff0000000000000ull);\n"
                 "    if (x > 1.7976931348623157e308) return 0.0;\n"
                 "    y = px_b2f(0x5fe6eb50c7b537a9ull - (px_f2b(x) >> 1));\n"
@@ -71,9 +89,10 @@ HELPERS = {
             "    else if (t == 6u) wr8(ea, (u8)px_quant(v, m, -128, 127));\n"
             "    else if (t == 7u) wr16(ea, (u16)px_quant(v, m, -32768, 32767));\n    else wrf32d(ea, v);\n}",
 }
-DEPS = {"px_fdz": ["px_f2b", "px_b2f"], "px_ctiw": ["px_f2b", "px_b2f"], "px_rsqrt": ["px_f2b", "px_b2f"], "px_dq": ["px_qscale"],
+DEPS = {**{h: ["px_nn", "px_f2b", "px_b2f"] for h in ("px_fadd", "px_fsub", "px_fmul", "px_fdiv")}, "px_nn": ["px_f2b", "px_b2f"],
+        "px_fdz": ["px_f2b", "px_b2f"], "px_lfs": ["px_b2f"], "px_ctiw": ["px_f2b", "px_b2f"], "px_rsqrt": ["px_f2b", "px_b2f"], "px_dq": ["px_qscale"],
         "px_q": ["px_qscale", "px_quant"]}
-ORDER = ["px_sargs", "px_a", "px_b", "px_fr", "px_f2b", "px_b2f", "px_w2f", "px_fdiv", "px_fdz", "px_ctiw", "px_rsqrt", "px_quant", "px_qsize", "px_qscale", "px_dq",
+ORDER = ["px_sargs", "px_a", "px_b", "px_fr", "px_f2b", "px_b2f", "px_lfs", "px_w2f", "px_nn", "px_fadd", "px_fsub", "px_fmul", "px_fdiv", "px_fdz", "px_ctiw", "px_rsqrt", "px_quant", "px_qsize", "px_qscale", "px_dq",
          "px_q"]
 FULL_ORDER = [("r", k) for k in range(8)] + [("f", k) for k in range(13)]  # px_a's parameters
 FULL_ARGS = sorted(FULL_ORDER)
@@ -151,12 +170,25 @@ class Emitter:
             elif any(k[0] == "s" for k in new):
                 self.avals.pop(("S", 0), None)
             t = self.r(coerce(s.target, "u32"))
-            if s.note == "dead" or s.kind == "v":
+            jm = getattr(self.ft.facts, "jumps", {}).get(s.target.v & 0xFFFFFFFF) if isinstance(s.target, X.Const) else None
+            if jm == "setjmp":
+                # docs/x360/EXCEPTIONS_AND_LONGJMP.md: the host setjmp, in this function's own frame, on a runtime slot for the guest
+                # jmp_buf at r3; xb_longjmp lands here with the value. The TcArgs fields written before it may have changed by then
+                if s.note == "dead" or s.kind == "v":
+                    out.append(f"{ind}(void)setjmp(*xb_setjmp_slot(&a));")
+                else:
+                    out.append(f"{ind}if (setjmp(*xb_setjmp_slot(&a))) r3 = xb_setjmp_landed(); else r3 = 0;")
+                self.avals = {}
+            elif jm == "longjmp":
+                out.append(f"{ind}xb_longjmp(&a);")
+            elif s.note == "dead" or s.kind == "v":
                 out.append(f"{ind}(void)tc_call({t}, &a);")
             elif s.kind == "f":
                 out.append(f"{ind}f1 = tc_callf({t}, &a);")
             else:
                 out.append(f"{ind}r3 = tc_call({t}, &a);")
+        elif hasattr(s, "c_lines"):    # exit_form.ExitRec
+            out.extend(s.c_lines(self, ind))
         else:
             raise TypeError(s)
         self.forget(s)
@@ -234,7 +266,8 @@ class Emitter:
 DECL_TYPES = ("u32", "u64", "s32", "f64", "f32", "xv")
 STORE_TYPES = {"wr8": "u8", "wr16": "u16", "wr32": "u32", "wr64": "u64", "wrf32d": "f64", "wrf64": "f64",
                "wr16r": "u16", "wr32r": "u32", "xv_st": "xv", "xv_stl": "xv", "xv_str": "xv", "xv_stew": "xv",
-               "xv_steh": "xv", "xv_steb": "xv"}
+               "xv_steh": "xv", "xv_steb": "xv", "xv_stv": "xv", "tc_sync": "u32", "tc_lwsync": "u32", "tc_eieio": "u32", "tc_lwarx": "u32", "tc_ldarx": "u32", "tc_stwcx": "u32",
+               "tc_stdcx": "u64", "tc_stg": "u64", "tc_stf": "f64"}
 
 
 def declarations(names, fn):
@@ -297,7 +330,7 @@ def function_text(ft, fn, structured=True, short=False):
     code = "\n".join(x for x in body if not x.strip().startswith("/*"))
     named = set(IDENT.findall(code))
     params = {p[0] for p in ft.sig.params}
-    local = [n for n in named if n in fn.types and n not in params and n != "g_" and n != "sp0" and n != "tcr12" and n != "tcr13" and not n.startswith("tcnv")]
+    local = [n for n in named if n in fn.types and n not in params and n != "g_" and n != "sp0" and n != "tcr12" and n != "tcr13" and not n.startswith("tcnv") and n not in ("ehland", "ehsp")]
     for extra in ("ct_", "sw_", "fl_", "jt_"):
         if extra in named and extra not in local:  # (a second text of the same function has it already)
             local.append(extra)
@@ -316,20 +349,36 @@ def function_text(ft, fn, structured=True, short=False):
             out += [f"extern __declspec(thread) u32 tc_r{r};", ""]
     if any(n.startswith("tcnv") for n in named):
         out += ["extern __declspec(thread) const u64 *tc_nv;", ""]
+    if "xb_setjmp_slot" in named:       # port form: the game's setjmp / longjmp (jumps.json), runtime/xb_call.c
+        out += ["#include <setjmp.h>", "jmp_buf *xb_setjmp_slot(const TcArgs *a);", "u64 xb_setjmp_landed(void);", ""]
+    if "xb_longjmp" in named:
+        out += ["void xb_longjmp(const TcArgs *a);", ""]
+    if "ehland" in named:                # port form: a landing for the game's catch blocks (eh.json), runtime/xb_eh.h
+        from .eh import HEADER
+        out += HEADER
     need = {h for h in HELPERS if h in named}
     for h in list(need):
         need |= set(DEPS.get(h, []))
     for h in ORDER:
         if h in need:
             out += [HELPERS[h], ""]
-    vh = vmx.helper_text([n for n in named if n.startswith("xv_")])
+    port = bool(getattr(ft.facts, "port", False))   # port form: the SSE fast path of the vector helpers (vmx.SIMD)
+    xvn = [n for n in named if n.startswith("xv_")]
+    vh = vmx.helper_text(xvn, port=port)
+    if port and vmx.helper_closure(xvn) & set(vmx.SIMD):
+        out[2:2] = [vmx.SIMD_INCLUDE, ""]   # next to tc_rt.h's include: gen_xbox.py's build looks for it in the first lines
     if vh or "xv" in named:
         out += [vmx.TYPEDEF, ""]
         for h in vh:
             out += [h, ""]
     out.append(sig.text)
     out.append("{")
-    out += declarations(local, fn)
+    decl = declarations(local, fn)
+    if "xb_setjmp_slot" in named or "ehland" in named:
+        # after xb_longjmp lands, a local changed since the setjmp holds its last value only if volatile (C11 7.13.2.1); the vectors
+        # come back through tc_vr, which the runtime puts back
+        decl = [d.replace("    ", "    volatile ", 1) if not d.startswith("    xv ") else d for d in decl]
+    out += decl
     if "sp0" in named:
         out.append("    u32 sp0 = tc_sp;")
     if "tcr12" in named:
@@ -338,8 +387,11 @@ def function_text(ft, fn, structured=True, short=False):
         out.append("    u32 tcr13 = tc_r13;")
     for n in sorted(n for n in named if n.startswith("tcnv")):
         out.append(f"    u64 {n} = tc_nv[{n[4:]}];")
-    if "tc_call" in named or "tc_callf" in named:
+    if "tc_call" in named or "tc_callf" in named or "xb_longjmp" in named:
         out.append("    TcArgs a = {0};")
+    if "ehland" in named:
+        from .eh import landing_text
+        out += landing_text(ft)
     for n, _, _, _ in sig.params:
         if n not in named:
             out.append(f"    (void){n};")

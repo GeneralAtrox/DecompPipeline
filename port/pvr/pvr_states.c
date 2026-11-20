@@ -7,7 +7,10 @@
  * reference value gives it (set for shadow polygons, pvr_modvol.c), so it follows the visible polygon. Sampling
  * (TSP 18..8): flip and clamp per axis (see address), point / bilinear / trilinear, and the mip-map D adjust as a LOD
  * bias.
- * --aniso N (a look-review prototype) makes the filtered modes anisotropic; point sampling stays point. */
+ * --aniso N (a look-review prototype) makes the filtered modes anisotropic; point sampling stays point.
+ * A texture pack's image (pvr_tex_pack_mode) is minified trilinear over its own whole mip chain whatever the guest's
+ * filter, so a large image drawn small keeps clean edges; magnification keeps the guest's point or bilinear. Its
+ * D adjust stands for a mip-mapped guest and is dropped for one that is not (it did nothing on the console). */
 #include <math.h>
 #include <string.h>
 #include "pvr_int.h"
@@ -115,10 +118,10 @@ static D3D11_TEXTURE_ADDRESS_MODE address(u32 tsp, u32 clamp, u32 flip, u32 insi
     return inside && g_gfx.draw_w > 640u ? D3D11_TEXTURE_ADDRESS_CLAMP : D3D11_TEXTURE_ADDRESS_WRAP;
 }
 
-ID3D11SamplerState *pvr_sampler_state(u32 tsp, u32 uv_out)
+ID3D11SamplerState *pvr_sampler_state(u32 tsp, u32 uv_out, u32 pack)
 {
     if (g_gfx.draw_w <= 640u) uv_out = 0; /* the console's sampling: one sampler per TSP */
-    u32 key = (tsp & 0x7ff00u) | (uv_out & 3u) << 20 | (u32)(g_gfx.draw_w > 640u) << 22;
+    u32 key = (tsp & 0x7ff00u) | (uv_out & 3u) << 20 | (u32)(g_gfx.draw_w > 640u) << 22 | (pack & 3u) << 23;
     u32 filter = (tsp >> TSP_FILTER_SHIFT) & 3u, dadj = (tsp >> TSP_DADJ_SHIFT) & 15u;
     D3D11_SAMPLER_DESC d;
     for (u32 i = 0; i < g_nsamplers; i++)
@@ -128,10 +131,11 @@ ID3D11SamplerState *pvr_sampler_state(u32 tsp, u32 uv_out)
     d.Filter = filter == 0 ? D3D11_FILTER_MIN_MAG_MIP_POINT
              : filter == 1 ? D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT
                            : D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+    if (pack) d.Filter = filter == 0 ? D3D11_FILTER_MIN_LINEAR_MAG_POINT_MIP_LINEAR : D3D11_FILTER_MIN_MAG_MIP_LINEAR;
     d.AddressU = address(tsp, TSP_CLAMP_U, TSP_FLIP_U, !(uv_out & PVR_UVO_U));
     d.AddressV = address(tsp, TSP_CLAMP_V, TSP_FLIP_V, !(uv_out & PVR_UVO_V));
     d.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-    d.MipLODBias = dadj ? log2f((f32)dadj / 4.0f) : 0.0f;
+    d.MipLODBias = dadj && pack != PVR_PACK_FLAT ? log2f((f32)dadj / 4.0f) : 0.0f;
     d.MaxAnisotropy = 1;
     if (filter != 0u && g_gfx.aniso > 1u) {
         d.Filter = D3D11_FILTER_ANISOTROPIC;

@@ -3,7 +3,8 @@
  * and sampled once per pdExecPeripheralServer as the console's peripheral server samples the bus once per frame.
  * Player 1's controller is always connected; another is while gfx_input.c gives that player one. Each controller has
  * a vibration pack in its second socket (A2, B2, ..), which drives that player's rumble; A1 is left to the memory
- * card (sdk/bu_vmu.c; --vmu picks the sockets that hold one). Every other port is empty.
+ * card (sdk/bu_vmu.c; --vmu picks the sockets that hold one). Every other port is empty. Players 5..8 (read with
+ * game.json pads over 4, base/input.c) have no port here: a game takes them from port_pad_player.
  *
  * Each memory card has the VMU's 48x32 LCD, driven as the SDK drives it (Shinobi 1.4's pdVmsLcd*, read from Toy
  * Commander's copy): ready while a standard VMU is in the socket; a write converts the game's bitmap (a byte per dot,
@@ -16,8 +17,17 @@
  * The record pdGetPeripheral returns is laid out as the console's (MapleDevice): games read it by offset and follow
  * its info pointer to the device type word. Pointers are host pointers, which the 32-bit port shares with the game.
  *
+ * A vibration pack drives its player's host rumble (base/input.c, host_pad_rumble: off with --rumble off or the Input
+ * menu) at the game's power, 1..7 of the pack's 7 steps. The pack stops itself after its auto-stop time, set by
+ * pdVibSetStopTime in the pack's units of a quarter second (0xff: none) and kept per player for the next start; with
+ * no time set, a continuous vibration holds until the game stops it and any other lasts one pulse. Every start the
+ * host sees (a new strength or hold, or one after a stop) and every stop of a running vibration is logged ("maple:
+ * vib"), so a run's log shows what the controller felt whether or not one is attached; the game's frequency and
+ * ramp have no host equivalent. The rumble writes nothing back to the game: its results are the console's.
+ *
  * Needs from the game's headers: the names below as the game's registry has them, pdGetPeripheral returning the
- * game's record type for it (LibPadDevice), and PDS_VIBPARAM {unit, flag, power (-7..7), freq, inc}. */
+ * game's record type for it (LibPadDevice), and PDS_VIBPARAM {unit, flag, power (-7..7), freq, inc}. pdVibIsReady, the
+ * older readiness call, answers the packs only in play (vib_ready_on below). */
 #include "game.h"
 #include "platform.h"
 
@@ -42,6 +52,8 @@
 #define VIB_POWER_MAX 7
 #define VIB_PULSE_MS 250u       /* one non-continuous vibration */
 #define VIB_HOLD_MS 10000u      /* a continuous one, renewed by the game's next start */
+#define VIB_STOP_NONE 0xffu     /* pdVibSetStopTime: no auto-stop */
+#define VIB_STOP_UNIT_MS 250u   /* the pack's auto-stop time unit */
 #define CARD_SOCKETS 8u         /* A1, A2, B1, .. D2: bit c * 2 + s is connector c's socket s + 1 */
 #define LCD_W 48u
 #define LCD_H 32u
@@ -76,10 +88,16 @@ _Static_assert(sizeof(MapleDevice) == 0x34, "the console's peripheral record is 
 
 static const MapleInfo g_maple_info_pad = {DEV_CONTROLLER, {0, 0, 0}, 1, 0, {0, 0}, "Dreamcast Controller"};
 static const MapleInfo g_maple_info_none = {0, {0, 0, 0}, 0, 0, {0, 0}, ""};
-static MapleDevice g_maple_pad[HOST_PADS];
+static MapleDevice g_maple_pad[HOST_GAME_PADS];
 static MapleDevice g_maple_none = {.off = 0xffffffffu, .name = "", .info = &g_maple_info_none};
 static u32 g_connected = 1u; /* bit p: player p + 1 has a controller */
 static int g_pads_ready;     /* the controllers' records are set up (pdInitPeripheral or the first read) */
+/* Each player's pack: the auto-stop time the game set (ms; 0: none set) and what it was last told to do. */
+typedef struct Vib {
+    u32 stop_ms;
+    u32 strength, hold_ms; /* strength 0: stopped */
+} Vib;
+static Vib g_vib[HOST_PADS];
 
 typedef struct Lcd {
     u8 block[LCD_BYTES]; /* the last block written */
@@ -92,7 +110,7 @@ static Lcd g_lcd[CARD_SOCKETS];
 static s32 player_at(u32 port, u32 sub)
 {
     u32 p = port / PORTS_PER_PAD;
-    return port % PORTS_PER_PAD == sub && p < HOST_PADS && (g_connected >> p & 1u) ? (s32)p : -1;
+    return port % PORTS_PER_PAD == sub && p < HOST_GAME_PADS && (g_connected >> p & 1u) ? (s32)p : -1;
 }
 
 /* --vmu: socket names (A1..D2) to a mask of CARD_SOCKETS bits; "none": no card; default A1. */
@@ -137,7 +155,7 @@ static void lcd_deliver(u32 card)
 /* The controllers' records as the bus reports them once the devices are found. */
 static void pads_init(void)
 {
-    for (u32 p = 0; p < HOST_PADS; p++)
+    for (u32 p = 0; p < HOST_GAME_PADS; p++)
         g_maple_pad[p] = (MapleDevice){.support = PAD_BUTTONS | PAD_ANALOG, .off = 0xffffffffu,
                                        .name = "Dreamcast Controller", .info = &g_maple_info_pad};
     g_pads_ready = 1;
@@ -150,7 +168,7 @@ void pdInitPeripheral(s32 logic, void *recvBuffer, void *sendBuffer)
     (void)sendBuffer;
     pads_init();
     port_log("maple: controllers on ports A..D for players 1..%u (A always, each with its vibration pack in socket 2),"
-             " the memory card in A1\n", HOST_PADS);
+             " the memory card in A1\n", HOST_GAME_PADS);
 }
 
 /* A game can start the peripheral system through an SDK entry the port does not bind (a newer library's variant of
@@ -166,7 +184,11 @@ static void pads_ready(void)
 
 void pdExitPeripheral(void)
 {
-    for (u32 p = 0; p < HOST_PADS; p++) host_pad_rumble(p, 0, 0);
+    for (u32 p = 0; p < HOST_GAME_PADS; p++) {
+        if (g_vib[p].strength) port_log("maple: vib %c stop (pdExitPeripheral)\n", 'A' + p);
+        g_vib[p] = (Vib){0};
+        host_pad_rumble(p, 0, 0);
+    }
 }
 
 void pdExecPeripheralServer(void)
@@ -176,9 +198,9 @@ void pdExecPeripheralServer(void)
     pads_ready();
     for (u32 c = 0; c < CARD_SOCKETS; c++)
         if (g_lcd[c].queued) lcd_deliver(c);
-    g_connected = host_pads_read(h) | 1u;
+    g_connected = (host_pads_read(h) & ((1u << HOST_GAME_PADS) - 1u)) | 1u; /* ports A..D */
     if (g_connected != was_connected) port_log("maple: controllers connected %x (bit 0: port A)\n", g_connected);
-    for (u32 p = 0; p < HOST_PADS; p++) {
+    for (u32 p = 0; p < HOST_GAME_PADS; p++) {
         MapleDevice *d = &g_maple_pad[p];
         u32 was = d->on;
         if (!(g_connected >> p & 1u)) h[p] = (HostPad){0}; /* unplugged: nothing held when it comes back */
@@ -215,25 +237,108 @@ void *pdGetPeripheralInfo(u32 port)
     return (void *)(uintptr_t)info;
 }
 
+/* Older-library names some games use instead of the Mx ones (Power Stone 2); a game whose headers lack them still
+ * compiles them. */
+s32 pdVibSetStopTime(u32 port, u8 *unit, u8 *time, u32 num);
+s32 pdVibStart(u32 port, const PDS_VIBPARAM *param, u32 numUnits);
+
+/* Starts player p's pack: strength from the power, held for hold_ms (the pack's auto-stop, or the flag's default). */
+static s32 vib_start(s32 p, const PDS_VIBPARAM *param, const char *call)
+{
+    Vib *v = &g_vib[p];
+    s32 power = param->power < 0 ? -param->power : param->power;
+    u32 strength, hold;
+    if (power > VIB_POWER_MAX) power = VIB_POWER_MAX;
+    strength = (u32)power * 0xffffu / VIB_POWER_MAX;
+    hold = v->stop_ms ? v->stop_ms : (param->flag & VIB_CONTINUOUS) ? VIB_HOLD_MS : VIB_PULSE_MS;
+    if (strength != v->strength || hold != v->hold_ms)
+        port_log("maple: vib %c start (%s) power %d flag %x freq %u -> strength %u for %u ms\n", 'A' + p, call,
+                 (int)param->power, (unsigned)param->flag, (unsigned)param->freq, strength, hold);
+    v->strength = strength;
+    v->hold_ms = hold;
+    host_pad_rumble((u32)p, strength, hold);
+    return VIB_OK;
+}
+
 s32 pdVibMxIsReady(u32 port) { return player_at(port, PORT_VIB) >= 0; }
+
+/* The session recording's marks (base/session.c), declared here: the module compiles against the game's game.h. */
+void session_mark(const char *word);
+int session_marked(const char *word);
+int session_replaying(void);
+
+/* s is w (or, with prefix, starts with it): the game's headers may not declare the C library's string functions. */
+static int word_is(const char *s, const char *w, int prefix)
+{
+    while (*w && *s == *w) s++, w++;
+    return !*w && (prefix || !*s);
+}
+
+/* pdVibIsReady answers the packs (1 while a controller's socket 2 has its pack, as pdVibMxIsReady) in play. Before this
+ * it was a logging stub answering 0, which games take as no pack: a vibration option stuck at off. Check runs and old
+ * recordings keep that answer: --lockstep and --fixed-clock answer 0, and a replay answers the packs only when its
+ * recording has the session mark vib-ready, which every play run since this answer writes. --vib-ready on|off (or
+ * settings vib-ready=off) decides it for any run. */
+static int vib_ready_on(void)
+{
+    static int on = -1;
+    int argc, asked = -1, check = 0;
+    char *const *argv;
+    if (on >= 0) return on;
+    argv = host_args(&argc);
+    for (int i = 1; i < argc; i++) {
+        if (word_is(argv[i], "--lockstep", 1) || word_is(argv[i], "--fixed-clock", 0)) check = 1;
+        else if (word_is(argv[i], "--vib-ready", 0) && i + 1 < argc) asked = !word_is(argv[i + 1], "off", 0);
+    }
+    on = asked >= 0 ? asked : session_replaying() ? session_marked("vib-ready") : !check;
+    if (on) session_mark("vib-ready");
+    port_log("maple: pdVibIsReady %s\n", on ? "answers the vibration packs (vib-ready)" : "answers 0, no pack (vib-ready off)");
+    return on;
+}
+
+s32 pdVibIsReady(u32 port) { return vib_ready_on() && player_at(port, PORT_VIB) >= 0; }
 
 s32 pdVibMxStart(u32 port, const PDS_VIBPARAM *param)
 {
-    s32 power, p = player_at(port, PORT_VIB);
+    s32 p = player_at(port, PORT_VIB);
     if (p < 0) return VIB_NO_VIBRATOR;
-    power = param->power < 0 ? -param->power : param->power;
-    if (power > VIB_POWER_MAX) power = VIB_POWER_MAX;
-    host_pad_rumble((u32)p, (u32)power * 0xffffu / VIB_POWER_MAX,
-                    (param->flag & VIB_CONTINUOUS) ? VIB_HOLD_MS : VIB_PULSE_MS);
-    return VIB_OK;
+    return vib_start(p, param, "pdVibMxStart");
 }
 
 s32 pdVibMxStop(u32 port)
 {
     s32 p = player_at(port, PORT_VIB);
     if (p < 0) return VIB_NO_VIBRATOR;
+    if (g_vib[p].strength) port_log("maple: vib %c stop\n", 'A' + p);
+    g_vib[p].strength = g_vib[p].hold_ms = 0;
     host_pad_rumble((u32)p, 0, 0);
     return VIB_OK;
+}
+
+/* The pack's auto-stop time for the next start: time[i] for vibration unit unit[i]; a pack here has the one unit, so
+ * the last entry counts. */
+s32 pdVibSetStopTime(u32 port, u8 *unit, u8 *time, u32 num)
+{
+    s32 p = player_at(port, PORT_VIB);
+    u32 ms;
+    if (p < 0) return VIB_NO_VIBRATOR;
+    if (num == 0u) return VIB_OK;
+    ms = time[num - 1u] == VIB_STOP_NONE ? 0u : time[num - 1u] * VIB_STOP_UNIT_MS;
+    if (ms > VIB_HOLD_MS) ms = VIB_HOLD_MS;
+    if (ms != g_vib[p].stop_ms)
+        port_log("maple: vib %c stop time unit %u time %u -> %u ms\n", 'A' + p, (unsigned)unit[num - 1u],
+                 (unsigned)time[num - 1u], ms);
+    g_vib[p].stop_ms = ms;
+    return VIB_OK;
+}
+
+/* Starts the pack with param[0] (one entry per unit; a pack here has one), held for the stop time set before. */
+s32 pdVibStart(u32 port, const PDS_VIBPARAM *param, u32 numUnits)
+{
+    s32 p = player_at(port, PORT_VIB);
+    if (p < 0) return VIB_NO_VIBRATOR;
+    if (numUnits == 0u) return VIB_OK;
+    return vib_start(p, param, "pdVibStart");
 }
 
 /* The SDK's: ready while the port holds a standard VMU (type 0x0e, a 48x32 one-colour LCD). */

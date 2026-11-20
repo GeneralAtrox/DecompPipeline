@@ -53,6 +53,36 @@ static __forceinline u16 rd16r(u32 a) { return *(const u16 *)(tc_base + a); }
 static __forceinline u32 rd32r(u32 a) { return *(const u32 *)(tc_base + a); }
 static __forceinline void wr16r(u32 a, u16 v) { *(u16 *)(tc_base + a) = v; }
 static __forceinline void wr32r(u32 a, u32 v) { *(u32 *)(tc_base + a) = v; }
+/* lwarx / ldarx and stwcx. / stdcx.: guest threads run at once on host threads, so the conditional store is a compare and
+ * swap against the value the reservation read (a store in between by another thread makes it fail, as on the console).
+ * tc_resv_s: 2 = a reservation is held, 1 = the last conditional store was done, 0 = it was not. A conditional store
+ * always ends the reservation (Power ISA Book II 4.4.2), so a second one with no load-and-reserve between fails.
+ * Not modelled: another thread writing the same value back in between (the compare then still succeeds), and the
+ * reservation being lost at an interrupt. */
+extern __declspec(thread) u64 tc_resv_v;
+extern __declspec(thread) u32 tc_resv_s;
+static __forceinline void tc_lwarx(u32 a, u32 z) { (void)z; tc_resv_v = rd32(a); tc_resv_s = 2; }
+static __forceinline void tc_ldarx(u32 a, u32 z) { (void)z; tc_resv_v = rd64(a); tc_resv_s = 2; }
+static __forceinline u64 tc_resv(u32 a) { (void)a; return tc_resv_v; }
+static __forceinline u32 tc_resv_ok(u32 a) { (void)a; return tc_resv_s == 1; }
+static __forceinline void tc_stwcx(u32 a, u32 v)
+{
+    long e = (long)_byteswap_ulong((u32)tc_resv_v);
+    tc_resv_s = tc_resv_s == 2 && _InterlockedCompareExchange((volatile long *)(tc_base + a), (long)_byteswap_ulong(v), e) == e;
+}
+static __forceinline void tc_stdcx(u32 a, u64 v)
+{
+    __int64 e = (__int64)_byteswap_uint64(tc_resv_v);
+    tc_resv_s = tc_resv_s == 2 && _InterlockedCompareExchange64((volatile __int64 *)(tc_base + a), (__int64)_byteswap_uint64(v), e) == e;
+}
+/* sync, lwsync, eieio (Power ISA Book II 4.4.3, 4.4.1). The host is x64, whose own ordering already keeps load-load,
+ * load-store and store-store order; only a later load passing an earlier store is allowed (Intel SDM vol. 3, 8.2.2).
+ * sync forbids that too, so it is a locked instruction. lwsync does not need one on this host, but the compiler must
+ * also not move a guest load or store across it, and a locked instruction is the one thing it is sure to respect: it
+ * is stronger than lwsync asks, never weaker. eieio orders stores only: a store fence. */
+static __forceinline void tc_sync(u32 a, u32 z) { (void)a; (void)z; __faststorefence(); }
+static __forceinline void tc_lwsync(u32 a, u32 z) { (void)a; (void)z; __faststorefence(); }
+static __forceinline void tc_eieio(u32 a, u32 z) { (void)a; (void)z; _mm_sfence(); }
 #else
 /* Guest memory, big endian. */
 u8 rd8(u32 addr);
@@ -95,12 +125,29 @@ typedef struct {
     u32 r12[1];  /* the caller's r12 (port form): a funclet receives its parent frame in it
     */
     u32 sp[1];   /* the caller's r1: the port kit's translation form (Facts.port) starts a callee on it; the judge leaves it 0 */
+    u32 ip[1];   /* the call's own guest address (port form, a function with C++ EH tables, eh.json): the runtime's frame walk; else 0 */
 } TcArgs;
 
 u64 tc_call(u32 target, const TcArgs *args);
 f64 tc_callf(u32 target, const TcArgs *args);
 u64 tc_lastr(void);  /* the last call's r3 (0 before any call) */
 f64 tc_lastf(void);  /* the last call's f1 (0 before any call) */
+
+/* The judge's exit record (tc_exit.c), used only by the translator's exit-state form (xenontranslate/exit_form.py), never
+ * by judged C: before each return it records the final value of every register the function writes; the runner (run
+ * with "exit") prints them with the entry value of every other one. tcx_in_*: a register's value at entry (r3..r10 and
+ * f1..f13 the vector's, r14..r31, f14..f31 and CR2..CR4 the vector's seeds, r1 the stack pointer, else 0). */
+u64 tcx_in_r(u32 n);
+f64 tcx_in_f(u32 n);
+u32 tcx_in_cr(u32 bit);              /* CR bit 0..31 (CR0.LT is bit 0) */
+void tcx_r(u32 n, u64 value);
+void tcx_f(u32 n, f64 value);
+void tcx_cr(u32 bit, u32 value);
+void tcx_xer(u32 k, u32 value);      /* 0 CA, 1 SO, 2 OV */
+void tcx_ctr(u64 value);
+void tcx_lr(u64 value);
+void tcx_fpscr(u32 value);
+void tcx_v(u32 n, const u32 *w);     /* vN's four words, element 0 first */
 
 /* PowerPC instruction helpers, bit-exact with the reference model (the oracle). Integer helpers take and return
  * whole 64-bit registers. */

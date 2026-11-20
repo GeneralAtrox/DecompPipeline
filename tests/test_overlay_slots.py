@@ -219,6 +219,122 @@ class OverlaySlotsBuilt(unittest.TestCase):
             "outside 8c800100: - -1 delta 00000000 glue -",
             "log: overlays: 2 units, 4 switches, 1 calls with no loaded function"])
 
+    def test_native_function_through_glue(self):
+        """A native function as the worker writes it: stubs.c's entry (prefix.h names it A__Fx) calls the game's C,
+        and tc_call's glue and a call by name both reach it, at the port's /W4 /WX."""
+        sys.path.insert(0, str(TOOL))
+        from test_sync import TMP  # noqa: F401  (sets DECOMP_PROJECT when run alone)
+        from core import readable
+        import overlay_tx
+        import tx_port
+        from test_overlays import TX_HOST_C
+        addr, proto = "8c600100", "u32 Fx(u32 a0)"
+        reg = type("Reg", (), {"kind": staticmethod(lambda t: "i")})
+        abi = type("Abi", (), {"own_storages": staticmethod(lambda *x: ["r4"])})
+        head = '#include "rd_rt.h"\n#include "prefix.h"\n'
+        glue = overlay_tx.glue_c("A", [(addr, tx_port.outbound_glue(reg, abi, addr, proto, {"params": [
+            {"storage": "r4"}]}, "Fx"), "Fx")]).replace('#include "game.h"', head + proto + ";")
+        files = {"prefix.h": go.prefix_h("A", {"Fx"}), "glue.c": glue,
+                 "stubs.c": head + "\n".join(overlay_tx.native_c(readable, proto, "Game_Fx")) + "\n",
+                 "game.c": '#include "rd_rt.h"\nu32 Game_Fx(u32 a0) { return a0 + 10; }\n',
+                 "host.c": HOST_C.split("int A__f")[0] + HOST_C[HOST_C.index("void *guest_alloc"):] + TX_HOST_C,
+                 "driver.c": NATIVE_DRIVER_C}
+        for n, t in files.items():
+            (self.out / n).write_text(t, encoding="utf-8")
+        inc = f'/I"{KIT / "runtime" / "tx"}" /I"{TOOL / "targets" / "dreamcast_sh4" / "runtime"}"'
+        log = build(self.out, [self.out / n for n in files if n.endswith(".c")], "native.exe", inc)
+        self.assertEqual(log, "")
+        self.assertEqual(self.run_exe("native.exe"), ["Fx 15 17"])
+
+    def test_wrapped_function_through_glue(self):
+        """A wrapped function as the worker writes it: tc_call's glue and a call by name reach the game's C, which
+        calls the original, renamed <C name>_Original, at the port's /W4 /WX."""
+        sys.path.insert(0, str(TOOL))
+        from test_sync import TMP  # noqa: F401  (sets DECOMP_PROJECT when run alone)
+        from core import readable
+        import overlay_tx
+        import tx_port
+        from test_overlays import TX_HOST_C
+        addr, proto = "8c600100", "u32 Fx(u32 a0)"
+        reg = type("Reg", (), {"kind": staticmethod(lambda t: "i")})
+        abi = type("Abi", (), {"own_storages": staticmethod(lambda *x: ["r4"])})
+        head = '#include "rd_rt.h"\n#include "prefix.h"\n'
+        texts = {addr: '#include "rd_rt.h"\nu32 A__Fx(u32 a0);\nu32 A__Fx(u32 a0) { return a0 * 2; }\n'}
+        overlay_tx.wrap(self.out, {addr: "Game_Fx"}, "A", {addr: "Fx"}, [], [addr], texts, self.out, ValueError)
+        glue = overlay_tx.glue_c("A", [(addr, tx_port.outbound_glue(reg, abi, addr, proto, {"params": [
+            {"storage": "r4"}]}, "Fx"), "Fx")]).replace('#include "game.h"', head + proto + ";")
+        files = {"prefix.h": go.prefix_h("A", {"Fx"}), "glue.c": glue, "tx.c": texts[addr],
+                 "stubs.c": head + "\n".join(overlay_tx.native_c(readable, proto, "Game_Fx")) + "\n",
+                 "game.c": '#include "rd_rt.h"\nu32 Game_Fx_Original(u32 a0);\n'
+                           'u32 Game_Fx(u32 a0) { return Game_Fx_Original(a0) + 10; }\n',
+                 "host.c": HOST_C.split("int A__f")[0] + HOST_C[HOST_C.index("void *guest_alloc"):] + TX_HOST_C,
+                 "driver.c": NATIVE_DRIVER_C}
+        for n, t in files.items():
+            (self.out / n).write_text(t, encoding="utf-8")
+        inc = f'/I"{KIT / "runtime" / "tx"}" /I"{TOOL / "targets" / "dreamcast_sh4" / "runtime"}"'
+        log = build(self.out, [self.out / n for n in files if n.endswith(".c")], "wrapped.exe", inc)
+        self.assertEqual(log, "")
+        self.assertEqual(self.run_exe("wrapped.exe"), ["Fx 20 24"])
+
+    def test_wrapped_kept_r0_through_glue(self):
+        """A wrapped translator C function that returns its body's r0 where the registry returns nothing: its stub goes
+        at the end of its translator C, so stubs.c, whose game.h declares it void, still compiles."""
+        sys.path.insert(0, str(TOOL))
+        from test_sync import TMP  # noqa: F401  (sets DECOMP_PROJECT when run alone)
+        from core import readable
+        import overlay_tx
+        import tx_port
+        from test_overlays import TX_HOST_C
+        addr, proto = "8c600100", "void Fx(u32 a0)"
+        reg = type("Reg", (), {"kind": staticmethod(lambda t: "v" if t.strip() == "void" else "i")})
+        abi = type("Abi", (), {"own_storages": staticmethod(lambda *x: ["r4"])})
+        head = '#include "rd_rt.h"\n#include "prefix.h"\n'
+        texts = {addr: f'/* {tx_port.KEPT} */\n#include "rd_rt.h"\nu32 A__Fx(u32 a0);\n'
+                       'u32 A__Fx(u32 a0) { return a0 * 2; }\n'}
+        _, kept = overlay_tx.wrap(self.out, {addr: "Game_Fx"}, "A", {addr: "Fx"}, [], [addr], texts, self.out,
+                                  ValueError)
+        self.assertEqual(kept, {addr})
+        texts[addr] += "\n".join(overlay_tx.kept_stub(readable, "A", proto, "Game_Fx")) + "\n"
+        glue = overlay_tx.glue_c("A", [(addr, tx_port.outbound_glue(reg, abi, addr, proto, {"params": [
+            {"storage": "r4"}]}, "Fx", None, True), "Fx")]).replace('#include "game.h"', head + proto + ";")
+        files = {"prefix.h": go.prefix_h("A", {"Fx"}), "glue.c": glue, "tx.c": texts[addr],
+                 "caller.c": head + proto + ";\nvoid A__Call(void) { Fx(1); }\n",
+                 "game.c": '#include "rd_rt.h"\nu32 Game_Fx_Original(u32 a0);\n'
+                           'u32 Game_Fx(u32 a0) { return Game_Fx_Original(a0) + 10; }\n',
+                 "host.c": HOST_C.split("int A__f")[0] + HOST_C[HOST_C.index("void *guest_alloc"):] + TX_HOST_C,
+                 "driver.c": NATIVE_DRIVER_C}
+        for n, t in files.items():
+            (self.out / n).write_text(t, encoding="utf-8")
+        inc = f'/I"{KIT / "runtime" / "tx"}" /I"{TOOL / "targets" / "dreamcast_sh4" / "runtime"}"'
+        log = build(self.out, [self.out / n for n in files if n.endswith(".c")], "kept.exe", inc)
+        self.assertEqual(log, "")
+        self.assertEqual(self.run_exe("kept.exe"), ["Fx 20 24"])
+
+
+NATIVE_DRIVER_C = r"""/* A native overlay function: through its tc_call glue (r4 = 5) and by its prefixed name (7). */
+#include <stdio.h>
+#include <string.h>
+#include "port.h"
+#include "overlay.h"
+#include "tx_rt.h"
+
+void *guest_alloc(void);
+extern const PortDispatch A__txglue[];
+u32 A__Fx(u32 a0);
+
+int main(void)
+{
+    PortTcArgs a;
+    PortTcRet o = {0, 0.0f};
+    if (!guest_alloc()) return 3;
+    memset(&a, 0, sizeof a);
+    a.r[0] = 5;
+    ((PortTcGlue)A__txglue[0].fn)(&a, &o);
+    printf("%s %u %u\n", A__txglue[0].name, o.r0, A__Fx(7));
+    return 0;
+}
+"""
+
 
 if __name__ == "__main__":
     unittest.main()

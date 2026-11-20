@@ -1,0 +1,6 @@
+{
+ "why": "Functions of the game that never return although their records show a return, for the register hand-over check (port/tools/handover.py game_noreturn; jumps.json's longjmp and eh.json's throws are read too). exit 82a4f310 (LIBCMT, names from the 2007 PDBs) tail-calls doexit 82a4f1b0, which returns only when its third argument (retcaller) is set, as _cexit calls it; the check does not follow arguments. Lua's luaX_errorline 82809a50 ends in longjmp or, with no error handler, in the panic function and exit.",
+ "noreturn": [
+  "82a4f310"
+ ]
+}

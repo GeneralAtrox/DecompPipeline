@@ -175,7 +175,10 @@ public abstract class TcBase extends GhidraScript {
                 } else if (vs.isStackStorage()) {
                     q.storage = "stack";
                     q.stackOffset = vs.getStackOffset();
-                    if (q.stackOffset < 8 || q.stackOffset >= 40 || q.stackOffset % 4 != 0) {
+                    // A char or short beyond r10 is passed promoted in a whole word: Ghidra gives its own bytes'
+                    // offset (a char at r1+11 of the word r1+8..11). Any byte of the 8 argument words is accepted;
+                    // the vector patches whole words (TcInputs) and the thunk reads the word (ppc_check.gen_thunk).
+                    if (q.stackOffset < 8 || q.stackOffset >= 40) {
                         p.unsupported = "stack parameter " + q.name + " at offset " + q.stackOffset;
                     }
                 } else {

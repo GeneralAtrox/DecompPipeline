@@ -30,10 +30,14 @@ typedef struct PortConsole {
     unsigned native_w, native_h; /* the console's picture: the window opens as a whole multiple of it */
     unsigned tick_hz;      /* the game's own rate: 60 or 50 */
     unsigned flags;        /* PORT_CONSOLE_*: what its presenter does (the menu greys an entry the console cannot apply) */
-} PortConsole;
+    unsigned replay_fps;   /* the fewest frames a second a headless replay runs at on the slowest machine, for its time limit (--seconds); 0: 150 */
+    const char *no_replay; /* why its fixed-clock replay does not reach a dump's frame yet, or NULL: its dumps then replay on the real clock and say so */
+} PortConsole; /* a console that leaves out the last members gets 0 / NULL: the defaults */
 enum {
     PORT_CONSOLE_FPSCAP = 2, /* a frame-rate cap (Display > Frame-rate cap) */
     PORT_CONSOLE_ONLINE = 4, /* online play: the Online menu (base/host_online.cpp) and the option --net on|off|HOST[:PORT] */
+    PORT_CONSOLE_FCAP = 8,   /* a scene dump also records the next frame draw by draw (base/frame_capture.h; the kit writes the
+                                records). Without it nothing is armed, allocated or written: one test a frame */
 };
 
 extern const PortConsole port_console;
@@ -68,6 +72,9 @@ typedef struct PortView {
 void console_view(PortView *v);
 /* --watch ADDR: log writes to a game word from tick; word 0 stops. A console without a watch does nothing. */
 void console_watch(u32 word, u32 tick);
+/* --poke-ram ADDR=V: write the byte V to the game's address ADDR (a test's way to a late scene, such as a stage it would
+ * take a whole playthrough to reach); 0 if ADDR is not in the game's memory or the console has no poke. */
+int console_poke(u32 addr, u8 value);
 
 /* ---- the answer-key emulator (tools/lockstep.py) ----
  * A console that checks its port against an emulator frame by frame hands the emulator's pad, timer and clock values
@@ -77,14 +84,17 @@ s32 console_lockstep_timer(s32 live);
 int console_lockstep_time(HostTime *t);
 
 /* ---- the menu bar ---- */
-/* A console-only entry: a check (on/off) or a choice (one of a set), at the end of the named menu ("Display", "Audio",
+/* A console-only entry: a check (on/off), a choice (one of a set), a command or a submenu of commands, at the end of the named menu ("Display", "Audio",
  * "Input" or "Game"), after a separator. The base builds every other entry, so the menus, their order, names and shortcuts
  * are the same on every console. The setting is the key in the settings file (a check saves on/off, a choice its
- * values[] word); get/set give and take the value; available() greys the entry when the game cannot apply it. */
+ * values[] word); get/set give and take the value; available() greys the entry when the game cannot apply it.
+ * A command (Cheats > Unlock everything) calls set(0) when chosen; a submenu (Level select > Title) lists choices[] (at
+ * most PORT_MENU_CHOICES_MAX) and calls set(index) for the one chosen. Neither keeps anything in the settings: setting,
+ * get and values may be NULL. */
 typedef struct PortMenuItem {
     const char *menu;            /* "Display", "Audio", "Input" or "Game" */
     const char *label;           /* with & for the mnemonic */
-    int kind;                    /* PORT_MENU_CHECK or PORT_MENU_CHOICE */
+    int kind;                    /* PORT_MENU_CHECK, PORT_MENU_CHOICE, PORT_MENU_COMMAND or PORT_MENU_SUBMENU */
     const char *setting;         /* the settings.txt key */
     int (*get)(void);            /* check: 0/1; choice: the index */
     void (*set)(int value);
@@ -92,12 +102,30 @@ typedef struct PortMenuItem {
     const char *const *values;   /* choice: the settings file's word for each (what the --option takes) */
     unsigned n_choices;
     int (*available)(void);      /* NULL: always; else 0 greys the item */
+    int tag;                     /* 0: set is called, as above. Else the game's own command (game.json menu_commands, or a
+                                    native game's): a pick goes to the game as (tag, index) at its next tick
+                                    (native_game.h pg_native_menu_take) and is recorded; set may be NULL. A tagged
+                                    SUBMENU's choices may be more than PORT_MENU_CHOICES_MAX (shown as "1-16", "17-32",
+                                    ...), a '>' in one is a path of nested popups, and choices NULL is a runtime list
+                                    (pg_native_menu_list); --menu-pick takes the whole path */
 } PortMenuItem;
-enum { PORT_MENU_CHECK = 1, PORT_MENU_CHOICE = 2 };
+enum { PORT_MENU_CHECK = 1, PORT_MENU_CHOICE = 2, PORT_MENU_COMMAND = 3, PORT_MENU_SUBMENU = 4 };
+#define PORT_MENU_CHOICES_MAX 16u /* a choice's or a submenu's entries */
 /* The console's entries (a static array), or NULL/0. */
 const PortMenuItem *console_menu_extra(unsigned *count);
+/* A game's own entries (game.json game_menu: the game defines it), the same kind, after the console's in each menu.
+ * Its settings are the game's: a key starting "game." is not a command-line option, so the game reads it itself. */
+const PortMenuItem *game_menu_extra(unsigned *count);
 
 /* ---- input ---- */
+/* The mouse given straight to a game (native_game.h pg_native_mouse_mode, pg_native_mouse). */
+enum { PG_MOUSE_LAYOUT, PG_MOUSE_POINTER, PG_MOUSE_LOOK };
+typedef struct PgNativeMouse {
+    f32 dx, dy, x, y;
+    u32 buttons, pressed;
+    s32 wheel;
+    u8 captured;
+} PgNativeMouse;
 /* The base reads the host's keyboard and controllers (input.c) into HostPad (base.h), the Dreamcast controller's
  * layout, which the other consoles' pads fit. A console whose game reads another layout maps from HostPad where it
  * hands the pad to the game. */
@@ -116,6 +144,12 @@ const PortAction *console_actions(unsigned *count);
 /* ---- start-up: the launcher contract (README.md), run by host_main.cpp ---- */
 int port_main(int argc, char **argv); /* the console's start-up, given the argument list the host built */
 int port_setup(const char *image, const char *work);         /* --setup-only: check, copy to work\assets\disc */
+/* A kit whose game is made ready another way than a copy of its .cue or .gdi image: the native kit, whose game extracts
+ * what it needs from its disc into data files. --setup-only (image and work) or --verify-assets (assets; image NULL):
+ * the exit code, as port_setup's; -1: the kit has none, the disc copy below runs. */
+int console_install(const char *image, const char *work, const char *assets);
+/* install.c: work\installation.json {"version", "assets"} (assets relative to work), written last; 0, or 1 (logged). */
+int port_install_record(const char *work, const char *assets);
 int port_verify_assets(const char *assets);                  /* --verify-assets: check the image in assets */
 int port_find_image(const char *dir, char *out, size_t cap); /* the disc image in dir (or a folder below) */
 /* Is image this console's game? 0 yes; 4 missing or unreadable; 5 another game or region (say why with port_log; the

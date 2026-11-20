@@ -53,6 +53,17 @@ def summaries_ready(ws, cache, returns):
         lock.unlink(missing_ok=True)
 
 
+def with_notes(src, notes):
+    """The C with the translator's notes (what it could not translate exactly: an FPSCR rounding mode, a locked
+    cache line, a trap) as a comment after the include, so whoever reads the file sees them. They were dropped."""
+    if not notes:
+        return src
+    lines = [f" *   {n.replace('*/', '* /')}" for n in dict.fromkeys(notes)]
+    block = "\n".join(["/* ppc-translate notes: what this translation does not do exactly", *lines, " */", ""])
+    head, sep, rest = src.partition("\n")
+    return head + sep + block + rest if head.startswith("#include") else block + src
+
+
 def main():
     ap = argparse.ArgumentParser()
     for k in ("--repo", "--workspace", "--addr", "--meta", "--target-json", "--out"):
@@ -73,12 +84,14 @@ def main():
         summaries_ready(ws, cache, returns)
         kinds = returns.analyse(ws, cache)
     try:
-        src, _ = translate_function(ws.dol, addr, Signature.from_meta(meta), ws.facts, ws.bodies[addr],
-                                    returns=kinds)
+        src, ft = translate_function(ws.dol, addr, Signature.from_meta(meta), ws.facts, ws.body(addr, meta),
+                                     returns=kinds)
     except TranslateError as e:
         print(f"ppc-translate: {e}", file=sys.stderr)
         return NO_TRANSLATION
-    pathlib.Path(a.out).write_text(src, encoding="utf-8")
+    for n in ft.notes:
+        print(f"ppc-translate: note: {n}", file=sys.stderr)
+    pathlib.Path(a.out).write_text(with_notes(src, ft.notes), encoding="utf-8")
     return 0
 
 

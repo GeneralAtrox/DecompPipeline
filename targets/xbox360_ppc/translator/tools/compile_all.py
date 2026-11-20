@@ -1,5 +1,6 @@
 """Translate every function of the executable (DP's catalog_inputs.json) and compile each with MSVC exactly as
-DecompPipeline's Xbox 360 build does (/O1 /fp:strict /W4 /WX /TC against the target's tc_rt.h), after DP's lint.
+DecompPipeline's Xbox 360 build does (/O1 /fp:strict /W4 /WX /TC against the target's tc_rt.h), after the Xbox 360
+judge's lint (x360_lint.lint, which x360_check uses).
 No judge: this shows how much of the game the translator turns into C that DP accepts to build, and why the rest
 does not, grouped by cause.
 
@@ -27,9 +28,20 @@ sys.path.insert(0, str(HERE))
 
 
 # ------------------------------------------------------------------------------------------------ worker side
+def judge_lint():
+    """The Xbox 360 judge's lint (x360_check.lint): core/lint's rules with its 60 KB cap waived up to x360_check.MAX_C
+    (2 MB). The 60 KB cap is there so an agent can Read a work.c in one go; the judge does not apply it to this target
+    (commit 3027ff4c), so this count must not either: with core/lint here, 38 Too Human functions of 2,000 to 8,000
+    instructions were reported as not building though the judge and the port both take their C."""
+    for p in (DP, DP / "targets" / "xbox360_ppc"):
+        if str(p) not in sys.path:
+            sys.path.insert(0, str(p))
+    from x360_lint import lint  # noqa: E402  (x360_check's; that module needs a project)
+    return lint
+
+
 def worker(spec):
-    sys.path.insert(0, str(DP))
-    from core.lint import lint  # noqa: E402
+    lint = judge_lint()
     from xenontranslate import returns, workspace  # noqa: E402
     from xenontranslate.translate import TranslateError, translate_function  # noqa: E402
     ws = workspace.Workspace(spec["ws"])

@@ -3,7 +3,8 @@
  *   play summary: shown_fps 143.9 output 2560x1600 frames 8640 tick_ms 1.10/2.30/9.10 draw_ms 2.00/3.10/12.00 frame_ms 6.90/7.20/14.00 make_ms 1.90/5.10/12.00
  *   play verdict: pass make_ms p99 5.10 (bar 6.67) late 4 of 8600 shown (0.47 per 1000, bar 1) loading 40 shown 9 late machine LAPTOP-NAME
  * shown_fps: shown frames over the time from the first to the last. tick: the host's work between two vertical blanks,
- * the wait for the blank left out. draw: the renderer and in-between draws behind one shown frame. frame: the time from
+ * the wait for the blank left out, and so is a sleep the game's thread takes inside the tick while the game waits on a
+ * clock (play_stats_idle: a clock nap, runtime/host.c port_clock_nap). draw: the renderer and in-between draws behind one shown frame. frame: the time from
  * one shown frame to the next. make: the time to make one shown frame until it is ready to show: its draws outside a
  * tick, plus the work of the tick it is the first to show (the tick's own render is in that work). The times are
  * median / 99th percentile / worst, in milliseconds (the median and the percentile to 0.01 ms).
@@ -37,6 +38,14 @@ static inline void play_stats_wait(int begin) { if (g_play_stats >= 0) play_stat
 static inline void play_stats_tick(double ms) { if (g_play_stats >= 0) play_stats_tick_slow(ms); }
 static inline void play_stats_draw(int enter) { if (g_play_stats >= 0) play_stats_draw_slow(enter); }
 static inline void play_stats_shown(void) { if (g_play_stats >= 0) play_stats_shown_slow(); }
+void play_stats_native_slow(int enter);
+/* A native game's frame span (pg_native_frame, then pg_native_present before its present and the cap's wait): all of it
+ * is make time, with a tick inside it counted once; the Dreamcast's wait hooks are not used there. */
+static inline void play_stats_native(int enter) { if (g_play_stats >= 0) play_stats_native_slow(enter); }
+void play_stats_idle_slow(int begin);
+/* A sleep inside a tick (begin 1, then 0) on the game's thread: the game waits on a clock there, not working. Left out
+ * of the tick's work as the wait for the blank is; only once the run is decided. */
+static inline void play_stats_idle(int begin) { if (g_play_stats > 0) play_stats_idle_slow(begin); }
 void play_stats_disc_slow(u32 bytes);
 /* A read from the disc (host_disc_read): enough close together mark a loading screen. Only once the run is decided: a
  * read before the first frame decides nothing. */

@@ -129,6 +129,8 @@ The causes were both sides':
 
 Each fix has a planted wrong answer: the new C with the old fault put back, judged against the new oracle.
 
+Not modelled on either side: Dolphin's Force25Bit, which rounds fC to 25 bits in fmuls, fmadds and the ps_mul / ps_madd families. The oracle and the C both use the IEEE single result, so they agree with each other; a value where the 25-bit rounding changes the result would differ from the console. It is a known hardware difference, not a judge gap.
+
 | Plant | Function | Judge |
 |---|---|---|
 | old structurer C | 800d8214, 8025ce88 | FAIL 2/96, FAIL 45/96 |
@@ -139,7 +141,7 @@ Each fix has a planted wrong answer: the new C with the old fault put back, judg
 | fnmsub negating a NaN | 801231f8 | FAIL 4/96 |
 | x86 default NaN (helpers without the NaN line) | 801231f8 | FAIL 4/96 |
 | old oracle's canonical NaN on float stores | 801e203c, 8024f838, 80252100, 80252150, 802521d8, 801231f8 | FAIL 40, 4, 5, 4, 4, 1 of 96 |
-| old oracle's canonical NaN on float stores | 8019dba8 | PASS: the judge counts its FIFO NaN words as equal, by design |
+| old oracle's canonical NaN on float stores | 8019dba8 | PASS: the judge counts its FIFO NaN words as equal, by design. Proven instead by tests/test_gc_paired.py's narrow_* cases (TcFixups.toSingle: 0x7ff8123456789abc stores 0x7fc091a2, the old oracle 0x7fc00000) |
 
 The old translator's C fails the round-2 oracle for 19 of the 22 functions without paired singles (planted2,
 2026-11-09); the other 3 (801231f8, 8019dba8, 801e203c) were oracle-side and have the plants above. Pikmin, judged

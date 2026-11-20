@@ -11,6 +11,8 @@
 #include "lockstep_parts.h"
 #include "scene_dump.h"
 #include "scene_json.h"
+#include "host.h"
+#include "game_log.h"
 
 
 
@@ -56,37 +58,103 @@ void console_view(PortView *v)
 /* --watch ADDR@FROM:TO: the emulator-side write watch on a game word (lockstep.c); a guest address in P1 form. */
 void console_watch(u32 word, u32 tick) { lockstep_watch(word ? (volatile u32 *)(uintptr_t)(word | 0x80000000u) : NULL, tick); }
 
+int console_poke(u32 addr, u8 value)
+{
+    u32 a = guest_fold(addr);
+    if (!guest_is_ram(a)) return 0;
+    *(u8 *)(uintptr_t)a = value;
+    return 1;
+}
+
 /* ---- the answer-key emulator ---- */
 int console_lockstep_pad(HostPad *pad) { return lockstep_pad(pad); }
 s32 console_lockstep_timer(s32 live) { return lockstep_timer(live); }
 int console_lockstep_time(HostTime *t) { return lockstep_time(t); }
 
-/* ---- the menu bar: Display > VMU screen, Display > Texture pack, Display > In-between frames ---- */
+/* ---- the menu bar: Display > VMU screen, Display > Texture pack ---- */
 static const char *const k_vmu_labels[] = {"&Off", "&Beside the picture", "O&ver the picture (top left)"};
 static const char *const k_vmu_values[] = {"off", "side", "over"}; /* gfx_vmu_mode_name's words */
-/* --interp-scene: off (the ticks alone, or the game's own draw function where it offers one) or the renderer's screen
- * blending (pvr/pvr_blend.c), which a game with its own draw function can still pick. The renderer keeps the
- * scene before from the start, so a change applies from the next start. */
-static const char *const k_scene_labels[] = {"&Off, or drawn by the game", "&Screen blending"};
-static const char *const k_scene_values[] = {"off", "only"};
-static int g_scene_next = -1;
-static int scene_get(void) { return g_scene_next >= 0 ? g_scene_next : extra_scene_mode() > 0; }
-static void scene_set(int choice) { g_scene_next = choice; }
-
 static PortMenuItem k_menu[] = {
     {"Display", "V&MU screen", PORT_MENU_CHOICE, "vmu-screen", gfx_vmu_mode, gfx_vmu_set_mode, k_vmu_labels, k_vmu_values, 3,
      NULL},
     {"Display", "&Texture pack", PORT_MENU_CHOICE, "texture-pack", pvr_pack_choice, pvr_pack_set_choice, NULL, NULL, 0,
      pvr_pack_available},
-    {"Display", "In-&between frames (from the next start)", PORT_MENU_CHOICE, "interp-scene", scene_get, scene_set,
-     k_scene_labels, k_scene_values, 2, NULL},
 };
+
+/* Game > the game's own on/off settings (game.json menu_checks): each is the settings file's game.NAME, which the game reads
+ * with port_setting_get_int (on is 1), so a choice applies from the game's next read of it; off unless chosen, or on when
+ * the entry's "default" is true (never in a check run). A texture pack line's if= word reads one through
+ * port_menu_check_on, and a choice reloads the pack at once. An entry whose file is not in the data folder is greyed, and
+ * the log says why. */
+#ifdef PORT_MENU_CHECKS
+typedef struct MenuCheck {
+    const char *label, *setting, *needs;
+    int on; /* its default: game.json "default" */
+} MenuCheck;
+static const MenuCheck k_checks[] = {PORT_MENU_CHECKS};
+enum { N_CHECKS = (int)(sizeof k_checks / sizeof k_checks[0]) };
+static int g_check_next[4] = {-1, -1, -1, -1}; /* chosen in this run */
+static int g_check_told[4];
+static int check_get(int i)
+{
+    int def = k_checks[i].on && !host_fixed_clock();
+    return g_check_next[i] >= 0 ? g_check_next[i] : port_setting_get_int(k_checks[i].setting, def) != 0;
+}
+static void check_set(int i, int on)
+{
+    g_check_next[i] = on != 0;
+    pvr_pack_refresh();
+}
+static int check_available(int i)
+{
+    char path[1024];
+    DWORD at;
+    if (!k_checks[i].needs[0]) return 1;
+    snprintf(path, sizeof path, "%s/%s", host_data_folder(), k_checks[i].needs);
+    at = GetFileAttributesA(path);
+    if (at != INVALID_FILE_ATTRIBUTES && !(at & FILE_ATTRIBUTE_DIRECTORY)) return 1;
+    if (!g_check_told[i]) port_log("menu: %s is greyed: %s is not there\n", k_checks[i].label, path);
+    if (!g_check_told[i]) game_log_line("menu: %s is greyed: %s is not there", k_checks[i].label, path);
+    g_check_told[i] = 1;
+    return 0;
+}
+#define CHECK_FNS(n)                                                                                                   \
+    static int check_get##n(void) { return check_get(n); }                                                            \
+    static void check_set##n(int on) { check_set(n, on); }                                                            \
+    static int check_available##n(void) { return check_available(n); }
+CHECK_FNS(0)
+CHECK_FNS(1)
+CHECK_FNS(2)
+CHECK_FNS(3)
+static int (*const k_check_get[4])(void) = {check_get0, check_get1, check_get2, check_get3};
+static void (*const k_check_set[4])(int) = {check_set0, check_set1, check_set2, check_set3};
+static int (*const k_check_available[4])(void) = {check_available0, check_available1, check_available2, check_available3};
+#endif
+
+int port_menu_check_on(const char *setting)
+{
+#ifdef PORT_MENU_CHECKS
+    for (int i = 0; i < N_CHECKS && i < 4; i++)
+        if (!strcmp(k_checks[i].setting, setting)) return check_get(i);
+#endif
+    return host_fixed_clock() ? 0 : port_setting_get_int(setting, 0) != 0;
+}
 
 const PortMenuItem *console_menu_extra(unsigned *count)
 {
+    static PortMenuItem menu[sizeof k_menu / sizeof k_menu[0] + 4];
+    unsigned n = 0;
     k_menu[1].n_choices = pvr_pack_choices(&k_menu[1].choices, &k_menu[1].values); /* what this release carries */
-    *count = (unsigned)(sizeof k_menu / sizeof k_menu[0]);
-    return k_menu;
+    for (unsigned i = 0; i < sizeof k_menu / sizeof k_menu[0]; i++) menu[n++] = k_menu[i];
+#ifdef PORT_MENU_CHECKS
+    for (int i = 0; i < N_CHECKS && i < 4; i++) {
+        PortMenuItem e = {"Game", k_checks[i].label, PORT_MENU_CHECK, k_checks[i].setting, k_check_get[i], k_check_set[i],
+                          NULL, NULL, 0, k_check_available[i]};
+        menu[n++] = e;
+    }
+#endif
+    *count = n;
+    return menu;
 }
 
 /* ---- input ---- */
@@ -99,6 +167,14 @@ static int sha256_hex(const u8 *data, u32 size, char out[65])
     if (!BCRYPT_SUCCESS(BCryptHash(BCRYPT_SHA256_ALG_HANDLE, NULL, 0, (PUCHAR)data, size, digest, sizeof digest))) return 0;
     for (int i = 0; i < 32; i++) sprintf_s(out + 2 * i, 3, "%02x", digest[i]);
     return 1;
+}
+
+int console_install(const char *image, const char *work, const char *assets) /* the disc copy (install.c) */
+{
+    (void)image;
+    (void)work;
+    (void)assets;
+    return -1;
 }
 
 int console_check_image(const char *image)

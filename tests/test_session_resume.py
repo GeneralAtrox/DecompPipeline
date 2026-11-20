@@ -80,7 +80,7 @@ class Resume(unittest.TestCase):
             {"name": "Fixture", "entry": {"name": "Fx_Main", "addr": "8c011000"}, "image_base": "8c010000",
              "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}), encoding="utf-8")
         (d / "resume_main.c").write_text(DRIVER_C, encoding="utf-8")
-        srcs = " ".join(f'"{p}"' for p in [KIT / "base" / "session.c", d / "resume_main.c"])
+        srcs = " ".join(f'"{p}"' for p in [KIT / "base" / "session.c", KIT / "base" / "session_events.c", d / "resume_main.c"])
         cl = f'cl /nologo /TC /std:c11 /W4 /WX /O2 /I"{d}" /I"{KIT / "base"}" {srcs} /Fe:resume.exe'
         vc = str(game_config.vcvars32()).replace("/", "\\")
         r = subprocess.run(f'cmd /d /s /c ""{vc}" >nul 2>&1 && {cl}"', cwd=d, capture_output=True, text=True,

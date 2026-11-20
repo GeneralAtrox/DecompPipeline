@@ -10,17 +10,20 @@ Nearest existing: returns.py - works out each callee's result register; this wor
 import json
 
 from .expr import Const
-from .ir import CallS, Switch
+from .ir import CallS
 from .translate import CALL_CLOBBERS, Clobber, FunctionTranslator, Signature, TranslateError
 
 VOLATILE = frozenset(CALL_CLOBBERS) | {"r3", "f1"}
 
 
 def own_writes(blocks):
-    """(the volatile registers this function's own code writes, the addresses it calls; None stands for a pointer call)"""
+    """(the volatile registers this function's own code writes, the addresses it calls; None stands for a pointer call). A jump table's default is left
+    out: its cases are the target of every index the bounding compare lets through, read from the image, so the default's tail call through CTR runs
+    only if the read-only table changed. Too Human's 82c66960 (a table of 0x5f) counted as writing everything through it, and 82c66b88 lost the r7 it
+    keeps across the call"""
     own, calls = set(), set()
     for b in blocks[1:]:
-        for s in list(b.stmts) + (list(b.term.default) if isinstance(b.term, Switch) else []):
+        for s in b.stmts:
             if isinstance(s, CallS):
                 calls.add(s.target.v & 0xFFFFFFFF if isinstance(s.target, Const) else None)
             elif not isinstance(s, Clobber):

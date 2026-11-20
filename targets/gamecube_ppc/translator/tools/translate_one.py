@@ -24,7 +24,7 @@ def main():
     ws = workspace.Workspace(a.ws)
     addr = int(a.addr, 16)
     kinds = returns.analyse(ws, pathlib.Path(__file__).resolve().parents[1] / "out" / "cache")
-    src, ft = translate_function(ws.dol, addr, ws.signature(addr), ws.facts, ws.bodies[addr], comments=a.comments,
+    src, ft = translate_function(ws.dol, addr, ws.signature(addr), ws.facts, ws.body(addr), comments=a.comments,
                                  structured=not a.no_struct, optimise=not a.raw, returns=kinds)
     sys.stdout.write(src)
     for n in ft.notes:

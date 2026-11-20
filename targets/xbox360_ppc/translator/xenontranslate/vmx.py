@@ -14,8 +14,9 @@ same inputs; the two are written apart from the same manual text, so a disagreem
   the multiplier), an invalid operation the default NaN 0x7fc00000;
 - the multiply-adds round once (fused); the dot products (vmsum3fp128 / vmsum4fp128) sum exact products and round once
   to single (xv_dot1: exact limb arithmetic); the estimates (vrefp, vrsqrtefp, vexptefp, vlogefp) are computed to single
-  precision, not with the hardware's tables, and the Direct3D pack/unpack formats are not modelled, so a function
-  using either is refused before it is judged (catalog "unsupported: vector estimate", TcFixups.refuseVector);
+  precision, not with the hardware's tables, and the Direct3D pack/unpack formats (vmx_unpack.py) are the oracle's
+  unverified ones, so a function using either is refused before it is judged (catalog "unsupported: vector estimate",
+  TcFixups.refuseVector);
 - saturating integer operations do not record VSCR[SAT].
 """
 from __future__ import annotations
@@ -744,6 +745,23 @@ static xv xv_vrlimi(xv d, xv b, int m, int z)
     for (k = 0; k < 4; k++) r.w[k] = (m & (8 >> k)) ? b.w[(k + z) & 3] : d.w[k];
     return r;
 }""")
+# the port form's vector register file (fn_parts.vector_abi): v0..v127 in the thread's tc_vr (runtime/xb_call.c)
+helper("xv_ldv", """
+extern __declspec(thread) u32 tc_vr[128][4];
+static xv xv_ldv(u32 k)
+{
+    xv r;
+    int i;
+    for (i = 0; i < 4; i++) r.w[i] = tc_vr[k][i];
+    return r;
+}""")
+helper("xv_stv", """
+extern __declspec(thread) u32 tc_vr[128][4];
+static void xv_stv(u32 k, xv v)
+{
+    int i;
+    for (i = 0; i < 4; i++) tc_vr[k][i] = v.w[i];
+}""")
 # memory
 helper("xv_ld", """
 static xv xv_ld(u32 ea)
@@ -869,8 +887,83 @@ def helper_closure(names):
     return need
 
 
-def helper_text(names):
-    """The C of the vector helpers named (and what they use), each after its dependencies."""
+# The port form's fast path (runtime/xv_simd.h): a helper named here becomes, in the port form only, a call of its SSE
+# version xs_<name> on these operands, with the scalar body kept beside it as xv_<name>_s. xb_vmx_mode picks the route:
+# 0 SSE, 1 scalar (XB_VMX_SCALAR=1, or a host without SSSE3 / SSE4.1), 2 check (XB_VMX_CHECK=1: both, the scalar result
+# used, a differing one counted by xb_vmx_check). The scalar body is the answer key (tests/test_vmx.py runs both on the same
+# vectors); the judge's form is unchanged byte for byte.
+SIMD = {}
+_AB, _B = ("a", "b"), ("b",)
+for _n in ("vperm",):
+    SIMD[f"xv_{_n}"] = ("a", "b", "c")
+for _n in ("vaddshs", "vsubuhm", "vslh", "vsrah", "vpkshus"):
+    SIMD[f"xv_{_n}"] = _AB
+for _n in ("vaddubm", "vsububm", "vaddubs", "vsububs", "vaddsbs", "vsubsbs", "vmaxub", "vminub", "vmaxsb", "vminsb",  # g2
+           "vavgub", "vavgsb", "vcmpequb", "vcmpgtsb", "vcmpgtub", "vadduhm", "vadduhs", "vsubuhs", "vsubshs",  # g2
+           "vmaxuh", "vminuh", "vmaxsh", "vminsh", "vavguh", "vavgsh", "vcmpequh", "vcmpgtsh", "vcmpgtuh", "vsrh",  # g2
+           "vadduwm", "vsubuwm", "vmaxuw", "vminuw", "vmaxsw", "vminsw", "vcmpequw", "vcmpgtsw", "vcmpgtuw",  # g2
+           "vslw", "vsrw", "vsraw"):  # g2
+    SIMD[f"xv_{_n}"] = _AB  # g2
+for _n in ("vpkshss", "vpkuhus", "vpkuhum", "vpkswss", "vpkswus", "vpkuwus", "vpkuwum", "vmrghb", "vmrglb",  # g3
+           "vmrghh", "vmrglh"):  # g3
+    SIMD[f"xv_{_n}"] = _AB  # g3
+for _n in ("vupkhsb", "vupklsb", "vupkhsh", "vupklsh"):  # g3
+    SIMD[f"xv_{_n}"] = _B  # g3
+SIMD["xv_vsldoi"] = ("a", "b", "sh")  # g3
+SIMD["xv_vspltb"] = ("b", "n")  # g3
+SIMD["xv_vsplth"] = ("b", "n")  # g3
+# g4: the float multiply-adds (FMA3) and dot products (SSE2 doubles). Their xs_ version may leave lanes to the scalar body
+# (a NaN or infinite operand, a result at or below 2^-126, a dot product it cannot prove): it returns those lanes as a mask
+# (bit k = word k) and the scalar body's words are used there (SIMD_MASK).
+SIMD["xv_vmaddfp"] = ("a", "b", "c")  # g4
+SIMD["xv_vnmsubfp"] = ("a", "b", "c")  # g4
+SIMD["xv_vmsum3fp"] = _AB  # g4
+SIMD["xv_vmsum4fp"] = _AB  # g4
+SIMD_MASK = {"xv_vmaddfp", "xv_vnmsubfp", "xv_vmsum3fp", "xv_vmsum4fp"}
+SIMD_INCLUDE = '#include "xv_simd.h"'
+
+
+def simd_text(name, text):
+    """The port form of helper `name`: the scalar body renamed xv_<name>_s, then xv_<name> choosing the route (SIMD_MASK:
+    the lanes the fast version leaves are taken from the scalar body)."""
+    ops = SIMD[name]
+    xs = ", ".join(f"{x}.w" if x in ("a", "b", "c") else x for x in ops)
+    sc = ", ".join(ops)
+    head, body = text.split("\n{\n", 1)
+    assert head.count(f"{name}(") == 1, name
+    sid, short = sorted(SIMD).index(name), name[3:]
+    if name in SIMD_MASK:
+        return (f"{head.replace(name + '(', name + '_s(')}\n{{\n{body}\n{head}\n{{\n"
+                f"    xv q_;\n"
+                f"    int m_;\n"
+                f"    if (xb_vmx_mode == 1) return {name}_s({sc});\n"
+                f"    m_ = xs_{short}(q_.w, {xs});\n"
+                f"    if (m_ || xb_vmx_mode == 2) {{\n"
+                f"        xv s_ = {name}_s({sc});\n"
+                f"        int k_;\n"
+                f"        for (k_ = 0; k_ < 4; k_++)\n"
+                f"            if (m_ & (1 << k_)) q_.w[k_] = s_.w[k_];\n"
+                f"        if (xb_vmx_mode == 2) {{\n"
+                f"            xb_vmx_check({sid}, \"{short}\", q_.w, s_.w);\n"
+                f"            return s_;\n"
+                f"        }}\n"
+                f"    }}\n"
+                f"    return q_;\n}}")
+    return (f"{head.replace(name + '(', name + '_s(')}\n{{\n{body}\n{head}\n{{\n"
+            f"    xv q_;\n"
+            f"    if (xb_vmx_mode == 1) return {name}_s({sc});\n"
+            f"    xs_{short}(q_.w, {xs});\n"
+            f"    if (xb_vmx_mode == 2) {{\n"
+            f"        xv s_ = {name}_s({sc});\n"
+            f"        xb_vmx_check({sid}, \"{short}\", q_.w, s_.w);\n"
+            f"        return s_;\n"
+            f"    }}\n"
+            f"    return q_;\n}}")
+
+
+def helper_text(names, port=False):
+    """The C of the vector helpers named (and what they use), each after its dependencies (port: with the SSE fast path
+    of those in SIMD; the caller then includes SIMD_INCLUDE)."""
     need = helper_closure(names)
     out, done = [], set()
 
@@ -880,7 +973,7 @@ def helper_text(names):
         done.add(n)
         for d in DEP.get(n, []):
             put(d)
-        out.append(H[n])
+        out.append(simd_text(n, H[n]) if port and n in SIMD else H[n])
     for n in sorted(need):
         put(n)
     return out
@@ -897,6 +990,7 @@ SAME = {
     "vslo128": "vslo", "vsro128": "vsro", "vpkshss128": "vpkshss", "vpkshus128": "vpkshus",
     "vpkswss128": "vpkswss", "vpkswus128": "vpkswus", "vpkuhum128": "vpkuhum", "vpkuhus128": "vpkuhus",
     "vpkuwum128": "vpkuwum", "vpkuwus128": "vpkuwus", "vupkhsb128": "vupkhsb", "vupklsb128": "vupklsb",
+    "vupkhsh128": "vupkhsh", "vupklsh128": "vupklsh",
     "vrefp128": "vrefp", "vrsqrtefp128": "vrsqrtefp", "vexptefp128": "vexptefp", "vlogefp128": "vlogefp",
     "vrfim128": "vrfim", "vrfin128": "vrfin", "vrfip128": "vrfip", "vrfiz128": "vrfiz",
     "vcsxwfp128": "vcfsx", "vcuxwfp128": "vcfux", "vcfpsxws128": "vctsxs", "vcfpuxws128": "vctuxs",
@@ -950,7 +1044,7 @@ def lift(ft, i):
     if o == "vupkd3d128":
         return vmx_unpack.lift(ft, i, o, V, vcall, s)
     if o == "vpkd3d128":
-        raise TranslateError(f"{o} at {i.addr:08x}: the Direct3D pack formats are not modelled")
+        return vmx_unpack.lift_pack(ft, i, o, V, vcall, s)
     base = SAME.get(o, o)
     fn = "xv_" + base
     d = f"v{i.vd}"

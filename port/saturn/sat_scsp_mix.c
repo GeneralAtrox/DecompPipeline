@@ -56,8 +56,9 @@ static void refresh(u32 n)
     if (oct >= 8) oct -= 16;
     s->inc = (1024u + (r10 & 0x3ffu)) << 6;
     s->inc = oct >= 0 ? s->inc << oct : s->inc >> -oct;
-    s->gl = (r16v >> 8) & 0x10u ? lvl * side : lvl;
-    s->gr = (r16v >> 8) & 0x10u ? lvl : lvl * side;
+    /* DIPAN bit 4 picks the side turned down: 0 the left, 1 the right (as the AICA, port/runtime/aica.c) */
+    s->gl = (r16v >> 8) & 0x10u ? lvl : lvl * side;
+    s->gr = (r16v >> 8) & 0x10u ? lvl * side : lvl;
 }
 
 void sat_mix_slot_written(u32 reg) { refresh((reg >> 5) & 31u); }
@@ -73,12 +74,27 @@ void sat_mix_keyex(void)
             s->pos = s->frac = 0;
             s->att = 1023.0f;
             {
-                static u32 logged;
+                static u32 logged, keyons, ef, dsp_sum = 0xffffffffu, dsp_logs;
+                u32 r16v = r16(n * 0x20u + 0x16), efsdl = r16v >> 5 & 7u;
+                keyons++, ef += efsdl != 0u;
+                if (efsdl) { /* the DSP program the effect send feeds: its steps that are not zero, and the ring buffer */
+                    u32 sum = 0, steps = 0;
+                    for (u32 i = 0; i < 128u; i++) {
+                        u32 nz = 0;
+                        for (u32 k = 0; k < 8u; k++) nz |= sat_scsp_regs[0x800u + i * 8u + k], sum = sum * 31u + sat_scsp_regs[0x800u + i * 8u + k];
+                        steps += nz != 0u;
+                    }
+                    if (sum != dsp_sum && dsp_logs++ < 10u)
+                        port_log("scsp: vb %u DSP program: %u of 128 steps used, ring buffer RBL %u RBP %05x, %u of %u key-ons so far send to it\n", sat_vblank_count(), steps,
+                                 r16(0x402) >> 7 & 3u, (r16(0x402) & 0x7fu) << 13, ef, keyons);
+                    dsp_sum = sum;
+                }
+                if (keyons % 2000u == 0u) port_log("scsp: vb %u: %u key-ons, %u with an effect send (EFSDL)\n", sat_vblank_count(), keyons, ef);
                 if (logged++ < 60)
-                    port_log("scsp: vb %u slot %u key on: %s sa %05x loop %u %04x..%04x pitch x%.3f TL %u DL %u AR %u D1R %u D2R %u RR %u level %.3f/%.3f\n", sat_vblank_count(), n,
+                    port_log("scsp: vb %u slot %u key on: %s sa %05x loop %u %04x..%04x pitch x%.3f TL %u DL %u AR %u D1R %u D2R %u RR %u level %.3f/%.3f EFSDL %u EFPAN %u\n", sat_vblank_count(), n,
                              s->pcm8 ? "8-bit" : "16-bit", s->sa, (unsigned)s->lpctl, s->lsa, s->lea, (double)s->inc / 65536.0, (unsigned)s->tl, (unsigned)s->dl,
                              r16(n * 0x20u + 8) & 31u, r16(n * 0x20u + 8) >> 6 & 31u, r16(n * 0x20u + 8) >> 11, r16(n * 0x20u + 10) & 31u, (double)s->gl,
-                             (double)s->gr);
+                             (double)s->gr, efsdl, r16v & 31u);
             }
             if ((r16(n * 0x20u + 8) & 31u) == 31u) s->att = 0.0f, s->state = DECAY1;
         } else if (!s->kyonb && s->keyed) {

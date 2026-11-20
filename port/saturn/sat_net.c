@@ -50,7 +50,7 @@ static NetRec *rec(u32 f)
         NetRec *r;
         while (n <= f) n *= 2;
         r = (NetRec *)realloc(S.rec, n * sizeof *r);
-        if (!r) port_log("netplay: out of memory at frame %u\n", f), ExitProcess(5);
+        if (!r) port_log("netplay: out of memory at frame %u\n", f), ExitProcess(PORT_EXIT_FAILED);
         memset(r + S.cap, 0, (n - S.cap) * sizeof *r);
         S.rec = r, S.cap = n;
     }
@@ -64,7 +64,7 @@ static NetHash *hash_at(u32 i)
         NetHash *h;
         while (n <= i) n *= 2;
         h = (NetHash *)realloc(S.hash, n * sizeof *h);
-        if (!h) port_log("netplay: out of memory at hash %u\n", i), ExitProcess(5);
+        if (!h) port_log("netplay: out of memory at hash %u\n", i), ExitProcess(PORT_EXIT_FAILED);
         memset(h + S.hcap, 0, (n - S.hcap) * sizeof *h);
         S.hash = h, S.hcap = n;
     }
@@ -233,7 +233,7 @@ static void wait_for(u32 f, int what)
         sat_net_idle(0); /* the window, then an in-between frame that is due or a slice of the wait (sat_net_setup.c) */
         net_udp_lock();
         if (!told && now() - t0 > g_freq.QuadPart) told = 1, game_log_line("netplay: frame %u: waiting for %s", f, words[what]);
-        if (what == W_FIRST && now() - t0 > 60 * g_freq.QuadPart) net_udp_unlock(), sat_lobby_back("no-player"), net_udp_lock();
+        if (what == W_FIRST && now() - t0 > 60 * g_freq.QuadPart) net_udp_unlock(), sat_game_lobby_back("no-player"), net_udp_lock();
     }
     sat_online_watch(f, SAT_NET_NO_PAD);
     w = now() - t0;
@@ -244,7 +244,7 @@ static void wait_for(u32 f, int what)
 static void stop(const char *why, int code) /* lock held */
 {
     net_udp_unlock();
-    sat_lobby_back(code == 6 ? "out-of-step" : "link-lost"); /* a match the game's own menu started goes back to it */
+    sat_game_lobby_back(code == PORT_EXIT_NET_DESYNC ? "out-of-step" : "link-lost"); /* a match the game's own menu started goes back to it */
     port_exit(why, code);
     for (;;) pace_wait_us(1000000); /* another thread is ending the run */
 }
@@ -260,7 +260,7 @@ static void desync_stop(void)
         game_log_line("netplay: DESYNC at frame %u: this copy's RAM hash %016llx, the other's %016llx: the two games went out of step",
                       S.desync, S.desync_a, S.desync_b);
     }
-    stop("netplay: the two copies went out of step", 6);
+    stop("netplay: the two copies went out of step", PORT_EXIT_NET_DESYNC);
 }
 
 static void host_frame(u32 f, u16 w)
@@ -302,7 +302,7 @@ static void join_frame(u32 f, u16 w)
     if (!(rec(f)->flags & R_HAVE)) wait_for(f, W_HOST);
     if (!(rec(f)->flags & R_HAVE) && !S.desync) {
         game_log_line("netplay: frame %u: the host left", f);
-        stop("netplay: the host left", 0);
+        stop("netplay: the host left", PORT_EXIT_OK);
     }
 }
 

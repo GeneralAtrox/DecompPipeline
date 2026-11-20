@@ -219,7 +219,15 @@ abstract class TcVmxDecode extends TcVmxTables {
         if (op == null) {
             return null;
         }
-        o = mk(w, op);
+        // VA = 0x60 in a vupkhsb128 / vupklsb128 word is the halfword-to-word form (Xenia 95a5c3ee
+        // ppc_emit_altivec.cc:2024-2051), and the game's own code reads each such result as words (vcsxwfp128, vaddsws,
+        // vsubsws, vslw128 take it: 269 words, none consumed as halfwords). decode.py does not split it yet, so the
+        // translator and the catalog still call these vupk?sb128; neither name is confirmed (VMX_JUDGE_PLAN P1).
+        String name = op;
+        if (VX128_6_UNARY.contains(op) && va128(w) == 0x60) {
+            name = op.equals("vupkhsb128") ? "vupkhsh128" : "vupklsh128";
+        }
+        o = mk(w, name);
         o.set("vd", vd128(w));
         if (!VX128_6_UNARY.contains(op)) {
             o.set("va", va128(w));

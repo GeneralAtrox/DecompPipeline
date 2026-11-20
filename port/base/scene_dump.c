@@ -9,11 +9,14 @@
  * Options: --scene-dump-at V (a dump at vertical blank V), --scene-dir DIR (where; default scene_dumps in the data
  * folder), --stop-at V (exit, code 0, once the frame at vertical blank V is presented and dumped: replays),
  * --watch-ram A@V1:V2 (A hex: logs each write to guest word A, with the stack, in vertical blanks V1 to V2; the same
- * debug-register watch as --lockstep-watch, for a replay that has no lockstep: tools/lockstep.py names the stack). */
+ * debug-register watch as --lockstep-watch, for a replay that has no lockstep: tools/lockstep.py names the stack),
+ * --poke-ram A=V@V1:V2 (A hex, V a byte: writes V to guest address A on each frame of vertical blanks V1 to V2, a test's
+ * way to a late scene, such as a stage the game would take a playthrough to reach; both sides of a compare pass it). */
 #include <stdlib.h>
 #include <string.h>
 #include "base.h"
 #include "console.h"
+#include "frame_capture.h"
 #include "host.h"
 #include "scene_host.h"
 #include "scene_json.h"
@@ -24,6 +27,7 @@
 static int g_requested;
 static u32 g_at, g_stop;
 static u32 g_watch_word, g_watch_from, g_watch_to, g_watch_on; /* --watch-ram */
+static u32 g_poke_addr, g_poke_value, g_poke_from, g_poke_to, g_poked; /* --poke-ram */
 static char g_dir[PATH_CAP];
 
 int scene_dump_option(const char *arg, const char *value)
@@ -34,6 +38,10 @@ int scene_dump_option(const char *arg, const char *value)
     else if (!strcmp(arg, "--stop-at")) g_stop = (u32)strtoul(value, NULL, 10);
     else if (!strcmp(arg, "--watch-ram")) {
         if (sscanf_s(value, "%x@%u:%u", &g_watch_word, &g_watch_from, &g_watch_to) != 3) exit(2);
+    }
+    else if (!strcmp(arg, "--poke-ram")) {
+        if (sscanf_s(value, "%x=%u@%u:%u", &g_poke_addr, &g_poke_value, &g_poke_from, &g_poke_to) != 4 || g_poke_value > 0xffu)
+            exit(2);
     }
     else return 0;
     return 2;
@@ -61,11 +69,12 @@ char *scene_replay_command(const char *rec, const char *rdir, u32 frame, u32 sto
     PortView v;
     console_view(&v);
     console_replay_args(&c, 0); /* the console's own options before the replay (the disc) */
-    json_f(&c, " --replay \"%s\" --fixed-clock 1 --present tick --headless --size %ux%u", rec, v.out_w, v.out_h);
+    json_f(&c, " --replay \"%s\"%s --present tick --headless --size %ux%u", rec, port_console.no_replay ? "" : " --fixed-clock 1",
+           v.out_w, v.out_h);
     if (v.warp) json_put(&c, " --warp");
     console_replay_args(&c, 1); /* and after it */
     json_f(&c, " --record off --seconds %u --stop-at %u --log \"%s\\port.log\" --dump-dir \"%s\" --dump-frames %u",
-           stop / 150u + 60u, stop, rdir, rdir, frame);
+           stop / (port_console.replay_fps ? port_console.replay_fps : 150u) + 60u, stop, rdir, rdir, frame);
     return c.p;
 }
 
@@ -104,6 +113,13 @@ static void document(Json *j, const char *base, u32 frame, int bmp, int rec)
         char *cmd = scene_replay_command(path, rdir, frame, port_vblank_count());
         json_str(j, cmd, 8192);
         free(cmd);
+        if (port_console.no_replay)
+            json_f(j, ",\n    \"The fixed-clock replay cannot reach this frame yet for %s: %s. So that command replays this session's recording "
+                      "(the .ptrec) on the real clock, without a window, to frame %u, and writes it as frame_%06u.png in the _replay folder. It "
+                      "reaches the frame, but the picture is near this scene, not the same pixel for pixel. It stops there (exit code 0); add "
+                      "--scene-dump-at %u for a dump of that run.\"",
+                   port_console.game, port_console.no_replay, frame, frame, port_vblank_count());
+        else
         json_f(j, ",\n    \"That replays this session from boot (the .ptrec recording) on the fixed clock, without a "
                   "window, to frame %u (vertical blank %u), and writes it as frame_%06u.png in the _replay folder: "
                   "it matches capture.screenshot (the .bmp) pixel for pixel. It stops there (exit code 0); add "
@@ -140,6 +156,14 @@ static void document(Json *j, const char *base, u32 frame, int bmp, int rec)
     json_str(j, rec ? path : "", PATH_CAP);
     json_put(j, ",\n    \"replay_folder\": ");
     json_str(j, rdir, PATH_CAP);
+    if (port_console.flags & PORT_CONSOLE_FCAP) {
+        sprintf_s(path, sizeof path, "%s_frame", base);
+        json_put(j, ",\n    \"frame_capture\": ");
+        json_str(j, path, PATH_CAP);
+        json_put(j, ",\n    \"frame_capture_note\": \"the next frame recorded draw by draw (frame_capture.h): every draw, skipped draw and why, "
+                    "clear, resolve with a picture of the target, target switch and present, in order. Read it first with python "
+                    "port/tools/frame_capture_view.py <folder>\"");
+    }
     json_put(j, ",\n    \"log\": ");
     json_str(j, port_log_path()[0] ? scene_full_path(port_log_path(), path, sizeof path) : "", PATH_CAP);
     json_put(j, "\n  },\n  \"build\": {\n    \"version\": ");
@@ -197,6 +221,10 @@ static void dump(u32 frame)
     int rec = session_write(path, header);
     sprintf_s(path, sizeof path, "%s_replay", base);
     if (rec) scene_make_dir(path);
+    if (port_console.flags & PORT_CONSOLE_FCAP) { /* the next frame, draw by draw (frame_capture.c) */
+        sprintf_s(path, sizeof path, "%s_frame", base);
+        if (scene_make_dir(path)) fcap_arm(path);
+    }
     document(&j, base, frame, bmp, rec);
     sprintf_s(path, sizeof path, "%s.json", base);
     if (!j.p || fopen_s(&f, path, "wb") || !f || fwrite(j.p, 1, j.n, f) != j.n) {
@@ -232,6 +260,17 @@ void scene_dump_poll(u32 frame)
         g_at = 0;
         g_requested = 1;
     }
+    if (g_poke_addr) {
+        u32 v = port_vblank_count();
+        if (v >= g_poke_from && v <= g_poke_to) {
+            if (!console_poke(g_poke_addr, (u8)g_poke_value)) {
+                port_log("scene: --poke-ram %x is not in the game's memory\n", g_poke_addr);
+                g_poke_addr = 0;
+            } else if (!g_poked++) {
+                port_log("scene: --poke-ram %x=%u from vertical blank %u\n", g_poke_addr, g_poke_value, v);
+            }
+        }
+    }
     if (g_watch_word) {
         u32 v = port_vblank_count();
         if (v >= g_watch_from && v <= g_watch_to) { /* re-armed each frame: the hit limit is per frame */
@@ -243,6 +282,7 @@ void scene_dump_poll(u32 frame)
             g_watch_word = 0;
         }
     }
+    if (g_fcap_on) fcap_frame_end(frame); /* a frame recorded since the last dump is written now (PORT_CONSOLE_FCAP only) */
     if (port_extra_drawing()) return;
     if (g_requested) {
         g_requested = 0;

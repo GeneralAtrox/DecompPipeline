@@ -104,6 +104,54 @@ Z 7c602214    # add r3,r0,r4: r0 is r0
 """)
         self.assertEqual(got, ["r0", "r5", "r3,r4", "", "", "r0", "r0", "", "", ""])
 
+    def test_cr_read_first(self):
+        # TcFlow.entryReads' CR fields (TcCrFirst): a record form sets cr0 bit by bit in the SLEIGH (setCrBit reads the
+        # field to mask it), which is no read: Too Human 82a800d8 (rlwinm. then beq) was seeded a cr0 it never reads.
+        # A branch, mfcr or mcrf on a field not set first is a read; mtcrf sets only its selected fields; crxor on one
+        # bit sets nothing; stwcx. (p-code that branches inside the instruction) keeps the rule before
+        got = self.run_stub("""
+Q rlwinm. beq
+Q addic. beq
+Q beq
+Q rlwinm. beq addic. beq
+Q mfcr
+Q fcmpu6 mfcr
+Q mtcrf80 mfcr
+Q crxor26
+Q fcmpu6 crxor26 mfcr
+Q mcrf60
+Q stwcx. beq
+""")
+        rest = "cr0,cr1,cr2,cr3,cr4,cr5,cr7"
+        allcr = "cr0,cr1,cr2,cr3,cr4,cr5,cr6,cr7"
+        self.assertEqual(got, ["reads ; sets cr0", "reads ; sets cr0", "reads cr0; sets ", "reads ; sets cr0",
+                               f"reads {allcr}; sets ", f"reads {rest}; sets cr6",
+                               "reads cr1,cr2,cr3,cr4,cr5,cr6,cr7; sets cr0", "reads cr6; sets ",
+                               f"reads {rest}; sets cr6", "reads cr0; sets cr6", "reads cr0; sets cr0"])
+
+    def test_table_reads(self):
+        # TcJumpTables: one whole entry of a switch table Ghidra resolved in the function is data, not R8 (MSVC puts the
+        # table after the bctr; before, every index above 0 faulted R8 and its vector was dropped). Anything else in the
+        # code range still faults, and so does the table when Ghidra resolved none (K)
+        got = self.run_stub("""
+J 82000014 82000020 4    # index 0: inside the fetch window [pc, pc + 16), as before
+J 82000014 82000024 4    # index 1
+J 82000014 82000028 4    # index 2
+J 82000014 8200002c 4    # past the table
+J 82000014 82000026 2    # half an entry
+J 82000014 82000024 8    # two entries
+J 82000014 82000004 4    # other code
+J 82000014 40001000 4    # data
+K 82000014 82000028 4
+K 82000014 82000020 4
+G 82000020 4 3
+G 82000048 4 3           # runs past the function
+G 81fffff8 4 3           # starts before it
+G 82000020 4 0
+""")
+        self.assertEqual(got, ["data", "data", "data", "R8 8200002c", "R8 82000026", "R8 82000024", "R8 82000004",
+                               "data", "R8 82000028", "data", "82000020+4x3", "none", "none", "none"])
+
     def test_float_bits(self):
         got = self.run_stub("""
 T - -
@@ -261,7 +309,7 @@ class Runtime(unittest.TestCase):
 class Wiring(unittest.TestCase):
     def test_locked(self):
         locked = json.loads(text(X360 / "target.json"))["locked_scripts"]
-        for n in ("TcTrack.java", "TcNaN.java"):
+        for n in ("TcTrack.java", "TcNaN.java", "TcJumpTables.java"):
             self.assertIn(n, locked)
         self.assertTrue((SHARED / "TcNaN.java").is_file())
 

@@ -33,7 +33,7 @@ def run(vcvars, source, name):
         (tmp / "sat_vdp1_list.c").write_text(source, encoding="utf-8")
         (tmp / "sat_game.h").write_text(GAME_H, encoding="utf-8")
         inc = f'/I"{tmp}" /I"{KIT}" /I"{ROOT / "port" / "base"}" /I"{ROOT / "targets" / "saturn_sh2" / "runtime"}"'
-        srcs = f'"{ROOT / "tests" / "sat_ground_shadows_test.c"}" "{KIT / "sat_vdp1.c"}" "{tmp / "sat_vdp1_list.c"}"'
+        srcs = f'"{ROOT / "tests" / "sat_ground_shadows_test.c"}" "{KIT / "sat_vdp1.c"}" "{tmp / "sat_vdp1_list.c"}" "{ROOT / "port" / "base" / "bands.c"}"'
         bat = tmp / "b.bat"
         bat.write_text(chr(10).join(["@echo off", f'call "{vcvars}" >nul', f'cd /d "{tmp}"',
                                      f"cl /nologo /W4 /WX {inc} {srcs} /Fe:t.exe",

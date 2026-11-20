@@ -1,0 +1,7 @@
+# the struct call 0 returns (+0x4c loop count, +0x58 a table pointer); calls 7 and 10 return an entry or null
+genptr r3
+genret 0 0x40000800
+genrange 0x4000084c 0 3
+genptr 0x40000858
+genret 7 0x40000900
+genret 10 0

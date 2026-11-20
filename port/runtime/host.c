@@ -1,6 +1,7 @@
 /* The Dreamcast kit's host services (platform.h): the vertical blank wait, fixed-address memory and the flash
  * image. The clock, the command line and the save files are the base's (base/clock.c). */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <windows.h>
 #include "port.h"
@@ -57,7 +58,6 @@ static void wait_vblank(int extra)
     }
     prof_end(pt);
     play_stats_wait(0);
-    port_extra_thread_tick(); /* a slow in-between frame keeps out of this tick's render */
     port_extra_land();
     g_vblanks++;
     work_count_tick(g_vblanks);
@@ -88,6 +88,35 @@ void *host_map_fixed(u32 addr, u32 size)
     void *got = VirtualAlloc(at, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
     if (got != at) port_log("host: cannot map %u KB at %08x (%lu)\n", size >> 10, addr, GetLastError());
     return got == at ? got : NULL;
+}
+
+/* A game spinning on a clock inside a vertical blank (a sound voice's position) sleeps a little after each burst of
+ * polls, booked as a wait: at most CLOCK_NAP_US (a nap of 0.5 ms or less only yields: pace_nap_until), and never in
+ * the blank's last millisecond, so what it waits for is still seen in the same blank. A burst is CLOCK_NAP_POLLS polls
+ * (--clock-nap N): the loop's other work runs once a turn, and a game's sound update that steps once a call must
+ * still settle as it does when the loop spins. Real clock only; returns whether it slept. --clock-nap off keeps the
+ * spin, for the side-by-side. */
+#define CLOCK_NAP_US 2000u
+#define CLOCK_NAP_POLLS 1024u
+
+int port_clock_nap(u32 polls)
+{
+    static long burst = -1;
+    const char *v;
+    u32 phase;
+    u64 left, pt;
+    if (burst < 0) burst = !(v = host_arg("--clock-nap")) ? (long)CLOCK_NAP_POLLS : !strcmp(v, "off") ? 0 : atol(v);
+    if (!burst || polls < (u32)burst || host_fixed_clock()) return 0;
+    phase = host_tick_phase(1);
+    left = (u64)(65536u - phase) * 1000000u / (65536u * PORT_VBLANK_HZ);
+    if (phase >= 65536u || left < 1100u) return 0;
+    left -= 1000u;
+    pt = prof_begin(PROF_WAIT);
+    play_stats_idle(1); /* the play summary leaves the sleep out of the tick's work too */
+    pace_nap_until(host_ticks(1000000u) + (left < CLOCK_NAP_US ? left : CLOCK_NAP_US), 0);
+    play_stats_idle(0);
+    prof_end(pt);
+    return 1;
 }
 
 /* --flash FILE, read like a save file (recorded, and a replay gets the recorded image) under a name no save file

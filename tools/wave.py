@@ -11,7 +11,8 @@ prepares with, "land_script": land_dp.sh, "tc": workspace, "spawn": the folder o
 Steps of `run`, each recorded in STATE (state.json) when done, so a run after a stop goes on where it ended:
   1 hold      HOLD in the broker folder (core/ghidra_broker) with a pass key only this driver's children carry
               (DP_BROKER_PASS); waits (at most HOLD_WAIT_S) until no Ghidra JVM runs, no broker token is held and no
-              wave workspace's server answers. The sessions themselves are held by the monitor.
+              wave workspace's server answers. The sessions themselves are held by the monitor. A hold that times out
+              (or is interrupted) takes its HOLD away again (core/wave_ctl.unhold): nothing owns it yet.
   2 live      the broker live test (CMD, a shell command; exit 0 = proven), then land_dp.sh SHA (LAND OK or NOOP),
               then the live checkout must have the HOLD pass (DP). A failed live test releases the HOLD and stops (4).
   3 catalog   decomp.py catalog on TC and PS2 (state files backed up to STATE_DIR/catalog/KEY first); refused unless
@@ -29,7 +30,8 @@ Steps of `run`, each recorded in STATE (state.json) when done, so a run after a 
               flips go to tools/requeue.py --project WS @fmac-flips-KEY.txt (what an operator ran by hand; the
               requeued functions are judged and re-matched by the usual jobs), once per workspace.
 The guard: every GUARD_POLL_S, RAM >= 88% kills the running child's own tree (taskkill /T) and waits for 5 readings
-under 85% before the next chunk; STOP_FILE (`wave.py stop`) kills it and exits 3 with the HOLD kept. Progress lines
+under 85% before the next chunk; STOP_FILE (`wave.py stop`) kills it and exits 3 with the HOLD kept. A STOP written
+before a run started was for the waves running then: the run ignores it and leaves it (core/wave_ctl). Progress lines
 and an ETA go to wave.log; the end writes summary.json (time, prepares, served vs fresh, failures, stale per ws).
 """
 import argparse
@@ -45,7 +47,8 @@ import time
 
 TOOL = pathlib.Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(TOOL))
-STATE_DIR = pathlib.Path(os.environ.get("LOCALAPPDATA", ".")) / "DecompPipeline" / "wave"
+from core import wave_ctl  # noqa: E402  (no core.paths: safe before a child sets DECOMP_PROJECT)
+STATE_DIR = wave_ctl.STATE_DIR  # LOCALAPPDATA/DecompPipeline/wave; core/doctor.py reads its STOP too
 STATE, LOG, STOP_FILE = STATE_DIR / "state.json", STATE_DIR / "wave.log", STATE_DIR / "STOP"
 PLAN = pathlib.Path(os.environ.get("WAVE_PLAN") or STATE_DIR / "plan.json")
 DP, WS = TOOL, {}  # load_plan(): the live checkout, the workspaces
@@ -126,7 +129,7 @@ def guarded(cmd, limit, st, cwd=None):
         r = ram()
         if r >= KILL_AT:
             why = "guard"
-        elif STOP_FILE.exists():
+        elif wave_ctl.stop_asked(STOP_FILE):
             why = "stop"
         elif time.monotonic() - t0 > limit:
             why = 124
@@ -149,7 +152,7 @@ def wait_ram(after_kill):
     """Before a chunk: under KILL_AT, and after a guard kill RESUME_READINGS readings in a row under RESUME_UNDER."""
     need, ok = (RESUME_READINGS if after_kill else 1), 0
     while ok < need:
-        if STOP_FILE.exists():
+        if wave_ctl.stop_asked(STOP_FILE):
             log("STOP while waiting for RAM")
             sys.exit(3)
         r = ram()
@@ -173,29 +176,24 @@ def servers_up():
 
 def hold(st):
     d = broker_dir()
-    d.mkdir(parents=True, exist_ok=True)
     st["pass"] = st.get("pass") or secrets.token_hex(8)
-    (d / "HOLD").write_text(json.dumps({"pass": st["pass"], "by": "tools/wave.py", "since": time.time()}),
-                            encoding="utf-8")
+    before = wave_ctl.write_hold(d, st["pass"])
     save(st)
     log(f"HOLD written in {d}; waiting for running Ghidra work to end (at most {HOLD_WAIT_S} s)")
     t0 = time.monotonic()
-    while True:
-        jv, holds, up = ghidra_jvms(), sorted(p.name for p in d.glob("h_*.json")), servers_up()
-        if not jv and not holds and not up:
-            log("hold: no Ghidra JVM, no broker token, no wave workspace server")
-            return
-        if time.monotonic() - t0 > HOLD_WAIT_S:
-            sys.exit(f"hold: still busy after {HOLD_WAIT_S} s: {len(jv)} JVM(s), tokens {holds}, servers {up}")
-        log(f"hold: waiting: {len(jv)} Ghidra JVM(s), {len(holds)} token(s), servers up: {up or 'none'}")
-        time.sleep(60)
-
-
-def release():
-    p = broker_dir() / "HOLD"
-    if p.exists():
-        p.unlink()
-        log(f"HOLD removed ({p})")
+    try:
+        while True:
+            jv, holds, up = ghidra_jvms(), sorted(p.name for p in d.glob("h_*.json")), servers_up()
+            if not jv and not holds and not up:
+                log("hold: no Ghidra JVM, no broker token, no wave workspace server")
+                return
+            if time.monotonic() - t0 > HOLD_WAIT_S:
+                sys.exit(f"hold: still busy after {HOLD_WAIT_S} s: {len(jv)} JVM(s), tokens {holds}, servers {up}")
+            log(f"hold: waiting: {len(jv)} Ghidra JVM(s), {len(holds)} token(s), servers up: {up or 'none'}")
+            time.sleep(60)
+    except BaseException:  # the hold failed (timed out, interrupted): its HOLD goes, the next run holds again
+        wave_ctl.unhold(d, st["pass"], before, log)
+        raise
 
 
 # --- step 2: live test, landing ---
@@ -204,14 +202,15 @@ def live_and_land(st, a):
     if not st["steps"].get("live"):
         rc, _ = guarded(a.live_test, LIVE_S, st, cwd=TOOL)
         if rc != 0:
-            release()
+            wave_ctl.release(broker_dir(), log)
             log(f"broker live test failed (rc {rc}): HOLD released; resume everyone. Stopping.")
             sys.exit(4)
         st["steps"]["live"] = time.time()
         save(st)
     rc, out = guarded(["bash", str(WS["land_script"]), st["head"]], LAND_S, st, cwd=TOOL)
-    if rc != 0 or not re.search(r"^LAND (OK|NOOP)", out, re.M):
-        sys.exit(f"landing {st['head']} failed (rc {rc}); the HOLD stays")
+    if rc != 0 or not re.search(r"^LAND (OK|NOOP)", out, re.M):  # the HOLD stays for the run that resumes here
+        sys.exit(f"landing {st['head']} failed (rc {rc}); the HOLD stays (wave.py release removes it); fix the "
+                 "landing and run again to resume")
     if "PASS_ENV" not in (DP / "core" / "ghidra_broker.py").read_text(encoding="utf-8"):
         sys.exit(f"{DP} has no HOLD pass after landing: its prepares would wait on the HOLD")
 
@@ -495,7 +494,7 @@ def internal(cmd, ws, extra):
 
 def run(a):
     st = load()
-    STOP_FILE.unlink(missing_ok=True)
+    wave_ctl.started(STOP_FILE)  # a STOP there now was for the waves before this start: ignored, never deleted
     st.setdefault("started", time.time())
     st["head"] = st.get("head") or a.head
     keys = [k for k, _ in order()]
@@ -533,7 +532,7 @@ def run(a):
     (STATE_DIR / "summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
     log("summary: " + json.dumps(summary))
     if a.release_at_end:
-        release()
+        wave_ctl.release(broker_dir(), log)
     if a.requeue:
         requeue(st)
     return 0 if not summary["not_ok"] else 1
@@ -593,11 +592,10 @@ def main():
             ap.error("run needs --head and --live-test (until step 2 is done)")
         return run(a)
     elif a.cmd == "stop":
-        STATE_DIR.mkdir(parents=True, exist_ok=True)
-        STOP_FILE.write_text("", encoding="utf-8")
+        wave_ctl.write_stop(STOP_FILE)
         print(f"{STOP_FILE} written: the driver kills its child tree and exits 3 within {GUARD_POLL_S:g} s")
     else:
-        release() if a.cmd == "release" else print(json.dumps(load(), indent=1))
+        wave_ctl.release(broker_dir(), log) if a.cmd == "release" else print(json.dumps(load(), indent=1))
     return 0
 
 

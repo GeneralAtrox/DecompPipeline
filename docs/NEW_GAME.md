@@ -119,6 +119,7 @@ A folder with `project.json`. Toy Commander's is the template; the fields a new 
 | `seed_functions` | `true` for a game linked at `0x0c...` (step 1's scan says so); harmless otherwise |
 | `ghidra_timeout_s` | one function's prepare (default 900 s); setup, catalog, seed and graph get `ghidra_setup_timeout_s` (default 3600 s) |
 | `ghidra_kill_s` | the wall time before one function's prepare is killed (default: `ghidra_timeout_s`). The oracle budget in the facts still comes from `ghidra_timeout_s` (counted in work with `oracle_work_per_s`), so raising this lets a loaded or slower machine finish the same harness without changing any stamp; machine-local, e.g. in config.local.json |
+| `sq_copy_callees` | block copies whose stores into the store queues the oracle must count: `{"callee": {"rK": "lo-hi"}}`, the register holding the queue offset and its range (Spawn's vertex copy 8c0d7b40). Only when a row that copies to the queue fails or draws nothing |
 
 Then, in this order (the references need the catalog and the disassembly):
 

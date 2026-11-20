@@ -82,3 +82,7 @@ int main(void)
     puts(g_fail ? "FAILED" : "all ok");
     return g_fail;
 }
+
+/* the kit pieces this test does not build: the menu panel (sat_panel.c) is off */
+void sat_panel_mark(u32 pmod, u32 colr) { (void)pmod, (void)colr; }
+void port_exit(const char *why, int code) { (void)why, (void)code; }

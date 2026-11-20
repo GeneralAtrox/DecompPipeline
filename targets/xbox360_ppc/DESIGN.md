@@ -75,7 +75,7 @@ system. Ghidra cannot be trusted to decode VMX128 at all (§5).
 | cache | dcbf, dcbst, dcbi, dcbz, dcbz128, icbi | refused (dcbt/dcbtst are hints and allowed) |
 | sys | sc, mftb, an SPR other than XER/LR/CTR, the MSR | refused |
 | trap | tw, twi, td, tdi | allowed: a trap that fires makes that vector invalid |
-| barrier | sync, lwsync, eieio, isync | allowed: no-ops for one thread |
+| barrier | sync, lwsync, eieio, isync | allowed: no-ops for one thread (the port form makes sync, lwsync and eieio real fences: `runtime/tc_rt.h`) |
 | fma, fconv, fpu, ld64, r13 | | allowed and counted (the proof picks use them) |
 
 **Too Human:**
@@ -327,6 +327,54 @@ is **stricter** than the GameCube's.
 - **Dual-model flag.** The oracle will run both models on each fma function's vectors. A function whose results
   differ between them is flagged `fma_sensitive`, so the open question is visible per function and not hidden.
 
+**Exit state** (target.json `"exit_state"`, off by default; with it off vectors.txt, expected.txt and the stamp are
+unchanged). On: TcExit re-runs each valid vector from seeded r14..r31, f14..f31 and CR2..CR4 (vectors.txt Q G K) and
+writes every register and stack write at exit (expected.txt XS XF XC XV XW); the translator's exit form
+(`exit_form.py`, runtime `tc_exit.c`) prints the same as X lines. `x360_compare.compare_exit` judges 13 classes
+(`core/strict_judge.EXIT_CLASSES`, each enforce or report): volatile and callee-saved GPRs/FPRs, CR volatile and
+non-volatile, XER, CTR, LR, FPSCR (0 on both sides: the oracle refuses FPSCR moves), vectors, stack writes, r1.
+The seeds never reach the normal lines: taking r14..r31 as 0 is sound except a save slot that is also a call's
+s0..s7. Turning it on moves every function's stamp, so every function re-prepares (the `exit_state` stamp scope that
+kept the stamps with it off ended with the entry seeds below). On build box A:
+`py -3.12 -W error tests/test_x360_judge_exit_oracle.py` (needs Ghidra), then re-prepare and
+`tools/dp_judge.py --ws <ws> --out <dir> --only <list>`; the row gains `exit: {verdict, failing, classes, first}`.
+
+**Entry seeds** (always on). A function that reads r12 or a CR field before setting it (TcFlow.entryReads: a
+funclet's parent frame in r12, a CR save by `mfcr`) gets them per vector: r12 a fresh pointer-rich chunk (32 bits, as
+the port's TcArgs.r12), each such CR field random bits (TcVectors.drawEntry; a fault near r12 re-chunks it once). They
+are on vectors.txt `A r12 CR`, in every run of the vector (the exit-state run's K replaces CR2..CR4), and meta.json
+`entry_seeds` names them. The runner's tcx_begin takes the same line, and the translator's judge form reads them with
+`tcx_in_r(12)` / `tcx_in_cr(bit)` (exit_form.seed_judge), so the C starts from the original's entry value. A function
+with neither has no A line and draws nothing more: its vectors are unchanged. The seeds come from their own generator
+(TcVectors.entryRnd), so a seeded function's other inputs are drawn as without them. A CR field counts as read first by
+its bits (TcCrFirst): a record form (`rlwinm.`, `addic.`) sets cr0 though the SLEIGH masks cr0's old bits out one at a
+time (setCrBit), and mtcrf sets only its selected fields; counted as a read, it seeded Too Human 82a800d8 a cr0 it never
+reads and its loop count moved (40 of 117 vectors then hit the step limit). XER[SO] and the vector registers are not
+seeded (both start at 0 on both sides), so a function reading them first is still refused.
+
+**Switch tables in code.** MSVC puts a switch's table of targets in the code range right after the bctr, so a table read
+is R8 to the oracle: only index 0 (12 bytes after the load, inside TcBank's fetch window) kept its vector, and a case
+above index 0 was almost never judged (Too Human 82c6f098, 82ccf058, 82d89388, 82dcde50: 46, 56, 110 and 267 vectors
+dropped). TcPrepare's decompile now records each switch's load table (DecompInterface.toggleJumpLoads,
+HighFunction.getJumpTables: Ghidra's own resolution, not the translator's), and TcJumpTables keeps those whose switch is
+in the function and whose table lies within its extent. TcBank reads one whole, aligned entry of such a table as data;
+every other code read stays R8, and a function Ghidra resolved no table for is judged as before. The emulator still
+reads the image's own bytes, so a kept vector's expected results are the original's: a wrong or extra range can only
+keep a vector, never change an answer. The runner's R8 is unchanged, so C that reads the table still fails; the
+translator's in-body switches (xenontranslate/jtab.py) do not read it. Plant: tests/test_x360_judge_jtplant.py, and on
+real functions `dp_judge.py --plant` with {addr: [PLANT]} from that test (case 1 stores to a word the original never
+writes): PASS on a harness prepared before, FAIL after. 188 of the 88,193 catalogued functions have a table in their
+code (the translator's resolver over the catalog, 2026-11-14), all re-prepared with every function after this locked-script change.
+**Branches into data (7a9bcec7): a known limit.** A vector on which the original branches to an address below the
+image (heap, scratch, stack, kernel; typically a return through a saved LR its own stack overrun overwrote) is an
+invalid input and is dropped, like any other invalid vector; a branch to code inside the image still refuses the
+function. A function left with no valid vector ends NO_VECTORS, never PASS (tests/test_x360_seedoffset.py). **A fault
+that only an input the rule drops can reach is not judged.** Plant (2026-11-15, Too Human 82e40388): a stack store
+above the entry SP moved by one quadword, reachable only when the copy count overruns the frame, judged PASS 0/112 -
+not covered; a wrong vaddfp operand on a kept input FAILs on 85 of 112 vectors. On the 68 functions re-judged with the
+rule, it dropped 5 of 30,040 vectors (82e28110 4 of 165, 82e40388 1 of 874). Functions where the rule drops over 10%
+of the vectors tried are where this limit matters; the whole-game run counts them.
+
 ## 8. Open questions (each needs a decision or a measurement)
 
 1. **fma rounding. Decided 2026-10-24: `fused`.** The IBM books define fmadd and the rest with a single rounding (a
@@ -368,6 +416,27 @@ is **stricter** than the GameCube's.
     `judge-gaps` closes it on GameCube. Lands with the user's yes.
 12. **Indirect-call arguments (judge decision).** Closed on branch `x360-judge-gaps` (section 3, expected.txt `CA`).
     Stack arguments of such calls stay uncompared.
+13. **mfocrf: the fields it did not select (2026-11-15, open, no translator change).** The ISA leaves RT outside the selected
+    field undefined. The oracle (Ghidra p-code) writes 0 there; the translator copies the whole CR. That is the one FAIL of
+    the full judge (82dc05b0: r11 expected 0x0, got 0x0ab16000 on 112 of 112 vectors; r3 matches). Census of Too Human
+    (`.work/tx1112/mfocrf/census.py`, forward dataflow): 194 mfocrf, all `0x2` (cr6), plus 1 mfcr (82ec5478). 143 are
+    masked before any use, 34 leave the whole CR only in r0/r4..r12 at a return (dead by the ABI), 17 escape: four are
+    stored whole with `stw` (82e078a0, 82e078dc, 82e0c63c, 82e0c678), 13 reach a call or an indirect branch with the value
+    still live in a register (not proved). Game code can store the unselected fields, so the translator is NOT changed to
+    zero them: zeroing is the oracle's choice, not known hardware behaviour. Xenia Redux
+    (`src/xenia/cpu/ppc/ppc_emit_control.cc`, `InstrEmit_mfcr`, read only, nothing copied): with one field selected it
+    loads that field alone, at its CR position (`PPCHIRBuilder::LoadCR(n)` in `ppc_hir_builder.cc`), so the unselected fields
+    are 0; with none or several selected it returns 0; plain mfcr loads all 32 bits. Xenia agrees with the oracle, not with
+    the translator, but it is a behaviour reference, not hardware. The way to close 82dc05b0 is a judge-side or
+    function-level decision, not a translator change; the user decides.
+
+14. **Exit state vs exit frame: reconcile (2026-11-15, open).** Two mechanisms check the state a function leaves:
+    the Xbox 360 line's `exit_state` (TcExit, `core/strict_judge.EXIT_CLASSES`, per class with proven plants, off by
+    default) and master's `exit_frame` (TcStrict, expected.txt `XR`, one of the six pre-wave flags). x360-land keeps
+    `exit_state` and keeps `exit_frame` off on this target. They overlap: with both on, the seeded exit run gives r14..r31
+    values that are not 0 while the runtime's `XR` line prints zeros, and `writeVector` keeps the exit lines of the first
+    run; that pairing is untested (x360-land CONFLICTS.md, "For the proof step" 3). In the end there should be one
+    mechanism: fold `exit_frame`'s checks into the per-class `exit_state`, or the reverse, with plants for each class.
 
 ## 9. Files
 
@@ -378,10 +447,10 @@ is **stricter** than the GameCube's.
 | `x360_check.py` | lint, the thunk generator, build, the official check |
 | `x360_compare.py` | vector, expected and result parsing; the byte-exact compare |
 | `x360_agent.py` | the agent's task text and sandbox |
-| `runtime/` | `tc_rt.h`, `tc_rt.c`, `tc_ppc.c`, `runner.c`, `tc_rt_internal.h` |
+| `runtime/` | `tc_rt.h`, `tc_rt.c`, `tc_ppc.c`, `runner.c`, `tc_rt_internal.h`, `tc_exit.c` (exit record) |
 | `tools/` | `xiso.py`, `xex.py`, `pe.py`, `aes.py`, `ppcscan.py`, `catalog_inputs.py`, `proof_pick.py`, `ghidra_setup.py`, `decode_audit.py` |
 | `proof_set.json` | the 50 functions of the first Ghidra proof (PROOF_PLAN.md) |
-| `ghidra_scripts/`, `template/` | the Ghidra scripts and the project's starting `TcInputs.java` (ghidra_scripts/README.md) |
+| `ghidra_scripts/`, `template/` | the Ghidra scripts and the project's starting `TcInputs.java` (ghidra_scripts/README.md); `TcExit.java` the exit state |
 
 ## 10. Mega Man 10: the first whole-game run
 

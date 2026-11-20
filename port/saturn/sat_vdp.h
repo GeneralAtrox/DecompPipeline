@@ -45,6 +45,7 @@ void sat_v1_erase_draw(void);     /* sat_vdp.c: the erase over the framebuffer V
 int sat_png_write(const char *path, const u32 *rgb, u32 w, u32 h); /* sat_shot.c */
 /* sat_wide.c: the picture wider than the screen (game.json "widescreen"); ox 0 leaves every path as the Saturn's */
 extern int sat_wide_ox, sat_wide_now; /* the blank's dots added each side; the picture being composed's */
+extern int sat_wide_want; /* sat_wide.c: the dots each side the window asks for (kit screens are widened by it) */
 extern u32 sat_wide_sw;               /* the screen width they widen */
 void sat_wide_frame(void);            /* sat_video.c: before each blank's picture */
 u8 *sat_wide_fb(const u8 *guest);     /* a VDP1 framebuffer's wide twin, NULL when not widened */
@@ -86,5 +87,16 @@ static __inline int sat_win_hide(const SatWinLine *l, int layer, u32 x)
 {
     return l->on[layer] && l->tab[layer][(x - l->xs[0] <= l->xw[0]) | ((x - l->xs[1] <= l->xw[1]) << 1)];
 }
+
+/* the composer's colour memory as RGB (sat_vdp2.c, made once a frame) and a Saturn RGB word as 0x00RRGGBB */
+extern u32 sat_cram[2048], sat_cram_mask;
+static __inline u32 sat_cram_rgb(u32 idx) { return sat_cram[idx & sat_cram_mask]; }
+static __inline u32 sat_rgb555(u32 w)
+{
+    u32 r = w & 31u, g = (w >> 5) & 31u, b = (w >> 10) & 31u;
+    return ((r << 3 | r >> 2) << 16) | ((g << 3 | g >> 2) << 8) | (b << 3 | b >> 2);
+}
+const SatPlane *sat_v2_plane(int n);       /* after a compose: plane n's registers (NBG0..NBG3, RBG0) */
+int sat_v2_sprite(u32 x, u32 y, u32 *rgb); /* after a compose: the sprite layer's colour at a screen dot, 0 none */
 
 #endif

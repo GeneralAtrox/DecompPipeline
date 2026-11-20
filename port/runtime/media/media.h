@@ -80,6 +80,9 @@ void media_movie_pause(MediaMovie *m, int on);
 s32 media_movie_state(const MediaMovie *m);
 u32 media_movie_pictures(const MediaMovie *m); /* pictures shown so far */
 void media_movie_frame(void); /* the renderer draws a frame: each movie's picture due now */
+/* The file loaded is still coming in (runtime/disc_fill.c): before start, after load. The movie reads none of it
+ * before wait(fill, bytes) says its first bytes are in, and calls end(fill) before it lets the file go. */
+void media_movie_behind(MediaMovie *m, void *fill, int (*wait)(void *fill, u32 bytes), void (*end)(void *fill));
 
 /* gfx/gfx_movie.c: a movie frame (planes Y, Cb, Cr; chroma at half size) drawn over the picture from now on */
 void gfx_movie_show(const u8 *y, const u8 *cb, const u8 *cr, u32 y_stride, u32 c_stride, u32 w, u32 h);

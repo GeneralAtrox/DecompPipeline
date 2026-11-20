@@ -30,7 +30,7 @@ far less). The Saturn kit has no disc hook yet, so its verdict leaves nothing ou
 
 The user's rule (2026-11-04), for every port: "By default, our projects should cap at 144fps. Then have an option for uncapped."
 
-- **Play runs pass `--fps 144`** (`base/host_main.cpp`), before the saved settings. Display > Frame-rate cap offers None
+- **Play runs pass `--fps 144`** (`base/host_main.cpp`), before the saved settings. Display > Frame rate offers None
   (as many as the display takes), 60, 120, 144 and 240. The choice is saved (`fps`, 0 for None) and wins over the
   default. Scripted runs (a fixed clock, `--headless`) get no defaults, so checks and replays don't change.
 - **The cap shows frames in slots 1/N s apart** (`runtime/frame_thread.c`), not 1/N s after the last one. A late frame
@@ -38,7 +38,6 @@ The user's rule (2026-11-04), for every port: "By default, our projects should c
   the cap cost frame time (`docs/LESSONS.md`, "Ports and frame timing").
 - **A missed slot is a late frame.** Under the cap no gap is shorter than a slot, so their spacing is not the test. The
   game log's `play verdict:` line counts the slots no new frame filled (a gap that spans n slots, to the nearest, is n - 1 late) against 1 in 1,000 shown frames.
-- **Measured (build box A, 2026-11-05):** 144.3 shown a second where the old wait gave 128, p99 9.6 ms against 10.6 before and 7.2 uncapped, so capped is still worse than uncapped at p99 (the dated notes are in git history; lessons in `docs/LESSONS.md`).
 - **Every console takes it once it has in-between frames.** The menu entry is greyed on a kit without
   `PORT_CONSOLE_FPSCAP`: today the Saturn and Xbox 360 kits, whose `extra_set_fps` does nothing. They get the cap with
   their in-between frames.
@@ -92,6 +91,7 @@ and the frames checked by eye). A row that falls short is red, no row reads unme
 
 | Game | Shapes proven | Default on | Gameplay identical (replay, wide on and off) | Evidence |
 |---|---|---|---|---|
+| Spawn | 4:3, 16:10, 16:9, 21:9, 32:9, narrower (3:4), across motion and a whole fight | Yes | Yes | `docs/aspect/spawn.md`, `docs/aspect/spawn_shapes.jpg` |
 
 Where the kit stands (Dreamcast renderer; the Saturn kit below): the frame takes any shape. `--aspect
 fit|4:3|16:9|21:9|W:H` (the Display > Aspect menu: Fit window, 4:3, 16:9, 21:9, applied at once and saved as `aspect`)
@@ -102,30 +102,11 @@ game widens its culling by them, horizontally and vertically (a narrower than 4:
 2D stays 4:3 in the middle, and a scene that draws nothing past the screen (a menu; 8 pixels of overscan allowed)
 has the border colour around it rather than the background plane's, which its art hid on the console; an untextured full-screen triangle (a fade), or one textured with an 8x8 texture (a fill), covers the frame; scissors and clears,
 frame-buffer reads (the game gets the 640x480 screen) and movies sit on the screen. A game without the key stays 4:3
-until its card wraps its culling and sets it (a wider frame would show the holes the game's own culling leaves). Only
-Toy Commander sets it. Checks and goldens stay 4:3 unless `--aspect` is given (`tests/test_gfx_aspect.py` is the shape
-maths; PS2 at 4:3 is byte-identical to before in the front end's 52 dump frames, and TC's frame 10645 of replay 20261031-121005 too). In-between frames draw into
-the same target at every shape. `port_shape_chosen()` is 0 only in a check at its original 4:3 (no
-`--aspect`): a picture fix that should also change a picked 4:3, such as a background drawn larger, turns on with it.
+until its card wraps its culling and sets it (a wider frame would show the holes the game's own culling leaves). The game.json of each game says whether it is set; the table above says which are proven. A still frame can't prove culling or a wrap: a part cut at the old edge only shows when something stands there, and a pop only between two frames, so a shape's proof scans motion (`port/tools/motion_check.py`, and a whole recorded fight compared with a wider test). Checks and goldens stay 4:3 unless `--aspect` is given (`tests/test_gfx_aspect.py` is the shape maths; PS2 at 4:3 is byte-identical to before in the front end's 52 dump frames, and TC's frame 10645 of replay 20261031-121005 too). In-between frames draw into the same target at every shape. `port_shape_chosen()` is 0 only in a check at its original 4:3 (no `--aspect`): a picture fix that should also change a picked 4:3, such as a background drawn larger, turns on with it.
 
-The Saturn kit (`port/saturn/sat_wide.c`) composes the picture wider than the screen in play runs of a game with game.json `widescreen`: `true` for every picture, `"rbg0"` only for pictures with RBG0 on (BGON), a 3D floor; the log's `widescreen: composed` lines are that decision and its `widescreen: shown` lines the last lit picture's width, since Robo Pit keeps RBG0 on over an empty map through its black logos and movies (a 2D screen's planes hold the map's unused fill past the screen, so menus keep their width and bars). VDP1 draws into host framebuffers 1024 dots wide, twins of the guest's, with clip edges and erases that reach the screen's edges taken to the wide ones and the middle copied back for the game; VDP2 composes each plane, RBG0, the windows that reach an edge and the sprite layer at screen x minus the added width; the base's CPU presenter draws the screen at its 4:3 size with the sides beside it. game.json `wide_cull` widens SGL's window words as its readers are entered (SGL 3.0x: GBR 0x060ffc00); Robo Pit leaves it out, because a replay proves it changes the game (below). High-resolution modes and frames narrower than 4:3 are not widened (bars). Robo Pit's proof (2026-11-07, `.work/wide` in its project): 4:3 checks byte-identical to master in 445 --det shots, the save and the peeked words; with the chips widened and its culling not, --det at 16:9 gives the same save and words; a fight recorded on master in a real-clock headless run and replayed on master and on sat-wide at 21:9 and 16:10 gives, without `wide_cull`, the same save, energy words and SGL random word every blank and all 2000 shots' 4:3 middles the same; with it, the save and energy are the same but the random word parts from blank 6295 (21:9) or 6279 (16:10) and 321 or 388 middles differ (not a frame's lag): the game's own logic reads the culling, so it stays off. The composer works a line at a time (RBG0's coefficient once a line unless dKAx moves it, X and Y stepped as exact integers, the layers a window hides along the whole line dropped, the top two layers kept as they come): 4:3 byte-identical, about 2.4 times faster than master; the wide picture costs in proportion to its dots (1.20 at 16:10, 1.71 at 21:9 in one thread's cycles).
+The Saturn kit (`port/saturn/sat_wide.c`) composes the picture wider than the screen in play runs of a game with game.json `widescreen`: `true` for every picture, `"rbg0"` only for pictures with RBG0 on (BGON), a 3D floor; the log's `widescreen: composed` lines are that decision and its `widescreen: shown` lines the last lit picture's width, since Robo Pit keeps RBG0 on over an empty map through its black logos and movies (a 2D screen's planes hold the map's unused fill past the screen, so menus keep their width and bars). VDP1 draws into host framebuffers 1024 dots wide, twins of the guest's, with clip edges and erases that reach the screen's edges taken to the wide ones and the middle copied back for the game; VDP2 composes each plane, RBG0, the windows that reach an edge and the sprite layer at screen x minus the added width; the base's CPU presenter draws the screen at its 4:3 size with the sides beside it. game.json `wide_cull` widens SGL's window words as its readers are entered (SGL 3.0x: GBR 0x060ffc00); Robo Pit leaves it out, because a replay proves it changes the game (`docs/proofs/runtime/RUNS.md`, Robo Pit). High-resolution modes and frames narrower than 4:3 are not widened (bars). The composer works a line at a time (RBG0's coefficient once a line unless dKAx moves it, X and Y stepped as exact integers, the layers a window hides along the whole line dropped, the top two layers kept as they come): 4:3 byte-identical, about 2.4 times faster than master; the wide picture costs in proportion to its dots (1.20 at 16:10, 1.71 at 21:9 in one thread's cycles).
 `port_read_whole_frame(1)` makes frame-buffer reads squeeze the whole frame into 640x480 instead of taking the screen
 in its middle, for a game that draws what it read back over the whole frame (Toy Commander's pause picture).
-
-What the wider view costs (headless, 2560x1600 output, thread-CPU clock, main laptop under agent load, so read the
-differences, not the levels; `--aspect 4:3` against `--aspect fit`, which is 16:10 here):
-
-| Game, replay section | Game code mean / p95 | Direct3D CPU mean | WORK mean / p95 | GPU mean / p95 | Over 16.7 ms |
-|---|---|---|---|---|---|
-| Power Stone 2, 20261031-122203 blanks 7582-7881, 4:3 | 4.47 / 6.14 | 0.21 | 7.40 / 9.63 | 0.32 / 0.82 | 0 of 300 |
-| Power Stone 2, the same, fit | 4.72 / 7.47 | 0.22 | 7.85 / 11.29 | 0.39 / 0.75 | 0 of 300 |
-| Toy Commander, 20261031-121005 blanks 19757-20057, 4:3 | 4.58 / 7.95 | 1.47 | 6.79 / 11.24 | 1.75 / 4.71 | 1 (the first blank: 217 ms, a load) |
-| Toy Commander, the same, fit | 4.86 / 7.96 | 1.55 | 7.17 / 11.32 | 2.29 / 6.88 | 1 (the same) |
-
-The wider view adds about 0.4 ms of work a blank, and on Toy Commander 0.5 ms of GPU time (2.2 ms at p95). Power Stone 2's
-game-code time also rises by 0.25 ms; why was not investigated (it has no wider culling yet, so the picture differs only
-in the renderer). Both stay under 16.7 ms, and both are above 6.94 ms at the 95th percentile (9.6 to 11.3 ms): the
-wider view is not what keeps them from the target.
 
 ## Modern controllers: every button can be used
 
@@ -239,7 +220,7 @@ Update a row in the change that alters it. "Not measured" stays until someone me
 | Sound CPU: ARM7 interpreter running the game's own driver | `runtime/arm7.c`, `arm7_ls.c`, `aica_arm.c` | Power Stone 2: median 2.25 ms per tick in the heavy section (211k ARM instructions per tick, 99% in idle flag scans; Spawn the same: the two games run one byte-identical driver, AICAsoundDrv 1.76). The 40–79 ms spikes are not extra ARM work (same instruction count in those ticks; not reproduced in traced replays), likely host contention | Being replaced (card `arm7-native`). Step one done: `runtime/arm7_scan.c` runs the driver's three idle scan loops a whole number of iterations at a time (switch `DP_ARM_FAST=1`, interpreter stays the default until the per-game switch): Power Stone 2 heavy section median 2.26 → 1.02 ms per tick, p99 3.27 → 2.32 (whole session median 2.37 → 1.11), proven byte-identical on the ARM register-write log, a per-tick digest of all ARM state and 2 MB sound RAM, and the mixed audio, on 4 replays (PS2 ×3, Spawn); planted faults are caught. Step two done: `tools/arm7_translate.py` turns the driver's executed code (from the recorder, `DP_ARM_PCS`) into one C function per basic block (`runtime/arm7_native.h`, chained, the interpreter's own cycle and instruction counts, bus accesses and self-modifying stores handled by returning to the interpreter; blocks validate their words on every entry). Switch `DP_ARM_NATIVE=1` (game.json `aica_arm_native`); the interpreter runs whatever the table does not cover. Power Stone 2 heavy section (vblanks 7582–7881, no log, no audio dump): interpreter median 2.28 / p99 4.92 ms, scan skip 0.92 / 2.16, native 0.68 / 1.84 (whole session 2.22 → 1.03 → 0.76). Byte-identical ARM write log, per-tick state and RAM digest, and mixed audio against the interpreter on all 4 replays (PS2 ×3, Spawn with its own table); planted faults in the scan (1, 2) and the native blocks (3, 4) are caught, the no-fault control is identical. The 40–79 ms spikes: seen again as 10–24 ms stalls in a few runs, at different ticks in two runs of the same work, with ordinary instruction and block counts, so host stalls (other jobs on the machine), not ARM work. Step three proven but not live (2026-10-31): the per-game switch (game.json `aica_arm_fast`, `aica_arm_native`, tables in `port/src/aica_native.c`; `DP_ARM_FAST=0 DP_ARM_NATIVE=0` selects the interpreter) is only on local `arm7-native` branches of clones of the game repos (`arm7native` in the games folder: Power Stone 2 `bc2f5e9`, Spawn `2845bb3`), not on the commits the launcher builds, so both games still play on the interpreter. Re-run 2026-11-01 on master `a88a90e` with the launcher's `--engine` build: zero differences (ARM write log, state digest, mixed audio) between the interpreter and those branches on all 5 reference replays: Power Stone 2 ×3 (5,988, 7,881 and 18,471 vblanks), Spawn ×2 (1,174 and 4,658). Planted faults 1–4 caught on all 5 (fault 2 in the log only; the audio stays the same). The launcher's arguments and settings, `--no-window`, real clock, 2560x1600, replays of 7,881 and 4,658 vblanks, interpreter → native, median / p99 ms per tick, with other jobs running on the laptop: Power Stone 2 ARM 2.65 / 6.53 → 0.90 / 2.76, whole tick 4.63 / 19.90 → 3.11 / 13.52; Spawn ARM 2.80 / 11.77 → 0.92 / 2.08, whole tick 5.19 / 16.89 → 2.94 / 12.75. Both games reach the end with exit 0; the whole tick still fails the 6.94 ms target. Build box A on the same build, real window at 1280x960 on a 1920x1080 144 Hz desktop, real sound device, the same replays, quiet (other jobs held; load mean 9%, at most 16%, in 25 samples), two rounds in alternating order, all exit 0 at the end of the replay. Interpreter → native, round one then round two: Power Stone 2 ARM median / p99 3.29 / 8.36 and 3.35 / 10.21 → 1.48 / 2.81 and 1.50 / 3.13, whole tick 5.74 / 19.02 and 5.84 / 20.04 → 4.70 / 12.19 and 4.62 / 13.09, frame p99 29.13 and 33.60 → 17.66 and 18.45, underruns 7 (93 ms silent) and 1 (0 ms) → 2 (1 ms) and 1 (2 ms); Spawn ARM 3.39 / 10.22 and 3.46 / 9.74 → 1.63 / 2.69 and 1.63 / 2.78, whole tick 5.84 / 20.26 and 5.63 / 19.02 → 4.70 / 13.21 and 4.80 / 13.98, frame p99 34.17 and 33.25 → 21.80 and 21.84, underruns 2 (1,682 ms) and 3 (169 ms) → 2 (200 ms) and 3 (154 ms). Native's silence in Spawn is mainly one early 150–180 ms underrun at a tick gap of 216–232 ms, and interpreter round two shows the same (166 ms at 217 ms). Both models show about 59 and 57 shown fps and a 2.2–2.8 s longest frame in Spawn; the 144 fps target is not met with either, and native does not change that on its own. What is not covered: driver paths no replay reaches (the tables were built from these same replays, so no replay tested them independently; code outside the tables runs in the interpreter, slower), differences that appear and undo themselves between the per-vblank digests without changing a logged write or the audio, `launch.py` itself (it would build its own mirrors, so the clones' builds ran with its arguments), a real window at 2560x1600 and on the user's laptop, and anything by ear. Next: go live on the user's yes (the live kit branches need master's kit first, and the game commits land with them), then stage 5 (modern output, one switched change at a time). Whole-replay proof 2026-11-02: the dated notes are in git history (lessons in `docs/LESSONS.md`); the game keys are for the game cards to turn on, with the user's yes for the live move. End state: no interpreter in the default play path, kept selectable as the reference Profiled again 2026-11-05 on build box A (live game, kit a7dede82, the fight, vblanks 7000-12000): the translated driver is on, and a blank's ARM work is about 185k instructions, 82k of them skipped by the scan fast paths and 103k run in about 35k translated block entries, almost none interpreted, at 34 FIQs a blank. An exact idle skip was tried the same day (kit branch `arm-idle` in the fps144 card's clone, not landed: jump whole passes of the idle loop that come back with every register the same, no sound-RAM byte changed, no device access and no FIQ). No pass ever repeated: in each minute of play about 4 to 6 million checks found a sound-RAM byte changed since the last arrival, against about 1 million on registers and almost none on devices or the FIQ. The driver's idle pass keeps time in the sound RAM, so the passes cannot be skipped exactly. Cutting the ARM further needs it off the game thread, or the translated blocks made cheaper. |
 | Guest memory accessors | `runtime/tx/tx_rt.c`, `tc_rt_inline.h` | Power Stone 2: ~30% of game-thread samples; now inline | Done (`port-perf`, frames and audio identical on PS2, Toy Commander, Spawn replays). Game code 6.8 -> 4.9 ms on PS2 |
 | SH-4 FPU and register helpers | `runtime/sh4_rt.c` | Power Stone 2: ~13% of game-thread samples | `sh4_fr`/`sh4_r` family inline; `sh4_ftrv` and `fipr` inline in packed SSE2 with the judged bits (`sh4_vec.h`); `fsca` still a call |
-| Store-queue model | `runtime/tx/`, `tools/tx_sqfast.py` | Power Stone 2: 21.5% of active samples, 1.7 ms of game code | Faster helpers behind `sq_fast`, proven over whole replays on Spawn, Power Stone 2 and Toy Commander (corrected 2026-11-03 for functions whose callees store into the queues, "The store-queue change"); a game's own card turns it on. Later: the queue itself out of the vertex path |
+| Store-queue model | `runtime/tx/`, `tools/tx_sqfast.py` | Power Stone 2: 21.5% of active samples, 1.7 ms of game code | Faster helpers behind `sq_fast`, proven over whole replays on Spawn, Power Stone 2 and Toy Commander (corrected 2026-11-03 for functions whose callees store into the queues, "The store-queue change" in `docs/proofs/runtime/RUNS.md`); a game's own card turns it on. Later: the queue itself out of the vertex path |
 | `tc_call` by guest address (glue lookup, argument copy, guest frame) | `runtime/tx/tx_rt.c`, generated glue | Toy Commander: ~35% of game-thread samples (call_unhooked, glue_of, port_tx_enter, guest_fold) | Lookups cached; the call itself remains. Needs direct calls between translated functions |
 | PowerVR TA lists parsed then drawn | `pvr/ta_parse.c`, `pvr/pvr_render` | Power Stone 2: ~0.84 ms per tick | Open |
 | Saturn VDP1 and VDP2 software renderer | `saturn/sat_vdp*.c` | Robo Pit (build box A, real clock, `/O2`): VDP2 compose 5–8.4 ms per frame; VDP1 draw 0.8–2 ms in the movies and title, 20.8 ms in the ROBOT PLANT menu (full-screen polygon layers drawn per pixel with a division per step). 3597 of 3599 frames over 6.94 ms | VDP2 compose in scanline bands across cores (`base/bands.c`, `--bands`, 4 by default) and frames shown by a thread of their own (`base/present_cpu.c`, `--present-thread`), ee06456a: identical shots, planted faults caught. The user's laptop, launcher path, no window, real clock, fight route: work p99 4.12 ms (VDP2 0.90 median, VDP1 2.08 p99, tick 1.46 p99), 3 of 5599 frames over; before, 12.89 ms. The shown-frame p99 there is not measured (no window, no `play summary`); build box A in a window shows 144.0, shown-frame p99 7.3 ms. Still the software renderer: GPU VDP1/VDP2 and in-between frames are later steps |
@@ -253,124 +234,9 @@ Not emulation, but on the same bill: ports are 32-bit, and the kit compiles at t
 (`port/CMakeLists.txt`). The kit's own C now builds at `/O2` (`PORT_KIT_O2`, on). The game's C at `/O2` (game.json `game_o2`, `PORT_GAME_O2`, `build.py --game-o2`) is
 identical on the Toy Commander replay (24 frames, audio) and ~10% faster; it is off until the other games' replays are proven. On Power Stone 2 it is identical and about 2% faster, so not worth turning on there.
 
-Measured on the main laptop with other agents running, thread-CPU time, `port-perf`, final kit (work per tick: mean / 99th percentile / worst):
-
-| Game | Section | Mean | p99 | Worst | Note |
-|---|---|---|---|---|---|
-| Power Stone 2 | vblanks 7582-7881 | 7.1 | 13.5 | 15 | was 11.4 mean; ARM7 driver 2.0 of it |
-| Spawn | last 300 of replay 20261030-202531 | 8.2 | 13.4 | 280-300 | the ~0.3 s "hitch" is the proof's own PNG dump of a frame (`--dump-frames`, "frame done" 298-317 ms), not the game; see "Spikes" below |
-| Toy Commander | last 300 of replay 20261031-121005 | 17.4 (game C at /O2: 15.7) | 26-30 | 78 | translated game code and `tc_call` |
-
-All three fail 6.94 ms at the 99th percentile.
-
-## Power Stone 2 against 6.94 ms: what still separates it
-
-Main laptop, headless, thread-CPU time, 2560x1464, the fight (blanks 3000-5855 of replay 20261031-232451), three alternating runs each.
-
-| ms per tick | Before | `--sq-fast` | p99 before | p99 `--sq-fast` |
-|---|---|---|---|---|
-| Game code | 5.91-6.16 | 4.24-4.42 | 9.92-10.26 | 6.92-7.10 |
-| Sound CPU (ARM7) | 2.72-2.82 | 2.75-2.80 | 3.97-4.34 | 4.02-4.37 |
-| TA parse | 0.71-0.74 | 0.71-0.73 | 1.26-1.30 | 1.25-1.28 |
-| Direct3D calls | 0.30-0.31 | 0.29-0.30 | 0.42-0.46 | 0.42-0.44 |
-| Whole tick | 9.82-10.20 | 8.15-8.42 | 15.32-15.63 | 12.36-12.62 |
-| Ticks over 16.7 ms (of 2856) | 11-48 | 0 | | |
-
-- **It still fails.** The whole tick is 12.4 ms at p99 against a 6.94 ms budget for a shown frame. Real clock on the laptop, headless,
-  no Present: 60.0 blanks a second, work 7.53 and 8.72 mean, 12.79 and 13.52 p99, shown-frame p99 19.2 ms (the ticks' own 60 Hz).
-- **What is left, by samples** (share of active samples): sound CPU 31.5%, scattered translated bodies (`_body`) 15.3%,
-  `sh4_ftrv` and `fipr` 6%, the helpers' function 6.1% (was 21.5%), `tc_call` and its glue about 5%.
-- **The next pieces.** The sound driver is the largest and has its own session. Even with it gone (about -2.5 ms) the tick stays
-  near 10 ms at p99, so the tick must also leave the presenting thread (a tick on its own thread hands the parsed scene to a
-  presenter): only that can show frames faster than the tick costs. Translated bodies and `sh4_ftrv` are next inside the game.
-- **`--game-o2` on this game is not the answer.** 234 frames and the 17.2 MB sound dump identical, game code 6.01-6.05 against 5.98-6.33
-  in the same rounds, about 2-3% and inside the spread. Left off here.
-- **The store-queue change (`game.json sq_fast`, `build.py --sq-fast`, `tools/tx_sqfast.py`).** Off until a game turns it on; the
-  judged C stays on disk and the judged helpers stay the answer key. Proofs: `tests/test_sq_fast.py` runs 400,000 random stores and
-  sends through both versions (queues compared after each, RAM every 1024) and catches 5 planted faults. Power Stone 2: 234 frames +
-  17.2 MB sound to blank 5855, and 132 frames + 193 MB sound through a whole session to blank 65600, all identical. Spawn: 120 frames +
-  88.6 MB sound to blank 30100, identical; game code 4.24 to 3.95 ms, p99 6.36 to 5.71 (8 functions use them there). ~~Toy Commander has
-  none.~~ Wrong, and the Spawn proof missed a case: see the next point.
-- **Corrected 2026-11-03: a function whose mocked callees store into the queues.** Its judged C carries `src[2][32]`
-  (`sqmodel.sq_callee_helpers`): the RAM byte each queue byte came from. The fast helpers dropped it, so a send wrote wrong bytes: Spawn
-  with translator C for every function lost its main menu's highlight bar (replay 231339, 26 frames). Spawn has 3 such functions
-  (8c057ec0, 8c058030, 8c058150), and the copy proven above had none of them. Toy Commander has 50 store-queue functions, 8 of them
-  such, and its runs had `sq_fast` on both sides. Power Stone 2 has 3, none such, so its helpers are unchanged. The fix: those functions
-  get fast helpers that keep `src`, and a block holding a callee byte is sent byte by byte as the judged helper does. `test_sq_fast`
-  runs them too, and catches the old helpers and 3 planted faults. Whole replays, fixed clock, without `sq_fast` against fixed `sq_fast`:
-  Spawn 231339 (2,866 frames), 225236 (29,771) and the intro (89,429 frames, 265 MB of sound): 0 differ, sound the same; the old
-  helpers make 26 frames differ on 231339. Toy Commander `tc_user` (12,034 blanks, 9,307 frames): 0 differ, sound the same, but the
-  old helpers match too, so this recording never reaches the case, and Toy Commander's 8 are covered only by `test_sq_fast` until a
-  recording does. Build box A window (1729x973), median of 3 runs, game code and frame p99 in ms, without against fixed `sq_fast`:
-  Spawn 231339 2.70/5.88 to 2.46/5.74, 225236 11.18/6.47 to 10.40/6.50, Toy Commander `tc_user` 1.71/14.32 to 1.48/14.08.
-
-## Catch-up and the Saturn kit, corrected
-
-`--catch-up` is the Dreamcast kit's: `pace_next_tick` has one caller, `runtime/host.c`. The Saturn kit keeps its own grid of deadlines
-(`saturn/sat_sys.c`): a late blank keeps the grid, so a tick over a slot is already repaid, and a debt over one period is dropped (6 on the
-Dreamcast kit). The option was parsed there and did nothing, so it is gone from the Saturn kit's list. Robo Pit, headless: 8000 blanks real
-clock through the menu input, 7995 gaps under 25 ms at 50 Hz, no crash.
-
-Dreamcast, headless, real clock, 2560x1464, audio off, on then off: Spawn 60.0 and 60.0 blanks a second, frame p99 19.13 and 19.15.
-Toy Commander (mirror's game, its old `powf`, mission route) 57.5 and 42.9, frame p99 27.40 and 33.51. Fixed clock, on against off:
-Spawn 28 frames and Toy Commander 16 frames identical.
-
-## The look-ahead gate, corrected
-
-The gate by mean gap alone failed Toy Commander's movies on a real window: catch-up lifts them over 40 blanks a second, the mean gap falls
-under 25 ms, the look-ahead turns off and gaps of 50-130 ms underrun. It now also counts long gaps (`LONG_GAP`, over 2 slots): two inside
-about a second are a slow scene too; one is a spike. Build box A, window 1280x960, `--present interp`, opening movies, 100 s, two runs each:
-
-| Build | Blanks/s in the movies | Underruns | Silent |
-|---|---|---|---|
-| Before catch-up and gate (kit 7fcd815, game before `powf`) | 30-42 | 19, 5 | 679, 112 ms |
-| Gate by mean alone, catch-up | 31-53 | 51, 27 | 826, 417 ms |
-| Gate with long gaps, catch-up | 42-57 | 9, 5 | 132, 27 ms |
-
-Power Stone 2's fight is unchanged by it: same build box A, window 1729x973, sound on, new gate with `--sq-fast` 58.7 and 60.0 blanks a second,
-frame p99 28.69 and 21.91, against the old gate without it 59.6 and 56.3, frame p99 22.36 and 36.88. No underruns in the fight's windows;
-look-ahead at its 33 ms floor. Build box A's level moved with other load (sound CPU 4.4-5.7 ms). Fixed clock: 234 frames and the sound dump identical.
-
 ## Work counters
 
 Exact counts of a fixed-clock replay's work catch a slowdown on every commit; timing runs stay the judge of the target. Rows, baselines, proof and limits: `docs/proofs/work_counts/README.md`, `port/README.md`.
-
-## Toy Commander against 6.94 ms: in-between frames
-
-Build box A, real window, real clock, `--present interp`, scripted route of logos, menus, loading and flying in the training mission, 195 s, candidate
-game 3e1b209, kit 9f2f72ce. Draw function against scene blending, two rounds each (round one / round two):
-
-| 1280x960 | Draw function | Scene blending |
-|---|---|---|
-| Shown frames a second | 130.8 / 96.4 | 469.4 / 444.8 |
-| Frame p50, ms | 4.64 / 9.83 | 1.96 / 2.09 |
-| Frame p99, ms | 33.38 / 34.02 | 7.09 / 7.70 |
-| One in-between frame, ms | 4.8-6.1 | 1.0 |
-
-- **Where the time went.** One in-between frame on the draw function in the mission: copy 0.8, game draw 3.7, copy back 1.4 ms, and it runs the game's C. Copying guest
-  RAM was over a third of it. The tick itself is cheap in flight: game code p99 3.2-3.7, TA 0.8-2.5, Direct3D 1.5 ms.
-- **It still fails at larger windows.** 1729x973 (the largest window build box A gives): 340.8 / 344.9 shown a second, frame p99 10.37 / 10.48 ms. The longest gap per 5 s stays 7-18 ms.
-- **What is left.** Tick frames: they are about 7% of shown frames, so the top of them sets p99. In-between frames can't fill a gap while the tick runs on the presenting thread, so the tick must leave it
-  (see "Power Stone 2 against 6.94 ms"). Movies count too: they show 30 frames a second by design, and they are about 0.5% of shown frames here.
-- **`--fps` does not help.** 180 and 240 at 1729x973: gaps stay 11-13 ms, shown 140-177 a second, and with fewer frames the movies alone push p99 to 33-36 ms.
-- **The figure is not the target's.** This route flies only part of the training mission, and a window at 2560x1600 and the user's laptop are not measured.
-
-### In-between frames on their own thread (2026-11-02, `tc-present-thread`)
-
-`--present-thread on` (game.json `present_thread`, `runtime/frame_thread.c`) draws and shows a blended scene's in-between frames on their own thread, so a long tick no longer takes time from them. It is off by default.
-
-Live Toy Commander on the user's laptop, launcher path, no window, 2560x1600, 195 s flying route, `--present tick`: mission work p99 3.79 ms, game 2.65, one blank over 6.94 ms. Before the mission work p99 21.24 ms: 896 of 4799 blanks are over, nearly all game code at 16-18 ms in the opening movie ticks. **The shown-frame p99 on that laptop is not measured:** a run with no window has no `play summary`.
-
-Build box A, real window, flying route, frame p99 from `play summary`:
-
-| Window | Thread on (clean runs) | Thread off (clean runs) |
-|---|---|---|
-| 1729x973 | 5.22, 4.67, 5.20, 5.23, 4.84, 5.24, 5.46 | 10.98, 9.63, 9.96, 11.02 |
-| 1280x960 | 4.28 | 27.54 (one run; the opening at about 50 fps) |
-
-Proof: flying route to blank 14000 on a fixed clock, `--present-thread fixed`, twice on each of three builds, 29240 to 56475 in-between frames a run: 300 frames at 2560x1600 and the 41162944-byte WAV byte-identical to `--present tick`.
-
-Not settled: 3 of 11 thread-on runs and 2 of 7 thread-off runs stalled for seconds, one of them for about 100 s, on a build box A where other jobs were using about 6 cores. The rates are alike, which points away from the thread but does not clear it, and the cause was not found. Stalled runs are left out of the table. The four thread-on runs with lock waits logged did not stall, so they say nothing about it; a stall now leaves `gfx: the game's thread waited` or `frame_extra: an in-between frame took` in the log if the lock or the draw is the cause. Movies stayed shown by the tick at 30 fps with this mode, now `--present-thread hold`; these figures are that mode's.
 
 ## Shown frames: in-between frames per game
 
@@ -397,4 +263,4 @@ A game that names its per-part 3D draw (game.json `part_draw`) gets in-between f
 Planted-fault check: `tests/test_pvr_blend.py` works small scenes by hand (blend values, guards, matching, copying) and
 catches four planted mistakes in `pvr_blend.c`.
 
-Dated notes that were here (playtests, spikes and timings, 2026-10-31 to 2026-11-05) are in git history; what they taught is in `docs/LESSONS.md`, "Ports and frame timing".
+Dated run notes (measurements and proofs, by game) are in `docs/proofs/runtime/RUNS.md`; older ones (playtests, spikes and timings, 2026-10-31 to 2026-11-05) are in git history, and what they taught is in `docs/LESSONS.md`, "Ports and frame timing".

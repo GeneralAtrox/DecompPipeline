@@ -13,6 +13,18 @@ extern "C" {
 typedef struct AudioOut AudioOut;
 
 AudioOut *audio_out_open(u32 rate);                     /* paused; NULL if there is no device (logged) */
+/* A native game's own mixer (base/native_game.h): its samples as it makes them, 32-bit float (1) or 16-bit, 1..8
+ * channels interleaved; the Core's volume and mute apply as to every output. */
+AudioOut *audio_out_open_format(u32 rate, u32 channels, int is_float);
+/* The device asks for sound as it plays (a mixer run on the device's thread): need(user, a, bytes) puts about that much
+ * with audio_out_put. NULL stops asking. */
+void audio_out_pull(AudioOut *a, void (*need)(void *user, AudioOut *a, u32 bytes), void *user);
+void audio_out_gain(AudioOut *a, float gain);           /* the game's own level of this output (its music, its effects), 0..1,
+                                                           under the Core's volume */
+void audio_out_close(AudioOut *a);                      /* the output and what it holds let go */
+void audio_out_pause(AudioOut *a);                      /* it stops taking sound (audio_out_start goes on) */
+void audio_out_lock(AudioOut *a, int on);               /* 1: audio_out_pull's mixer is not running until 0 */
+void audio_out_flush(AudioOut *a);                      /* the end of a sound: what is held is played out whole */
 void audio_out_start(AudioOut *a);                      /* it plays from here */
 void audio_out_put(AudioOut *a, const void *frames, u32 bytes);
 u32 audio_out_queued(AudioOut *a);                      /* bytes not yet played */

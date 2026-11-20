@@ -1,4 +1,4 @@
-"""The Direct3D unpack (vupkd3d128) of the vector helpers in vmx.py, in its own file (the 400-line cap).
+"""The Direct3D unpack (vupkd3d128) and pack (vpkd3d128) of the vector helpers in vmx.py, in its own file (the 400-line cap).
 
 Nearest existing: vmx_dot.py - the same kind of split, for another helper.
 """
@@ -68,3 +68,96 @@ def lift(ft, i, o, V, vcall, s):
         raise TranslateError(f"{o} at {i.addr:08x}: unpack type {i.imm} is not modelled (the oracle has 0..5)")
     ft.vhelpers.add("xv_vupkd3d")
     return [Assign(f"v{i.vd}", vcall("xv_vupkd3d", [V(i.vb), s(i.imm)]))]
+
+
+# vpkd3d128: the Direct3D pack formats, the oracle's TcVmxFloat.vpkd3d (types 0..5), pkFix and pkHalf. Floats are read as they are
+# (the oracle's F does not flush). A field is (f - base) * 2^scale, clamped, truncated; NaN gives the lower bound
+helper("xv_pkfix", """
+static s32 xv_pkfix(u32 w, f64 base, f64 scale, s32 lo, s32 hi)
+{
+    union { f32 f; u32 w; } v;
+    f64 t;
+    v.w = w;
+    if (v.f != v.f) return lo;
+    t = ((f64)v.f - base) * scale;
+    if (t <= (f64)lo) return lo;
+    if (t >= (f64)hi) return hi;
+    return (s32)t;
+}""")
+# Java's Float.floatToFloat16, rounding to nearest even, after the oracle's clamp to +-65504; NaN is 0xfbff
+helper("xv_pkhalf", """
+static u32 xv_pkhalf(u32 w)
+{
+    union { f32 f; u32 w; } v;
+    u32 sg, e, m, h, rest, half;
+    int sh;
+    v.w = w;
+    if (v.f != v.f) return 0xfbffu;
+    if (v.f > 65504.0f) v.f = 65504.0f;
+    if (v.f < -65504.0f) v.f = -65504.0f;
+    sg = (v.w >> 16) & 0x8000u; e = (v.w >> 23) & 255u; m = v.w & 0x7fffffu;
+    if (e >= 113u) {
+        h = ((e - 112u) << 10) | (m >> 13);
+        rest = m & 0x1fffu;
+        if (rest > 0x1000u || (rest == 0x1000u && (h & 1u))) h++;
+        return sg | h;
+    }
+    sh = 126 - (int)e;
+    if (sh > 24) return sg;
+    m |= 0x800000u;
+    h = m >> sh;
+    rest = m & ((1u << sh) - 1u);
+    half = 1u << (sh - 1);
+    if (rest > half || (rest == half && (h & 1u))) h++;
+    return sg | h;
+}""")
+helper("xv_vpkd3d", """
+static xv xv_vpkd3d(xv d, xv b, int t, int mask, int z)
+{
+    const f64 p22 = 4194304.0, p23 = 8388608.0;
+    u32 hi = 0, lo;
+    int p;
+    switch (t) {
+    case 0:
+        lo = ((u32)xv_pkfix(b.w[3], 3.0, p22, 0, 255) << 24) | ((u32)xv_pkfix(b.w[0], 3.0, p22, 0, 255) << 16)
+           | ((u32)xv_pkfix(b.w[1], 3.0, p22, 0, 255) << 8) | (u32)xv_pkfix(b.w[2], 3.0, p22, 0, 255);
+        break;
+    case 1:
+        lo = ((u32)xv_pkfix(b.w[0], 3.0, p22, -32767, 32767) << 16) | ((u32)xv_pkfix(b.w[1], 3.0, p22, -32767, 32767) & 0xffffu);
+        break;
+    case 2:
+        lo = ((u32)xv_pkfix(b.w[3], 1.0, p23, 0, 3) << 30) | (((u32)xv_pkfix(b.w[2], 3.0, p22, -511, 511) & 0x3ffu) << 20)
+           | (((u32)xv_pkfix(b.w[1], 3.0, p22, -511, 511) & 0x3ffu) << 10) | ((u32)xv_pkfix(b.w[0], 3.0, p22, -511, 511) & 0x3ffu);
+        break;
+    case 3:
+        lo = (xv_pkhalf(b.w[0]) << 16) | xv_pkhalf(b.w[1]);
+        break;
+    case 4:
+        hi = ((u32)xv_pkfix(b.w[0], 3.0, p22, -32767, 32767) << 16) | ((u32)xv_pkfix(b.w[1], 3.0, p22, -32767, 32767) & 0xffffu);
+        lo = ((u32)xv_pkfix(b.w[2], 3.0, p22, -32767, 32767) << 16) | ((u32)xv_pkfix(b.w[3], 3.0, p22, -32767, 32767) & 0xffffu);
+        break;
+    default:
+        hi = (xv_pkhalf(b.w[0]) << 16) | xv_pkhalf(b.w[1]);
+        lo = (xv_pkhalf(b.w[2]) << 16) | xv_pkhalf(b.w[3]);
+        break;
+    }
+    /* mask 1: the word at lane 3 - z; mask 2 (and 3 with z < 3): hi:lo at lanes 2 - z, 3 - z, a lane outside 0..3 dropped; mask 3, z 3: hi at lane 3 */
+    if (mask == 1) {
+        d.w[3 - z] = lo;
+    } else if (mask == 2 || (mask == 3 && z < 3)) {
+        p = 2 - z;
+        if (p >= 0) d.w[p] = hi;
+        if (p + 1 >= 0 && p + 1 <= 3) d.w[p + 1] = lo;
+    } else if (mask == 3) {
+        d.w[3] = hi;
+    }
+    return d;
+}""", ["xv_pkfix", "xv_pkhalf"])
+
+
+def lift_pack(ft, i, o, V, vcall, s):
+    from .translate import TranslateError
+    if i.imm > 5:
+        raise TranslateError(f"{o} at {i.addr:08x}: pack type {i.imm} is not modelled (the oracle has 0..5)")
+    ft.vhelpers.add("xv_vpkd3d")
+    return [Assign(f"v{i.vd}", vcall("xv_vpkd3d", [V(i.vd), V(i.vb), s(i.imm), s(i.mask), s(i.z)]))]

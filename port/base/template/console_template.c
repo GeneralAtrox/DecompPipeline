@@ -65,6 +65,13 @@ void console_watch(u32 word, u32 tick)
     (void)tick;
 }
 
+int console_poke(u32 addr, u8 value)
+{
+    (void)addr;
+    (void)value;
+    return 0;
+}
+
 /* ---- the answer-key emulator: none ---- */
 int console_lockstep_pad(HostPad *pad)
 {
@@ -97,6 +104,14 @@ const PortAction *console_actions(unsigned *count)
 }
 
 /* ---- the launcher contract ---- */
+int console_install(const char *image, const char *work, const char *assets) /* the disc copy (install.c) */
+{
+    (void)image;
+    (void)work;
+    (void)assets;
+    return -1;
+}
+
 int console_check_image(const char *image)
 {
     (void)image;

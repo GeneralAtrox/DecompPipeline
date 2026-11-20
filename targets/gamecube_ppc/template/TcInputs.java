@@ -13,6 +13,7 @@ public abstract class TcInputs extends TcBase {
     static final long GEN_HEAP_HI = 0x81040000L;
     static final int GEN_CHUNK = 0x400;
     static final int GEN_MAX_OFFSET = 0x4000;
+    static final int GEN_BLIND = 3;  // repairs a vector may spend on a value that explains no address (repairVec)
 
     static class Vec {
         long[] r = new long[8];       // r3..r10
@@ -23,6 +24,8 @@ public abstract class TcInputs extends TcBase {
         List<byte[]> patchData = new ArrayList<>();
         long genHeapNext = GEN_HEAP_LO;
         Map<Long, Long> genPoked = new HashMap<>();
+        int genBlind;                 // repairVec's repairs that explained no address, GEN_BLIND at most
+        Set<Long> genNulled = new HashSet<>();  // words of our chunks repairVec set to 0 and may still make a pointer
     }
 
     // ---------- random values ----------
@@ -159,10 +162,11 @@ public abstract class TcInputs extends TcBase {
     //   genrange LOC LO HI    LOC (a register rN, or a word, see below) is uniform in [LO, HI] (decimal or 0x hex)
     //   genptr LOC            the word at LOC holds a pointer to a fresh chunk of pointer-rich memory
     //   genstream LOC N V..   the word at LOC holds a pointer to a fresh stream of N words, each picked from V..
-    //                         ("any" picks a random word, "float" a random float's bits)
+    //                         ("any" picks a random word, "float" a random float's bits, "ptr" a fresh chunk)
     //   genret N VAL          mocked call N (0-based) leaves VAL in r3 ("sentinel": the oracle's return address)
     //   genfret N HEX64       and HEX64 (double bits) in f1
-    // LOC is rN or 0xADDR (a global), optionally followed by +0xOFF steps; each step dereferences the pointer before it:
+    // LOC is rN, retN (mocked call N's r3 result, 0-based, N < 16) or 0xADDR (a global), optionally followed by +0xOFF
+    // steps; each step dereferences the pointer before it:
     // "r4+0x1c" is the word at r4+0x1c, "0x80346720+0x10" the word at *(0x80346720)+0x10.
     void applyHints(Vec v, List<String> hints) {
         for (String line : hints) {
@@ -200,7 +204,8 @@ public abstract class TcInputs extends TcBase {
         byte[] d = new byte[4 * n];
         for (int i = 0; i < n; i++) {
             String w = vals[rnd.nextInt(vals.length)];
-            long x = w.equals("any") ? word() : w.equals("float") ? niceFloat() & 0xffffffffL : genNum(w);
+            long x = w.equals("any") ? word() : w.equals("float") ? niceFloat() & 0xffffffffL
+                : w.equals("ptr") ? genChunk(v, 0) : genNum(w);
             genPut(d, 4 * i, x);
         }
         v.patchAddr.add(base);
@@ -220,6 +225,15 @@ public abstract class TcInputs extends TcBase {
             }
             if (!genOwned(v.r[i])) v.r[i] = genChunk(v, 0);
             slot = v.r[i] + genNum(p[1]);
+        } else if (p[0].matches("ret\\d+")) {  // a call result: its pointer is set like a register's
+            int n = Integer.parseInt(p[0].substring(3));
+            if (n >= v.rets.length) throw new IllegalArgumentException("bad call index: " + loc);
+            if (p.length == 1) {
+                v.rets[n] = val;
+                return;
+            }
+            if (!genOwned(v.rets[n])) v.rets[n] = genChunk(v, 0);
+            slot = v.rets[n] + genNum(p[1]);
         } else {
             slot = genNum(p[0]);
             if (p.length > 1) slot = genDeref(v, slot) + genNum(p[1]);
@@ -276,22 +290,190 @@ public abstract class TcInputs extends TcBase {
     // Called after a run faulted at faultAddr (outside RAM, or machine code: R8). loads holds the most recent data
     // loads of that run, oldest first, each {pc, effective address, size, value loaded}. Return the vector with one
     // input changed (a pointer that was not valid made valid), or null to give up.
+    // Every repair re-runs the vector and TcVectors allows 12, so the pointer repair below spends them carefully (Skies
+    // 2026-11-13, about 26 functions out of repairs on chains and arrays of our own chunks, whose words are mostly
+    // 0..15): a word the run wrote itself is no input (genOwnWrite); a word that one instruction read at a stride
+    // through our patch is an array element, and the whole array gets one shared chunk in one repair; a small word of
+    // our own chunk is tried as a null pointer first (the code may test it), and made a chunk if it is read again.
     Vec repairVec(Vec v, long faultAddr, boolean write, List<long[]> loads) {
         for (int i = loads.size() - 1; i >= 0; i--) {
             long[] ld = loads.get(i);
-            long d = faultAddr - ld[3];
-            if (ld[2] != 4 || !genInRam(ld[1]) || d < -0x100 || d >= GEN_MAX_OFFSET || v.genPoked.containsKey(ld[1])) {
-                continue;
+            long d = (int) (faultAddr - ld[3]);   // 32-bit: a null pointer with a negative offset wraps to 0xffffxxxx
+            if (ld[2] != 4 || !genInRam(ld[1]) || d < -0x100 || d >= GEN_MAX_OFFSET || genOwnWrite(v, ld)) continue;
+            if (v.genPoked.containsKey(ld[1])) {
+                if (!v.genNulled.contains(ld[1])) continue;
+                v.genNulled.remove(ld[1]);        // set to 0 last time and still the pointer: a real chunk now
+                genPoke(v, ld[1], genChunk(v, d));
+                return v;
+            }
+            long end = genPatchEnd(v, ld[1]);
+            long s = genStride(loads, ld);
+            if (end > 0 && s > 0) {
+                long lo = ld[1];
+                while (genLoadedBy(loads, ld[0], lo - s) && genPatchEnd(v, lo - s) == end) lo -= s;
+                long p = genChunk(v, d);
+                for (int j = 0; j < 64 && lo + j * s + 4 <= end; j++) {
+                    long a = lo + j * s;
+                    if (v.genPoked.containsKey(a) || genOwnWriteAt(v, loads, a)) continue;
+                    genPoke(v, a, p);
+                }
+                return v;
+            }
+            if (ld[3] >= 1 && ld[3] <= 15 && ld[1] >= GEN_HEAP_LO && ld[1] < v.genHeapNext && genPatched(v, ld[1])) {
+                genPoke(v, ld[1], 0);
+                v.genNulled.add(ld[1]);
+                return v;
             }
             genPoke(v, ld[1], genChunk(v, d));
             return v;
         }
         for (int i = 0; i < 8; i++) {
-            long d = faultAddr - v.r[i];
+            long d = (int) (faultAddr - v.r[i]);
             if (d < -0x100 || d >= GEN_MAX_OFFSET || genOwned(v.r[i])) continue;
             v.r[i] = genChunk(v, d);
             return v;
         }
+        // No single value is near the fault: the address may be a sum (base + scaled index). The newest large value that
+        // is not one of our pointers becomes a small index, but only a value that explains the address (the fault less
+        // it, at an element size, is a RAM base: genSumBase) and only a word this vector set (genPatched: never the
+        // image's constants, which no C reads as an input). Every repair re-runs the vector, and one that explains
+        // nothing spends it: Skies 2026-11-12, an f32 constant at 8034b0ac made 0..15 while a scripted call result was
+        // the pointer (8017cc70: 51 valid vectors to 25), and every store word of a loop run off RAM's end, each re-run
+        // to the step limit (80239108: out of time).
+        for (int i = loads.size() - 1; i >= 0; i--) {
+            long[] ld = loads.get(i);
+            if (ld[2] != 4 || !genPatched(v, ld[1]) || genNotIndex(ld[3]) || !genSumBase(faultAddr, ld[3])
+                || v.genPoked.containsKey(ld[1])) {
+                continue;
+            }
+            genPoke(v, ld[1], rnd.nextInt(16));
+            return v;
+        }
+        for (int i = 0; i < 8; i++) {
+            if (genNotIndex(v.r[i]) || !genSumBase(faultAddr, v.r[i])) continue;
+            v.r[i] = rnd.nextInt(16);
+            return v;
+        }
+        // No value explains the address. A scripted call result near it is the pointer: TcVectors.repair's (null).
+        for (long ret : v.rets) {
+            long d = faultAddr - ret;
+            if (d >= -0x100 && d < GEN_MAX_OFFSET && !genOwned(ret)) return null;
+        }
+        // Otherwise a large value can still be the cause without being a term of the address: a count (Skies 801559bc:
+        // the word at r3 counts a loop of stores, which run off RAM's end) or one term of a sum whose other term is
+        // wrong too (8019ae84: a table base and its index both unset, no base in RAM whichever is taken away). The
+        // newest such word this vector set, read once in the log (a word read by the same instruction again is a
+        // loop's data, 80239108), or else a register, becomes small. Such a repair is a guess, so a vector gets
+        // GEN_BLIND of them, not the 12 that d7eeeada's fallback could spend. The guess is the fixed value 1, so it draws
+        // nothing from rnd and every later vector is the one it would have been. A fault at or near address 0 is a null
+        // pointer, never a count or a sum run off RAM's end: no guess is made for it.
+        if (v.genBlind >= GEN_BLIND || genNearNull(faultAddr)) return null;
+        for (int i = loads.size() - 1; i >= 0; i--) {
+            long[] ld = loads.get(i);
+            if (ld[2] != 4 || !genPatched(v, ld[1]) || genNotIndex(ld[3]) || genReadAt(loads, ld[0]) > 1
+                || v.genPoked.containsKey(ld[1])) {
+                continue;
+            }
+            v.genBlind++;
+            genPoke(v, ld[1], 1);
+            return v;
+        }
+        for (int i = 0; i < 8; i++) {
+            if (genNotIndex(v.r[i])) continue;
+            v.genBlind++;
+            v.r[i] = 1;
+            return v;
+        }
         return null;
+    }
+
+    // Within GEN_MAX_OFFSET above address 0, or 64 KiB below it (a null pointer with a negative offset wraps).
+    boolean genNearNull(long a) {
+        long s = (int) a;
+        return s > -0x10000 && s < GEN_MAX_OFFSET;
+    }
+
+    // The run wrote the word it loaded: our patches hold another value there, so poking it changes nothing.
+    boolean genOwnWrite(Vec v, long[] ld) {
+        long pv = genPatchedValue(v, ld[1]);
+        return pv >= 0 && pv != (ld[3] & 0xffffffffL);
+    }
+
+    boolean genOwnWriteAt(Vec v, List<long[]> loads, long addr) {
+        for (long[] ld : loads) if (ld[2] == 4 && ld[1] == addr && genOwnWrite(v, ld)) return true;
+        return false;
+    }
+
+    // The word our patches put at addr (the last patch holding all of it wins), or -1 when no patch does.
+    long genPatchedValue(Vec v, long addr) {
+        long w = -1;
+        for (int i = 0; i < v.patchAddr.size(); i++) {
+            long lo = v.patchAddr.get(i);
+            byte[] b = v.patchData.get(i);
+            if (addr < lo || addr + 4 > lo + b.length) continue;
+            int o = (int) (addr - lo);
+            w = 0;
+            for (int k = 0; k < 4; k++) w = (w << 8) | (b[o + k] & 0xff);
+        }
+        return w;
+    }
+
+    // The end of the largest patch holding the word at addr, or -1.
+    long genPatchEnd(Vec v, long addr) {
+        long end = -1;
+        for (int i = 0; i < v.patchAddr.size(); i++) {
+            long lo = v.patchAddr.get(i);
+            long hi = lo + v.patchData.get(i).length;
+            if (addr >= lo && addr + 4 <= hi && hi > end) end = hi;
+        }
+        return end;
+    }
+
+    // The stride at which the instruction that made load ld also read the words below it (an array walked by a loop):
+    // the smallest whole-word distance down to another of its 4-byte loads, at most GEN_CHUNK; 0 when there is none.
+    long genStride(List<long[]> loads, long[] ld) {
+        long s = 0;
+        for (long[] o : loads) {
+            long k = ld[1] - o[1];
+            if (o[0] != ld[0] || o[2] != 4 || k <= 0 || k % 4 != 0 || k > GEN_CHUNK) continue;
+            if (s == 0 || k < s) s = k;
+        }
+        return s;
+    }
+
+    boolean genLoadedBy(List<long[]> loads, long pc, long addr) {
+        for (long[] ld : loads) if (ld[0] == pc && ld[2] == 4 && ld[1] == addr) return true;
+        return false;
+    }
+
+    // How many of the logged loads the instruction at pc made.
+    int genReadAt(List<long[]> loads, long pc) {
+        int n = 0;
+        for (long[] ld : loads) if (ld[0] == pc) n++;
+        return n;
+    }
+
+    // Already a small index, or a pointer into RAM (ours or the game's): not what made the sum land outside RAM.
+    boolean genNotIndex(long x) {
+        return x < 0x100 || genOwned(x) || genInRam(x);
+    }
+
+    // The fault is base + x * size for an element size of 1 to 64 bytes and a base in RAM (a field offset past it
+    // allowed): x can be the index.
+    boolean genSumBase(long faultAddr, long x) {
+        for (int k = 0; k <= 6; k++) {
+            long base = (faultAddr - (x << k)) & 0xffffffffL;
+            if (base >= RAM_LO && base < RAM_HI + GEN_MAX_OFFSET) return true;
+        }
+        return false;
+    }
+
+    // The word at addr lies in one of this vector's patches (scratch, chunks, named globals, stack arguments).
+    boolean genPatched(Vec v, long addr) {
+        for (int i = 0; i < v.patchAddr.size(); i++) {
+            long lo = v.patchAddr.get(i);
+            if (addr >= lo && addr + 4 <= lo + v.patchData.get(i).length) return true;
+        }
+        return false;
     }
 }

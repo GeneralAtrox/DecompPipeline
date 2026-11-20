@@ -45,7 +45,7 @@ static int goes_out(u32 a) { return !((a ^ port_tx_spin_bits) & port_tx_spin_mas
 
 int main(void)
 {
-    static const int quick[] = {5}, over[] = {11}, mixed[] = {5, 5, 5, 12}, slow[] = {25};
+    static const int quick[] = {5}, over[] = {11}, mixed[] = {5, 5, 5, 12}, slow[] = {25}, crawl[] = {75};
     unsigned long long due = 100;
     printf("quick %d %d\n", blanks(quick, 1, 1), blanks(quick, 1, 0));
     printf("over %d %d\n", blanks(over, 1, 1), blanks(over, 1, 0));
@@ -54,6 +54,9 @@ int main(void)
     printf("late %llu\n", pace_next(&due, 104, 1));
     due = 100;
     printf("stall %llu\n", pace_next(&due, 106, 1));
+    due = 100;
+    printf("stall_old %llu\n", pace_next(&due, 106, 2));
+    printf("crawl %d %d\n", blanks(crawl, 1, 1), blanks(crawl, 1, 2));
     printf("none %d %d\n", goes_out(0x8c000000u), goes_out(0xffffffffu));
     port_spin_word(0x8c123450u);
     printf("one %d %d %d %d\n", goes_out(0x8c123450u), goes_out(0xac123450u), goes_out(0x0c123454u), goes_out(0x8c000000u));
@@ -105,8 +108,15 @@ class HostPaceTests(unittest.TestCase):
         self.assertEqual(off, 300)
 
     def test_a_small_debt_is_kept_and_a_stall_is_dropped(self):
+        """A stall's blank is due at once (106, the boundary just passed); the old rule (catch_up 2, PACE_DROP_NOW=0) waited for 107."""
         self.assertEqual(self.out["late"], "101")
-        self.assertEqual(self.out["stall"], "107")
+        self.assertEqual(self.out["stall"], "106")
+        self.assertEqual(self.out["stall_old"], "107")
+
+    def test_a_tick_far_over_never_waits(self):
+        """7.5 slots each, past the debt's limit every tick: 80 ticks in 600 slots with no wait; the old rule waited for the next
+        boundary each time (8 slots a tick, 75), the 8.2 ms in every Too Human gameplay frame on build box A (2026-11-14)."""
+        self.assertEqual(self.out["crawl"], "80 75")
 
     def test_the_read_filter(self):
         self.assertEqual(self.out["none"], "0 1")

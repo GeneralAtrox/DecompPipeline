@@ -16,6 +16,9 @@ import ppc_compare as cmp
 SOURCES = ("runner.c", "tc_rt.c", "tc_ppc.c")
 
 
+W2S = "static f32 tc_w2s(u32 w)\n{\n    union { f32 f; u32 w; } v;\n    v.w = w;\n    return v.f;\n}\n"
+
+
 def lint(src, meta):
     """core/lint's rules (R2-R6), with the float rule worded for this target: f64 is the register type here."""
     out = []
@@ -32,14 +35,17 @@ def gen_thunk(meta):
             e = f"r[{int(st[1:]) - 3}]"
             if kind == "s32":
                 e = f"(s32){e}"
-            elif kind in ("f32", "f64"):
+            elif kind == "f32":  # Ghidra typed an integer register float: the float whose bits the register holds
+                e = f"tc_w2s({e})"
+            elif kind == "f64":
                 raise ValueError(f"float parameter {p['name']} in {st}")
         elif re.fullmatch(r"f[1-8]", st):
             e = f"f[{int(st[1:]) - 1}]"
             if kind == "f32":
                 e = f"(f32){e}"
         elif st == "stack":
-            a = cmp.SP + p["stack_offset"]
+            off = p["stack_offset"]  # a char/short is promoted to its whole word (r1+11 -> the word at r1+8)
+            a = cmp.SP + (off & ~3 if kind not in ("f32", "f64") else off)
             e = {"f32": f"rdf32(0x{a:08x}u)", "f64": f"rdf64(0x{a:08x}u)", "s32": f"(s32)rd32(0x{a:08x}u)"}.get(
                 kind, f"rd32(0x{a:08x}u)")
         else:
@@ -55,8 +61,9 @@ def gen_thunk(meta):
         body = f"{call};"
     else:
         body = f"*out_r3 = (u32){call};"
+    w2s = W2S if any("tc_w2s(" in a for a in args) else ""
     return f"""#include "tc_rt.h"
-{meta['signature']};
+{w2s}{meta['signature']};
 void tc_thunk(const u32 *r, const f64 *f, u32 *out_r3, u32 *out_r4, f64 *out_f1);
 void tc_thunk(const u32 *r, const f64 *f, u32 *out_r3, u32 *out_r4, f64 *out_f1)
 {{

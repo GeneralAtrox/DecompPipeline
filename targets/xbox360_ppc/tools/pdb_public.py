@@ -182,7 +182,7 @@ def build(a):
         apply(by_name[name], recs[folder], log)
         n += 1
     text = render(rows, tail, n, a.date)
-    banned = re.findall(r"(?i)(laptop2?|magnus|LOCATIONS|RESEARCH_SYMBOLS|[CD]:\\|Too Human's)", text)
+    banned = re.findall(r"(?i)(laptop\w*|build box [AB]|LOCATIONS|RESEARCH_SYMBOLS|[CD]:\\|Too Human's)", text)
     if banned:
         print("not public-ready:", sorted(set(banned)))
         return 1

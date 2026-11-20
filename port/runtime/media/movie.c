@@ -2,7 +2,8 @@
  * demultiplexed a little ahead of the picture, its ADX sound goes into the kit's mix (media_mix) and the sound's
  * clock picks each picture: at each vertical blank the video is decoded up to the frame whose time the sound has
  * reached, and that frame is drawn over the game's picture (gfx/gfx_movie.c). A movie without sound runs on the
- * vertical blanks (60 a second). The movie ends when its last picture has been shown and its sound has played out. */
+ * vertical blanks (60 a second). The movie ends when its last picture has been shown and its sound has played out.
+ * A file still coming in (media_movie_behind) is read only as far as its fill has reached: demux waits for it. */
 #include <stdlib.h>
 #include <string.h>
 #include "platform.h" /* port_add_vblank_task, port_log */
@@ -15,6 +16,9 @@
 
 struct MediaMovie {
     u8 *file;         /* the whole file, read in by the caller (media_movie_load) */
+    void *fill;       /* the file still coming in, or NULL (media_movie_behind) */
+    int (*fill_wait)(void *fill, u32 bytes);
+    void (*fill_end)(void *fill);
     u32 size, fpos;
     SfdDemux d;
     Mpv v;
@@ -36,6 +40,10 @@ static void demux(MediaMovie *m)
     u32 n = m->size - m->fpos > CHUNK ? CHUNK : m->size - m->fpos;
     int eof = m->fpos + n >= m->size;
     if (m->d.ended) return;
+    if (m->fill && !m->fill_wait(m->fill, m->fpos + n)) { /* a read error: the movie ends where the file did */
+        port_log("movie: the file stops at %u of %u bytes (a read error)\n", m->fpos, m->size);
+        m->size = m->fpos, n = 0, eof = 1;
+    }
     m->fpos += sfd_parse(&m->d, m->file + m->fpos, n, eof);
     if (eof && m->fpos >= m->size) m->d.ended = 1;
     if (!m->have_sound && adx_parse(m->d.audio, m->d.alen, &m->a.h)) {
@@ -142,6 +150,15 @@ void media_movie_frame(void)
         if (live(g_live[i])) pictures(g_live[i]);
 }
 
+/* the fill stopped before the file is let go: nothing writes to it after */
+static void let_go(MediaMovie *m)
+{
+    if (m->fill) m->fill_end(m->fill);
+    m->fill = NULL;
+    free(m->file);
+    m->file = NULL;
+}
+
 static void drop(MediaMovie *m)
 {
     for (u32 i = 0; i < 4u; i++)
@@ -163,7 +180,7 @@ u8 *media_movie_load(MediaMovie *m, u32 size)
 {
     if (!m) return NULL;
     media_movie_stop(m);
-    free(m->file);
+    let_go(m);
     m->file = malloc(size ? size : 1u);
     return m->file;
 }
@@ -172,14 +189,19 @@ int media_movie_start(MediaMovie *m, u32 size)
 {
     s32 gain;
     u8 *file;
+    void *fill;
+    int (*fill_wait)(void *fill, u32 bytes);
+    void (*fill_end)(void *fill);
     u32 i;
     if (!m || !m->file) return 0;
     gain = m->gain;
     file = m->file;
+    fill = m->fill, fill_wait = m->fill_wait, fill_end = m->fill_end;
     media_movie_stop(m);
     memset(m, 0, sizeof *m);
     m->gain = gain;
     m->file = file;
+    m->fill = fill, m->fill_wait = fill_wait, m->fill_end = fill_end;
     m->size = size;
     for (i = 0; i < 4u && g_live[i]; i++) {}
     if (i == 4u) return 0;
@@ -196,21 +218,26 @@ void media_movie_stop(MediaMovie *m)
     if (!m || m->state == MEDIA_TALK_STOP) return;
     drop(m);
     m->state = MEDIA_TALK_STOP;
-    free(m->file); /* a movie's file is large: not kept for the next */
-    m->file = NULL;
+    let_go(m); /* a movie's file is large: not kept for the next */
 }
 
 void media_movie_free(MediaMovie *m)
 {
     media_movie_stop(m);
-    if (m) free(m->file);
+    if (m) let_go(m);
     free(m);
 }
 
 void media_movie_fail(MediaMovie *m)
 {
     media_movie_stop(m);
-    if (m) m->state = MEDIA_TALK_PLAYEND;
+    if (m) let_go(m), m->state = MEDIA_TALK_PLAYEND;
+}
+
+void media_movie_behind(MediaMovie *m, void *fill, int (*wait)(void *fill, u32 bytes), void (*end)(void *fill))
+{
+    if (!m || !fill) return;
+    m->fill = fill, m->fill_wait = wait, m->fill_end = end;
 }
 
 void media_movie_volume(MediaMovie *m, s32 centibels) { if (m) m->gain = media_gain(centibels); }

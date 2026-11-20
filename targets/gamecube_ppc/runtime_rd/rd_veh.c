@@ -247,7 +247,7 @@ int rd_veh_install(void)
     return AddVectoredExceptionHandler(1, handler) != NULL;
 }
 
-void tcrt_set_call_returns(const u32 rets[16], const u64 frets[16])
+void tcrt_set_call_returns(const u32 rets[TCRT_RETS], const u64 frets[TCRT_RETS])
 {
     memcpy(g_rets, rets, sizeof g_rets);
     memcpy(g_frets, frets, sizeof g_frets);

@@ -13,6 +13,9 @@
 static uint32_t (*s_size)(void);
 static void (*s_open)(void *, const uint8_t *, uint32_t, uint32_t);
 static float (*s_at)(void *, uint32_t);
+static void (*s_popen)(void *, uint32_t);
+static void (*s_popen_ch)(void *, uint32_t, uint32_t);
+static int (*s_pframe)(void *, const uint8_t *, uint32_t, uint32_t *, int, float *);
 
 /* Only from beside the exe: the search path could find some other file of the name */
 static int load(void)
@@ -45,7 +48,11 @@ static int load(void)
         port_log("sound: xma_decoder.dll lacks a function, so XMA sounds are silent\n");
         return 0;
     }
-    port_log("sound: XMA from xma_decoder.dll\n");
+    s_popen = (void (*)(void *, uint32_t))GetProcAddress(lib, "xma_packets_open");   /* optional: without them Too Human's contexts stay silent */
+    s_popen_ch = (void (*)(void *, uint32_t, uint32_t))GetProcAddress(lib, "xma_packets_open_channels");   /* optional too: stereo contexts */
+    s_pframe = (int (*)(void *, const uint8_t *, uint32_t, uint32_t *, int, float *))GetProcAddress(lib, "xma_packets_frame");
+    if (!s_popen || !s_pframe) s_popen = NULL, s_popen_ch = NULL;
+    port_log("sound: XMA from xma_decoder.dll%s\n", s_popen_ch ? ", packet-fed voices too, mono and stereo" : s_popen ? ", packet-fed mono voices too" : "");
     return 1;
 }
 
@@ -63,4 +70,21 @@ void *xb_xma_open(void *stream, const uint8_t *data, uint32_t bytes, uint32_t ra
 float xb_xma_at(void *stream, uint32_t sample)
 {
     return stream ? s_at(stream, sample) : 0.0f;
+}
+
+void *xb_xma_packets_open(void *stream, uint32_t rate, uint32_t channels)
+{
+    if (!load() || !s_popen || (channels != 1 && !s_popen_ch)) return NULL;
+    if (!stream) {
+        stream = malloc(s_size());
+        if (!stream) xb_stop("out_of_memory", "an XMA stream", s_size());
+    }
+    if (s_popen_ch) s_popen_ch(stream, rate, channels);
+    else s_popen(stream, rate);
+    return stream;
+}
+
+int xb_xma_packets_frame(void *stream, const uint8_t *data, uint32_t bits, uint32_t *pos, int final, float *out)
+{
+    return s_pframe(stream, data, bits, pos, final, out);
 }

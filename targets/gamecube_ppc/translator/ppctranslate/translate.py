@@ -13,6 +13,8 @@ The guest model is DecompPipeline's judge model (targets/gamecube_ppc: target.js
   argument registers in TcArgs; afterwards r3 (or f1) is the result and r0, r4..r12, f0, f2..f13 and CTR are 0, as
   the oracle's mocked callee leaves them; CR, XER, r14..r31 and f14..f31 are kept;
 - CodeWarrior's register save/restore helpers (_savegpr_NN, _restgpr_NN and family) run inline, as in the oracle;
+  a function that is itself a helper entry is its chain to the blr, entered with r11, r14..r31 and f14..f31 from the
+  vector (tc_inr, tc_inf: DP's TcVectors.frame), as the oracle enters it;
 - a computed branch through a table of addresses inside the body (bctr after lwzx from a constant table) is a switch;
 - single-precision results are (f64)(f32)(double operation); stfs stores with the 750CL's conversion (wrf32d);
   fctiw/fctiwz leave the 750CL's upper word; fmadds and family use DP's helpers (the oracle's two roundings).
@@ -30,6 +32,8 @@ from .decode import Insn, disasm
 from .expr import Call, Const, Var, ZERO, FZERO, u, s, load
 from .ir import Assign, Block, CallS, Comment, Goto, If, Ret, Store, Switch
 from .frames import attach_exit_regs, generic_ret, recursive_f1
+from .regs import CA, CR, CRB, F, OV, P, R, RA0, SO, U64, crname, vtype  # noqa: F401
+from .system import MSR_ENTRY, SystemOps
 
 
 class TranslateError(Exception):
@@ -89,54 +93,6 @@ class Signature:
         return cls(name, "", params, "u32", None, True)
 
 
-CRB = ("lt", "gt", "eq", "so")
-U64 = "u64"
-
-
-def crname(bit):
-    return f"c{bit // 4}{CRB[bit % 4]}"
-
-
-def vtype(name):
-    if re.fullmatch(r"[fp]\d+", name):
-        return "f64"
-    if re.fullmatch(r"c\d(lt|gt|eq|so)", name) or name in ("ca", "so", "ov"):
-        return "flag"
-    return "u32"
-
-
-def R(n):
-    return Var(f"r{n}", "u32")
-
-
-def F(n):
-    return Var(f"f{n}", "f64")
-
-
-def P(n):
-    return Var(f"p{n}", "f64")
-
-
-def CR(bit):
-    return Var(crname(bit), "flag")
-
-
-def CA():
-    return Var("ca", "flag")
-
-
-def SO():
-    return Var("so", "flag")
-
-
-def OV():
-    return Var("ov", "flag")
-
-
-def RA0(n):
-    return ZERO if n == 0 else R(n)
-
-
 def mask32(mb, me):
     a = 0xFFFFFFFF >> mb
     b = (0xFFFFFFFF << (31 - me)) & 0xFFFFFFFF
@@ -191,7 +147,17 @@ def gpr_writes(i: Insn):
     return out
 
 
-class FunctionTranslator:
+VOLATILE_GPR = frozenset([0, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12])   # a call may change them
+
+
+def gpr_writes_any(insns):
+    out = set()
+    for i in insns:
+        out |= gpr_writes(i)
+    return out
+
+
+class FunctionTranslator(SystemOps):
     def __init__(self, dol, entry, sig: Signature, facts: Facts, body, entries=None, comments=False):
         self.dol, self.entry, self.sig, self.facts = dol, entry, sig, facts
         self.body = sorted(body)              # [(lo, hi_exclusive)]
@@ -206,6 +172,7 @@ class FunctionTranslator:
         self.extra = []                       # synthetic blocks, laid out after the real ones
         self.nsyn = 0
         self.recursive = False                # bl to its own entry: the body is px_rec(sp_, ...), called for real
+        self._flows = None                    # flows(): direct predecessors, built on first use
 
     # ------------------------------------------------------------------------------------------------- body
     def in_body(self, a):
@@ -219,26 +186,9 @@ class FunctionTranslator:
     def is_helper(self, t):
         """CodeWarrior's register save/restore helpers (DP TcFlow.isSaveHelper's rule): only (r11)-based GPR/FPR/
         paired-single moves, mtlr r0 and mr r1,r11, ending in blr."""
-        if self.in_body(t) or not self.dol.has(t, 4):
+        if self.in_body(t):
             return None
-        out = []
-        a = t
-        for n in range(40):
-            if not self.dol.has(a, 4):
-                return None
-            i = self.dol.insn(a)
-            if i.op == "bclr" and (i.bo & 0x14) == 0x14 and not i.lk:
-                return out if n > 0 else None
-            if i.op in ("stw", "stfd", "lwz", "lfd", "psq_st", "psq_l") and i.ra == 11:
-                out.append(i)
-            elif i.op == "mtspr" and i.spr == 8 and i.rd == 0:
-                out.append(i)
-            elif i.op == "or" and i.ra == 1 and i.rs == 11 and i.rb == 11:
-                out.append(i)
-            else:
-                return None
-            a += 4
-        return None
+        return helper_walk(self.dol, t)
 
     def explore(self):
         seen, leaders, work = set(), {self.entry}, [self.entry]
@@ -339,6 +289,64 @@ class FunctionTranslator:
             return None
         return None
 
+    def flows(self):
+        """{address: [addresses of the body's instructions that can run just before it]}, without the targets of
+        computed jumps (a case block is reached only through its table)."""
+        if self._flows is None:
+            self._flows = {}
+            for lo, hi in self.body:
+                for q in range(lo, hi, 4):
+                    if not self.dol.has(q, 4):
+                        continue
+                    i = self.dol.insn(q)
+                    o, out = i.op, [q + 4]
+                    always = o in ("bc", "bclr", "bcctr") and (i.bo & 0x14) == 0x14
+                    if o == "b" and not i.lk:
+                        out = [i.target]
+                    elif o == "bc" and not i.lk:
+                        out = [i.target] if always else [q + 4, i.target]
+                    elif (o in ("bclr", "bcctr") and always and not i.lk) or o in ("rfi", "illegal") or (
+                            o in ("tw", "twi") and i.to == 31):
+                        out = []
+                    for t in out:
+                        self._flows.setdefault(t, []).append(q)
+        return self._flows
+
+    def const_before(self, reg, a, depth=0):
+        """The constant GPR reg holds before the instruction at a, when every path of direct flow from the entry
+        sets it to that one constant (lis, addi, ori, mr) and no call lies between; else None. A path through a
+        computed jump is not followed: the caller's switch keeps a default for any other target."""
+        if depth > 4:
+            return None
+        vals, seen, work = set(), {a}, [a]
+        while work:
+            p = work.pop()
+            if p == self.entry:
+                return None                  # as the caller left it
+            for q in self.flows().get(p, ()):
+                i = self.dol.insn(q)
+                o = i.op
+                if o in ("b", "bc", "bclr", "bcctr") and i.lk and reg in VOLATILE_GPR:
+                    return None
+                if reg in gpr_writes(i):
+                    if o == "addi" or o == "addis":
+                        b = 0 if i.ra == 0 else self.const_before(i.ra, q, depth + 1)
+                        v = None if b is None else (b + (i.simm << (16 if o == "addis" else 0))) & 0xFFFFFFFF
+                    elif o == "ori":
+                        b = self.const_before(i.rs, q, depth + 1)
+                        v = None if b is None else b | i.uimm
+                    elif o == "or" and i.rs == i.rb:
+                        v = self.const_before(i.rs, q, depth + 1)
+                    else:
+                        v = None
+                    if v is None:
+                        return None
+                    vals.add(v)
+                elif q not in seen:
+                    seen.add(q)
+                    work.append(q)
+        return vals.pop() if len(vals) == 1 else None
+
     def jump_table(self, i):
         tr = self.trace_back(i.addr)
         src = None
@@ -361,6 +369,8 @@ class FunctionTranslator:
                     if b == 0:
                         continue
                     v = self.resolve(b, tr, j + 1)
+                    if v is None and b not in gpr_writes_any(tr[j + 1:]):
+                        v = self.const_before(b, tr[-1].addr)  # set before the straight run: outside a loop
                     if v is not None:
                         base, idx_reg = v, ix
                         break
@@ -434,13 +444,11 @@ class FunctionTranslator:
             if regs is not None:
                 auto = False
                 for rg in regs:
+                    if not re.fullmatch(r"r([3-9]|10)|f[1-8]|s[0-7]", rg):   # was dropped, or indexed past TcArgs
+                        raise TranslateError(f"call at {addr:08x}: argument register {rg} is not one TcArgs holds")
                     k = int(rg[1:])
-                    if rg[0] == "r":
-                        args.append(("r", k - 3, R(k)))
-                    elif rg[0] == "f":
-                        args.append(("f", k - 1, F(k)))
-                    elif rg[0] == "s":
-                        args.append(("s", k, load("rd32", X.add(R(1), u(8 + 4 * k)))))
+                    args.append(("r", k - 3, R(k)) if rg[0] == "r" else ("f", k - 1, F(k)) if rg[0] == "f" else
+                                ("s", k, load("rd32", X.add(R(1), u(8 + 4 * k)))))
         out = [CallS(target, args, addr, auto=auto)]
         out.append(Clobber("r0", ZERO))
         out.append(Clobber("r4", Call("tc_lastr4", [], "u32")))  # r3:r4, a 64-bit result's low word
@@ -495,10 +503,17 @@ class FunctionTranslator:
         for k in range(8):
             if f"gqr{k}" in self.facts.fixed:
                 st.append(Assign(f"gqr{k}", u(self.facts.fixed[f"gqr{k}"])))
+        if any(self.dol.insn(a).op in ("mfmsr", "mtmsr") for a in addrs):
+            st.append(Assign("msr", u(MSR_ENTRY)))
         for name, kind, stg, off in self.sig.params:
             pv = Var(name, kind)
             if re.fullmatch(r"r([3-9]|10)", stg):
-                st.append(Assign(stg, X.to_u32(pv)))
+                if kind == "f32":             # Ghidra typed an integer register float: it holds the float's bits
+                    st.append(Assign(stg, Call("px_s2w", [pv], "u32")))
+                elif kind == "f64":
+                    raise TranslateError(f"f64 parameter {name} in {stg}")
+                else:
+                    st.append(Assign(stg, X.to_u32(pv)))
             elif re.fullmatch(r"f[1-8]", stg):
                 st.append(Assign(stg, X.cast("f64", pv)))
             elif stg == "stack":
@@ -923,66 +938,6 @@ class FunctionTranslator:
         return self.setcmp(i.crfd, SO(), OV(), CA(), ZERO)[:3] + [Assign(f"c{i.crfd}so", ZERO)] + [
             Assign("so", ZERO), Assign("ov", ZERO), Assign("ca", ZERO)]
 
-    def spr_var(self, spr):
-        if spr == 8:
-            return "lr"
-        if spr == 9:
-            return "ctr"
-        if 912 <= spr <= 919:
-            return f"gqr{spr - 912}"
-        if spr in (268, 284):
-            return "tbl"
-        if spr in (269, 285):
-            return "tbu"
-        return f"spr{spr}"
-
-    def op_mfspr(self, i):
-        if i.spr == 1:
-            e = X.bor(X.bor(X.bor(X.shl(X.cast("u32", SO()), 31), X.shl(X.cast("u32", OV()), 30)),
-                            X.shl(X.cast("u32", CA()), 29)), Var("xbc", "u32"))
-            return [Assign(f"r{i.rd}", e)]
-        return [Assign(f"r{i.rd}", Var(self.spr_var(i.spr), "u32"))]
-
-    op_mftb = op_mfspr
-
-    def op_mtspr(self, i):
-        rs = R(i.rd)
-        if i.spr == 1:
-            return [Assign("so", X.band(X.shr(rs, 31), X.ONE)), Assign("ov", X.band(X.shr(rs, 30), X.ONE)),
-                    Assign("ca", X.band(X.shr(rs, 29), X.ONE)), Assign("xbc", X.band(rs, u(0x7F)))]
-        v = self.spr_var(i.spr)
-        if v.startswith("gqr"):
-            self.gqr_written.add(int(v[3:]))
-        return [Assign(v, rs)]
-
-    def op_mfmsr(self, i):
-        return [Assign(f"r{i.rd}", Var("msr", "u32"))]
-
-    def op_mtmsr(self, i):
-        return [Assign("msr", R(i.rs))]
-
-    def op_mfsr(self, i):
-        return [Assign(f"r{i.rd}", Var(f"sr{i.sr}", "u32"))]
-
-    def op_mtsr(self, i):
-        return [Assign(f"sr{i.sr}", R(i.rd))]
-
-    def op_mfsrin(self, i):
-        return [Assign(f"r{i.rd}", Var("srin", "u32"))]
-
-    def op_mtsrin(self, i):
-        return [Assign("srin", R(i.rd))]
-
-    def op_sc(self, i):
-        self.notes.append(f"sc at {i.addr:08x}: a call to the system call vector 0x80000c00")
-        return self.call(u(0x80000C00), i.addr)
-
-    def op_tw(self, i):
-        self.notes.append(f"conditional trap at {i.addr:08x}: not modelled")
-        return [Comment("trap (not modelled)")]
-
-    op_twi = op_tw
-
     # memory -----------------------------------------------------------------------------------------------
     def int_load(self, i):
         o = i.op
@@ -1020,7 +975,7 @@ class FunctionTranslator:
     def int_store(self, i):
         o = i.op
         upd = o.endswith("u") or o.endswith("ux")
-        ea = self.ea_x(i) if o.endswith("x") else self.ea_d(i)
+        ea = self.ea_x(i) if o.endswith("x") or o == "stwcx." else self.ea_d(i)   # stwcx. is indexed too
         rs = R(i.rs if "rs" in i.f else i.rd)
         base = o.rstrip("x").rstrip("u") if o not in ("stwcx.", "stwbrx", "sthbrx") else o
         out = []
@@ -1256,13 +1211,10 @@ class FunctionTranslator:
             e0, e1 = c0, ar("+", a0, b1)
         elif o == "ps_sel":
             e0, e1 = Call("ppc_fsel", [a0, c0, b0], "f64"), Call("ppc_fsel", [a1, c1, b1], "f64")
-        elif o == "ps_res":
-            self.notes.append(f"ps_res at {i.addr:08x}: exact reciprocal (estimate not modelled)")
-            e0, e1 = div(Const(1.0, "f64"), b0), div(Const(1.0, "f64"), b1)
-        elif o == "ps_rsqrte":
-            self.notes.append(f"ps_rsqrte at {i.addr:08x}: 1/sqrt in single (estimate not modelled)")
-            self.helpers.add("rsqrt")
-            e0, e1 = rnd(Call("px_rsqrt", [b0], "f64")), rnd(Call("px_rsqrt", [b1], "f64"))
+        elif o == "ps_res":  # fres's table estimate on each slot (TcPaired)
+            e0, e1 = Call("ppc_fres", [b0], "f64"), Call("ppc_fres", [b1], "f64")
+        elif o == "ps_rsqrte":  # frsqrte's table estimate, rounded to single
+            e0, e1 = rnd(Call("ppc_frsqrte", [b0], "f64")), rnd(Call("ppc_frsqrte", [b1], "f64"))
         elif o == "ps_neg":
             e0, e1 = X.fneg(b0), X.fneg(b1)
         elif o == "ps_abs":
@@ -1445,10 +1397,52 @@ def var_types(ft, blocks):
     return types
 
 
+def helper_walk(dol, t):
+    """The instructions of the save/restore helper chain entered at t up to its blr (FunctionTranslator.is_helper's
+    rule), or None when t is not a helper entry."""
+    if not dol.has(t, 4):
+        return None
+    out = []
+    a = t
+    for n in range(40):
+        if not dol.has(a, 4):
+            return None
+        i = dol.insn(a)
+        if i.op == "bclr" and (i.bo & 0x14) == 0x14 and not i.lk:
+            return out if n > 0 else None
+        if i.op in ("stw", "stfd", "lwz", "lfd", "psq_st", "psq_l") and i.ra == 11:
+            out.append(i)
+        elif i.op == "mtspr" and i.spr == 8 and i.rd == 0:
+            out.append(i)
+        elif i.op == "or" and i.ra == 1 and i.rs == 11 and i.rb == 11:
+            out.append(i)
+        else:
+            return None
+        a += 4
+    return None
+
+
+FRAME_REG = re.compile(r"([rf])(11|1[4-9]|2\d|3[01])")
+
+
+def frame_entry(entry_vals):
+    """A helper entry's registers at entry: r11 and r14..r31 from tc_inr, f14..f31 from tc_inf (DP's TcVectors.frame,
+    vectors.txt X), in place of the 0 every other function starts them at (f11 is no frame register)."""
+    for n in entry_vals:
+        m = FRAME_REG.fullmatch(n)
+        if m and n != "f11":
+            k = int(m.group(2))
+            entry_vals[n] = Call("tc_inr", [u(k)], "u32") if m.group(1) == "r" else Call("tc_inf", [u(k)], "f64")
+
+
 def translate_function(dol, entry, sig, facts, body, comments=False, structured=True, optimise=True, returns=None):
     """(C text, FunctionTranslator) for the function at entry whose body is [(lo, hi_exclusive)]. returns: the
-    whole executable's return kinds (returns.analyse), for callees DP's meta does not describe."""
+    whole executable's return kinds (returns.analyse), for callees DP's meta does not describe. A helper entry
+    (helper_walk) is its whole chain to the blr, whatever body Ghidra gave it (it splits the chains), with its frame."""
     from . import emit, passes
+    walk = helper_walk(dol, entry)
+    if walk is not None:
+        body = [(entry, entry + 4 * len(walk) + 4)]
     if returns:
         sig.returns = {**returns, **(sig.returns or {})}
     ft = FunctionTranslator(dol, entry, sig, facts, body, comments=comments)
@@ -1466,6 +1460,8 @@ def translate_function(dol, entry, sig, facts, body, comments=False, structured=
     params = {n for n, _, _, _ in sig.params}
     entry_vals = {n: passes.zero(t) for n, t in types.items()
                   if n not in params and n not in ft.temps and n not in ("g_", "sp_")}
+    if walk is not None:
+        frame_entry(entry_vals)
     recursive_f1(ft, blocks, entry_vals, passes.HAS_LAST)
     if optimise:
         passes.optimise(fn, entry_vals, ft.notes, returns=sig.returns)

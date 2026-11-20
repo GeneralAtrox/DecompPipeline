@@ -2,6 +2,8 @@
  *   --dump-frames 10,250,600   those frames (0 is the first presented)
  *   --dump-every N             every Nth frame
  *   --dump-dir DIR             where (default: frames, next to the log)
+ *   --dump-hashes FILE         no PNGs: a line per dump in FILE, its name and a hash of its pixels (a compare of two
+ *                              runs writes and deletes no image files, which a ransomware guard can take for an attack)
  *   --dump-watch ADDR,..       guest u32 words logged with each dump (e.g. a demo clock, to pair emulator frames)
  *   --dump-ram 1               also frame_NNNNNN.ram, the 16 MB of guest RAM (to diff against an emulator's)
  *   --dump-extra N             also the first N in-between frames (--present interp) after each dumped frame, as
@@ -26,6 +28,7 @@ static u32 g_watch[MAX_WATCH], g_watch_count;
 static int g_ram;
 static u32 g_extra, g_extra_left, g_extra_of, g_extra_k; /* --dump-extra */
 static const char *g_dir = "frames";
+static FILE *g_hashes; /* --dump-hashes */
 static IWICImagingFactory *g_wic;
 static ID3D11Texture2D *g_staging;
 static u32 g_staging_w, g_staging_h;
@@ -39,6 +42,11 @@ int gfx_capture_option(const char *arg, const char *value)
     }
     if (!strcmp(arg, "--dump-dir")) {
         g_dir = value;
+        return 2;
+    }
+    if (!strcmp(arg, "--dump-hashes")) {
+        if (fopen_s(&g_hashes, value, "w") != 0) g_hashes = NULL;
+        if (!g_hashes) port_log("gfx: cannot write %s\n", value);
         return 2;
     }
     if (!strcmp(arg, "--dump-extra")) {
@@ -153,6 +161,26 @@ static u8 *read_frame(void)
     return bgr;
 }
 
+/* --dump-hashes: the frame's size and two 64-bit FNV-1a hashes of its pixels (the second over every byte with its
+ * offset folded in), one line per dump. */
+static void dump_hash(const char *name)
+{
+    u32 w = g_gfx.frame_w, h = g_gfx.frame_h;
+    u8 *bgr = read_frame();
+    u64 a = 0xcbf29ce484222325ull, b = 0x84222325cbf29ce4ull;
+    if (!bgr) { /* replay_compare reads "cannot write" as a failed run, not a frame both sides lack alike */
+        port_log("gfx: cannot write %s's hash: the frame could not be read\n", name);
+        return;
+    }
+    for (size_t i = 0, n = (size_t)w * h * 3u; i < n; i++) {
+        a = (a ^ bgr[i]) * 0x100000001b3ull;
+        b = (b ^ bgr[i] ^ (u64)i) * 0x100000001b3ull;
+    }
+    free(bgr);
+    fprintf(g_hashes, "%s %ux%u %016llx%016llx\n", name, w, h, (unsigned long long)a, (unsigned long long)b);
+    fflush(g_hashes);
+}
+
 /* Writes the frame target as <name>.png and, when it is not 640x480, <name>_ref.png scaled to it. */
 static void dump(const char *name)
 {
@@ -161,6 +189,10 @@ static void dump(const char *name)
     IWICBitmap *bmp = NULL;
     IWICBitmapScaler *scaler = NULL;
     u32 w = g_gfx.frame_w, h = g_gfx.frame_h;
+    if (g_hashes) {
+        dump_hash(name);
+        return;
+    }
     if (ready < 0) ready = capture_init();
     if (!ready) return;
     u8 *bgr = read_frame();

@@ -42,17 +42,59 @@ def find_containers(data, base):
     container at once, `X` bytes (header word 2). The block info at header word 6 starts with two sizes: the bytes of
     constants the compiler embedded in front of the program, then the program itself (X is their sum)."""
     out = []
-    for m in re.finditer(rb"\x10\x2a\x11[\x00\x01]", data):
-        o = m.start()
-        size, x = struct.unpack(">II", data[o + 4:o + 12])
-        if not (0x30 <= size <= 0x800 and 0 < x <= 0x800):
-            continue
-        info = struct.unpack(">II", data[o + struct.unpack(">I", data[o + 24:o + 28])[0]:][:8])
-        pre, prog = info if info[0] + info[1] == x else (0, x)
-        blk = data[o + size:o + size + x]
-        out.append({"addr": o + base, "kind": "ps" if data[o + 3] == 0 else "vs", "size": size, "container": data[o:o + size],
-                    "prefix": blk[:pre], "ucode": blk[pre:pre + prog - prog % 12], "ucode_addr": o + base + size + pre})
+    for m in re.finditer(rb"\x10\x2a\x11[\x00\x01\x40\x41]", data):
+        c = container_at(data, m.start(), m.start() + base, 0x800)
+        if c:
+            out.append(c)
     return out
+
+
+def container_at(data, o, addr, limit=0x10000):
+    size, x = struct.unpack(">II", data[o + 4:o + 12])
+    if not (0x30 <= size <= limit and 0 < x <= limit) or o + size + x > len(data):
+        return None
+    info = struct.unpack(">II", (data[o + struct.unpack(">I", data[o + 24:o + 28])[0]:][:8] + bytes(8))[:8])
+    pre, prog = info if info[0] + info[1] == x else (0, x)
+    blk = data[o + size:o + size + x]
+    return {"addr": addr, "kind": "vs" if data[o + 3] & 1 else "ps", "size": size, "container": data[o:o + size],
+            "prefix": blk[:pre], "ucode": blk[pre:pre + prog - prog % 12], "ucode_addr": addr + size + pre}
+
+
+MADE = 0xF0000000
+
+
+def made_key(blob):
+    """The name runtime/xb_d3d.c (made_shader_key) gives a container the game makes at run time: FNV-1a over the container's
+    bytes, and for a pixel shader its microcode too. A vertex shader's fetches are patched in its microcode when the game
+    binds a declaration, so its microcode is left out; pack_blobs drops a key two different shaders share."""
+    size, x = struct.unpack(">II", blob[4:12])
+    h = 2166136261
+    for b in blob[:size] if blob[3] & 1 else blob[:size + x]:
+        h = ((h ^ b) * 16777619) & 0xFFFFFFFF
+    return MADE | (h & ~MADE & 0xFFFFFFFF)
+
+
+def pack_blobs(root):
+    """Every shader container in the game's packs (the .gz files under root, unpacked in memory) with its microcode, by
+    made_key: ({key: bytes}, the keys two different shaders share, left out)."""
+    import gzip
+    import os
+    out, clash = {}, set()
+    for dp, _, files in os.walk(root):
+        for f in sorted(files):
+            if f.endswith(".gz"):
+                data = gzip.open(os.path.join(dp, f)).read()
+                for m in re.finditer(rb"\x10\x2a\x11[\x00\x01\x40\x41]", data):
+                    c = container_at(data, m.start(), 0)
+                    if c:
+                        blob = data[m.start():m.start() + c["size"] + struct.unpack(">I", data[m.start() + 8:m.start() + 12])[0]]
+                        k = made_key(blob)
+                        if out.get(k, blob) != blob:
+                            clash.add(k)
+                        out[k] = blob
+    for k in clash:
+        del out[k]
+    return out, clash
 
 
 def ctab(container):
@@ -87,21 +129,33 @@ def decode_cf(v):
                  cond=bits(v, 42, 1), bool_addr=bits(v, 34, 8), pred_cond=bits(v, 42, 1))
         if d["count"] == 0 and d["seq"] == 0 and op in (1, 2):
             pass
+    elif op == 11:   # COND_JMP, as Xenia's ucode.h ControlFlowCondJmpInstruction (see data/NOTICE-xenia.txt): the target is a control-flow index
+        d.update(target=bits(v, 0, 13), uncond=bits(v, 13, 1), pred=bits(v, 14, 1), back=bits(v, 33, 1), bool_addr=bits(v, 34, 8), cond=bits(v, 42, 1))
     elif op == 12:
         d.update(alloc=bits(v, 41, 2) if False else bits(v, 40, 2), size=bits(v, 0, 4))
     return d
 
 
-def walk_program(ucode):
-    """The program as a list of steps in execution order: ('cf', name) / ('alu'|'fetch', slot words, conditions)."""
+def walk_program(ucode, slots=None):
+    """The program as a list of steps in execution order: ('cf', name) / ('alu'|'fetch', slot words, conditions). slots, a
+    list, gets each step's slot number (None for a control-flow step)."""
     w, cfs = split_cf(ucode)
     steps = []
     nslots = len(w) // 3
-    for v in cfs:
+    limit = nslots   # the control flow ends where the first instruction an exec names starts (two control-flow words to a slot)
+    ahead = -1       # the furthest forward jump's target: an exec end before it ends the program only when the jump is not taken
+    for idx, v in enumerate(cfs):
+        if idx // 2 >= limit:
+            break
         d = decode_cf(v)
+        d["idx"] = idx
+        if d["op"] == 11:
+            ahead = max(ahead, d["target"])
         if d["op"] == 0 and not v:
             continue
         if d["op"] in EXEC_OPS:
+            if d["count"]:
+                limit = min(limit, d["addr"])
             if d["count"] == 0 and d["seq"] == 0:
                 # an empty exec is the padding word after the last
                 if not d["addr"]:
@@ -113,11 +167,17 @@ def walk_program(ucode):
                     raise Unsupported("exec past the end of the program")
                 kind = "fetch" if (d["seq"] >> (2 * i)) & 1 else "alu"
                 steps.append((kind, w[slot * 3:slot * 3 + 3], d))
+                if slots is not None:
+                    slots.append(slot)
             if d["op"] not in (1, 2):
                 steps.append(("cf", d["name"], d))
+                if slots is not None:
+                    slots.append(None)
         else:
             steps.append(("cf", d["name"], d))
-        if d.get("end"):
+            if slots is not None:
+                slots.append(None)
+        if d.get("end") and d["op"] == 2 and idx >= ahead:   # a conditional end ends the program only when its condition holds: what follows stays
             break
     return steps, nslots
 
@@ -142,11 +202,12 @@ def fetch_fields(x):
     w0, w1, w2 = x
     f = {"op": bits(w0, 0, 5), "src": bits(w0, 5, 6), "src_am": bits(w0, 11, 1), "dst": bits(w0, 12, 6),
          "dst_am": bits(w0, 18, 1), "const": bits(w0, 20, 5), "const_sel": bits(w0, 25, 2), "dst_swz": bits(w1, 0, 12),
-         "pred": bits(w2, 0, 0)}
+         "predicated": bits(w1, 31, 1), "pred_cond": bits(w2, 31, 1)}
     if f["op"] == 0:
-        f.update(format=bits(w1, 16, 6), stride=bits(w2, 0, 8), offset=bits(w2, 8, 24), src_swz=0)
+        f.update(format=bits(w1, 16, 6), stride=bits(w2, 0, 8), offset=bits(w2, 8, 23), src_swz=0)
     else:
-        f.update(src_swz=bits(w0, 26, 6), tex_dim_ops=1)
+        f.update(src_swz=bits(w0, 26, 6), tex_dim_ops=1, dim=bits(w2, 14, 2), denorm=bits(w0, 25, 1),
+                 off=[(bits(w2, lo, 5) ^ 16) - 16 for lo in (16, 21, 26)])   # 0 1D, 1 2D, 2 3D or stacked, 3 cube; offsets signed 5 bits, halves
     return f
 
 
@@ -177,6 +238,56 @@ def disasm(steps):
                 "o" if a["export"] else "r", a["sdest"], "".join(c for i, c in enumerate(SWZ) if a["smask"] >> i & 1),
                 " ".join(src), " clamp" if a["vclamp"] else ""))
     return lines
+
+
+# The predicate (Xenia's ucode.h and dxbc_shader_translator_alu.cc, BSD-3-Clause, facts only; see data/NOTICE-xenia.txt). One bool, p0,
+# false at the start. The scalar PRED_SET ops test a (the single operand) and set p0 and the scalar result; the vector *_PUSH ops set
+# p0 from the operands' w and the result, all lanes, from their x, and run even with no lane written. Vector then scalar: when both
+# set p0 the scalar's stands. A predicated instruction or fetch runs only while p0 equals its condition bit (ALU w1 bit 27, fetch w2
+# bit 31; predicated: ALU w1 bit 28, fetch w1 bit 31); a COND_PRED_EXEC block only while p0 equals the exec's condition (bit 42),
+# tested once at its start, and COND_PRED_EXEC_END ends the program only when it ran.
+PRED_SCA = {
+    27: "bool pn = {a} == 0.0; float s = pn ? 0.0 : 1.0;",
+    28: "bool pn = {a} != 0.0; float s = pn ? 0.0 : 1.0;",
+    29: "bool pn = {a} > 0.0; float s = pn ? 0.0 : 1.0;",
+    30: "bool pn = {a} >= 0.0; float s = pn ? 0.0 : 1.0;",
+    31: "bool pn = {a} == 1.0; float s = pn ? 0.0 : (({a} == 0.0) ? 1.0 : {a});",
+    32: "float s = {a} - 1.0; bool pn = s <= 0.0; s = pn ? 0.0 : s;",
+    33: "bool pn = false; float s = 3.402823466e+38;",
+    34: "bool pn = {a} == 0.0; float s = pn ? 0.0 : {a};",
+}
+PRED_VEC = {20: "==", 21: "!=", 22: ">", 23: ">="}
+
+# Cube maps, as Xenia's dxbc_shader_translator_alu.cc (kCube) and dxbc_shader_translator_fetch.cc (kCube; BSD-3-Clause, see
+# data/NOTICE-xenia.txt). CUBEv takes its first source's swizzled z, w and x as the direction's x, y and z and gives T, S, twice the
+# major axis and the face (0 +X, 1 -X, 2 +Y, 3 -Y, 4 +Z, 5 -Z). A cube fetch takes S and T plus 1 (1..2) and the face, and turns them
+# back into a direction for the host's TextureCube, whose faces the runtime fills in the same order.
+# The face's sign is a factor, not a ternary between v and -v: fxc turns that into a movc with a negated operand, which D3D11 bytecode does
+# not allow (X8000 on six of Too Human's eight cube shaders, 2026-11-07)
+CUBE_ALU_FN = """float4 xb_cube(float4 s)
+{
+    float x = s.z, y = s.w, z = s.x, n;
+    if (abs(z) >= abs(x) && abs(z) >= abs(y)) { n = z < 0.0 ? -1.0 : 1.0; return float4(-y, x * n, 2.0 * z, 4.5 - 0.5 * n); }
+    if (abs(y) >= abs(x)) { n = y < 0.0 ? -1.0 : 1.0; return float4(z * n, x, 2.0 * y, 2.5 - 0.5 * n); }
+    n = x < 0.0 ? -1.0 : 1.0;
+    return float4(-y, -z * n, 2.0 * x, 0.5 - 0.5 * n);
+}"""
+CUBE_DIR_FN = """float3 xb_cube_dir(float3 c)
+{
+    float2 st = c.xy * 2.0 - 3.0;
+    uint f = min((uint)max(c.z, 0.0), 5u);
+    float n = (f & 1u) != 0 ? -1.0 : 1.0;
+    if (f < 2u) return float3(n, -st.y, -st.x * n);
+    if (f < 4u) return float3(st.x, n, st.y * n);
+    return float3(st.x * n, -st.y, n);
+}"""
+
+
+def pred_vec(vop, a, b):
+    """The *_PUSH vector op on the swizzled operands a and b: (statement setting bool pv, expression of the float4 result)."""
+    o = PRED_VEC[vop]
+    return ("bool pv = %s.w == 0.0 && %s.w %s 0.0;" % (a, b, o),
+            "(float4)((%s.x == 0.0 && %s.x %s 0.0) ? 0.0 : %s.x + 1.0)" % (a, b, o, a))
 
 
 # ---- conversion to HLSL -------------------------------------------------------------------------------------------------

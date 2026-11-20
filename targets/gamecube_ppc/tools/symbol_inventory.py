@@ -30,6 +30,7 @@ are read anywhere in targets/gamecube_ppc/tools (gcdisc, gcrel, ciso, rvz).
 usage: py -3.12 -I symbol_inventory.py scan <folder of sets> --out <dir> [--only REGEX] [--slots 2] [--budget-min N]
        py -3.12 -I symbol_inventory.py report --out <dir> --docs <dir>
        py -3.12 -I symbol_inventory.py one <set folder>        (prints the record, for checking a set by eye)
+       other consoles: --console xbox|dreamcast|saturn before the command (tools/symset_consoles.py; a Saturn set is a .cue disc)
 """
 import argparse
 import collections
@@ -269,10 +270,8 @@ def scan(a):
 
 
 def one(a):
-    rec = scan_set((str(pathlib.Path(a.path).parent), pathlib.Path(a.path).name))
-    print(json.dumps(rec, indent=1))
+    print(json.dumps(scan_set((str(pathlib.Path(a.path).parent), pathlib.Path(a.path).name)), indent=1))
     return 0
-
 
 
 # -------------------------------------------------------------------------------------------------------------- report
@@ -376,6 +375,7 @@ def report(a):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--console", default="gamecube", choices=["gamecube", "xbox", "dreamcast", "saturn"])
     sub = ap.add_subparsers(dest="cmd", required=True)
     s = sub.add_parser("scan")
     s.add_argument("src")
@@ -390,10 +390,11 @@ def main(argv=None):
     o = sub.add_parser("one")
     o.add_argument("path")
     a = ap.parse_args(argv)
+    if a.console != "gamecube":     # xbox, dreamcast, saturn: tools/symset_consoles.py
+        return __import__("symset_consoles").run(a)
     return {"scan": scan, "report": report, "one": one}[a.cmd](a)
 
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()
     sys.exit(main())
-

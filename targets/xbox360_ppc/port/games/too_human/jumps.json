@@ -1,0 +1,5 @@
+{
+ "why": "LIBCMT setjmp and longjmp (names from the 2007 PDBs). Callers: Lua 5.0's luaD_rawrunprotected (its errors) and the XDK shader compiler (xgraphics). longjmp restores r1, r13..r31, f14..f31, CR, LR and v64.. from the jmp_buf and returns to setjmp's caller; docs/x360/EXCEPTIONS_AND_LONGJMP.md",
+ "setjmp": ["82ec5460"],
+ "longjmp": ["82a566a0"]
+}

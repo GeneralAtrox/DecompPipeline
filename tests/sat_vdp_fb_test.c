@@ -126,3 +126,6 @@ int main(void)
     puts(g_fail ? "failed" : "all ok");
     return g_fail;
 }
+
+/* the kit pieces this test does not build: the input-lag frame hook (sat_inb.c) is off */
+void sat_inb_drawn(const u8 *fb) { (void)fb; }

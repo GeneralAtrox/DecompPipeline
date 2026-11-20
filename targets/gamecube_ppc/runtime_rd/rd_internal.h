@@ -5,7 +5,7 @@
 #include "tc_rt_internal.h"
 
 #define RD_MAX_CALLS 4096 /* TcOracle.CALL_LIMIT */
-#define RD_RETS 16        /* scripted results per vector (lines C and D); a later call returns 0 */
+#define RD_RETS TCRT_RETS /* scripted results per vector (lines C and D; tc_rt_internal.h); a later call returns 0 */
 #define RD_PAGE 0x1000u
 #define RD_UNCACHED_BASE 0xc0000000u /* the uncached view of MEM1: the same section mapped a second time */
 

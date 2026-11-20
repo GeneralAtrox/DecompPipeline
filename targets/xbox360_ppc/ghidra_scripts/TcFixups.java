@@ -20,6 +20,10 @@
 //    frsp, fneg fabs): Ghidra makes every NaN the canonical one (an invalid operation's negative); the Xenon keeps the
 //    payload (Too Human 82635508: lfs of 0xffffffff, fmuls, fadds). Where the step's result is a NaN, the fixup writes
 //    the hardware's: the PowerPC targets' shared TcNaN (core/ghidra_shared/ppc).
+//  - 32-bit mode: the Xbox 360 runs its code with MSR[SF] = 0, where a record form's CR0 is that of the result's low
+//    32 bits and XER[CA] is the carry out of the low 32 bits (Book I 3.3.9; Too Human's _fptostr 82a6cdc0 tests an int
+//    with addic. / bgt). Ghidra's 64-bit language takes both from 64 bits (rlwinm. giving 0x80000000 came out GT).
+//    After each such step the fixup writes cr0 and xer_ca from the low words: mode32Before / mode32After.
 //  - refuse: TcClass's phase 1 classes (VMX/VMX128, FPSCR moves, estimates, atomics, cache and system instructions),
 //    decided by the instruction word, and any CALLOTHER without a callback here.
 //  - traps (tw, twi, td, tdi): a trap whose condition holds ends the run; the vector is invalid (TcOracle). Barriers
@@ -70,9 +74,12 @@ public class TcFixups {
         return null;
     }
 
-    // The vector instructions TcVmx cannot execute faithfully: the estimate ops need the hardware's tables, and the
+    // First the per-op gate (TcVmxConfirmed, the one list of confirmed ops: an unlisted op refuses the function).
+    // Then the vector instructions TcVmx cannot execute faithfully: the estimate ops need the hardware's tables, and the
     // Direct3D pack/unpack semantics were written from memory of other emulators, not from the architecture.
     static String refuseVector(TcVmx.Op op, Address at) {
+        String gate = TcVmxConfirmed.refusal(op.mn);
+        if (gate != null) return gate + " at " + at;
         if (!TcVmx.supported(op.mn)) return "vector estimate instruction " + op.mn + " at " + at + " (hardware table not modelled)";
         if (op.mn.equals("vpkd3d128") || op.mn.equals("vupkd3d128")) {
             return "Direct3D pack/unpack " + op.mn + " at " + at + " (semantics unverified)";
@@ -181,6 +188,84 @@ public class TcFixups {
         });
     }
 
+    // ---------- 32-bit mode (see the header) ----------
+    static final long LOW = 0xffffffffL;
+    // Opcode 31's arithmetic (XO-form) extended opcodes, whose result is rD; every other record form of opcode 31 writes rA.
+    static final Set<Integer> XO_RD = Set.of(266, 10, 138, 234, 202, 40, 8, 136, 232, 200, 104, 235, 75, 11, 491, 459, 233,
+        73, 9, 489, 457);
+    int iword;         // the step's instruction word (0: none)
+    int caOp;          // 0, or the carry rule of the step: 1 a + b, 2 ~a + b + 1, 3 a + b + CA, 4 ~a + b + CA
+    long caA, caB, caIn;  // its operands before the step (b: rB, the immediate, 0 or -1)
+
+    void mode32Before(EmulatorHelper emu, Instruction in) {
+        iword = word(in);
+        int opc = iword >>> 26, xo = (iword >>> 1) & 0x1ff;
+        long b = bits(emu, "r" + ((iword >>> 11) & 31));
+        if (opc == 12 || opc == 13) {  // addic, addic.
+            caOp = 1;
+            b = (short) iword;
+        } else if (opc == 8) {  // subfic
+            caOp = 2;
+            b = (short) iword;
+        } else if (opc == 31) {
+            switch (xo) {
+                case 10: caOp = 1; break;              // addc
+                case 8: caOp = 2; break;               // subfc
+                case 138: caOp = 3; break;             // adde
+                case 136: caOp = 4; break;             // subfe
+                case 202: caOp = 3; b = 0; break;      // addze
+                case 200: caOp = 4; b = 0; break;      // subfze
+                case 234: caOp = 3; b = -1; break;     // addme
+                case 232: caOp = 4; b = -1; break;     // subfme
+                default: break;
+            }
+        }
+        if (caOp == 0) return;
+        caA = bits(emu, "r" + ((iword >>> 16) & 31));
+        caB = b;
+        caIn = bits(emu, "xer_ca") & 1;
+    }
+
+    // The carry out of the low 32 bits of the step recorded by mode32Before.
+    static long carry32(int rule, long a, long b, long cin) {
+        long x = (rule == 2 || rule == 4 ? ~a : a) & LOW;
+        long extra = rule == 1 ? 0 : rule == 2 ? 1 : cin;
+        return ((x + (b & LOW) + extra) >>> 32) & 1;
+    }
+
+    // The register a record form of the word w sets CR0 from, or -1 when w is not one (stwcx. and stdcx. set CR0 otherwise).
+    static int recordDest(int w) {
+        int opc = w >>> 26, x10 = (w >>> 1) & 0x3ff, rd = (w >>> 21) & 31, ra = (w >>> 16) & 31;
+        if (opc == 13) return rd;                                   // addic.
+        if (opc == 28 || opc == 29) return ra;                      // andi. andis.
+        if ((w & 1) == 0) return -1;
+        if (opc == 20 || opc == 21 || opc == 23 || opc == 30) return ra;  // rlwimi. rlwinm. rlwnm. and the rld forms
+        if (opc != 31 || x10 == 150 || x10 == 214) return -1;
+        return XO_RD.contains(x10 & 0x1ff) ? rd : ra;
+    }
+
+    void mode32After(EmulatorHelper emu) {
+        if (iword == 0) return;
+        if (caOp != 0) {
+            long ca = carry32(caOp, caA, caB, caIn);
+            if ((bits(emu, "xer_ca") & 1) != ca) {
+                emu.writeRegister("xer_ca", BigInteger.valueOf(ca));
+                fixups++;
+            }
+        }
+        int d = recordDest(iword);
+        if (d >= 0) {
+            int lo = (int) bits(emu, "r" + d);
+            long cr = (lo < 0 ? 8 : lo > 0 ? 4 : 2) | (bits(emu, "xer_so") & 1);
+            if ((bits(emu, "cr0") & 15) != cr) {
+                emu.writeRegister("cr0", BigInteger.valueOf(cr));
+                fixups++;
+            }
+        }
+        iword = 0;
+        caOp = 0;
+    }
+
     // ---------- per step ----------
     boolean fusedMode = FMA_FUSED;  // TcVectors flips it for the second run of a multiply-add function
     String kind;       // "fcti", "stfs", "fma", "single", "double", "sign", "lfs" or null
@@ -204,7 +289,10 @@ public class TcFixups {
 
     void before(EmulatorHelper emu, Instruction in) {
         kind = null;
+        iword = 0;
+        caOp = 0;
         if (in == null) return;
+        mode32Before(emu, in);
         Object[] cls = classOf(in.getMnemonicString());
         String m = (String) cls[0];
         if ("fcti".equals(cls[1])) {
@@ -266,6 +354,7 @@ public class TcFixups {
     // stored: {address, size} of the step's last data store (TcBank), or null; reads: the step's data reads
     // {pc, address, size, value} (TcBank).
     void after(EmulatorHelper emu, AddressSpace ram, long[] stored, java.util.List<long[]> reads) {
+        mode32After(emu);
         if (kind == null) return;
         if (kind.equals("fcti")) {
             emu.writeRegister(dest, new BigInteger(Long.toUnsignedString(fcti(operand, word, towardZero))));

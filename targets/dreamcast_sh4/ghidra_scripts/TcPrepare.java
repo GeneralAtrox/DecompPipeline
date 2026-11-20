@@ -201,6 +201,7 @@ public class TcPrepare extends TcVectors {
         TcStrict.callees(this, calledBy(fn, body), regsOf);  // mock_junk: what each callee may change (TcStrict)
         sq = TcSq.of(listing, body, proto.giState);  // a state pointer whose store queue the function sends
         if (sq != null) sq.callees(getCurrentProgram(), calledBy(fn, body), facts.fpscrEntry);  // their stores into the queues (TcSq)
+        if (sq != null) TcSqCopy.apply(sq, facts.sqCopies, calledBy(fn, body));  // block copies into them (TcSqCopy)
         sr = TcSr.of(listing, body);  // SR read or written (TcSr)
         di.dispose();
 

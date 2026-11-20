@@ -1,0 +1,72 @@
+[
+ [
+  "82740ff8",
+  "82743190",
+  "Below the Direct3D seeds of tools/boundary.py: texture layout arithmetic. First stop 82741068 under the engine's 82b1fd60, a format's block size. Also 82744270, a texture's cache flush, which writes packets to the current device's ring (runtime/xb_d3d_res.h gives the device one)"
+ ],
+ [
+  "82744058",
+  "82744618",
+  "Release's destroy 82744058 (called by 827447b4), 82744270 a texture's cache flush and 827444f0 its range's flush. Cut from the range above at 82743190: BeginCommandBuffer 82743190, EndCommandBuffer 82743650 and RunCommandBuffer 82743a40 write the device and its command buffer's packets, so they are library entries (runtime/xb_d3d_cb.h)"
+ ],
+ [
+  "827446d8",
+  "82744750",
+  "A resource's AddRef: first stop 827793a8 under 829a4aa0. Counts at the header's +4 (and its parent's at +0x18 for type 4). Release 82744750 was cut from here: the destroy it calls, 82744058 (kept above), frees with the game's XMemFree, so the kit's resources must not reach it (runtime/xb_d3d_res.h)"
+ ],
+ [
+  "82745328",
+  "82745680",
+  "Render-target tile bookkeeping (the tiles of the GPU's own framebuffer memory): 82745470 (first stop 82742ab8, a surface's create in the range above, 0x5a0 tiles for 1280x720) makes once the pool at [832c9e20] (0x324 bytes from XMemAlloc, a bitmap at +0x20, installed with lwarx/stwcx.), takes the best fitting free run under its critical section and returns its first tile; 82745328 marks a run in the bitmap. Calls nothing else, touches no device or GPU; the kit's draws read the surface header the game makes"
+ ],
+ [
+  "82744988",
+  "82744a90",
+  "CreateIndexBuffer(length, usage, format): first stop 8296c590 after the first texture, (0x38, 0, 1). A 0x20 header and the data from the game's XMemAlloc (82a45e50), the header's type 2, count, 0xffff0000 and the data's address (+0x18) and length (+0x1c), touches no device. The kit's draws read indices from the header. Then 82744a38 (first stop 82c37248 on the header 82744988 made): the header's data handed to 82744270, the cache flush kept above, which writes to the ring the kit gives the device; and 82744a80, the data's flush through 827444f0, kept above"
+ ],
+ [
+  "8274ba28",
+  "8274bad0",
+  "A data cache flush over a range (start, end): first stop 827444f0 under 8296c590, a texture's memory after 82744270. dcbf lines of 128 bytes, which change nothing in host memory"
+ ],
+ [
+  "82747ed8",
+  "827484e8",
+  "A vertex shader's fetches patched for a declaration: called by 82749348 below. Copies only"
+ ],
+ [
+  "82749348",
+  "82749460",
+  "A vertex shader's Bind(flags, declaration, strides): first stop 829841d0 after the second declaration. Patches the shader through 82747ed8 and numbers the declaration from the counter at 8338369c; touches no device"
+ ],
+ [
+  "82758430",
+  "82758590",
+  "A shader blob's parts (82758430, first stop under 82a8eac8 after the first vertex shader) and CreatePixelShader 82758480, type 7, the same shape as the vertex one. 82758590 and 82758938 after them write the device's bound shaders (+0x3194, +0x3198) and stay library entries"
+ ],
+ [
+  "82758750",
+  "82758938",
+  "CreateVertexShader from a microcode blob, and the header's set-up 82758750: first stop 82758848 under 82983fe0, the blob the shader compiler below built. Allocates the header and physical memory and copies, as the texture and surface creates above. The kit's host shaders come from containers converted offline, which these are not"
+ ],
+ [
+  "82758d80",
+  "8275e430",
+  "The library's shader compiler back end: first stop 8275d7c8 under the engine's 82b41000 on the render thread, r4 fffe0300 (vs_3_0), then 82758d98, which sorts with the CRT's qsort. Calls only itself and the game's memory, copy and sort routines; 8275e9e0 above it writes the device"
+ ],
+ [
+  "827447d0",
+  "82744860",
+  "A resource's type, from its header (GetType): first stop 82b20198, the engine moving a resource's address. Reads the header, which the engine wrote with the helpers above"
+ ],
+ [
+  "8274ef90",
+  "8274f058",
+  "SetGammaRamp(device, flags, ramp) (its conversion is the next range): first stop under the main thread's start-up, (20108980, 0, 23a5f3f0). Converts the ramp through 82754110 into 0x600 bytes, and only if they differ copies them to the device's +0x3a9c and sets dirty bit 2 at +0x4144; the ring packets are written later by 82754250, which is not kept"
+ ],
+ [
+  "82753d10",
+  "82754250",
+  "The gamma ramp's conversion for SetGammaRamp above: 82753d10 and 82753dc0 build an sRGB curve table with the game's pow (82a4db00), 82754078 and 82754110 turn a ramp into the hardware's base and slope halves. Arithmetic on guest memory only"
+ ]
+]

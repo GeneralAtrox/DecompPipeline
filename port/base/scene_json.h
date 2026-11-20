@@ -7,6 +7,10 @@
 #include "console.h"
 #include "scene_dump.h"
 
+#ifdef __cplusplus
+extern "C" { /* a native game's scene hook (native_game.h) writes with these from C++ */
+#endif
+
 typedef struct Json {
     char *p;
     u32 n, cap;
@@ -20,5 +24,9 @@ const u8 *scene_field_bytes(const SceneField *f); /* the value in guest RAM (rea
 void scene_field_value(Json *j, const SceneField *f, int text); /* JSON, or (text) as in the task line */
 void scene_file_list(Json *j, int edit);  /* files.read or files.edit: the rules that apply, each path once */
 void scene_log_lists(Json *j, const char *log, const char *indent); /* "log_warnings" and "log_tail" members */
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

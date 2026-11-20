@@ -4,3 +4,4 @@
 539731823ab0 landed 2026-11-06 without a Fails-before line; history is not rewritten (coordinator, 2026-11-06)
 449c13091b60 landed 2026-11-06 without a Fails-before line; history is not rewritten (coordinator's ruling for 3ed46305, 4bb4e56b, 539731823)
 31001afe9100 landed 2026-11-08: "fixed 1997 in checks" is a fixed clock date, not a bug fix; history is not rewritten
+53199c1b643b repaired a link error (LNK2005 on 32-bit) inside the unlanded kit-8pads branch, not a bug in a landed build; history is not rewritten (kit lines hold the commit)
