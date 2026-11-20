@@ -245,13 +245,22 @@ static void tc_frame(void)
         if (i != PROF_WAIT) work += us[i];
     }
     memset(g_acc, 0, sizeof g_acc);
+    if (g_perf_frames) { /* --play-frames: the sections of this tick, one trace row (base/perf.c) */
+        static int named;
+        u32 v[PERF_PARTS], n = ROWS < PERF_PARTS ? ROWS : PERF_PARTS;
+        if (!named) named = 1, perf_parts(k_names, (int)n);
+        for (u32 i = 0; i < n; i++) v[i] = (u32)us[i];
+        perf_tick(v);
+    }
     prof_tc_blank(us, work);
 }
 
 static void prof_frame_locked(void)
 {
+    static int told;
     u64 t;
     Rec r;
+    if (g_perf_on && !told) told = 1, perf_sections(top, k_names, (int)ROWS); /* the sampler reads the section */
     if (!g_prof_on) {
         if (prof_tc_wanted()) tc_start();
         return;
@@ -271,7 +280,6 @@ static void prof_frame_locked(void)
     }
     memset(g_acc, 0, sizeof g_acc);
     r.gpu_us = gpu_collect();
-    prof_sample_frame(r.vblank >= g_from);
     prof_calls_on(r.vblank >= g_from);
     r.headers = g_headers;
     r.triangles = g_triangles;
@@ -302,13 +310,12 @@ void prof_report(void)
     }
     if (g_csv != INVALID_HANDLE_VALUE) CloseHandle(g_csv);
     g_csv = INVALID_HANDLE_VALUE;
-    prof_sample_report();
 }
 
 int prof_option(const char *arg, const char *value)
 {
     if (!value) return 0;
-    if (prof_tc_option(arg, value) || prof_sample_option(arg, value)) return 2;
+    if (prof_tc_option(arg, value) || prof_calls_option(arg, value)) return 2;
     if (!strcmp(arg, "--prof")) {
         g_prof_on = strcmp(value, "off") != 0;
         if (g_prof_on && !g_rec) {

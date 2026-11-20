@@ -290,6 +290,27 @@ int port_fullscreen(void);
 void port_set_fullscreen(int on);
 int port_fps_counter(void);
 void port_set_fps_counter(int on);
+/* speed.c: fast forward (Game > Fast forward speed and toggle, the base's own options: game_options.c; Tab, or Input >
+ * Controls > Fast forward, R3 until the player chooses). A console
+ * with PORT_CONSOLE_SPEED says once at start whether this run may have it (port_speed_allow: a play run on the real clock;
+ * the base adds no check, replay or fixed clock), then reads port_speed() as it reads its clock: 1 at normal speed, else
+ * how many times as fast, PORT_SPEED_FREE for as fast as it goes. It runs its machine's clock through port_speed_clock, so
+ * the game sees the same time between two of its ticks as at normal speed. Its sound it drops cleanly while fast. */
+#define PORT_SPEED_FREE 0xffffu
+#define PORT_SPEED_CHOICES 4u /* 2x, 3x, 4x, max */
+typedef struct PortSpeedClock {
+    s64 last, ahead; /* the real clock's last reading, and how far the machine's clock is ahead of it */
+} PortSpeedClock;
+int port_speed_option(const char *arg, const char *value); /* --fast-forward-test VB+N (the speed and toggle: game_options.c) */
+void port_speed_allow(int on);
+u32 port_speed(void);
+s64 port_speed_clock(PortSpeedClock *c, s64 now, u32 speed); /* now + c->ahead, ahead grown by (speed - 1) x the time since the last read */
+void port_speed_key(int down);                     /* host_window.cpp: Tab */
+void port_speed_pads(const HostPad *pad, u32 n);   /* input.c: the pads as the devices gave them, before the assignments */
+int port_speed_offered(void);                      /* the console has it (the menu greys it otherwise) */
+const char *port_speed_button(void);               /* the controller's button(s) for it, as the settings write them */
+const char *port_speed_label(void);                /* "Fast forward 3x" while on (the title bar), else "" */
+long port_speed_gen(void);                         /* changes when that label may have */
 
 #ifdef __cplusplus
 }

@@ -1,23 +1,27 @@
 /* The BIOS' backup-RAM library (BUP): the game's saves. The game calls BUP_Init through the word at 0x06000358 and the
  * other services through the table that the word at 0x06000354 points to (SelPart, Format, Stat, Write, Read, Delete,
  * Dir, Verify, GetDate, SetDate, in that order after one slot for Init). Device 0 (unit id 1 in BUP_Init's table) is the console's internal memory (32 KB,
- * 64-byte blocks); the other units are absent. The files live in one host file (--save, default saturn_backup.bin),
- * rewritten after every change; its layout is the kit's own, the game only sees the BUP calls. A game that names its
- * load path (game.json auto_load) has it driven at boot when its file is here (sat_bup_auto_load, base autoload.c).
- *
+ * 64-byte blocks). Device 1 is the plug-in backup memory cartridge: the standard 4 Mbit (512 KB, 512-byte blocks, unit id 2),
+ * present only while the "memory-cartridge" option is on (console_sat.c; on in play runs, off in checks and replays, so
+ * with it off BUP_Init reports no second device, as before). One host file per device (--save, else --save-dir's
+ * saturn_backup.bin, else the current folder's; its sibling saturn_backup_cart.bin for the cartridge, made empty on first
+ * use), rewritten after every change in the kit's own layout. A game that names its load path (game.json auto_load) has
+ * it driven at boot when its file is here (sat_bup_auto_load, base autoload.c).
  * Nearest existing: sat_bios.c (the same native-service form for the SCU and clock services) - this is the library
  * behind another pair of those pointers, with state, so it has its own file. */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <windows.h>
 #include "sat.h"
 #include "sat_sys.h"
 #include "sat_game.h"
 #include "autoload.h"
+#include "console.h"
 
 enum { OK = 0, NON = 1, UNFORMAT = 2, NOT_ENOUGH = 4, NOT_FOUND = 5, FOUND = 6, NO_MATCH = 7 };
-enum { UNIT_INT = 1, DEV_INT = 0, TOTAL_BLOCKS = 512, BLOCK = 64, HEADER_BLOCKS = 2, MAX_FILES = 128, DIR_SIZE = 34 };
+enum { UNIT_INT = 1, UNIT_CART = 2, DEV_INT = 0, DEV_CART = 1, HEADER_BLOCKS = 2, MAX_FILES = 128, DIR_SIZE = 34 };
 enum { SLOT_INIT = 0x06000358u, SLOT_TABLE = 0x06000354u, TABLE = 0x06000380u, NSVC = 11 };
 
 typedef struct {
@@ -25,195 +29,276 @@ typedef struct {
     u8 *data;
     u32 size;
 } File;
-static File g_file[MAX_FILES];
-static int g_n;
-static const char *g_path = "saturn_backup.bin";
-static int g_loaded;
+typedef struct {
+    File file[MAX_FILES];
+    int n, loaded;
+    char path[1024];
+    u32 total, block; /* the memory's blocks and their size in bytes */
+} Dev;
+static Dev g_dev[2];
+static int g_cart; /* the cartridge is plugged in (this run's "memory-cartridge" value, read at BUP_Init) */
+static int g_named, g_in_dir; /* --save named the file; the files are in --save-dir's folder */
 
 static u32 be32(const u8 *p) { return (u32)p[0] << 24 | (u32)p[1] << 16 | (u32)p[2] << 8 | p[3]; }
 static void put32(u8 *p, u32 v) { p[0] = (u8)(v >> 24), p[1] = (u8)(v >> 16), p[2] = (u8)(v >> 8), p[3] = (u8)v; }
 
-static u32 blocks_of(u32 size) { return 1u + (size + BLOCK - 1u) / BLOCK; }
-static u32 blocks_used(void)
+static void dev_defaults(void)
+{
+    if (g_dev[0].total) return;
+    g_dev[0].total = 512u, g_dev[0].block = 64u;
+    g_dev[1].total = 1024u, g_dev[1].block = 512u;
+    snprintf(g_dev[0].path, sizeof g_dev[0].path, "saturn_backup.bin");
+    snprintf(g_dev[1].path, sizeof g_dev[1].path, "saturn_backup_cart.bin");
+}
+static Dev *dev_of(u32 dev)
+{
+    dev_defaults();
+    return dev == DEV_INT ? &g_dev[0] : dev == DEV_CART && g_cart ? &g_dev[1] : NULL;
+}
+static u32 blocks_of(const Dev *d, u32 size) { return 1u + (size + d->block - 1u) / d->block; }
+static u32 blocks_used(const Dev *d)
 {
     u32 n = HEADER_BLOCKS;
-    for (int i = 0; i < g_n; i++) n += blocks_of(g_file[i].size);
+    for (int i = 0; i < d->n; i++) n += blocks_of(d, d->file[i].size);
     return n;
 }
 
-void sat_bup_path(const char *path) { g_path = path; }
-const char *sat_bup_where(void) { return g_path; }
-
-static void save_all(void)
+/* the cartridge's file sits beside the internal one: its name with "_cart" before the extension */
+static void cart_path(const char *internal, char *out, size_t cap)
 {
-    FILE *f = fopen(g_path, "wb");
+    const char *base = internal, *dot;
+    size_t head;
+    for (const char *p = internal; *p; p++)
+        if (*p == '/' || *p == '\\') base = p + 1;
+    dot = strrchr(base, '.');
+    head = dot ? (size_t)(dot - internal) : strlen(internal);
+    snprintf(out, cap, "%.*s_cart%s", (int)head, internal, dot ? dot : "");
+}
+void sat_bup_path(const char *path)
+{
+    dev_defaults();
+    snprintf(g_dev[0].path, sizeof g_dev[0].path, "%s", path);
+    cart_path(path, g_dev[1].path, sizeof g_dev[1].path);
+    g_named = 1, g_in_dir = 0;
+}
+/* --save-dir DIR (a launcher's USERDATA\saves, base/host_main.cpp): the files there, unless --save names one */
+void sat_bup_save_dir(const char *dir)
+{
+    dev_defaults();
+    if (g_named) return;
+    snprintf(g_dev[0].path, sizeof g_dev[0].path, "%s\\saturn_backup.bin", dir);
+    cart_path(g_dev[0].path, g_dev[1].path, sizeof g_dev[1].path);
+    g_in_dir = 1;
+}
+static void make_folder(const char *file) /* the save's folder (the data folder's saves) */
+{
+    char dir[1024], *slash = (snprintf(dir, sizeof dir, "%s", file), strrchr(dir, '\\'));
+    if (slash) *slash = 0, CreateDirectoryA(dir, NULL);
+}
+/* A save where older builds kept it (the current folder: a Start Game.bat's .work\auto) is copied once to the --save-dir
+ * folder when that has none, so nobody loses one. The old file is left as it was. */
+static void carry_over(const Dev *d)
+{
+    const char *old = d == &g_dev[0] ? "saturn_backup.bin" : "saturn_backup_cart.bin";
+    if (!g_in_dir || GetFileAttributesA(d->path) != INVALID_FILE_ATTRIBUTES || GetFileAttributesA(old) == INVALID_FILE_ATTRIBUTES) return;
+    make_folder(d->path);
+    if (CopyFileA(old, d->path, TRUE)) port_log("bup: %s from the current folder copied to %s, the save's place now\n", old, d->path);
+}
+const char *sat_bup_where(void)
+{
+    dev_defaults();
+    return g_dev[0].path;
+}
+
+static void save_all(Dev *d)
+{
+    FILE *f = fopen(d->path, "wb");
     u8 hdr[8] = {'S', 'B', 'U', 'P', 0, 0, 0, 0};
+    if (!f && g_in_dir) make_folder(d->path), f = fopen(d->path, "wb");
     if (!f) return;
-    put32(hdr + 4, (u32)g_n);
+    put32(hdr + 4, (u32)d->n);
     fwrite(hdr, 1, 8, f);
-    for (int i = 0; i < g_n; i++) {
+    for (int i = 0; i < d->n; i++) {
         u8 len[4];
-        put32(len, g_file[i].size);
-        fwrite(g_file[i].dir, 1, DIR_SIZE, f);
+        put32(len, d->file[i].size);
+        fwrite(d->file[i].dir, 1, DIR_SIZE, f);
         fwrite(len, 1, 4, f);
-        fwrite(g_file[i].data, 1, g_file[i].size, f);
+        fwrite(d->file[i].data, 1, d->file[i].size, f);
     }
     fclose(f);
 }
 
-static void load_all(void)
+static void load_all(Dev *d)
 {
     FILE *f;
     u8 hdr[8];
-    if (g_loaded) return;
-    g_loaded = 1;
-    f = fopen(g_path, "rb");
-    if (!f) return;
+    if (d->loaded) return;
+    d->loaded = 1;
+    carry_over(d);
+    f = fopen(d->path, "rb");
+    if (!f) {
+        if (d == &g_dev[1]) save_all(d); /* a cartridge's file is made empty on first use */
+        port_log("bup: %d file(s) in %s\n", d->n, d->path);
+        return;
+    }
     if (fread(hdr, 1, 8, f) == 8 && !memcmp(hdr, "SBUP", 4)) {
         u32 n = be32(hdr + 4);
         for (u32 i = 0; i < n && i < MAX_FILES; i++) {
             u8 len[4];
-            File *e = &g_file[g_n];
+            File *e = &d->file[d->n];
             if (fread(e->dir, 1, DIR_SIZE, f) != DIR_SIZE || fread(len, 1, 4, f) != 4) break;
             e->size = be32(len);
             e->data = (u8 *)malloc(e->size ? e->size : 1u);
             if (!e->data || fread(e->data, 1, e->size, f) != e->size) break;
-            g_n++;
+            d->n++;
         }
     }
     fclose(f);
-    port_log("bup: %d file(s) in %s\n", g_n, g_path);
+    port_log("bup: %d file(s) in %s\n", d->n, d->path);
 }
 
-static int find(u32 name) /* the guest's 11-character file name at name */
+static int find(const Dev *d, u32 name) /* the guest's 11-character file name at name */
 {
-    for (int i = 0; i < g_n; i++) {
+    for (int i = 0; i < d->n; i++) {
         int same = 1;
-        for (int k = 0; k < 11 && same; k++) same = g_file[i].dir[k] == rd8(name + (u32)k);
+        for (int k = 0; k < 11 && same; k++) same = d->file[i].dir[k] == rd8(name + (u32)k);
         if (same) return i;
     }
     return -1;
 }
 
-static void drop(int i)
+static void drop(Dev *d, int i)
 {
-    free(g_file[i].data);
-    memmove(&g_file[i], &g_file[i + 1], (size_t)(g_n - i - 1) * sizeof g_file[0]);
-    g_n--;
+    free(d->file[i].data);
+    memmove(&d->file[i], &d->file[i + 1], (size_t)(d->n - i - 1) * sizeof d->file[0]);
+    d->n--;
 }
 
 static u32 b_init(u32 lib, u32 work, u32 config, u32 d)
 {
     (void)lib, (void)work, (void)d;
-    load_all();
+    dev_defaults();
+    g_cart = port_option("memory-cartridge") > 0;
+    load_all(&g_dev[0]);
+    if (g_cart) load_all(&g_dev[1]);
+    port_log("bup: memory cartridge %s\n", g_cart ? "plugged in" : "absent");
     for (u32 i = 0; i < 3; i++) {
-        wr16(config + 4u * i, (u16)(i == 0 ? UNIT_INT : 0));
-        wr16(config + 4u * i + 2u, (u16)(i == 0 ? 1 : 0));
+        u32 unit = i == 0 ? UNIT_INT : i == 1 && g_cart ? UNIT_CART : 0u;
+        wr16(config + 4u * i, (u16)unit);
+        wr16(config + 4u * i + 2u, (u16)(unit ? 1 : 0));
     }
     return 0;
 }
 static u32 b_selpart(u32 dev, u32 part, u32 c, u32 d)
 {
     (void)part, (void)c, (void)d;
-    return dev == DEV_INT ? OK : NON;
+    return dev_of(dev) ? OK : NON;
 }
 static u32 b_format(u32 dev, u32 b, u32 c, u32 d)
 {
+    Dev *m = dev_of(dev);
     (void)b, (void)c, (void)d;
-    if (dev != DEV_INT) return NON;
-    while (g_n) drop(0);
-    save_all();
+    if (!m) return NON;
+    while (m->n) drop(m, 0);
+    save_all(m);
     return OK;
 }
 static u32 b_stat(u32 dev, u32 tbsize, u32 out, u32 d)
 {
-    u32 free_blocks = TOTAL_BLOCKS - blocks_used();
+    Dev *m = dev_of(dev);
+    u32 free_blocks;
     (void)tbsize, (void)d;
-    if (dev != DEV_INT) return NON;
-    wr32(out, TOTAL_BLOCKS * BLOCK);
-    wr32(out + 4u, TOTAL_BLOCKS);
-    wr32(out + 8u, BLOCK);
-    wr32(out + 12u, free_blocks * BLOCK);
+    if (!m) return NON;
+    free_blocks = m->total - blocks_used(m);
+    wr32(out, m->total * m->block);
+    wr32(out + 4u, m->total);
+    wr32(out + 8u, m->block);
+    wr32(out + 12u, free_blocks * m->block);
     wr32(out + 16u, free_blocks);
     /* datanum is how many more files the memory takes (Robo Pit's save check writes straight away when it is not 0 and
      * only looks for its existing file when it is 0: a full memory) */
-    wr32(out + 20u, (u32)(MAX_FILES - g_n) < free_blocks / 2u ? (u32)(MAX_FILES - g_n) : free_blocks / 2u);
+    wr32(out + 20u, (u32)(MAX_FILES - m->n) < free_blocks / 2u ? (u32)(MAX_FILES - m->n) : free_blocks / 2u);
     return OK;
 }
 static u32 b_write(u32 dev, u32 dir, u32 data, u32 mode)
 {
+    Dev *m = dev_of(dev);
     u32 size = rd32(dir + 28u), have;
     int at;
-    if (dev != DEV_INT) return NON;
-    at = find(dir);
+    if (!m) return NON;
+    at = find(m, dir);
     if (at >= 0 && mode) return FOUND; /* mode 0 overwrites, as Robo Pit's boot check needs (it writes, then verifies, with a file already there) */
-    have = at >= 0 ? blocks_of(g_file[at].size) : 0;
-    if (blocks_used() - have + blocks_of(size) > TOTAL_BLOCKS || (at < 0 && g_n >= MAX_FILES)) return NOT_ENOUGH;
-    if (at >= 0) drop(at);
+    have = at >= 0 ? blocks_of(m, m->file[at].size) : 0;
+    if (blocks_used(m) - have + blocks_of(m, size) > m->total || (at < 0 && m->n >= MAX_FILES)) return NOT_ENOUGH;
+    if (at >= 0) drop(m, at);
     {
-        File *e = &g_file[g_n++];
+        File *e = &m->file[m->n++];
         for (u32 i = 0; i < DIR_SIZE; i++) e->dir[i] = rd8(dir + i);
         put32(e->dir + 28, size);
-        e->dir[32] = (u8)(blocks_of(size) >> 8), e->dir[33] = (u8)blocks_of(size);
+        e->dir[32] = (u8)(blocks_of(m, size) >> 8), e->dir[33] = (u8)blocks_of(m, size);
         e->size = size;
         e->data = (u8 *)malloc(size ? size : 1u);
         for (u32 i = 0; i < size; i++) e->data[i] = rd8(data + i);
     }
-    save_all();
-    if (sat_heads_on) sat_game_heads_bup(dir, 1); /* the game's own save beside the game's (the game's hook) */
+    save_all(m);
+    if (sat_heads_on && dev == DEV_INT) sat_game_heads_bup(dir, 1); /* the game's own save beside the game's (the game's hook) */
     return OK;
 }
 static u32 b_read(u32 dev, u32 name, u32 data, u32 d)
 {
+    Dev *m = dev_of(dev);
     int at;
     (void)d;
-    if (dev != DEV_INT) return NON;
-    at = find(name);
+    if (!m) return NON;
+    at = find(m, name);
     if (at < 0) return NOT_FOUND;
-    for (u32 i = 0; i < g_file[at].size; i++) wr8(data + i, g_file[at].data[i]);
-    if (sat_heads_on) sat_game_heads_bup(name, 0);
+    for (u32 i = 0; i < m->file[at].size; i++) wr8(data + i, m->file[at].data[i]);
+    if (sat_heads_on && dev == DEV_INT) sat_game_heads_bup(name, 0);
     return OK;
 }
 static u32 delete_file(u32 dev, u32 name, u32 c, u32 d)
 {
+    Dev *m = dev_of(dev);
     int at;
     (void)c, (void)d;
-    if (dev != DEV_INT) return NON;
-    at = find(name);
+    if (!m) return NON;
+    at = find(m, name);
     if (at < 0) return NOT_FOUND;
-    drop(at);
-    save_all();
+    drop(m, at);
+    save_all(m);
     return OK;
 }
 static u32 b_dir(u32 dev, u32 name, u32 tbsize, u32 out)
 {
+    Dev *m = dev_of(dev);
     u32 n = 0;
-    if (dev != DEV_INT) return NON;
-    for (int i = 0; i < g_n && n < tbsize; i++) {
+    if (!m) return NON;
+    for (int i = 0; i < m->n && n < tbsize; i++) {
         int match = 1; /* an empty name lists everything, else the files that start with the name */
         for (int k = 0; match && k < 11; k++) {
             u8 want = rd8(name + (u32)k);
             if (want == 0) break;
-            match = want == g_file[i].dir[k];
+            match = want == m->file[i].dir[k];
         }
         if (!match) continue;
-        for (u32 k = 0; k < DIR_SIZE; k++) wr8(out + 36u * n + k, g_file[i].dir[k]);
+        for (u32 k = 0; k < DIR_SIZE; k++) wr8(out + 36u * n + k, m->file[i].dir[k]);
         n++;
     }
     return n;
 }
 static u32 b_verify(u32 dev, u32 name, u32 data, u32 d)
 {
+    Dev *m = dev_of(dev);
     int at;
     (void)d;
-    if (dev != DEV_INT) return NON;
-    at = find(name);
+    if (!m) return NON;
+    at = find(m, name);
     if (at < 0) return NOT_FOUND;
     {
         u32 first = 0, bad = 0;
-        for (u32 i = 0; i < g_file[at].size; i++)
-            if (rd8(data + i) != g_file[at].data[i] && !bad++) first = i;
-        if (bad) port_log("bup: verify differs in %u of %u bytes, the first at %u\n", bad, g_file[at].size, first);
+        for (u32 i = 0; i < m->file[at].size; i++)
+            if (rd8(data + i) != m->file[at].data[i] && !bad++) first = i;
+        if (bad) port_log("bup: verify differs in %u of %u bytes, the first at %u\n", bad, m->file[at].size, first);
         return bad ? NO_MATCH : OK;
     }
 }
@@ -274,6 +359,8 @@ SatNative sat_bup_native(u32 addr)
 
 void sat_bup_init(void)
 {
+    dev_defaults();
+    carry_over(&g_dev[0]), carry_over(&g_dev[1]); /* at the start, whether or not the game reads its save */
     wr32(SLOT_INIT, ROM);
     wr32(SLOT_TABLE, TABLE);
     for (u32 i = 0; i < NSVC; i++) wr32(TABLE + 4u * i, ROM + 4u * i);
@@ -285,9 +372,10 @@ void sat_bup_init(void)
 static const AutoLoadStep k_auto[] = SAT_AUTO_LOAD_STEPS;
 static int has_file(void)
 {
-    load_all();
-    for (int i = 0; i < g_n; i++)
-        if (!memcmp(g_file[i].dir, SAT_AUTO_LOAD_FILE, 11)) return 1;
+    dev_defaults();
+    load_all(&g_dev[0]);
+    for (int i = 0; i < g_dev[0].n; i++)
+        if (!memcmp(g_dev[0].file[i].dir, SAT_AUTO_LOAD_FILE, 11)) return 1;
     return 0;
 }
 static void poke16(u32 addr, u32 value) { wr16(addr, (u16)value); }

@@ -1,5 +1,6 @@
-// The menu's extra entries (console.h PortMenuItem): the console's (console_menu_extra), then the game's
-// (game_menu_extra, game.json game_menu or a native game's own), applied the same from the menu bar (host_menu.cpp) and
+// The menu's extra entries (console.h PortMenuItem): the base's File > Restart, the console's (console_menu_extra), then the game's
+// (game_menu_extra, game.json game_menu or a native game's own), then the options' (game_options.c: the base's, the
+// console's and the game's PortOption tables), applied the same from the menu bar (host_menu.cpp) and
 // from --menu-pick FRAME:Menu>Label[>Choice...], a scripted run's pick at a frame (native_frame.c polls it). Also the
 // display settings a native game's own options page shows (port_fullscreen, port_fps_counter: base.h).
 // A tagged entry (the game's own command: game.json menu_commands, or a native game's) is not applied here: its pick is
@@ -11,6 +12,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <deque>
+#include <iterator>
 #include <map>
 #include <mutex>
 #include <string>
@@ -20,12 +22,14 @@
 #include "game_log.h"
 #include "host.h"
 #include "host_internal.hpp"
+#include "save_state.h"
 #if __has_include("port_config.h")
 #include "port_config.h" /* game.json game_menu */
 #endif
 #ifndef PORT_GAME_MENU
 #define PORT_GAME_MENU 0
 #endif
+extern "C" int session_replaying(void); // session.c (session.h is C only)
 
 namespace {
 
@@ -39,7 +43,23 @@ constexpr unsigned kGroup = 16, kListMax = 435;        // a popup's entries befo
 
 const char *on_off(bool on) { return on ? "on" : "off"; }
 
-// The console's entries, then the game's (once: the menu bar and --menu-pick share them).
+// File > Restart: the game again on this run's own command line (host_online.cpp's start_again), less a scripted
+// --menu-pick (it would pick again); this run then ends, by its window's close or, with none, port_exit, so its recording
+// and game log close cleanly before the new run (which waits for this one: PORT_RESUME_WAIT) opens its own. Offered in a
+// play run, greyed in a replay or a check run (the fixed clock). Nothing is asked: the base cannot know whether the game
+// holds unsaved progress. No shortcut: any free key may be one of the game's (Input > Keyboard and mouse).
+int restart_offered() { return !session_replaying() && !host_fixed_clock(); }
+int restart_get() { return 0; }
+void restart_set(int)
+{
+    void *hwnd = host_window_hwnd();
+    if (host::start_again(hwnd, {L"--menu-pick"}, {}, "File > Restart") && !hwnd) port_exit("File > Restart: the game started again", 0);
+}
+const PortMenuItem k_file[] = {{"File", "&Restart", PORT_MENU_COMMAND, nullptr, restart_get, restart_set, nullptr, nullptr, 0u,
+                                restart_offered, 0}};
+
+// The base's File entries (Restart, then Save state, Load state and their note: save_state.c), the console's, then the
+// game's (once: the menu bar and --menu-pick share them).
 void extras_build()
 {
     static bool built;
@@ -47,12 +67,19 @@ void extras_build()
     built = true;
     unsigned n = 0;
     const PortMenuItem *items = console_menu_extra(&n);
-    g_extra_all.assign(items, items + (items ? n : 0u));
+    g_extra_all.assign(std::begin(k_file), std::end(k_file));
+    unsigned ns = 0;
+    const PortMenuItem *states = save_state_menu(&ns);
+    g_extra_all.insert(g_extra_all.end(), states, states + ns);
+    if (items) g_extra_all.insert(g_extra_all.end(), items, items + n);
 #if PORT_GAME_MENU
     n = 0;
     items = game_menu_extra(&n);
     if (items) g_extra_all.insert(g_extra_all.end(), items, items + n);
 #endif
+    n = 0;
+    items = port_options_menu(&n);
+    if (items) g_extra_all.insert(g_extra_all.end(), items, items + n);
     g_extra = g_extra_all.data();
     g_extra_count = static_cast<unsigned>(g_extra_all.size());
 }

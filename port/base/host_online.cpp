@@ -228,6 +228,7 @@ unsigned long start_again(void *hwnd, const std::vector<std::wstring> &drop, con
     }
     CloseHandle(pi.hThread);
     CloseHandle(pi.hProcess);
+    game_log_line("%s: started process %lu: %s", who, pi.dwProcessId, narrow(cmd).c_str());
     if (hwnd) PostMessageW(static_cast<HWND>(hwnd), WM_CLOSE, 0, 0); // none: the console ends this run itself
     return pi.dwProcessId;
 }
@@ -249,6 +250,9 @@ extern "C" void host_online_forget(void)
     host::settings_set("net", "off");
     game_log_line("online: the saved --net choice is back to off (online play is in the game's own menu)");
 }
+
+// save_state.c (C): why a match locks the entries that change the game, or NULL
+extern "C" const char *host_online_locked(void) { return host::online_locked(); }
 
 extern "C" void host_online_match(int hosting, const char *status)
 {

@@ -205,13 +205,16 @@ int pvr_oit_begin(ID3D11DepthStencilView *dsv)
     ID3D11ShaderResourceView *unbind[3] = {NULL, NULL, NULL};
     ID3D11UnorderedAccessView *uav[2];
     UINT zero[2] = {0, 0};
+    u64 t;
     if (!ready()) return 0;
+    t = perf_timer_begin();
     uav[0] = g_heads_uav;
     uav[1] = g_nodes_uav;
     ID3D11DeviceContext_PSSetShaderResources(g_gfx.ctx, 2, 3, unbind);
     ID3D11DeviceContext_ClearUnorderedAccessViewUint(g_gfx.ctx, g_heads_uav, none);
     ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews(g_gfx.ctx, 0, NULL, dsv, 0, 2, uav, zero);
     ID3D11DeviceContext_PSSetShader(g_gfx.ctx, g_gather, NULL, 0);
+    perf_timer_end(PVR_T_PASSES, t);
     return 1;
 }
 

@@ -168,3 +168,17 @@ u32 xfer_end(void)
     g_xactive = 0;
     return moved;
 }
+
+/* a save state's buffer: the partitions' blocks as indexes (0xff: none) */
+void cdb_state(SatSt *io)
+{
+    static u8 ix[CD_SELECTORS][CD_BLOCKS];
+    for (u32 s = 0; !sat_st_loading(io) && s < CD_SELECTORS; s++)
+        for (u32 b = 0; b < CD_BLOCKS; b++) ix[s][b] = g_part[s][b] ? (u8)(g_part[s][b] - g_blk) : 0xffu;
+    sat_st(io, g_blk, sizeof g_blk), sat_st(io, ix, sizeof ix), sat_st(io, g_n, sizeof g_n), sat_st(io, &g_used, 4);
+    sat_st(io, &g_last_part, 4), sat_st(io, &g_cd_sel, 4), sat_st(io, g_flt, sizeof g_flt), sat_st(io, &g_get, 4);
+    sat_st(io, &g_put, 4), sat_st(io, g_x, sizeof g_x), sat_st(io, &g_xlen, 4), sat_st(io, &g_xpos, 4);
+    sat_st(io, &g_xactive, 4), sat_st(io, &g_xdelete, 4), sat_st(io, &g_xpart, 4), sat_st(io, &g_xfirst, 4), sat_st(io, &g_xnum, 4);
+    for (u32 s = 0; sat_st_loading(io) && s < CD_SELECTORS; s++)
+        for (u32 b = 0; b < CD_BLOCKS; b++) g_part[s][b] = ix[s][b] < CD_BLOCKS ? &g_blk[ix[s][b]] : NULL;
+}

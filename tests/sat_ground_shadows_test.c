@@ -23,6 +23,12 @@ u32 sat_wide_sw = 320;
 u8 *sat_wide_fb(const u8 *guest) { (void)guest; return NULL; }
 int sat_wide_fb_ox(const u8 *fb) { (void)fb; return 0; }
 void sat_wide_back(u8 *guest) { (void)guest; }
+int sat_text_on; /* clearer text (sat_text.c) is not built: no lettering */
+void sat_text_begin(u8 *guest, u8 *target) { (void)guest, (void)target; }
+void sat_text_seen(const SatTextSprite *s) { (void)s; }
+int sat_text_item(int visit) { (void)visit; return -1; }
+u16 *sat_text_keep(int item, int after, int *x0, int *y0, int *x1, int *y1) { (void)item, (void)after, (void)x0, (void)y0, (void)x1, (void)y1; return NULL; }
+void sat_text_end(void) {}
 
 static void w16(u32 a, u32 v) { sat_v1_vram[a] = (u8)(v >> 8), sat_v1_vram[a + 1] = (u8)v; }
 

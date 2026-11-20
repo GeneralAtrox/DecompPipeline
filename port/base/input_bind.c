@@ -18,6 +18,9 @@ static const char *const k_sources[] = {"none", "A",  "B",  "X",  "Y",      "STA
 #define MAX_ACTIONS 32
 static u32 g_bind[MAX_ACTIONS];  /* the sources assigned to action i (bit s: source s), when g_bound has bit i */
 static u32 g_bound;
+static const PortAction k_speed = {"fast-forward", "R3"}; /* the base's own action (host.h INPUT_BIND_SPEED): fast forward, speed.c */
+static u32 g_speed_bind;
+static int g_speed_bound;
 
 static int source_index(const char *name)
 {
@@ -40,7 +43,9 @@ static u32 default_mask(const PortAction *a)
 u32 input_bind_get(unsigned i)
 {
     unsigned n;
-    const PortAction *a = console_actions(&n);
+    const PortAction *a;
+    if (i == INPUT_BIND_SPEED) return g_speed_bound ? g_speed_bind : default_mask(&k_speed);
+    a = console_actions(&n);
     if (i >= n || i >= MAX_ACTIONS) return 0;
     return g_bound & (1u << i) ? g_bind[i] : default_mask(&a[i]);
 }
@@ -49,6 +54,11 @@ u32 input_bind_get(unsigned i)
 void input_bind_toggle(unsigned i, unsigned source)
 {
     u32 mask = input_bind_get(i);
+    if (i == INPUT_BIND_SPEED && source < N_SOURCES) {
+        g_speed_bind = source ? mask ^ (1u << source) : 0u;
+        g_speed_bound = 1;
+        return;
+    }
     if (i >= MAX_ACTIONS || source >= N_SOURCES) return;
     g_bind[i] = source ? mask ^ (1u << source) : 0u;
     g_bound |= 1u << i;
@@ -66,34 +76,47 @@ const char *input_bind_text(unsigned i, char *buf, size_t cap)
     return buf;
 }
 
-/* --bind-NAME SOURCE[+SOURCE...]: the settings file's key for an assignment. */
+/* "a+lb": the sources' mask in *mask; 0 if a name is no host button (logged). */
+static int parse_sources(const char *arg, const char *value, u32 *mask)
+{
+    *mask = 0;
+    for (const char *p = value; *p;) {
+        char one[16];
+        size_t len = strcspn(p, "+");
+        int s = -1;
+        if (len < sizeof one) {
+            memcpy(one, p, len);
+            one[len] = 0;
+            s = source_index(one);
+        }
+        if (s < 0) {
+            port_log("input: %s: no host button called \"%s\"\n", arg, value);
+            return 0;
+        }
+        if (s) *mask |= 1u << s;
+        p += len + (p[len] == '+');
+    }
+    return 1;
+}
+
+/* --bind-NAME SOURCE[+SOURCE...]: the settings file's key for an assignment (NAME a console action's, or fast-forward). */
 int input_bind_option(const char *arg, const char *value)
 {
     unsigned n;
     const PortAction *a;
+    u32 mask;
     if (strncmp(arg, "--bind-", 7) || !value) return 0;
+    if (!_stricmp(arg + 7, k_speed.name)) {
+        if (parse_sources(arg, value, &mask)) g_speed_bind = mask, g_speed_bound = 1;
+        return 2;
+    }
     a = console_actions(&n);
     for (unsigned i = 0; i < n && i < MAX_ACTIONS; i++)
         if (!_stricmp(arg + 7, a[i].name)) {
-            u32 mask = 0;
-            for (const char *p = value; *p;) {
-                char one[16];
-                size_t len = strcspn(p, "+");
-                int s = -1;
-                if (len < sizeof one) {
-                    memcpy(one, p, len);
-                    one[len] = 0;
-                    s = source_index(one);
-                }
-                if (s < 0) {
-                    port_log("input: %s: no host button called \"%s\"\n", arg, value);
-                    return 2;
-                }
-                if (s) mask |= 1u << s;
-                p += len + (p[len] == '+');
+            if (parse_sources(arg, value, &mask)) {
+                g_bind[i] = mask;
+                g_bound |= 1u << i;
             }
-            g_bind[i] = mask;
-            g_bound |= 1u << i;
             return 2;
         }
     return 0;
@@ -154,6 +177,15 @@ void input_binds_apply(HostPad pad[HOST_PADS])
         }
     }
     port_twin_apply(pad);
+}
+
+/* One of the sources action i takes (input_bind_get) is held in this pad. */
+int input_bind_held(unsigned i, const HostPad *pad)
+{
+    u32 mask = input_bind_get(i);
+    for (unsigned s = 1; mask && s < N_SOURCES; s++)
+        if (mask >> s & 1u && source_held(pad, (int)s)) return 1;
+    return 0;
 }
 
 /* Which of the console's actions this pad holds: each action's default button (an assignment has already pressed it). */

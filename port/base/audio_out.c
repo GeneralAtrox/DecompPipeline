@@ -2,6 +2,7 @@
  * check's answer is the console's own and never scaled. */
 #include <SDL3/SDL.h>
 #include "audio_out.h"
+#include "perf.h"
 
 enum { MAX_OUTS = 8, GAP_MS = 100 };
 #define STEER 0.005 /* audio_out_steer plays this much faster or slower for the queue's distance from its margin */
@@ -120,7 +121,11 @@ void audio_out_start(AudioOut *a) { SDL_ResumeAudioStreamDevice(a->stream); }
 void audio_out_put(AudioOut *a, const void *frames, u32 bytes)
 {
     SDL_AddAtomicInt(&a->put, (int)(bytes / a->frame_bytes)); /* counted first: a count ahead of the stream can only miss a gap */
-    SDL_PutAudioStreamData(a->stream, frames, (int)bytes);
+    {
+        u64 began = perf_timer_begin();
+        SDL_PutAudioStreamData(a->stream, frames, (int)bytes);
+        perf_timer_end(PERF_T_AUDIO, began);
+    }
     SDL_SetAtomicInt(&a->put_ms, (int)((Uint32)SDL_GetTicks() | 1u));
 }
 

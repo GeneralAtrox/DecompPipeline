@@ -158,46 +158,48 @@ static u32 timer_due(void)
 }
 
 /* one video frame of sound: the 68000 and the SCSP in steps of at most 16 samples (256 clocks a sample at 11.29 MHz) */
+static u32 g_carry, g_ahead; /* the sample count's remainder; 68000 clocks run past the samples made: a step cut short, or an instruction's overrun */
+static LONGLONG g_last_at, g_rem; /* the real clock's: when the last frame's sound was made, and the remainder */
 void sat_scsp_frame(void)
 {
     LARGE_INTEGER t0, t1;
     static s16 out[2048 * 2];
-    static u32 carry, frames;
-    u32 n = (SAT_SCSP_RATE + carry) / sat_sys_hz(), done = 0;
-    carry = (SAT_SCSP_RATE + carry) % sat_sys_hz();
+    static u32 frames;
+    u32 n = (SAT_SCSP_RATE + g_carry) / sat_sys_hz(), done = 0;
+    g_carry = (SAT_SCSP_RATE + g_carry) % sat_sys_hz();
     QueryPerformanceCounter(&t0);
+    sat_sec = SAT_SEC_AUDIO;
     if (!sat_sys_fast() && !sat_sys_virtual()) {
         /* On the real clock the sound follows the clock, not the game's frames: a frame that took longer than its 20 ms
          * is still followed by all the sound that time held, so a slow picture does not make the sound stutter. */
-        static LONGLONG last, rem;
         LARGE_INTEGER f;
+        LONGLONG at = sat_sys_now(); /* the machine's clock: under fast forward a blank still holds its 1/60 s of sound */
         QueryPerformanceFrequency(&f);
-        if (last) {
-            LONGLONG t = (t0.QuadPart - last) * (LONGLONG)SAT_SCSP_RATE + rem;
+        if (g_last_at) {
+            LONGLONG t = (at - g_last_at) * (LONGLONG)SAT_SCSP_RATE + g_rem;
             n = (u32)(t / f.QuadPart);
-            rem = t % f.QuadPart;
+            g_rem = t % f.QuadPart;
         }
-        last = t0.QuadPart;
+        g_last_at = at;
     }
     if (n > 2048) n = 2048;
     while (done < n) {
-        static u32 ahead; /* 68000 clocks run past the samples made: a step cut short below, or an instruction's overrun */
         u32 step = n - done < 16u ? n - done : 16u, due;
         if (g_cpu_on && m68k.ipl) { /* an interrupt waits: its handler first, so a timer it reloads is counted from here */
             u32 used = m68k_run(256u);
             work_add(WC_SOUND_CPU, used);
-            ahead += used;
+            g_ahead += used;
         }
         due = timer_due();
         if (step > due) step = due; /* a step ends on a timer's overflow: the driver's handler runs at the next sample, as on the chip */
-        if (g_cpu_on && ahead < 256u * step) {
-            u32 used = m68k_run(256u * step - ahead);
+        if (g_cpu_on && g_ahead < 256u * step) {
+            u32 used = m68k_run(256u * step - g_ahead);
             work_add(WC_SOUND_CPU, used);
-            ahead += used;
+            g_ahead += used;
         }
         due = timer_due(); /* a handler that reloaded its timer later in the step */
         if (step > due) step = due;
-        ahead = ahead > 256u * step ? ahead - 256u * step : 0u;
+        g_ahead = g_ahead > 256u * step ? g_ahead - 256u * step : 0u;
         for (u32 k = 0; k < step; k++, done++) {
             s32 l, r;
             timers();
@@ -210,6 +212,7 @@ void sat_scsp_frame(void)
     }
     sat_audio_push(out, n);
     QueryPerformanceCounter(&t1);
+    sat_sec = SAT_SEC_GAME;
     sat_perf_audio(t1.QuadPart - t0.QuadPart);
     if (++frames % 250u == 0)
         port_log("scsp: frame %u, 68K %s at %06x ipl %u, %u voices on, SCIEB %03x SCIPD %03x MCIEB %03x\n", frames, g_cpu_on ? "on" : "off", m68k.pc,
@@ -258,10 +261,10 @@ void sat_scsp_frame(void)
 }
 #endif
 
+static u32 g_sram_reads;
 static u32 sram_read(u32 p, u32 size)
 {
-    static u32 reads;
-    if ((++reads & 0x3ffu) == 0) sat_busy_poll(); /* a loop on a mailbox byte: the frame (and the 68K's answer) must come */
+    if ((++g_sram_reads & 0x3ffu) == 0) sat_busy_poll(); /* a loop on a mailbox byte: the frame (and the 68K's answer) must come */
     return load_be(g_sram, (p - SRAM_LO) & (SRAM_SIZE - 1u), size);
 }
 
@@ -286,4 +289,20 @@ void sat_scsp_init(void)
 #endif
     sat_map(SRAM_LO, SRAM_LO + SRAM_SIZE, "SoundRAM", sram_read, sram_write);
     sat_map(SCSP_LO, SCSP_LO + 0x10000u, "SCSP", scsp_map_read, scsp_map_write);
+}
+
+/* a save state's sound side (sound RAM and the registers are a block of their own): the 68000, the SCSP's interrupts,
+ * timers and voices, and the counts its frames and the wait heuristics run on; the real clock's own starts again */
+void sat_scsp_state(SatSt *io)
+{
+    sat_st(io, &g_cpu_on, 4), sat_st(io, &g_sram_reads, 4);
+#ifdef SAT_SOUND_CPU
+    sat_st(io, &g_scieb, 4), sat_st(io, &g_scipd, 4), sat_st(io, &g_mcieb, 4), sat_st(io, &g_mcipd, 4);
+    sat_st(io, &g_mcipd_seen, 4), sat_st(io, g_timer, sizeof g_timer), sat_st(io, g_tpre, sizeof g_tpre);
+    sat_st(io, &g_carry, 4), sat_st(io, &g_ahead, 4), sat_st(io, &m68k, sizeof m68k);
+    sat_mix_state(io);
+    if (sat_st_loading(io)) g_last_at = 0, g_rem = 0;
+#elif defined(SAT_SOUND_STREAM)
+    sat_st(io, &g_stream_on, 4);
+#endif
 }

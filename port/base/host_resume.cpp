@@ -125,9 +125,15 @@ void resume_wait()
     wchar_t pid[16];
     if (!GetEnvironmentVariableW(L"PORT_RESUME_WAIT", pid, 16)) return;
     SetEnvironmentVariableW(L"PORT_RESUME_WAIT", nullptr);
+    std::string line; // this run's command line, in every log it opens (File > Restart's proof: the same as the last run's)
+    for (const wchar_t *c = GetCommandLineW(); *c; c++) line += *c < 0x80 ? static_cast<char>(*c) : '?';
+    port_log_early("start again: started by process %ls, which ends first; this run: %s\n", pid, line.c_str());
     HANDLE h = OpenProcess(SYNCHRONIZE, FALSE, static_cast<DWORD>(_wtoi(pid)));
     if (!h) return;
-    WaitForSingleObject(h, 15000); // the run that asked for it closes its window and ends; never wait for ever
+    // The run that asked for it closes its window and ends; never wait for ever. Not 15 s: a no-window run's end after a
+    // settings change and File > Restart took 7-16 s on build box A (2026-11-18), and a child that stops waiting first finds
+    // the old run's port.log still open, so it can neither rotate nor open its own log.
+    WaitForSingleObject(h, 60000);
     CloseHandle(h);
 }
 

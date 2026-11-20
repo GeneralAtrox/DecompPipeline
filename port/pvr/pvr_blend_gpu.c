@@ -54,11 +54,34 @@ static int init(void)
     return 1;
 }
 
-static int put(ID3D11Buffer *b, const void *data, u32 bytes)
+/* A dynamic buffer of at least `bytes`, recreated larger when needed (pvr_draw.c's vertex and batch buffers). */
+int pvr_buffer_ensure(ID3D11Buffer **b, u32 *cap, u32 bytes, UINT bind, u32 stride)
+{
+    D3D11_BUFFER_DESC d;
+    u32 n = *cap ? *cap : 1u << 20;
+    if (*b && bytes <= *cap) return 1;
+    while (n < bytes) n *= 2u;
+    if (*b) ID3D11Buffer_Release(*b);
+    *b = NULL;
+    memset(&d, 0, sizeof d);
+    d.ByteWidth = n;
+    d.Usage = D3D11_USAGE_DYNAMIC;
+    d.BindFlags = bind;
+    d.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+    if (stride) {
+        d.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
+        d.StructureByteStride = stride;
+    }
+    if (FAILED(ID3D11Device_CreateBuffer(g_gfx.dev, &d, NULL, b))) return 0;
+    *cap = n;
+    return 1;
+}
+
+int pvr_buffer_upload(ID3D11Buffer *b, const void *data, u32 bytes)
 {
     D3D11_MAPPED_SUBRESOURCE m;
     if (FAILED(ID3D11DeviceContext_Map(g_gfx.ctx, (ID3D11Resource *)b, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) return 0;
-    memcpy(m.pData, data, bytes);
+    memmove(m.pData, data, bytes);
     ID3D11DeviceContext_Unmap(g_gfx.ctx, (ID3D11Resource *)b, 0);
     return 1;
 }
@@ -83,7 +106,7 @@ static int from_vertices(const PvrScene *cur)
         if (FAILED(ID3D11Device_CreateBuffer(g_gfx.dev, &d, NULL, &g_from_vb))) return 0;
         g_from_cap = d.ByteWidth;
     }
-    if (!put(g_from_vb, from, bytes)) return 0;
+    if (!pvr_buffer_upload(g_from_vb, from, bytes)) return 0;
     g_from_scene = pvr_blend_scene();
     g_from_set = 1;
     return 1;
@@ -93,7 +116,7 @@ int pvr_blend_gpu_ready(const PvrScene *cur, f32 t)
 {
     f32 c[4] = {t, cur->has_from ? 1.0f : 0.0f, 0.0f, 0.0f}; /* y: --interp-parts, blend in (x w, y w, w) */
     if (!g_on || !cur->nvtx || (cur->has_from && (pvr_parts_holds() || pvr_parts_hold_frame())) || !init() || !from_vertices(cur)) return 0;
-    return put(g_cb, c, sizeof c);
+    return pvr_buffer_upload(g_cb, c, sizeof c);
 }
 
 /* bind_pipeline (pvr_draw.c) in a frame pvr_blend_gpu_ready said yes to: vs_blend, the old places beside the scene's */

@@ -8,6 +8,7 @@
 
 #include "gfx/gfx.h"
 #include "pvr.h"
+#include "perf.h"
 
 typedef struct PvrState {
     u16 fog_table[128];
@@ -109,6 +110,13 @@ u32 pvr_blend_scene(void); /* changes with the scene: the blend at t = 0 changes
 int pvr_blend_gpu_option(const char *value);
 int pvr_blend_gpu_ready(const PvrScene *cur, f32 t); /* 1: this frame blends on the GPU; 0: on the CPU */
 void pvr_blend_gpu_bind(ID3D11DeviceContext *cx, ID3D11Buffer *scene_vb);
+int pvr_buffer_ensure(ID3D11Buffer **b, u32 *cap, u32 bytes, UINT bind, u32 stride); /* dynamic, recreated larger */
+int pvr_buffer_upload(ID3D11Buffer *b, const void *data, u32 bytes);                /* map (discard), copy, unmap */
+
+/* The renderer's named timers (base/perf.h, a kit's range): a sample of a thread busy in the graphics driver cannot name
+ * its caller, so these steps are measured. pvr_draw.c names them. */
+enum { PVR_T_TEX = PERF_T_KIT, PVR_T_UPLOAD, PVR_T_VERTS, PVR_T_CLEAR, PVR_T_BIND, PVR_T_STATES, PVR_T_DRAW, PVR_T_PASSES,
+       PVR_T_LOCK, PVR_T_SEEN, PVR_T_END };
 /* pvr_blend_early.c: --interp-early, the next scene parsed and paired before the renderer's lock (pvr_blend.c pairs) */
 int pvr_blend_early_option(const char *value);
 int pvr_blend_option(const char *arg, const char *value); /* pvr_blend_opt.c: the --interp-* options of scene blending */

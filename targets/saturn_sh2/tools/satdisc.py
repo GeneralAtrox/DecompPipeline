@@ -3,7 +3,9 @@ list, file extraction and a code scan.
 
     python satdisc.py info    <image.cue|.bin|.iso>
     python satdisc.py list    <image> [out.tsv]
-    python satdisc.py extract <image> <out_dir> [NAME ...]   (default: the first-read file; --code: every scan hit)
+    python satdisc.py extract <image> <out_dir> [NAME ...]   (default: the first-read file; --code: every scan hit;
+                                                              --all: every file, an XA Form 2 stream listed in
+                                                              <out_dir>/.skipped.txt instead)
     python satdisc.py scan    <image> [out.tsv]
         every file scored as SH-2 code (big-endian sts.l pr,@-r15 / lds.l @r15+,pr / rts words per KB) with the
         pointers it holds into work RAM high (0x060xxxxx) and low (0x002xxxxx), and the library strings in it
@@ -201,6 +203,21 @@ def run(disc, argv):
         out = pathlib.Path(argv[2])
         out.mkdir(parents=True, exist_ok=False)  # a new folder: never overwrite earlier extractions
         names = argv[3:]
+        if names == ["--all"]:
+            skipped = []
+            for p, lba, size in sorted(disc.walk()):
+                try:
+                    data = disc.read(lba, size)
+                except ValueError:  # an XA stream (Mode 2 Form 2): streamed at run time, not a file to copy
+                    skipped.append(p)
+                    continue
+                dst = out / p.lstrip("/")
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                dst.write_bytes(data)
+            (out / ".skipped.txt").write_text("".join(p + "\n" for p in skipped), encoding="utf-8")
+            print(f"{sum(1 for q in out.rglob('*') if q.is_file()) - 1} files -> {out}; {len(skipped)} XA stream(s) "
+                  "skipped (.skipped.txt)")
+            return
         if names == ["--code"]:
             first = disc.first_file()
             want = {r[0] for r in scan_rows(disc) if is_code(r) or r[0] == first}

@@ -20,6 +20,7 @@ instructions; this scan, not Ghidra's mnemonics, decides which functions use vec
 import array
 import bisect
 import pathlib
+import struct
 import sys
 
 HERE = pathlib.Path(__file__).resolve().parent
@@ -98,6 +99,71 @@ def classify(w):
         if xo10 in SYS31:
             return ("sys",)
     return ()
+
+
+NAMES31 = {83: "mfmsr", 146: "mtmsr", 178: "mtmsrd", 371: "mftb", 306: "tlbie", 566: "tlbsync", 402: "slbmte", 434: "slbie",
+           498: "slbia", 915: "slbmfee", 851: "slbmfev", 1014: "dcbz", 86: "dcbf", 54: "dcbst", 470: "dcbi", 982: "icbi",
+           20: "lwarx", 84: "ldarx", 150: "stwcx.", 214: "stdcx."}
+NAMES63 = {38: "mtfsb1", 70: "mtfsb0", 134: "mtfsfi", 583: "mffs", 711: "mtfsf", 64: "mcrfs"}
+
+
+def mnemonic(w):
+    """The mnemonic of a word in a refused class (REFUSE: FPSCR, estimate, atomic, cache, system), for grouping
+    refusals by the instruction that caused them (tools/AutoOnboard/onboard_gaps.py); None for any other word. dcbz with RT 1 is
+    the Xenon's 128-byte form, which Ghidra and the judge call dcbzl; mfspr of the time base is mftb."""
+    op, xo10 = w >> 26, (w >> 1) & 0x3FF
+    if op == 17:
+        return "sc"
+    if op == 19:
+        return {18: "rfid", 274: "hrfid"}.get(xo10)
+    if op in (59, 63):
+        if op == 63 and xo10 in NAMES63:
+            return NAMES63[xo10]
+        return "fres" if op == 59 and (w >> 1) & 0x1F == 24 else "frsqrte" if op == 63 and (w >> 1) & 0x1F == 26 else None
+    if op != 31:
+        return None
+    if xo10 == 1014:
+        return "dcbzl" if (w >> 21) & 31 == 1 else "dcbz"
+    if xo10 in (339, 467):
+        spr = ((w >> 16) & 31) | (((w >> 11) & 31) << 5)
+        if spr in SPR_PLAIN or spr == SPR_VRSAVE:
+            return None
+        return "mftb" if xo10 == 339 and spr in (268, 269) else f"{'mfspr' if xo10 == 339 else 'mtspr'} {spr}"
+    return NAMES31.get(xo10)
+
+
+VMX_REFUSE = ("vrefp", "vrsqrtefp", "vexptefp", "vlogefp", "vpkd3d", "vupkd3d")  # DESIGN.md: refused vector ops
+
+
+def vector_name(w):
+    """A vector word's mnemonic from the translator's decoder (translator/xenontranslate/decode.py), or None."""
+    root = str(pathlib.Path(__file__).resolve().parents[1] / "translator")
+    if root not in sys.path:
+        sys.path.append(root)
+    from xenontranslate import decode
+    try:
+        return decode.decode(w).op
+    except Exception:  # a word the decoder does not take: no name
+        return None
+
+
+def refusing_ops(img, base, addr, size):
+    """{mnemonic: count} of the words in the function at addr whose class decided its refusal (the first class of
+    REFUSE it holds), read from the loaded image. With none of those, its vector ops that are refused (VMX_REFUSE:
+    the estimates and the Direct3D pack/unpack), else {}."""
+    import collections
+    lo = addr - base
+    words = struct.unpack_from(f">{size // 4}I", img, lo) if 0 <= lo and lo + size <= len(img) else ()
+    by = {}
+    for w in words:
+        for c in classify(w):
+            by.setdefault(c, collections.Counter())[mnemonic(w) or f"op {w >> 26}"] += 1
+    first = next((c for c, _why in REFUSE if c in by), None)
+    if first:
+        return dict(by[first])
+    vec = collections.Counter(n for n in (vector_name(w) for w in words if "vmx" in classify(w))
+                              if n and n.startswith(VMX_REFUSE))
+    return dict(vec)
 
 
 def uses_r13(w):

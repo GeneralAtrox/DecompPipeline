@@ -20,6 +20,7 @@
 #include "work_count.h"
 #include "present_cpu.h"
 #include "sat_screen.h"
+#include "sat_cd.h"
 
 static int g_headless, g_shot_pending;
 static u32 g_shot_vb, g_shot_every, g_shots_taken;
@@ -40,9 +41,11 @@ void sat_video_options(int headless, u32 shot_vb, const char *shot_path, u32 eve
 int sat_video_headless(void) { return g_headless; }
 
 /* --dump-frames N,N,.. [--dump-dir DIR]: the picture at the first vertical blank at or after each N, as DIR/frame_NNNNNN.png
- * (what the scene dump's replay command asks for; the Dreamcast kit's names). */
+ * (what the scene dump's replay command asks for; the Dreamcast kit's names). --dump-ram on adds the work RAM there. */
 static u32 g_dump_at[16];
 static unsigned g_dump_n, g_dump_next;
+static int g_dump_ram; /* --dump-ram on: each dump also writes DIR/ram_NNNNNN.bin, low then high work RAM (as the guest holds
+                          them), for comparing a game's state between runs (a test aid) */
 static char g_dump_dir[260] = ".";
 
 int sat_video_dump_option(const char *arg, const char *value)
@@ -50,6 +53,10 @@ int sat_video_dump_option(const char *arg, const char *value)
     if (!value) return 0;
     if (!strcmp(arg, "--dump-dir")) {
         strncpy(g_dump_dir, value, sizeof g_dump_dir - 1);
+        return 2;
+    }
+    if (!strcmp(arg, "--dump-ram")) {
+        g_dump_ram = strcmp(value, "off") != 0;
         return 2;
     }
     if (!strcmp(arg, "--dump-frames")) {
@@ -121,6 +128,18 @@ static int frame_black(void)
     return sat_frame_w && p == end;
 }
 
+/* the composed picture is the one composed at the blank before (a still loading picture, sat_sys.c sat_load_frame); asked
+ * only while the game takes a quick disc read */
+static int frame_still(void)
+{
+    static u32 prev[SAT_MAX_W * SAT_MAX_H], pw, ph, pvb;
+    u32 n = sat_frame_w * sat_frame_h, vb = sat_vblank_count();
+    int same = pvb + 1u == vb && pw == sat_frame_w && ph == sat_frame_h && !memcmp(prev, sat_frame, (size_t)n * 4u);
+    memcpy(prev, sat_frame, (size_t)n * 4u);
+    pw = sat_frame_w, ph = sat_frame_h, pvb = vb;
+    return same;
+}
+
 void sat_present(void)
 {
     LARGE_INTEGER t0, t1, t2;
@@ -135,11 +154,16 @@ void sat_present(void)
     sat_compose();
     sat_perf_phase(0);
     QueryPerformanceCounter(&t1);
+    sat_sec = SAT_SEC_SHOW;
     sat_perf_compose(t1.QuadPart - t0.QuadPart);
     pacing_note(t1.QuadPart);
     {
         int wide = console_widens(), black = sat_black_possible() || wide ? frame_black() : 0;
-        if (sat_black_possible()) sat_black_frame(black);
+        if (sat_black_possible()) {
+            int loading = sat_cd_loading();
+            sat_black_frame(black);
+            sat_load_frame(loading, loading && !black && frame_still());
+        }
         if (wide) sat_wide_seen(black); /* the log's "widescreen: shown" lines (sat_wide.c) */
     }
     pw = sat_frame_w, ph = sat_frame_h;
@@ -157,6 +181,15 @@ void sat_present(void)
         char path[300];
         snprintf(path, sizeof path, "%s/frame_%06u.png", g_dump_dir, g_dump_at[g_dump_next++]);
         if (sat_png_write(path, pic, pw, ph)) port_log("dump: %s (%ux%u) at vertical blank %u\n", path, pw, ph, sat_vblank_count());
+        if (sat_text_shots()) snprintf(path, sizeof path, "%s/frame_%06u_clear.png", g_dump_dir, g_dump_at[g_dump_next - 1]), sat_text_png(path, pic, pw, ph);
+        if (g_dump_ram) {
+            FILE *f;
+            snprintf(path, sizeof path, "%s/ram_%06u.bin", g_dump_dir, g_dump_at[g_dump_next - 1]);
+            if ((f = fopen(path, "wb")) != NULL) {
+                fwrite(sat_ram_l(), 1, SAT_WRAM_SIZE, f), fwrite(sat_ram_h(), 1, SAT_WRAM_SIZE, f), fclose(f);
+                port_log("dump: %s (work RAM) at vertical blank %u\n", path, sat_vblank_count());
+            }
+        }
     }
     if (scr) {
         if (scr > 0 && (!g_headless || g_work_on)) sat_screen_post(sat_vblank_count());
@@ -167,6 +200,7 @@ void sat_present(void)
     }
     if (own) play_stats_draw(0);
     QueryPerformanceCounter(&t2);
+    sat_sec = SAT_SEC_GAME;
     sat_perf_show(t2.QuadPart - t1.QuadPart);
     game_log_poll(sat_vblank_count());
     scene_dump_poll(sat_vblank_count());

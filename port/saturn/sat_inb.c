@@ -50,7 +50,7 @@ static Cmd *g_ca, *g_cb;
 static int *g_order, *g_pair, g_na, g_nb;
 static LONGLONG g_t0, g_period, g_lead;
 static int g_k, g_n;
-static u32 g_made, g_late, g_hist[80], g_paired;
+static u32 g_made, g_late, g_hist[80], g_paired, g_cpu_fb;
 static u32 g_shot_vb, g_shot_n = 3; /* --in-between-shot VB[+N],PREFIX (a test aid): what is posted for N blanks from VB, */
 static char g_shot[260];             /* held in memory and written at exit as PREFIX_VB_K.png */
 static struct { u32 *px, w, h, vb; int k; } g_shots[96];
@@ -114,13 +114,24 @@ void sat_inb_drawn(const u8 *fb)
     g_fb_buf[fbi(fb)] = b;
 }
 
+/* sat_vdp.c: the CPU wrote into framebuffer fb after its list was drawn. Its picture is then more than the list, so the
+ * list cannot be drawn again in between: that picture is shown as it is until the next one. Dragon Force's NOW LOADING
+ * (2026-11-17): the game writes the text into the framebuffer itself over a list that draws nothing, and the in-betweens
+ * erased and redrew the list, so two of every three pictures shown were black, a flicker at 144 a second. */
+void sat_inb_fb_written(const u8 *fb)
+{
+    if (!g_live || g_fb_buf[fbi(fb)] < 0) return;
+    g_fb_buf[fbi(fb)] = -1;
+    g_cpu_fb++;
+}
+
 /* sat_video.c, before a vertical blank's picture is composed: the chips' state behind it */
 void sat_inb_vblank(void)
 {
     Pic *p;
     int want;
     if (g_allowed < 0) decide();
-    want = sat_inb_on > 0 && g_allowed > 0 && !sat_screen_on(); /* a kit screen (sat_screen.c) shows its own picture */
+    want = sat_inb_on > 0 && g_allowed > 0 && !sat_screen_on() && sat_sys_speed() == 1u && !sat_load_fast(); /* not a kit screen, nor fast */
     if (g_live != want) { /* switched: start clean */
         g_live = want;
         g_npic = g_has_held = 0;
@@ -143,10 +154,10 @@ void sat_inb_post(void)
     LARGE_INTEGER now;
     unsigned fps = cpu_present_fps() ? cpu_present_fps() : 144u, hz = sat_sys_hz() ? sat_sys_hz() : 50u;
     if (g_has_held) sat_wide_post(g_held, g_held_w, g_held_h, g_held_vb), shot(g_held, g_held_w, g_held_h, g_held_vb, 0);
-    memcpy(g_held, sat_frame, (size_t)sat_frame_w * sat_frame_h * 4u);
+    memcpy(g_held, sat_frame, (size_t)sat_frame_w * sat_frame_h * 4u), sat_text_held(g_held); /* and its clearer text */
     g_held_w = sat_frame_w, g_held_h = sat_frame_h, g_held_vb = sat_vblank_count();
     g_has_held = 1;
-    QueryPerformanceCounter(&now);
+    now.QuadPart = sat_sys_now(); /* the machine's clock, which sat_sys.c's wait and polls compare with */
     g_t0 = now.QuadPart;
     g_n = (int)((fps + hz - 1u) / hz) - 1;
     g_k = 1;
@@ -318,7 +329,7 @@ static void draw(int k, int t)
     LARGE_INTEGER a, b, f;
     u8 *fb;
     double ms;
-    sat_perf_wait_begin(); /* not the game's work: the tick's time leaves it out */
+    sat_perf_wait_begin(), sat_sec = SAT_SEC_INB; /* not the game's work: the tick's time leaves it out */
     QueryPerformanceCounter(&a);
     g_drawing = 1;
     if (g_paired_for != (int)n->vb) pair(g_v1[o->v1], g_v1[n->v1]), g_paired_for = (int)n->vb;
@@ -334,14 +345,14 @@ static void draw(int k, int t)
     v2_blend(o, n, t);
     sat_v1_fb_flip(); /* VDP1 draws into the framebuffer VDP2 shows */
     fb = sat_v1_draw_fb();
-    sat_wide_save(fb, g_save->fb); /* and its wide twin (sat_wide.c) */
+    sat_wide_save(fb, g_save->fb), sat_text_save(fb); /* and its wide twin (sat_wide.c), its clearer text copy */
     sat_v1_erase_draw();
     sat_v1_draw();
     sat_v1_fb_flip();
     sat_compose();
     sat_wide_post(sat_frame, sat_frame_w, sat_frame_h, n->vb);
     shot(sat_frame, sat_frame_w, sat_frame_h, o->vb, k);
-    sat_wide_restore(fb, g_save->fb);
+    sat_wide_restore(fb, g_save->fb), sat_text_restore(fb);
     memcpy(sat_v1_vram, g_save->v1, sizeof sat_v1_vram);
     memcpy(sat_v2_vram, g_save->v2, sizeof g_save->v2);
     memcpy(sat_v2_cram, g_save->cram, sizeof g_save->cram);
@@ -396,5 +407,6 @@ void sat_inb_report(void)
         if (g_hist[i]) at = i + 1;
     }
     port_log("in-between: %u made, %u skipped (no time before the blank); draw ms p50 <%.2f p99 <%.2f worst <%.2f; last "
-             "list %d of %d commands paired\n", g_made, g_late, p50 / 4.0, p99 / 4.0, at / 4.0, (int)g_paired, g_nb);
+             "list %d of %d commands paired; %u framebuffer(s) the CPU wrote into after their list (shown without in-betweens)\n",
+             g_made, g_late, p50 / 4.0, p99 / 4.0, at / 4.0, (int)g_paired, g_nb, g_cpu_fb);
 }

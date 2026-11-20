@@ -89,8 +89,8 @@ def generated(text):
 
 def main():
     out = generated(RECURSIVE)
-    assert "return body(sat_entry_sp, 0x060ff000u, a0);" in out and "0x060fe000u" not in out, out
-    assert "r15 = sp;" in out and "body(r15, 0x06000102u, a0)" in out, out
+    assert "return body_06000100(sat_entry_sp, sat_pr_in(), a0);" in out and "0x060fe000u" not in out, out  # PR: the caller's (test_sat_call_sites.py)
+    assert "r15 = sp;" in out and "sat_body_out(body_06000100((sat_body_in(), r15), 0x06000102u, a0))" in out, out
     out = generated(PLAIN.replace("fn_06000100", "fn_06000100"))
     assert "body(" not in out, out
     out = gen_saturn.exit_regs(CALLEE, (4, 2, 3))

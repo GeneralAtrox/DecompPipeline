@@ -67,7 +67,7 @@ def run(gen, exe, check, jobs, asan=False, game_src=None):
     if check:
         cl += ["/c"] + kit + cxx
     else:
-        cl += kit + cxx + chunks + ["/Fe" + str(exe), "/link", "/LIBPATH:" + str(sdl / "lib"), "SDL3.lib"] + KITLIBS + (["/DEBUG", "/INCREMENTAL:NO"] if asan else [])
+        cl += kit + cxx + chunks + ["/Fe" + str(exe), "/link", "/MAP:" + str(exe.with_suffix(".map")), "/LIBPATH:" + str(sdl / "lib"), "SDL3.lib"] + KITLIBS + (["/DEBUG", "/INCREMENTAL:NO"] if asan else [])
     bat = exe.parent / "build_saturn.bat"
     cfg = game_config.toolchain()
     from core import toolcfg  # noqa: E402  (on the path through toolchain)

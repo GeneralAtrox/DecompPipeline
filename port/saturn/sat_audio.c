@@ -2,6 +2,11 @@
  * (base/audio_out.c), and to a WAV file with `--wav FILE` (which is how a headless or fixed-clock run is checked: no device is
  * opened there). The device's volume is the base's; the WAV file (a check's answer) is never scaled.
  *
+ * Fast forward (base/speed.c) drops the sound cleanly while it is on: a blank's sound at several times the speed would
+ * either pile up in the queue (a growing lag, then lost frames and crackle) or need resampling by a speed that, as fast as
+ * it goes, has no fixed rate. So the frame it starts on fades out, nothing is queued while it lasts, and the first frame
+ * after it fades in behind the usual lead: the sound picks up where the game is, in step, with no click at either end.
+ *
  * Nearest existing: sat_cdda.c (the disc's audio tracks, 2352-byte sectors rather than frames of mixed samples); the two play
  * side by side and the system mixes them. */
 #include <stdio.h>
@@ -24,6 +29,8 @@ static u32 g_lead, g_leads;   /* silence put where a sound starts: the device's 
 static u32 g_gaps, g_gap_us;  /* the output's gaps as of the last frame put (not the run's end, whose sound runs out on purpose) */
 static float g_smin = 1, g_smax = 1;
 static u64 g_last_ns;
+static int g_ff;              /* fast forward is on: the sound is dropped (sat_audio_fade) */
+static u32 g_ff_dropped, g_ff_times;
 static double g_late, g_late_max; /* ms a frame's sound came after its 20 ms, the most lately (fading) and the most of the run */
 
 int sat_audio_silent(void) { return g_silent; } /* the last frame of sound was all zero */
@@ -56,6 +63,7 @@ static void le32(u8 *p, u32 v)
 
 void sat_audio_close(void)
 {
+    if (g_ff_times) port_log("audio: fast forward %u times: %u frames of sound dropped, each start faded out and each end faded in\n", g_ff_times, g_ff_dropped);
     if (g_pushed) port_log("audio: %u frames of sound mixed, %u dropped because the device queue was full (%u ms), %u silent ones not queued on a black screen\n", g_pushed, g_dropped, (u32)QUEUE_MS, g_held);
     if (g_qn) { /* ran dry: the queue was empty when the next video frame's sound came mid-sound (silence running it dry is a new start) */
         u32 us = g_gap_us, gaps = g_gaps;
@@ -83,8 +91,19 @@ void sat_audio_close(void)
     g_wav = NULL;
 }
 
+/* A linear fade of one frame of stereo sound, into out: in from silence (up) or out to it (sat_cdda.c's sectors too). */
+void sat_audio_fade(s16 *out, const s16 *in, u32 frames, int up)
+{
+    for (u32 i = 0; i < frames; i++) {
+        s32 g = (s32)(up ? i : frames - 1u - i), n = (s32)frames;
+        out[2 * i] = (s16)(in[2 * i] * g / n);
+        out[2 * i + 1] = (s16)(in[2 * i + 1] * g / n);
+    }
+}
+
 void sat_audio_push(const s16 *stereo, u32 frames)
 {
+    static s16 faded[MAX_FRAMES * 2];
     u32 i;
     if (frames > MAX_FRAMES) frames = MAX_FRAMES;
     g_pushed += frames;
@@ -95,6 +114,18 @@ void sat_audio_push(const s16 *stereo, u32 frames)
         g_wav_frames += frames;
     }
     if (!g_out) return;
+    if (sat_sys_speed() != 1u || sat_load_fast()) { /* fast forward, or a long still loading picture run faster (sat_sys.c sat_load_frame):
+                                                     * this frame fades out, then nothing is queued until it ends */
+        if (!g_ff && !g_was_held) sat_audio_fade(faded, stereo, frames, 0), audio_out_put(g_out, faded, frames * 4u);
+        g_ff_times += !g_ff;
+        g_ff = 1, g_was_held = 1, g_ff_dropped += frames;
+        return;
+    }
+    if (g_ff) { /* the first frame after it: in from silence, behind the lead (g_was_held) */
+        g_ff = 0;
+        sat_audio_fade(faded, stereo, frames, 1);
+        stereo = faded;
+    }
     if (sat_black_fast() && g_silent) {
         g_held += frames; /* a black screen running fast: its silence is not queued, so the sound after it is not late */
         if (!g_was_held) audio_out_rest(g_out);

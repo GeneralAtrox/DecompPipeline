@@ -120,6 +120,67 @@ class SignedIndexCheck(unittest.TestCase):
         self.assertNotIn("switch (", src)
 
 
+class JumpIntoOwnBody(unittest.TestCase):
+    """A copy helper with no bound check jumps through a table of addresses into its own unrolled body (Saturn
+    Bomberman 0609445c, a computed goto): the jump is a switch over those labels, not a tail call to an address
+    that is no function (STUB 060944a2)."""
+    # mov.l r3,@-r15; mov.l @(pool),r3; mov.l @(r0,r3),r3; add #-4,r0; jmp @r3; mov.l @(r0,r2),r3; nop;
+    # sled 0x0e..0x19: mov.l r0,@(8,r1); mov.l @(4,r2),r0; mov.l r3,@(4,r1); mov.l @r2,r3; mov.l r0,@(4,r1);
+    # mov.l r3,@r1; rts at 0x1a; mov.l @r15+,r3; pad; pool 0x06000024 at 0x20; table at 0x24: 1a 16 12 0e, then
+    # a word that is no address in the body
+    CODE = ("2F36" "D307" "033E" "70FC" "432B" "032E" "0009" "1102" "5021" "1131" "6322" "1101" "2132" "000B" "63F6"
+            "0009" "06000024" "0600001A" "06000016" "06000012" "0600000E" "FFFFFFFF")
+
+    def test_switch_into_the_sled(self):
+        src = c_of(self.CODE, 0x38)
+        self.assertIn("switch (", src)
+        for k in ("0x0600000eu", "0x06000012u", "0x06000016u", "0x0600001au"):
+            self.assertIn(f"case {k}:", src)
+
+    def test_table_past_the_body_stays_a_tail_call(self):
+        # entries pointing at or after the table are not the function's own code: no switch, as before
+        src = c_of(self.CODE.replace("0600001A" "06000016", "06000030" "06000034"), 0x38)
+        self.assertNotIn("switch (", src)
+        self.assertIn("tc_call(g_", src)
+
+    # Saturn Bomberman 060944f4 (STUB 06094516): a byte count checked first, `mov #8,r3; cmp/hs r0,r3; bf big`, then
+    # mov.l @(pool),r3; mov.l @(r0,r3),r3; jmp @r3; nop; pool 0x06000020; sled 0x14..0x1f: mov.l @(4,r2),r0;
+    # mov.l r0,@(4,r1); mov.l @r2,r0; mov.l r0,@r1; rts; mov.l @r15+,r3; table at 0x20: 1c 18 14 (offsets 0, 4, 8);
+    # big at 0x2c, after the table: mov #0,r0; rts; mov.l @r15+,r3
+    CHECKED = ("2F36" "E308" "3302" "8B11" "D301" "033E" "432B" "0009" "06000020" "5021" "1101" "6022" "2102" "000B"
+               "63F6" "0600001C" "06000018" "06000014" "E000" "000B" "63F6")
+
+    def test_bounded_byte_offset_is_a_switch(self):
+        # the bound is on the byte offset r0 <= 8, not on an index: the aligned offsets 0, 4, 8 are the 3 entries
+        src = c_of(self.CHECKED, 0x32)
+        self.assertIn("switch (", src)
+        for k in ("0x06000014u", "0x06000018u", "0x0600001cu"):
+            self.assertIn(f"case {k}:", src)
+        self.assertNotIn("case 0x06000020u:", src)
+        self.assertNotIn("tc_call(0x06000014u", src)
+
+    # Saturn Bomberman 060946cc (GCC's __ashrsi3, STUB 06094744): the range check is two branches back, with a rotate
+    # that sets T between it and the jump, and a second way in from the positive path. mov.l r2,@-r15; cmp/pz r1;
+    # mov #4,r2; bf out; cmp/ge r2,r1; bt big; mov r0,r2; rotl r2; bf pos; tab: mov.l @(pool),r2; add r2,r1;
+    # mov.b @r1,r2; mov.l @(pool),r1; add r2,r1; jmp @r1; nop; pos 0x20: mov #2,r2; cmp/gt r2,r1; bf tab; rts;
+    # mov.l @r15+,r2; big 0x2a: mov #-1,r0; rts; mov.l @r15+,r2; pools 0x06000038 (table) and 0x06000042 (base);
+    # table of signed byte offsets 00 fe fc fa; sled 0x3c: shar r0 x3; out 0x42: rts; mov.l @r15+,r2
+    SHIFT = ("2F26" "4111" "E204" "8B1C" "3123" "890E" "6203" "4204" "8B06" "D207" "312C" "6210" "D106" "312C" "412B"
+             "0009" "E202" "3127" "8BF5" "000B" "62F6" "E0FF" "000B" "62F6" "06000038" "06000042" "00FEFCFA"
+             "4021" "4021" "4021" "000B" "62F6")
+
+    def test_check_branches_back_bounds_a_byte_table(self):
+        src = c_of(self.SHIFT, 0x46, "u32")
+        self.assertIn("switch (", src)
+        for k in ("0x0600003cu", "0x0600003eu", "0x06000040u", "0x06000042u"):
+            self.assertIn(f"case {k}:", src)
+
+    def test_no_range_check_is_no_bound(self):
+        # without `cmp/ge r2,r1; bt big` only cmp/pz guards r1: no bound on any way in, so no switch
+        src = c_of(self.SHIFT.replace("3123" "890E", "0009" "0009", 1), 0x46, "u32")
+        self.assertNotIn("switch (", src)
+
+
 class NarrowHardwareAccess(unittest.TestCase):
     """A byte or word at a constant hardware address (SMPC SF 0x20100063, CD block HIRQ 0x25890008) goes through
     tc_hw_read8/16 and tc_hw_write8/16, as the 4-byte one does: rd8/wr8 fault on hardware in the test runtime."""

@@ -206,7 +206,9 @@ void pvr_todo(const char *fmt, ...)
 void pvr_seen(const char *fmt, ...)
 {
     va_list ap;
+    u64 t = perf_timer_begin(); /* the format and look-up on every call, logged or not (PVR_T_SEEN) */
     va_start(ap, fmt);
     log_once("ta: ", fmt, ap);
     va_end(ap);
+    perf_timer_end(PVR_T_SEEN, t);
 }

@@ -19,7 +19,10 @@ enum { ST_PAUSE = 1, ST_PLAY = 3, ST_NODISC = 7, ST_ERROR = 9, ST_PERIODIC = 0x2
 static u32 g_hirq = 0x07c1u, g_mask; /* as the BIOS leaves it: no disc-change flag */
 static u16 g_cr[4];
 static int g_unread, g_playing, g_repeat, g_quick;
+static u32 g_taken_vb; /* 1 + the vertical blank the game last ended a transfer of a quick data play's sectors, 0 never */
 u32 sat_cd_data_rate = 150; /* sectors a second a data play delivers: a 2x drive turns 150 (--cdrate N). The movies pace their frames on it; 1200 made them play in bursts */
+u32 sat_cd_log_left; /* --cd-log N: the next N register events in port.log (commands, replies, HIRQ changes) */
+u32 sat_cd_log_from, sat_cd_log_held; /* --cd-log N@VB: those N start at vertical blank VB (a late fault in a long replay) */
 int sat_cd_fast_loads = -1; /* 1: a load fills the buffer at once; 0: the drive's rate; -1: not set (sat_main.c decides) */
 static u32 g_state = ST_PAUSE, g_pos = 150, g_play_start, g_play_end, g_actual, g_acc;
 static SatFile g_dir[SAT_MAX_FILES];
@@ -58,6 +61,10 @@ static int quick(u32 start)
     const SatTrack *t = track_at(start, NULL);
     return sat_cd_fast_loads > 0 && t && (t->ctrl & 0x40) && sat_disc_read(start, raw) && memcmp(raw + 16, "FILM", 4) != 0;
 }
+
+/* the game is taking a load: a quick data play is going, or it took some of one's sectors in the last two blanks (Dragon
+ * Force takes one a frame); sat_sys.c runs a still loading picture faster */
+int sat_cd_loading(void) { return (g_playing && g_quick) || (g_taken_vb && sat_vblank_count() + 1u - g_taken_vb <= 2u); }
 
 static void play(u32 start, u32 at, u32 end, int repeat)
 {
@@ -248,6 +255,7 @@ static u32 command(void)
     case 0x06: {
         int active = xfer_active();
         u32 n = xfer_end();
+        if (active && n && g_quick) g_taken_vb = sat_vblank_count() + 1u;
         reply_state();
         g_cr[0] |= active ? (u16)((n >> 17) & 0xff) : 0xff;
         g_cr[1] = active ? (u16)((n >> 1) & 0xffff) : 0xffff;
@@ -276,18 +284,40 @@ static u32 command(void)
 }
 
 /* ---- the registers */
+/* The NetLink modem's window, 0x25895001 + 4 * n (a 16550 UART), lies inside the CD block's 64 KB. No NetLink is
+ * fitted: its reads are open bus and its writes go nowhere. Decoded as CD registers by their low bits, a game's modem
+ * probe (Saturn Bomberman's H2HLIBUS writes 0 to the UART's register 2 at 0x25895009) cleared HIRQ, CMOK with it, so the
+ * game's CD library failed its first command, its file system did not start and the game took its exit to the CD player. */
+static int netlink(u32 p, int write)
+{
+    static int seen;
+    if ((p & 0xf000u) != 0x5000u) return 0;
+    if (!seen++) port_log("cd: %s at %08x is the NetLink modem's window: no NetLink is fitted (open bus)\n", write ? "write" : "read", p);
+    return 1;
+}
+
 static u32 reg_read(u32 p, u32 size)
 {
     u32 v = 0;
     if ((p & 0xffffu) == 0x8000u) return xfer_read(size); /* the data transfer register's mirror in the register block */
+    if (netlink(p, 0)) return size == 1 ? 0xffu : size == 2 ? 0xffffu : 0xffffffffu;
     switch (p & 0x3cu) {
-    case 0x08: v = g_hirq; break;
+    case 0x08:
+        v = g_hirq;
+        if (sat_cd_log_left) {
+            static u32 last = 0xffffffffu;
+            if (v != last) sat_cd_log_left--, port_log("cd-log: vb %u HIRQ read %04x\n", sat_vblank_count(), v);
+            last = v;
+        }
+        break;
     case 0x0c: v = g_mask; break;
     case 0x18: v = g_cr[0]; break;
     case 0x1c: v = g_cr[1]; break;
     case 0x20: v = g_cr[2]; break;
     case 0x24: v = g_cr[3], g_unread = 0; break;
-    default: break;
+    default:
+        if (sat_cd_log_left) sat_cd_log_left--, port_log("cd-log: vb %u read of %08x (size %u): not modelled, 0\n", sat_vblank_count(), p, size);
+        break;
     }
     return v;
 }
@@ -296,15 +326,20 @@ static void reg_write(u32 p, u32 size, u32 value)
 {
     u32 o = p & 0x3cu;
     (void)size;
+    if (netlink(p, 1)) return;
     if (o == 0x08) {
+        if (sat_cd_log_left) sat_cd_log_left--, port_log("cd-log: vb %u HIRQ &= %04x -> %04x\n", sat_vblank_count(), value & 0xffffu, g_hirq & value);
         g_hirq &= value;
     } else if (o == 0x0c) {
         g_mask = value & 0xffff;
     } else if (o >= 0x18 && o <= 0x24) {
         g_cr[(o - 0x18) / 4] = (u16)value;
         if (o == 0x24) {
-            u32 asked = g_cr[0] >> 8;
+            u32 asked = g_cr[0] >> 8, in[4] = {g_cr[0], g_cr[1], g_cr[2], g_cr[3]};
             g_hirq |= command() | H_CMOK;
+            if (sat_cd_log_left)
+                sat_cd_log_left--, port_log("cd-log: vb %u command %04x %04x %04x %04x -> %04x %04x %04x %04x HIRQ %04x\n", sat_vblank_count(),
+                                            in[0], in[1], in[2], in[3], g_cr[0], g_cr[1], g_cr[2], g_cr[3], g_hirq);
             g_unread = 1;
             if (asked == 0x00u || asked == 0x51u) sat_idle_ask(); /* the drive delivers once a frame */
         }
@@ -320,9 +355,9 @@ static u32 dtr_read(u32 p, u32 size)
 static void dtr_write(u32 p, u32 size, u32 value) { (void)p, (void)size, (void)value; }
 
 /* once a frame: the drive delivers sectors, the periodic status refreshes */
+static u64 audio_at; /* sat_cd_frame: the CD audio's clock at the last frame */
 void sat_cd_frame(void)
 {
-    static u64 audio_at;
     int live = !sat_sys_det() && !sat_sys_virtual() && !sat_sys_fast();
     u64 audio_now = live ? sat_clock_ticks(75u) : 0, audio_due = audio_now - audio_at;
     audio_at = audio_now;
@@ -375,6 +410,37 @@ void sat_cd_frame(void)
     }
     if (!g_unread) status_regs();
     g_hirq |= H_SCDQ;
+    if (sat_cd_log_from && sat_vblank_count() >= sat_cd_log_from) sat_cd_log_left = sat_cd_log_held, sat_cd_log_from = 0;
+}
+
+/* The boot ROM's hand-over when the image starts at a program in a folder (game.json "boot_dir"), not at the disc's
+ * first-read file: that file is a loader the tool replaced (Saturn Bomberman's /0 before /BOMSS/0KRNL.BIN). The boot ROM
+ * leaves the CD block's file system holding the root and tells the game's file system (SBL's GFS) so at 0x06000ccc
+ * (1: the CD block's directory is set), 0x06000ccd (the file ids' offset) and 0x06000cce (the directory to start in, a
+ * file id in the CD block's current directory); GFS_Init then starts in that directory. Without the hand-over GFS read
+ * the root from the volume descriptor, did not find 0KRNL.BIN's PROGRAM.BIN (it is in /BOMSS) and took its error exit
+ * to the CD player. Leaves the parent of the last folder as the CD block's current directory and returns the folder's
+ * file id there, 0 for the root itself, -1 when the disc has no such folder. sat_main.c writes the words. */
+int sat_cd_boot_dir(const char *path)
+{
+    int fid = 0;
+    read_dir(0xffffffu);
+    while (path && *path) {
+        size_t len = strcspn(path, "/");
+        if (len) {
+            int i = 2;
+            if (fid) read_dir((u32)fid); /* the folder above becomes the current directory */
+            while (i < g_ndir && !((g_dir[i].attr & 2) && strlen(g_dir[i].name) == len && !_strnicmp(g_dir[i].name, path, len))) i++;
+            if (i >= g_ndir) {
+                port_log("cd: boot folder %s is not on the disc: the game's file system starts at the root\n", path);
+                return -1;
+            }
+            fid = i;
+        }
+        path += len + (path[len] == '/');
+    }
+    port_log("cd: the boot ROM's hand-over: the game's file system starts in file id %d of the CD block's directory\n", fid);
+    return fid;
 }
 
 /* sat_movie.c: the host played a movie itself; the drive is left paused where the original's play of the file left it */
@@ -395,4 +461,12 @@ void sat_cd_init(const char *cue)
     status_regs();
     sat_map(0x05890000u, 0x058a0000u, "CD", reg_read, reg_write);
     sat_map(0x05810000u, 0x05820000u, "CDDTR", dtr_read, dtr_write);
+}
+
+void sat_cd_state(SatSt *io)
+{
+    sat_st(io, &g_hirq, 4), sat_st(io, &g_mask, 4), sat_st(io, g_cr, sizeof g_cr), sat_st(io, &g_unread, 4);
+    sat_st(io, &g_playing, 4), sat_st(io, &g_repeat, 4), sat_st(io, &g_quick, 4), sat_st(io, &g_state, 4);
+    sat_st(io, &g_pos, 4), sat_st(io, &g_play_start, 4), sat_st(io, &g_play_end, 4), sat_st(io, &g_actual, 4);
+    sat_st(io, &g_acc, 4), sat_st(io, g_dir, sizeof g_dir), sat_st(io, &g_ndir, 4), sat_st(io, &audio_at, 8);
 }

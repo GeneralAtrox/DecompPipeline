@@ -7,7 +7,8 @@ runs them (port.exe at the top, packs in packs/<folder>, where pvr/pvr_pack.c lo
 --game-pack: the pack game.json's texture_pack names, under its own folder name. --pack NAME=DIR: an optional pack the
 player can choose (Display > Texture pack), which must carry a NOTICE.txt crediting the owners of what it holds. A
 pack takes only index.txt, the images the index names and NOTICE.txt, so nothing else in its folder can ship by
-mistake. No disc data goes in: the player's own disc is set up by --setup-only. Publishing is Phangrade's
+mistake. A game's fonts in fonts\ beside the exe (with their OFL licences) go in as they are. No disc data, code image
+(a Saturn port's image.bin) or save goes in: the player's own disc is set up by --setup-only. Publishing is Phangrade's
 scripts/publish-release.ps1, which signs this ZIP; run its check-port.ps1 on the build first.
 
 Nearest existing: Phangrade's scripts/publish-release.ps1 - it signs and uploads a ZIP it is given and makes none, and
@@ -22,6 +23,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import texture_pack as tp  # noqa: E402
 
 RESERVED = {"on", "off"}  # what --texture-pack takes as words
+FONTS = {".ttf", ".otf"}  # fonts\ beside the exe, which a game's own code loads (AutoOnboard place_fonts)
 
 
 def pack_files(name, folder, notice):
@@ -47,6 +49,8 @@ def package(exe, out, game_pack=None, packs=()):
     if not exe.is_file():
         raise ValueError(f"no {exe}")
     files = [(exe.name, exe)] + [(p.name, p) for p in sorted(exe.parent.glob("*.dll"))]
+    files += [(f"fonts/{p.name}", p) for p in sorted(exe.parent.glob("fonts/*")) if p.suffix.lower() in FONTS
+              or p.name.upper().startswith("OFL")]  # a game's own fonts and their licences (Dragon Force's clearer text)
     named = set()
     if game_pack:
         game_pack = pathlib.Path(game_pack)

@@ -114,3 +114,5 @@ void sat_scu_init(void)
     g_ims = 0xffffffffu;
     sat_map(SCU_LO, SCU_HI, "SCU", scu_read, scu_write);
 }
+
+void sat_scu_dev_state(SatSt *io) { sat_st(io, g_reg, sizeof g_reg), sat_st(io, &g_ist, 4), sat_st(io, &g_ims, 4); }

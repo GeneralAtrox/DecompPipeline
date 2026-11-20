@@ -9,7 +9,8 @@ Matching, in order, each pair one to one:
   call   the callees of matched pairs aligned by sequence (difflib), a pair every alignment agrees on, with sizes within a third
   vtable a development virtual-function table (??_7Class@@6B@) and a retail run of code pointers two or more matched slots agree on:
          every slot; call and vtable repeat until nothing new
-A name is only as good as its tier: exact and shape are the code itself, call is its place in the call graph.
+A name is only as good as its tier: exact and shape are the code itself, call is its place in the call graph. --verify measures each
+tier against what its key masks (verify(): do a pair's callees pair up too?), with a deliberately wrong pairing as the control.
 
 Another game's build can name the SDK libraries (D3D, XAudio, XAPI, the C runtime) built into this one: --map reads a linker .map when that
 build's PDB is damaged, --image takes its image already laid out by address (xexmagic -d) when xex.py can't decompress it, --libs keeps only
@@ -200,6 +201,97 @@ def match(ret, dev, dev_vt=None, r_ptr=None, r_word=None):
     return pairs
 
 
+def verify(pairs, ret, dev, seed=20261115):
+    """Evidence the hashes did not see: the exact and shape keys mask every call target, so where a matched pair's i-th
+    direct calls both reach matched functions, those callees should be a matched pair too. Per tier: pairs with such a
+    call, calls checked, calls agreeing. Control: the same test on a deliberately wrong pairing (within each tier the
+    partners rotated one place after a seeded shuffle, so every pair is wrong), which measures how often a wrong pair
+    passes. Used by tools/AutoOnboard/onboard_symbols.py to accept a set (--verify writes it to verify.json)."""
+    import random
+
+    def score(pp):
+        out = collections.defaultdict(lambda: [0, 0, 0])
+        for r, (d, tier) in pp.items():
+            n = a = 0
+            for x, y in zip(ret[r][2], dev[d][2]):
+                if x in pairs:
+                    n += 1
+                    a += pairs[x][0] == y
+            if n:
+                t = out[tier]
+                t[0], t[1], t[2] = t[0] + 1, t[1] + n, t[2] + a
+        return {k: {"pairs": p, "calls": n, "agree": a, "rate": round(a / n, 4)} for k, (p, n, a) in out.items()}
+    rng, wrong = random.Random(seed), {}
+    for tier in {t for _d, t in pairs.values()}:
+        rs = sorted(r for r, (_d, t) in pairs.items() if t == tier)
+        rng.shuffle(rs)
+        for i, r in enumerate(rs):
+            wrong[r] = (pairs[rs[(i + 1) % len(rs)]][0], tier) if len(rs) > 1 else None
+    return {"tiers": score(pairs), "control": score({r: v for r, v in wrong.items() if v}), "seed": seed}
+
+
+def pair(dimg, dbase, funcs, vtables, rimg, rbase, rfun, out, do_verify=False, prior=None, about=(), vt_skip=0):
+    """Match a development build's functions to a retail catalogue and write names.json, coverage.txt and (do_verify)
+    verify.json in out. dimg/dbase: the development image laid out from dbase; funcs: {address: {"name", "size",
+    "module", "lib", "proto"}}; vtables: development vtable addresses, their slots starting vt_skip bytes in (0 on the
+    Xbox 360; CodeWarrior's start with the type info and an offset, 8); rimg/rbase: the retail image laid out from
+    rbase; rfun: {retail address: size}. Returns coverage.txt's lines. Shared by main() and
+    targets/gamecube_ppc/tools/gc_names.py."""
+    out = pathlib.Path(out)
+    ret = {r: (*code_keys(rimg, rbase, r, s), s) for r, s in rfun.items() if s >= 4}
+    dev = {d: (*code_keys(dimg, dbase, d, f["size"] & ~3), f["size"]) for d, f in funcs.items() if f["size"] >= 4}
+    dev_vt = {}
+    for vt in vtables:
+        slots, at = [], vt + vt_skip
+        while 0 <= at - dbase and at - dbase + 4 <= len(dimg) and struct.unpack_from(">I", dimg, at - dbase)[0] in dev:
+            slots.append(struct.unpack_from(">I", dimg, at - dbase)[0])
+            at += 4
+        if len(slots) >= 2:
+            dev_vt[vt] = slots
+    r_ptr = collections.defaultdict(list)
+    code_lo, code_hi = (min(rfun), max(rfun)) if rfun else (0, -1)
+    words = [w for (w,) in struct.iter_unpack(">I", rimg[:len(rimg) & ~3])]
+    is_fn = [code_lo <= w <= code_hi and w in ret for w in words]
+    for i, w in enumerate(words):
+        # only words in a run of two or more code pointers: a table, not a .pdata entry (address, then packed lengths)
+        if is_fn[i] and ((i and is_fn[i - 1]) or (i + 1 < len(words) and is_fn[i + 1])):
+            r_ptr[w].append(rbase + 4 * i)
+    r_word = lambda at: struct.unpack_from(">I", rimg, at - rbase)[0] if 0 <= at - rbase <= len(rimg) - 4 else 0
+    print(f"{len(dev_vt)} development vtables; {len(r_ptr)} retail functions some data word holds", flush=True)
+    pairs = match(ret, dev, dev_vt, r_ptr, r_word)
+    names = {}
+    for r, (d, tier) in sorted(pairs.items()):
+        f = funcs[d]
+        names[f"{r:08x}"] = {"name": f["name"], "tier": tier, "dev": f"{d:08x}", "module": f["module"], "lib": f["lib"],
+                             "proto": f.get("proto", "")}
+    (out / "names.json").write_text(json.dumps(names, indent=0), encoding="utf-8")
+
+    tiers = collections.Counter(v["tier"] for v in names.values())
+    libs = collections.Counter(pathlib.PureWindowsPath(v["lib"]).name.lower() or "(the game's own modules)" for v in names.values())
+    dlibs = collections.Counter(pathlib.PureWindowsPath(f["lib"]).name.lower() or "(the game's own modules)" for f in funcs.values())
+    lines = [f"retail catalogue: {len(rfun)} functions; named from the development build: {len(names)} ({100 * len(names) / max(1, len(rfun)):.1f}%)",
+             "by tier: " + ", ".join(f"{k} {v}" for k, v in tiers.most_common()),
+             *about, "", "named, by library (development build's count beside):"]
+    lines += [f"  {n:7d}  of {dlibs[k]:7d}  {k}" for k, n in libs.most_common()]
+    if do_verify:
+        ver = verify(pairs, ret, dev)
+        (out / "verify.json").write_text(json.dumps(ver, indent=1), encoding="utf-8")
+        lines += ["", "callee agreement (verify.json; control = a deliberately wrong pairing): " + ", ".join(
+            f"{k} {v['agree']}/{v['calls']} vs {ver['control'].get(k, {}).get('rate', '-')}" for k, v in ver["tiers"].items())]
+    if prior:
+        prior_names = json.loads(pathlib.Path(prior).read_text(encoding="utf-8"))
+        extra = {r: v for r, v in names.items() if r not in prior_names}
+        differ = {r: (prior_names[r]["name"], v["name"]) for r, v in names.items()
+                  if r in prior_names and prior_names[r]["name"] != v["name"]}
+        (out / "extra_names.json").write_text(json.dumps(extra, indent=0), encoding="utf-8")
+        (out / "disagree.json").write_text(json.dumps(differ, indent=0), encoding="utf-8")
+        xl = collections.Counter(pathlib.PureWindowsPath(v["lib"]).name.lower() for v in extra.values())
+        lines += ["", f"against {prior}: {len(extra)} retail functions named here and not there, {len(differ)} named differently",
+                  "extra, by library: " + ", ".join(f"{k} {v}" for k, v in xl.most_common())]
+    (out / "coverage.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return lines
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--pdb", help="the development build's PDB")
@@ -209,6 +301,8 @@ def main():
     ap.add_argument("--base", default="82000000", help="--image's load address (hex)")
     ap.add_argument("--libs", help="keep only development functions whose library file name matches this regular expression (SDK libraries)")
     ap.add_argument("--prior", help="an earlier names.json: count the retail functions this run names that it doesn't, and where the two disagree")
+    ap.add_argument("--verify", action="store_true", help="also write verify.json: callee agreement per tier and on a "
+                    "deliberately wrong pairing (verify())")
     ap.add_argument("--ws", required=True, help="the retail workspace: image.bin, image.json, catalog_inputs.json")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
@@ -240,50 +334,8 @@ def main():
     rbase = json.loads((ws / "image.json").read_text()).get("load_address", 0x82000000)
     cat = json.loads((ws / "catalog_inputs.json").read_text())
     rfun = {int(f["addr"], 16): f["size"] for f in cat["functions"] if f.get("kind") == "function"}
-    ret = {r: (*code_keys(rimg, rbase, r, s), s) for r, s in rfun.items() if s >= 4}
-    dev = {d: (*code_keys(dimg, dbase, d, f["size"] & ~3), f["size"]) for d, f in funcs.items() if f["size"] >= 4}
-    dev_vt = {}
-    for vt in pdb.vtables(dbase):
-        slots, at = [], vt
-        while 0 <= at - dbase + 4 <= len(dimg) and struct.unpack_from(">I", dimg, at - dbase)[0] in dev:
-            slots.append(struct.unpack_from(">I", dimg, at - dbase)[0])
-            at += 4
-        if len(slots) >= 2:
-            dev_vt[vt] = slots
-    r_ptr = collections.defaultdict(list)
-    code_lo, code_hi = min(rfun), max(rfun)
-    words = [w for (w,) in struct.iter_unpack(">I", rimg[:len(rimg) & ~3])]
-    is_fn = [code_lo <= w <= code_hi and w in ret for w in words]
-    for i, w in enumerate(words):
-        # only words in a run of two or more code pointers: a table, not a .pdata entry (address, then packed lengths)
-        if is_fn[i] and ((i and is_fn[i - 1]) or (i + 1 < len(words) and is_fn[i + 1])):
-            r_ptr[w].append(rbase + 4 * i)
-    r_word = lambda at: struct.unpack_from(">I", rimg, at - rbase)[0] if 0 <= at - rbase <= len(rimg) - 4 else 0
-    print(f"{len(dev_vt)} development vtables; {len(r_ptr)} retail functions some data word holds", flush=True)
-    pairs = match(ret, dev, dev_vt, r_ptr, r_word)
-    names = {}
-    for r, (d, tier) in sorted(pairs.items()):
-        f = funcs[d]
-        names[f"{r:08x}"] = {"name": f["name"], "tier": tier, "dev": f"{d:08x}", "module": f["module"], "lib": f["lib"], "proto": f["proto"]}
-    (out / "names.json").write_text(json.dumps(names, indent=0), encoding="utf-8")
-
-    tiers = collections.Counter(v["tier"] for v in names.values())
-    libs = collections.Counter(pathlib.PureWindowsPath(v["lib"]).name.lower() or "(the game's own modules)" for v in names.values())
-    dlibs = collections.Counter(pathlib.PureWindowsPath(f["lib"]).name.lower() or "(the game's own modules)" for f in funcs.values())
-    lines = [f"retail catalogue: {len(rfun)} functions; named from the development build: {len(names)} ({100 * len(names) / max(1, len(rfun)):.1f}%)",
-             "by tier: " + ", ".join(f"{k} {v}" for k, v in tiers.most_common()),
-             f"development build: {len(funcs)} functions, {len(structs)} structures", "", "named, by library (development build's count beside):"]
-    lines += [f"  {n:7d}  of {dlibs[k]:7d}  {k}" for k, n in libs.most_common()]
-    if a.prior:
-        prior = json.loads(pathlib.Path(a.prior).read_text(encoding="utf-8"))
-        extra = {r: v for r, v in names.items() if r not in prior}
-        differ = {r: (prior[r]["name"], v["name"]) for r, v in names.items() if r in prior and prior[r]["name"] != v["name"]}
-        (out / "extra_names.json").write_text(json.dumps(extra, indent=0), encoding="utf-8")
-        (out / "disagree.json").write_text(json.dumps(differ, indent=0), encoding="utf-8")
-        xl = collections.Counter(pathlib.PureWindowsPath(v["lib"]).name.lower() for v in extra.values())
-        lines += ["", f"against {a.prior}: {len(extra)} retail functions named here and not there, {len(differ)} named differently",
-                  "extra, by library: " + ", ".join(f"{k} {v}" for k, v in xl.most_common())]
-    (out / "coverage.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    lines = pair(dimg, dbase, funcs, pdb.vtables(dbase), rimg, rbase, rfun, out, a.verify, a.prior,
+                 [f"development build: {len(funcs)} functions, {len(structs)} structures"])
     print("\n".join(lines[:40] + (lines[-3:] if a.prior and len(lines) > 40 else [])))
     return 0
 

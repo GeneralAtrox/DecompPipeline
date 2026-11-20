@@ -3,7 +3,7 @@
 every function Ghidra found (tools/decode_check.py), through the Ghidra broker like every other Ghidra run.
 
   setup <disc image> <workspace> [--target T] [--name NAME] [--fields FILE] [--no-ghidra]
-        [--file NAME@ADDR ...] [--context NAME@ADDR ...] [--first-as-context]   (Saturn)
+        [--file NAME@ADDR ...] [--context NAME@ADDR ...] [--first-as-context | --no-first]   (Saturn)
         [--rels all|none|ID,ID...]                                                (GameCube)
       The console comes from the disc (IP.BIN "SEGA SEGAKATANA" or "SEGA SEGASATURN", the GameCube magic), or
       --target. The disc step writes the binary and a record of where it came from (never over an existing
@@ -12,7 +12,9 @@ every function Ghidra found (tools/decode_check.py), through the Ghidra broker l
         file linked at 0x0c... (P0) gets "seed_functions" (gdrom.py scan's rule);
       - Saturn: binary/image.bin, a work RAM high image (overlay_image.py) of the first-read file at its IP.BIN
         address, plus each --file (to decompile) and --context file (callees and globals only) at its load
-        address, with binary/image.json; project.json gets its image_gaps and game_ranges;
+        address, with binary/image.json; project.json gets its image_gaps and game_ranges. --no-first leaves the
+        first-read file out (a loader that the --file overlay replaces in memory, as Saturn Bomberman's /0 and
+        BOMSS/0KRNL.BIN at 0x06006000);
       - GameCube: gcdisc.py setup into <workspace>/disc/ (main.dol, the REL modules and linked.dol, disc.json) and
         project.json's game_ranges, global_ranges and fixed_regs.
       Then project.json (name, ghidra_name: the name's letters and digits, binary, binary_sha256, port: a per-target
@@ -133,18 +135,18 @@ def dreamcast(image, ws, name):
     return cfg
 
 
-def saturn(image, ws, name, files=(), context=(), first_context=False):
+def saturn(image, ws, name, files=(), context=(), first_context=False, skip_first=False):
     import overlay_image
     import satdisc
     disc = satdisc.Disc(image)
     try:
         ip = disc.ip()
         listing = disc.walk()
-        want = [(ip["first_read_file"], int(ip["first_read_addr"], 16), first_context)]
+        want = [] if skip_first else [(ip["first_read_file"], int(ip["first_read_addr"], 16), first_context)]
         for specs, ctx in ((files, False), (context, True)):
             for s in specs:
                 f, base = overlay_image.parse(s)
-                want.append((str(f), base, ctx))
+                want.append((f.as_posix(), base, ctx))  # a disc path: "/" even on Windows
         parts, record = [], []
         for nm, base, ctx in want:
             key = nm.strip("/").upper()
@@ -160,6 +162,8 @@ def saturn(image, ws, name, files=(), context=(), first_context=False):
             record.append({"path": p, "address": f"{base:08x}", "size": size, "sha256": sha256(data), "context": ctx})
     finally:
         disc.f.close()
+    if not parts:
+        raise SystemExit("--no-first needs at least one --file")
     try:
         img, gaps, ranges = overlay_image.build(parts)
     except ValueError as e:
@@ -218,7 +222,8 @@ def write_starter_map(ws):
     return out
 
 
-def setup(image, ws, target=None, name=None, fields=None, files=(), context=(), first_context=False, rels="all"):
+def setup(image, ws, target=None, name=None, fields=None, files=(), context=(), first_context=False, rels="all",
+          skip_first=False):
     ws = pathlib.Path(ws)
     if (ws / "project.json").exists():
         raise SystemExit(f"{ws / 'project.json'} exists: setup never overwrites a workspace")
@@ -227,13 +232,15 @@ def setup(image, ws, target=None, name=None, fields=None, files=(), context=(), 
     if bad:
         raise SystemExit(f"--fields may not set {', '.join(bad)}: they come from the disc")
     target = target or detect(image)
-    if target != "saturn_sh2" and (files or context or first_context):
-        raise SystemExit("--file, --context and --first-as-context are for Saturn discs")
+    if target != "saturn_sh2" and (files or context or first_context or skip_first):
+        raise SystemExit("--file, --context, --first-as-context and --no-first are for Saturn discs")
+    if first_context and skip_first:
+        raise SystemExit("--first-as-context and --no-first: the first-read file is either context or left out")
     ws.mkdir(parents=True, exist_ok=True)
     if target == "dreamcast_sh4":
         cfg = dreamcast(image, ws, name)
     elif target == "saturn_sh2":
-        cfg = saturn(image, ws, name, files, context, first_context)
+        cfg = saturn(image, ws, name, files, context, first_context, skip_first)
     elif target == "gamecube_ppc":
         cfg = gamecube(image, ws, name, rels)
     else:
@@ -333,6 +340,7 @@ def main(argv):
     s.add_argument("--file", action="append", default=[])
     s.add_argument("--context", action="append", default=[])
     s.add_argument("--first-as-context", action="store_true")
+    s.add_argument("--no-first", action="store_true")
     s.add_argument("--rels", default="all")
     s.add_argument("--no-ghidra", action="store_true")
     c = sub.add_parser("console")
@@ -345,7 +353,8 @@ def main(argv):
     a = ap.parse_args(argv[1:])
     if a.cmd == "setup":
         t = time.perf_counter()
-        cfg = setup(a.image, a.workspace, a.target, a.name, a.fields, a.file, a.context, a.first_as_context, a.rels)
+        cfg = setup(a.image, a.workspace, a.target, a.name, a.fields, a.file, a.context, a.first_as_context, a.rels,
+                    a.no_first)
         timing(a.workspace, "disc", time.perf_counter() - t, target=cfg["target"])
         return 0 if a.no_ghidra else ghidra_step(a.workspace)
     if a.cmd == "console":

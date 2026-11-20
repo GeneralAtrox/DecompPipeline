@@ -33,6 +33,8 @@ static void v1fb_w(u32 p, u32 s, u32 v)
 {
     put(sat_v1_fb[1 - g_fb_swapped], (p - 0x05c80000u) & 0x3ffffu, s, v);
     sat_wide_cpu(sat_v1_fb[1 - g_fb_swapped], (p - 0x05c80000u) & 0x3ffffu, s, v); /* and its wide twin (sat_wide.c) */
+    sat_inb_fb_written(sat_v1_fb[1 - g_fb_swapped]); /* its picture is no longer its list's alone (sat_inb.c) */
+    sat_text_dirty(sat_v1_fb[1 - g_fb_swapped], 1);  /* nor clearer text's copy of it (sat_text.c) */
 }
 static u32 v2vram_r(u32 p, u32 s) { return get(sat_v2_vram, p - 0x05e00000u, s); }
 u32 sat_vwatch_lo, sat_vwatch_hi, sat_vwatch_vb; /* --vwatch LO,HI[,VB]: from vertical blank VB, log guest writes that change VDP2 VRAM [LO,HI), with the call chain (a test aid) */
@@ -78,6 +80,7 @@ static void v1_erase(u8 *fb)
     for (u32 y = y0; y <= y1 && y < 256u; y++)
         for (u32 x = x0; x < x1 && x < 512u; x++) put(fb, (y * 512u + x) * 2u, 2, data);
     sat_wide_erase(fb, data, x0, y0, x1, y1); /* and its wide twin's (sat_wide.c) */
+    sat_text_dirty(fb, 0);
 }
 
 void sat_v1_fb_flip(void) { g_fb_swapped ^= 1; }
@@ -219,6 +222,7 @@ void sat_vdp_report(void)
 void sat_vblank_in(void)
 {
     g_vblank_flag = 1;
+    sat_sys_kit_work(1); /* the kit's own work at the blank: the machine's clock at its normal pace (sat_sys.c) */
     sat_perf_vblank();
     sat_sample();
     sat_vblank_counted();
@@ -228,6 +232,7 @@ void sat_vblank_in(void)
     sat_cd_frame();
     sat_part_frame();
     sat_scsp_frame();
+    sat_sys_kit_work(0);
     g_vblank_flag = 0;
     sat_scu_raise(0u); /* VBlank-in */
     sat_scu_raise(1u); /* VBlank-out */
@@ -242,4 +247,14 @@ void sat_vdp_init(void)
     sat_map(0x05e00000u, 0x05e80000u, "VDP2-VRAM", v2vram_r, v2vram_w);
     sat_map(0x05f00000u, 0x05f80000u, "VDP2-CRAM", cram_r, cram_w);
     sat_map(0x05f80000u, 0x05f90000u, "VDP2-REG", v2reg_r, v2reg_w);
+}
+
+/* a save state's VDP1 frame state (its memory and registers are blocks of their own); after a load the presenter's copies
+ * of the frame buffers (clearer text's, the in-between frame's) are stale */
+void sat_vdp_state(SatSt *io)
+{
+    sat_st(io, &g_vblank_flag, 4), sat_st(io, &g_v1_draw_end, 4), sat_st(io, &g_fb_swapped, 4);
+    sat_st(io, &g_manual_pending, 4), sat_st(io, &g_erase_armed, 4), sat_st(io, &g_auto_draw, 4);
+    if (!sat_st_loading(io)) return;
+    for (int i = 0; i < 2; i++) sat_inb_fb_written(sat_v1_fb[i]), sat_text_dirty(sat_v1_fb[i], 1);
 }

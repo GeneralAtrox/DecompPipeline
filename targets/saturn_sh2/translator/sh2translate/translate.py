@@ -14,7 +14,8 @@ The guest model is DP's judge model (target.json "judge_memory"/"abi"):
   r0..r3; r8..r14 are runtime state (sh4_r/sh4_set_r) handed over at every call and at exit; only r0 changes
   across a call (DP's mocked callee);
 - PC-relative literal-pool loads and mova become constants; computed jumps through a bounded table (braf/jmp after
-  a cmp/hs or cmp/hi range check) become a switch over the table's targets.
+  a cmp/hs or cmp/hi range check) become a switch over the table's targets, as does a `jmp` through a table of
+  addresses with no check whose entries lie in the function's own body (an unrolled copy helper's computed goto).
 
 Nothing here is specific to one game or address: everything comes from the machine code and the target facts.
 """
@@ -227,6 +228,10 @@ class FunctionTranslator:
         self.mutation = None
         self.recursive = False      # the function calls itself: the body is the helper `body`, given r15 and PR
         self.call_helper = False    # calls to callees DP's meta does not list go through the tx_call helper (size)
+        # The port's build (overlay.py --call-sites): each call's return address as a `/*@ret ADDR*/` comment after
+        # its target, which gen_saturn.py turns into the PR the kit hands the callee. Off for the judged C, which is
+        # then exactly what it is without this (a comment changes no result either).
+        self.call_sites = False
         self.emitted: dict[int, list] = {}  # non-branch instruction -> its C lines (before any mutation)
         self.span: dict[int, list] = {}     # node -> [first, end) of its lines in the emitted items
         self.simplify = set()               # sh2translate.simplify.PASSES to apply
@@ -444,20 +449,57 @@ class FunctionTranslator:
             a += 2
         return st
 
-    def bound(self, blk, reg):
+    def bound(self, blk, reg, seen=frozenset()):
         """(N, mul, off): reg at blk is mul * v + off for a value v the unsigned range check that guards the block
-        bounds to v < N (reg itself, or a copy or a doubling of it in the branch's delay slot)."""
-        preds = []
-        for a in self.primary:
-            i = self.insns[a]
-            if i.op in ("bt", "bf") and (i.ea == blk or a + 2 == blk):
-                preds.append((a, i, i.ea == blk, a + 2 == blk))
-            if i.op in ("bt/s", "bf/s") and (i.ea == blk or a + 4 == blk):
-                preds.append((a, i, i.ea == blk, a + 4 == blk))
-        if len(preds) != 1:
+        bounds to v < N (reg itself, or a copy or a doubling of it in the branch's delay slot). The check may sit
+        further back: every way into blk is followed back through the blocks before it, carrying what they do to
+        reg, to a range check on it, and the bound is the loosest of the ways in (Saturn Bomberman 060946cc, GCC's
+        __ashrsi3: `cmp/pz r1; bf out; cmp/ge r2,r1; bt big`, then `rotl r2; bf pos` and a second way in from pos,
+        before the jump through a byte table into its shift sled). A loop back into a block on the way, a call's
+        return, the entry or a return target bounds nothing."""
+        if blk == self.entry or blk in self.pr_targets or blk in seen or len(seen) > 16:
             return None
-        a, br, taken, fall = preds[0]
-        if taken and fall:
+        seen = seen | {blk}
+        preds = [p for p, succ in self.succ.items() if blk in succ]
+        got = []
+        for p in preds:
+            b = self.edge_bound(p, blk, reg, seen)
+            if b is None:
+                return None
+            got.append(b)
+        if not got or len({(m, o) for _, m, o in got}) != 1:
+            return None
+        return max(n for n, _, _ in got), got[0][1], got[0][2]
+
+    def edge_bound(self, p, blk, reg, seen):
+        """bound() over the one way into blk from the instruction at p: the range check p branches on, else the
+        bound on what reg was at the start of p's block, through what the block does to it."""
+        i = self.insns[p]
+        if i.op in ("jsr", "bsr", "bsrf"):
+            return None     # the way in is a call's return: the callee may change any register
+        if i.op in ("bt", "bf", "bt/s", "bf/s"):
+            b = self.check_bound(p, blk, reg)
+            if b is not None:
+                return b
+        start = self.block_start(p)
+        hi = p + (4 if i.delayed else 2)
+        if any(self.img.insn(x).op in ("extu.b", "extu.w") for x in range(start, hi, 2)):
+            return None     # symexec keeps an extu's operand unmasked: not a value to follow past it
+        rv = self.symexec(start, hi)[reg]
+        if rv[0] != "x" or not rv[1].startswith("r"):
+            return None
+        b = self.bound(start, rv[1], seen)
+        if b is None:
+            return None
+        n, mul, off = b
+        return n, rv[2] * mul, rv[2] * off + rv[3]
+
+    def check_bound(self, a, blk, reg):
+        """bound() from the range check the conditional branch at a makes, on its way into blk, or None."""
+        br = self.insns[a]
+        hi = a + (4 if br.op.endswith("/s") else 2)
+        taken, fall = br.ea == blk, hi == blk
+        if taken == fall:
             return None
         on_true = (br.op.startswith("bt")) == taken  # the block runs when T is 1
         # the T setter: last T writer before the branch in its straight-line run
@@ -473,11 +515,10 @@ class FunctionTranslator:
         st = self.symexec(start, k)
         # reg at blk in terms of the registers at the compare: what runs between them (the branch, its delay slot)
         # may copy or double the compared register into reg
-        hi = a + (4 if br.op.endswith("/s") else 2)
         if any(self.img.insn(x).op in ("extu.b", "extu.w") for x in range(k + 2, hi, 2)):
             return None     # symexec keeps an extu's operand unmasked: not a value to follow past the check
         rv = self.symexec(k + 2, hi)[reg]
-        if rv[0] != "x":
+        if rv[0] != "x" or not rv[1].startswith("r"):
             return None
         src, mul, off = int(rv[1][1:]), rv[2], rv[3]
         rn, rm = self.const_in(start, st[R(c.n)]), self.const_in(start, st[R(c.m)])
@@ -527,13 +568,19 @@ class FunctionTranslator:
         else:
             b = self.bound(blk, reg)
         if b is None:
-            return None
+            return self.own_table(i, size, base + add, extra)
         n, mul, off = b
-        if n <= 0 or n > 4096 or scale * mul != size:
+        step = scale * mul
+        if n <= 0 or n > 4096 or step <= 0:
             return None
         out = []
         for k in range(n):
-            ea = (base + size * k + scale * off + add) & U32
+            ea = (base + step * k + scale * off + add) & U32
+            if step != size and ea % size:
+                # the check bounds a byte offset, not an index (Saturn Bomberman 060944f4: `mov #64,r3; cmp/hs r0,r3;
+                # bf big; mov.l @(r0,table),r3; jmp @r3`, r0 a byte count): a misaligned entry read is an address
+                # error, so only the aligned offsets are ways the jump can go
+                continue
             if size == 2:
                 e = self.img.u16(ea)
                 e = e - 0x10000 if e & 0x8000 else e
@@ -546,7 +593,27 @@ class FunctionTranslator:
             if t & 1 or not self.img.has(t, 2):
                 return None
             out.append(t)
-        return out
+        return out if out else None
+
+    def own_table(self, i, size, base, extra):
+        """Targets of `jmp @rN` through a table of addresses with no bound check, when they lie in the function's own
+        body: between its entry and the table, and local. A compiler's unrolled copy helper indexes such a table by a
+        count its callers set (Saturn Bomberman 0609445c: `mov.l @(r0,r3),r3; jmp @r3` with r3 = 060944b0, 17 entries
+        into the 4-byte copy sled before the table), so it jumps into the middle of its own code, not to a callee.
+        The table is read from its base up to the first word that is not such a target; an index past it still
+        leaves through the computed tail call after the switch. None when fewer than two entries qualify."""
+        if i.op != "jmp" or size != 4 or extra or not self.entry < base:
+            return None
+        out = []
+        for k in range(256):
+            ea = (base + 4 * k) & U32
+            if not self.img.has(ea, 4):
+                break
+            t = self.img.u32(ea)
+            if t & 1 or not self.entry <= t < base or not self.local(t):
+                break
+            out.append(t)
+        return out if len(out) >= 2 else None
 
     # ---------------------------------------------------------------------------------------------- emission
     def use(self, *names):
@@ -626,13 +693,14 @@ class FunctionTranslator:
         if target_expr.startswith("0x"):
             self.callees.add(int(target_expr[:-1], 16))
         cal = self.sig.callees
+        a = self.cur
+        mark = f" /*@ret {a + 4:08x}*/" if self.call_sites and not tail and not halt else ""  # bsr/bsrf/jsr: PR = a + 4
         if self.call_helper and not (cal is not None and target_expr.startswith("0x")
                                      and int(target_expr[:-1], 16) in cal):
             self.use("r1", "r2", "r3", "r4", "r5", "r6", "r7", "r15")
-            s = ["r0 = tx_call(" + target_expr + ", r0, r1, r2, r3, r4, r5, r6, r7, r15);"]
+            s = ["r0 = tx_call(" + target_expr + mark + ", r0, r1, r2, r3, r4, r5, r6, r7, r15);"]
         else:
-            s = self.call_args(target_expr) + [f"r0 = tc_call({target_expr}, &a);"]
-        a = self.cur
+            s = self.call_args(target_expr) + [f"r0 = tc_call({target_expr}{mark}, &a);"]
         if halt:
             return [f"@SYNC_OUT:{a}@"] + s + ["tc_halt();"]
         if tail and self.pr_targets:
@@ -1427,15 +1495,24 @@ def translate_function(image, entry, sig, facts=None, body=None, entries=None, c
     return fit(make, comments)
 
 
+SITE_MARK = re.compile(r"\s*/\*@ret [0-9a-f]{8}\*/")
+
+
+def size(src):
+    """The length the cap counts: without the port's return-address marks (call_sites), so they never change which form
+    a function takes."""
+    return len(SITE_MARK.sub("", src))
+
+
 def fit(make, comments=True):
     """The translation under DP's 60 KB work.c cap: without comments, then compact, then with the calls to
     callees DP's meta does not list through the tx_call helper (make(comments, helper) translates)."""
     src = make(comments)
-    if comments and len(src) > 58000:
+    if comments and size(src) > 58000:
         src = make(False)
-    if len(src) > 58000:
+    if size(src) > 58000:
         src = compact(src)
-    if len(src) > 58000:
+    if size(src) > 58000:
         src = compact(make(False, True))
     return src
 

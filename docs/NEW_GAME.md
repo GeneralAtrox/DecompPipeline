@@ -29,6 +29,80 @@ readable round and a native port follow (steps 6 and 8); a port can already run 
 - **Testing a port:** `port/tools/lockstep.py` compares a port with Flycast frame by frame (RAM and the display
   lists); `port/tools/bu_sweep.py` runs the port past many blockers in one go and lists each one.
 
+## One command: tools/AutoOnboard/autoonboard.py
+
+A new game starts with the onboarding tool (every future game is static decompilation first). Put the disc image in
+the game folder (`C:\Projects\Phangrade\Integrations\<Console>\<Game>`), then:
+
+```
+py -3.12 tools/AutoOnboard/autoonboard.py --project <game folder> --console dreamcast --name "<Game>" --host build box B --remote-project <its folder there>
+```
+
+(on a build box itself: `--here` instead of `--host`). It runs the stages project, machine, disc, extract, census, symbols,
+boot, register, estimate, translate and gaps, each calling the tools below and writing a verdict to `<game>\.work\onboard\`; a
+second run resumes where the first stopped, `--from`/`--only` re-run a stage (later verdicts go stale, kept), `--until` stops after one, `prove` checks the build, `--dry-run` shows what each would call.
+Anything missing stops it with a hard error naming what would supply it. It always ends with
+`.work\onboard\OVERVIEW.md`: where the project is and the next steps. The scaffold's `.gitignore` keeps the disc,
+game data and every decompiled or translated C file out of git. Built so far: project for every console; disc,
+extract, census, estimate, translate and boot for the Dreamcast, the Xbox 360 and the GameCube (symbols for the
+Xbox 360 and the GameCube; their boot lists inputs only); gaps for every console; the rest are declared and
+stop with "not built yet: <what it will call>". The census count is what analysis finds, a floor: Toy Commander needed
+3.5% more (24 added by hand, 122 by catalog rules written during that project). Giving a scratch census the 24 hand
+entries finds only 7 of the 122; tools/data_funcs.py named 13 real ones but, fed in, found 15 of 146 with 1 false extra,
+so entry tables are not scanned: the census verdict states the expected shortfall and GAPS.md lists it as a next step.
+Estimate prepares and translates a
+seeded sample stratified by size (`.work\onboard\estimate_detail.json`: projected hours with a 10-90% range; the translator's
+PASS share also widened to the sample's 95% Wilson interval, so 60 of 60 PASS reads "94-100%", not "100-100%").
+Translate runs `wave.py run --stop-after translate --tx-chunk N` in bounded runs (one under 50 minutes, or
+`--seconds`): each chunk is prepared, translated and recorded before the next starts, N sized from the estimate so a
+chunk ends within two thirds of a run, and the next run translates only what is left. It needs no `harness_reuse`
+(recording refuses a stale harness); the agent step after it does, and turning that on stays a person's decision. A
+run that does not finish writes a partial GAPS.md that says how much is done. Gaps writes `.work\onboard\GAPS.md`:
+untranslated functions by reason, refused or unjudged ones, and for the Dreamcast the library calls the kit has no
+function for (`port/tools/kit_features.py` reads the list from `port/sdk/*.c`); other consoles say "kit gaps: not
+known - no feature list". Boot writes a starter `port/game.json` (the entry function left to a person), names every
+input a build still lacks (the entry, a function registry, the translator's C judged in port form by `dp_judge.py`,
+MSVC, ninja) and, once they are there, builds into `port/build/onboard` and runs 20 s headless on the fixed clock:
+built or not, vertical blanks reached, scenes drawn, the first error line. Gaps and boot need only the census, so they
+also run on a partial pass (`--only gaps`, `--only boot`). When the job registry points to an earlier finished job
+whose result this project lacks (a project made again), the stage runs it once more with `--changed` saying so.
+
+**Xbox 360** (`tools/AutoOnboard/onboard_x360.py`, `tools/AutoOnboard/onboard_symbols.py`): the disc is an `.iso` (XDVDFS: offset 0, XGD1,
+XGD2, XGD3) or a bare `.xex` in the game folder; title updates (delta patches) and LZX-compressed XEXes are refused. A
+retail-encrypted XEX needs the console's retail key on the build box (`"xex_retail_key"` in DecompPipeline's
+`config.local.json`, or `DP_XEX_RETAIL_KEY`; only the user supplies it, and no stage prints or copies it). Without it
+the disc stage stops naming it, unless `--inputs <workspace>` names a workspace of the same title made where the key
+is: its four catalog inputs are copied once the XEX header (title ID, original PE name, load address, image size,
+entry point) matches. Extract runs `x360setup.py setup --no-ghidra`; the disc's files go to `game-data\` only under 5 GB
+(Too Human's 6.6 GB are not extracted: the user says where). Symbols finds development builds' PDB or MAP files beside
+their own XEX in `<game>\reference`, in `config.local.json` `"symbol_sets": {"xbox360": [...]}`, or in
+`Integrations\Xbox360\reference\symbols`; a named folder that is absent is an error. It ranks them (same title ID, then
+SDK build), matches the best four with `pdb_names.py --verify`, and accepts a set only when callee agreement on its
+exact-byte pairs is at least 90% over at least 50 pairs and 50 calls, and at least 50 points above a deliberately wrong
+pairing. A verified set counts as this game's only with at least 50 exact pairs in the game's own modules; else only
+its SDK library names are used (Too Human's PDB on Mega Man 10 passes the callee check through the shared XDK code,
+853 library names and 55 wrong game-class names). "No verified match" is ok with zero names. The names stay in `.work\onboard\symbols\names.json`. Census runs
+`x360setup.py ghidra` (the whole catalog, then decode audit gate G2). Gaps also groups refusals by the instruction that
+caused them (`mftb`, `dcbzl`, unconfirmed VMX ops; the catalog scan's own refusals through `ppcscan.refusing_ops`) and
+lists the kernel and XAM imports the game calls that the kit has no case for (`port/tools/kit_imports.py` reads the
+kit's runtime source). Boot lists what a bring-up needs (a Direct3D cut for this image from `boundary.py`, the disc's
+files, MSVC, vcpkg's SDL3) and does not run one yet.
+
+**GameCube** (`tools/AutoOnboard/onboard_gc.py`, `tools/AutoOnboard/onboard_symbols.py`, `targets/gamecube_ppc/tools/gc_names.py`): the disc
+is a plain `.iso`/`.gcm`, CISO, RVZ or WIA image (`gcdisc.py`); a Wii disc is refused. Disc reads the header, the
+file system, main.dol, every REL module (loose, Yaz0 or in a RARC archive) and the Dolphin SDK build lines. Extract
+runs `game_setup.py setup --no-ghidra` (`gcdisc.setup`: the RELs are linked onto main.dol into `linked.dol` by
+`gcrel.py`, so the census catalogues their code; a link error stops it) and copies the disc's files to `game-data\`
+under 5 GB. Census is the Dreamcast's (`game_setup.py ghidra`) plus a REL check: a module not linked, or linked with no
+catalogued function, is an error naming it. Symbols runs after the census, because the names are matched to its
+catalog: set folders (an ELF with a symbol table, or a CodeWarrior map with its `.dol`) in `<game>
+eference`,
+`"symbol_sets": {"gamecube": [...]}` or `Integrations\GameCube\PDBs`, facts from `docs/GAMECUBE_SYMBOL_SETS.json`,
+ranked by game ID, then the nearest SDK OS build; `gc_names.py --verify` matches with `pdb_names.pair()` and the same
+acceptance rule as the Xbox 360 (a "library" is the SDK, MSL, MetroTRK or known middleware). Gaps says there is no
+GameCube port kit and lists, from the game's code, the hardware register blocks it touches and the SDK and OS
+functions it calls by matched name. Boot lists the inputs only.
+
 ## 0. Machine setup (once)
 
 - Python 3.12, Ghidra 12.x and the JDK it asks for: the line `application.java.min=` in `<ghidra_home>/Ghidra/application.properties` (it is 21 in Ghidra 12.1.2, which our machines run; an outside user reports `application.java.min=25` in Ghidra 12.2, where JDK 21 made sleigh fail with "java could not be found"; we have not run 12.2), Visual Studio 2022 with the C++ workload (the judge builds every
@@ -186,7 +260,8 @@ figures and the causes of the rest). How the stage works: docs/TRANSLATOR_STAGE.
 - **Hands-off, in one start:** `python tools/wave.py run --game WS` runs this whole round and the readable round
   (section 6) with no one at the controls: prepare (served slots), translate and record, an agent only on each
   translator FAIL (`decomp.py investigate`, a few at once), then `refine.py run` over the matched functions. It
-  needs `"harness_reuse": true` in project.json, resumes where it stopped, and writes
+  needs `"harness_reuse": true` in project.json, resumes where it stopped (`--stop-after STEP` ends after a step,
+  `--tx-chunk N` translates and records N functions at a time), and writes
   `state/wave_game_summary.json`; the run is one start in `state/operator_steps.jsonl` (tools/wave_game.py).
 - **Then the agents, for what is left:** `python decomp.py --project <workspace> serve` opens the monitor UI.
   Start workers (Haiku by default): each one takes a function, runs the translator, and only on a FAIL writes raw
@@ -292,6 +367,33 @@ The kit holds no game code; your game's repository holds a port folder with:
 Toy Commander's `port/` (game.json, must_work.txt, its hardware and Kamui 2 files) is a complete example. A
 replacement that only needs SDK names belongs in the kit's `sdk/`; one bound to your game's own code stays with
 your game.
+
+### Adding a per-game option
+
+An improvement of the game's own (Dragon Force's Quick dialogue, say) is declared once, in a table in the game's C, and
+the base (`port/base/game_options.c`, `console.h` `PortOption`) gives it the rest on every console: the menu entry, the
+`settings.txt` key, the `--id` flag, the recording's note and the value.
+
+```c
+static const PortOption k_options[] = {
+    /* id, menu, label, kind, choices, values, n, default, original, flags, available */
+    {"quick-dialogue", "Game", "&Quick dialogue: Start skips a scene (from the next start)", PORT_MENU_CHECK, NULL, NULL,
+     0u, 1u, 0u, PORT_OPTION_NOTE, NULL},
+};
+const PortOptions port_game_options = {k_options, 1u};
+/* the game's code then reads port_option("quick-dialogue") (1 on, 0 off; a choice's index) */
+```
+
+- `default` is the play run's value: an improvement is on there. `original` is the game exactly, which the game's
+  code must leave untouched (off means the original). A check run, a scripted run and the fixed clock get `original`
+  unless the flag is given, so the goldens never see it.
+- `PORT_OPTION_NOTE`: the value is fixed at the run's start and kept in the recording as `*id` when it is not the
+  original, so a replay does what the recording did (an older recording plays the original); a menu change applies
+  from the next start. Without it the option is live, changes at once and is never recorded, so it must not change
+  what the game does (fast forward's speed is one: `port/base/speed.c`).
+- A choice gives `choices` (the menu's labels) and `values` (the flag's and the settings file's words); a check takes
+  on/off. `available` (NULL: always) greys the entry.
+- A console kit declares its own the same way in `port_console_options`. A game without a table links an empty one.
 
 ## Publishing your workspace
 

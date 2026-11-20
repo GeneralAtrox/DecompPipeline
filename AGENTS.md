@@ -28,6 +28,7 @@ platform is a **target** under `targets/` with its own README: `dreamcast_sh4`, 
 | docs/IMGTOOL.md | dpimg, the image tool new art and texture tools use instead of Pillow (C, Python, command line) |
 | docs/DASHBOARD.md | `Dashboard.bat`: each game's road from disc to port, the work board, the function treemap; the two files agents keep current |
 | docs/DEFINITION_OF_DONE.md | When a game counts as done |
+| docs/PERF_TOOLKIT.md | `port/tools/perf.py`: benchmark a port build against the 144 fps bar, see where its frame time goes by layer and function, and get the ranked list of what to swap. Use it before any performance work. `perf.py segment` names the cause of every late frame in one stretch (a save state or replay) |
 | docs/LESSONS.md | What wasted time or gave wrong answers before, and what DP does about it now; the waste gate's findings table |
 | port/README.md | The port kit's modules and what a game turns on in its game.json. On a playtest report, read the run's log first (port/README.md "Game log"): do not ask the player what they did; if the log cannot answer, fix the log |
 
@@ -97,6 +98,27 @@ A project workspace:
 
 New project: create the folder with `project.json`, copy `targets/<target>/template/TcInputs.java` to
 `oracle/TcInputs.java`, write the reference C, then `decomp.py --project <folder> setup`. Disc to port: docs/NEW_GAME.md.
+
+## Onboarding a game
+
+One command takes a disc to a title screen in the launcher:
+`py -3.12 tools/onboard.py --project GAME_DIR --console saturn --name "Game" --disc X.cue [--host build box A --remote-project DIR --remote-dp DIR] [--until register]`.
+The stages run in this order: project, machine, disc, extract, census, symbols, boot, register, estimate, translate, gaps,
+then the overview. Machine runs first in every run that goes past it (not with `--only`): it checks this machine's `config.local.json` (Ghidra, 32-bit MSVC,
+vcpkg) and the Saturn signature library, fills what is missing from another checkout, and otherwise names the key to set; the stages that
+don't need what it lacks still run.
+Register puts the game in Phangrade's `Base/data/catalogue.json` and runs on the laptop that has Base, never against a
+`dist` folder.
+
+A rerun resumes at the first stage that is not done. `--from` and `--only` make the verdicts of that stage and every later
+one stale: they stay on disk with what they proved (boot's `launch` still names the build the launcher starts) and the
+stages run again. `--until STAGE` stops after that stage. Each stage writes `.work/onboard/<stage>.json`; read those and
+`OVERVIEW.md` for the gaps report: what is missing and what would supply it.
+
+`py -3.12 tools/onboard.py prove --project GAME_DIR [--title VB:SHA[:INPUT]]` gives the three proofs a build needs before it
+goes live: a replay against the live build, the title frame, and the launcher's path.
+
+New onboarding work is a stage or a fix in a console module (`tools/AutoOnboard/onboard_<console>.py`), never a new script.
 
 ## Run it
 

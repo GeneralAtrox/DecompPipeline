@@ -10,10 +10,12 @@
  * "under"; check runs keep the game's order unless told (sat_main.c), so the goldens do not change.
  *
  * Nearest existing: sat_vdp1.c (draws one command; this file picks the order the commands are drawn in). */
+#include <windows.h>
 #include "sat.h"
 #include "sat_sys.h"
 #include "sat_vdp.h"
 #include "sat_game.h"
+#include "bands.h"
 
 u32 sat_v1_dump_every; /* --v1dump N: the command list of every Nth vertical blank goes to the log */
 int sat_v1_ground_shadows = -1; /* 1: the game's floor shadows first; 0: the game's order; -1: not set (sat_main.c decides) */
@@ -89,4 +91,33 @@ int sat_v1_run(u8 *fb)
 #endif
     sat_v1_begin(fb);
     return walk(ALL, dump);
+}
+
+static int g_v1_bands = 1; /* --v1-bands on|off */
+void sat_v1_bands_set(int on) { g_v1_bands = on; }
+
+static void v1_band(void *fb, unsigned band, unsigned bands)
+{
+    sat_v1_mode(-1, (int)(256u * band / bands), (int)(256u * (band + 1u) / bands) - 1);
+    (void)sat_v1_run((u8 *)fb);
+}
+
+/* The list into the framebuffer VDP1 draws into, in bands. With clearer text (sat_text.c) a walk first finds the
+ * lettering (it draws nothing), and after the draw the copy the composer shows is made. */
+void sat_v1_draw(void)
+{
+    LARGE_INTEGER t0, t1;
+    QueryPerformanceCounter(&t0);
+    sat_perf_phase(2);
+    u8 *fb = sat_v1_draw_fb(), *wfb = sat_wide_fb(fb), *to = wfb ? wfb : fb; /* wider than the screen: into its twin, then the middle back */
+    sat_text_begin(fb, to);
+    if (sat_text_on) sat_v1_mode(1, 0, 255), (void)sat_v1_run(to);
+    sat_v1_mode(0, 0, 255);
+    if (g_v1_bands) bands_run(v1_band, to);
+    else (void)sat_v1_run(to);
+    if (wfb) sat_wide_back(fb);
+    sat_text_end();
+    sat_perf_phase(0);
+    QueryPerformanceCounter(&t1);
+    sat_perf_v1(t1.QuadPart - t0.QuadPart);
 }

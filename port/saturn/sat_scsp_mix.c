@@ -184,3 +184,5 @@ u32 sat_mix_active(void)
 }
 
 void sat_mix_reset(void) { memset(g_slot, 0, sizeof g_slot); }
+
+void sat_mix_state(SatSt *io) { sat_st(io, g_slot, sizeof g_slot); }

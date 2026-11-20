@@ -25,7 +25,7 @@
 #include "sat.h"
 
 int sat_net_option(const char *arg, const char *value); /* the arguments taken, 0 if not ours */
-void sat_net_start(const char *image); /* after the game log opens: the link; a joiner takes the host's settings and save */
+void sat_net_start(const u8 *image, u32 size); /* after the game log opens: the link (the code image's digest); a joiner takes the host's settings and save */
 void sat_net_started(void);            /* after the settings are applied (auto-load): a host can send them */
 int sat_net_on(void);
 void sat_net_vblank(void);             /* sat_sys.c, --det: before each vertical blank, the frame's pads */

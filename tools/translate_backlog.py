@@ -1,11 +1,11 @@
 """The translator stage (core/translate_stage, docs/TRANSLATOR_STAGE.md) over the harnesses a workspace already has:
 what the stage would have done for each function, and with --record what a worker does at a translated PASS. Never
 starts Ghidra (its prepare and slot raise here): only functions with harness/ADDR/meta.json are tried, and one
-whose oracle made too few valid vectors is reported NOVECTORS untried (a worker skips it before any attempt). Each
+whose oracle made too few valid vectors is reported NOVECTORS untried (a worker skips it before any attempt; tools/wave_game.py re-prepares it once, wider, then marks it NEEDS_INPUTS). Each
 row says whether its harness is current (core/oracle_fresh.scan) or what a prepare now would change.
 
 usage: python tools/bounded.py 3600 python tools/translate_backlog.py --project WS [--only a,b | @FILE] [--jobs N]
-           [--record | --keep DIR] [--json OUT]
+           [--record | --keep DIR] [--json OUT] [--rows TSV]
   Without --record the attempts' runs/ and build/ go to a folder of the tool's own (removed at the end; --keep DIR
   keeps them there), not the workspace's build/ADDR/official, which a live worker uses too: no private copy needed.
   --record  a PASS of a function not yet matched, on a current harness and not unsupported, is finished as a worker
@@ -15,6 +15,9 @@ usage: python tools/bounded.py 3600 python tools/translate_backlog.py --project 
             server answers (the server owns the ledger): run it on a private copy, or with the server stopped.
   --json    one row per function: verdict, translate_s, judge_s, the first differences or why there was no C, and the
             ledger's agent figures for it before this run (attempts, tokens, cost, agent seconds), for comparison.
+  --rows    appends one short line per function to TSV as soon as it is judged (a run killed part way keeps them): addr, verdict, stage, harness, why (the translator's reason,
+            or the FAIL's summary and first lint, build, run or diff line, at most 300 characters): what
+            tools/AutoOnboard/onboard_gaps.py groups, kept when the --json rows are not
   Every run also merges its verdicts into state/translator_verdicts.json (the dashboard's view of translator-only
   progress, for a workspace judged without --record).
 """
@@ -97,6 +100,7 @@ def main():
     ap.add_argument("--record", action="store_true")
     ap.add_argument("--keep", default="")
     ap.add_argument("--json", default="")
+    ap.add_argument("--rows", default="")
     a = ap.parse_args()
     if a.record and a.keep:
         sys.exit("--keep is for a report: --record finishes PASSes from the workspace's own runs/")
@@ -144,8 +148,7 @@ def report(a, paths, filelock, check, job, oracle_fresh, translate_stage):
         summary = paths.read_json(paths.HARNESS / addr / "oracle_summary.json") or {}
         harness = " ".join(stale[addr]) if addr in stale else "current"
         if summary.get("dev_valid", 0) < mv or summary.get("hidden_valid", 0) < mv:  # job.investigate skips it
-            return dict(addr=addr, **before[addr], harness=harness, verdict="NOVECTORS",
-                        why=f"oracle made fewer than {mv} valid vectors per set: no attempt, re-prepare first")
+            return dict(addr=addr, **before[addr], harness=harness, verdict="NOVECTORS", why=novectors_why(summary, mv))
         probe = Probe(o)  # the attempt writes its row here; only --record's PASS reaches the ledger
         try:
             att = translate_stage.attempt(probe, w, addr, job.judge)
@@ -177,9 +180,18 @@ def report(a, paths, filelock, check, job, oracle_fresh, translate_stage):
             row["recorded"] = "translated_fail"
         return row
 
+    sink = threading.Lock()
+
+    def one_kept(addr):  # --rows: each function's line as soon as it is judged, so a run killed part way keeps them
+        r = one(addr)
+        if a.rows:
+            with sink:
+                short_rows(pathlib.Path(a.rows), [r])
+        return r
+
     t0 = time.monotonic()
     with cf.ThreadPoolExecutor(max(1, a.jobs)) as ex:
-        rows = list(ex.map(one, addrs))
+        rows = list(ex.map(one_kept, addrs))
     total = round(time.monotonic() - t0, 1)
     from collections import Counter
     c = Counter(r["verdict"] for r in rows)
@@ -194,6 +206,26 @@ def report(a, paths, filelock, check, job, oracle_fresh, translate_stage):
         pathlib.Path(a.json).write_text(json.dumps({"workspace": str(paths.ROOT), "translator": st[0],
                                                     "rev": translate_stage.revision(st[2]), "jobs": a.jobs,
                                                     "wall_s": total, "rows": rows}, indent=1), encoding="utf-8")
+
+
+def novectors_why(summary, mv):
+    """The NOVECTORS reason: the valid counts and the oracle's commonest reason a vector was invalid. tools/wave_game.py
+    acts on it (one wider re-prepare, then NEEDS_INPUTS); nothing here asks anyone to."""
+    inv = sorted((summary.get("invalid") or {}).items(), key=lambda kv: -kv[1])
+    return (f"{summary.get('dev_valid', 0)}/{summary.get('dev_tried', '?')} dev and {summary.get('hidden_valid', 0)}/"
+            f"{summary.get('hidden_tried', '?')} hidden vectors valid (need {mv} per set)"
+            + (f"; invalid: {inv[0][0]} (x{inv[0][1]})" if inv else "") + ": no attempt")
+
+
+def short_rows(path, rows):
+    """--rows: one tab-separated line per function, appended (a later line for the same function is the newer)."""
+    with open(path, "a", encoding="utf-8", newline="\n") as f:
+        for r in rows:
+            why = r.get("why") or "; ".join(str(x) for x in [r.get("summary"), *(r.get("lint") or [])[:1],
+                                                            *(r.get("build") or [])[:1], r.get("run_error"),
+                                                            *(r.get("diff") or [])[:1]] if x)
+            f.write("\t".join([r["addr"], r["verdict"], str(r.get("stage") or ""), r["harness"],
+                               " ".join(str(why).split())[:300]]) + "\n")
 
 
 def keep_verdicts(paths, translator, rows):

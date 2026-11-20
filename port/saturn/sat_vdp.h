@@ -24,6 +24,7 @@ extern u32 sat_peek_addr[16];
 extern int sat_peek_n; /* sat_vdp.c */
 extern u32 sat_vwatch_lo, sat_vwatch_hi, sat_vwatch_vb; /* sat_vdp.c */
 extern u32 sat_layer_mask; /* sat_vdp2.c */
+void sat_v1_mode(int scan, int y0, int y1); /* sat_vdp1.c: a walk's rows; scan: only find the lettering (sat_text.c) */
 int sat_v1_run(u8 *fb);         /* sat_vdp1_list.c: the same into fb; returns the number of commands */
 u8 *sat_v1_draw_fb(void);       /* sat_vdp.c: the framebuffer VDP1 draws into / the CPU sees */
 const u8 *sat_v1_display_fb(void); /* the one VDP2 shows */
@@ -36,6 +37,7 @@ extern int sat_inb_on;
 int sat_inb_live(void);
 int sat_inb_drawing(void);        /* 1 inside one: nothing is recorded or logged there */
 void sat_inb_drawn(const u8 *fb); /* sat_vdp.c: VDP1 drew its list into fb */
+void sat_inb_fb_written(const u8 *fb); /* sat_vdp.c: the CPU wrote into fb, so its list alone no longer makes its picture */
 void sat_inb_vblank(void);        /* sat_video.c: before a picture is composed */
 void sat_inb_post(void);          /* sat_video.c: the picture composed, to be shown one blank later */
 void sat_inb_report(void);
@@ -64,6 +66,8 @@ void sat_wide_seen(int black);        /* sat_video.c: the picture just composed,
  * is 4x4 (maps 4, map[] holds 16), filled by sat_vdp2_rot.c */
 typedef struct {
     int on, bitmap, charpx, pn1w, cnsm, cc, tpon, prio, ccen, ccratio, plw, plh, bmw, bmh, craoff, splt, scn, bmpal, maps;
+    int sfpr, sfcc, sfcode, pnsf, bmsf; /* special priority and colour calculation modes (SFPRMD, SFCCMD), its special code (SFSEL,
+                                         * SFCODE), and the SPR (bit 0) / SCC (bit 1) bits of 1-word names (PNC) and bitmaps (BMPN) */
     u32 map[16], bmbase, scx, scy, zx, zy;
 } SatPlane;
 typedef struct {
@@ -98,5 +102,7 @@ static __inline u32 sat_rgb555(u32 w)
 }
 const SatPlane *sat_v2_plane(int n);       /* after a compose: plane n's registers (NBG0..NBG3, RBG0) */
 int sat_v2_sprite(u32 x, u32 y, u32 *rgb); /* after a compose: the sprite layer's colour at a screen dot, 0 none */
+
+#include "sat_text.h" /* clearer text */
 
 #endif

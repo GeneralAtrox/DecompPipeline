@@ -26,6 +26,10 @@ u8 *sat_ram_l(void);
 void sat_load(u32 addr, const u8 *data, u32 size); /* into work RAM (high or low) */
 u32 sat_dma_rd32(u32 addr);                         /* a word read by the SCU's DMA: not a CPU's poll */
 u32 sat_peek32(u32 addr);                           /* a word without side effects (RAM only, else 0) */
+/* gen_saturn.py --guard: a translation of code loaded at run time runs only while the 16 bytes at its start are the ones it
+ * was translated from (an overlay over the same address is other code); else sat_absent logs it as a STUB, returns 0 */
+int sat_resident(u32 addr, u32 w0, u32 w1, u32 w2, u32 w3);
+u32 sat_absent(u32 addr);
 void sat_mem_report(void);                          /* hardware regions touched, at exit */
 u32 sat_frt_count(void);
 void sat_mem_cpu(int id);                           /* which SH-2's on-chip registers the bus shows */
@@ -36,13 +40,29 @@ typedef struct {
     u32 addr;
     u32 (*fn)(u32 a0, u32 a1, u32 a2, u32 a3);
     u32 frame; /* bytes its body can push below its entry sp (tools/gen_saturn.py) */
+    const u32 *guard; /* code loaded at run time (gen_saturn.py --guard/--overlay): the 4 words it was translated from; NULL: always there */
 } SatFn;
 extern const SatFn sat_fns[];
 extern const int sat_nfns;
 extern u32 sat_entry_sp; /* the sp a translated function takes as its own on entry (the bring-up form's r15) */
 void sat_call_init(void);
+/* The return address a call hands its callee as PR, as the SH-2's bsr/jsr set it (gen_saturn.py from the translator's
+ * --call-sites marks): sat_at sets it just before the call, tc_call takes it at once and keeps it per frame with r8..r14
+ * (SatCpu site, saved: where each open frame resumes, for save states), and the callee's prologue reads it (sat_pr_in).
+ * SAT_PR_NONE, the judge's return sentinel, where the call had no mark (an entry, an interrupt, C without marks). */
+#define SAT_PR_NONE 0x060ff000u
+extern u32 sat_ret;
+static __inline u32 sat_at(u32 ret, u32 target) { sat_ret = ret; return target; }
+u32 sat_pr_in(void);
+extern int sat_task_on;                 /* sat_task.c: the game switches guest tasks by setjmp/longjmp, each context on a fiber */
+extern unsigned char *sat_task_flags;   /* per sat_fns entry: the function calls the setjmp, so it runs in sat_task_run */
+void sat_task_init(void);               /* finds the pair by their code (after the image is loaded) */
+u32 sat_task_run(const SatFn *f, u32 top, const TcArgs *a);
+int sat_task_call(u32 target, const TcArgs *a, u32 *ret);
+void sat_task_cpu_off(int cpu);
 u32 tc_tail(u32 target, const TcArgs *args);   /* a jump to another function as the last thing a function does */
 u32 tc_call_sp(u32 target, const TcArgs *args, u32 sp);   /* a call from a translated function at r15 = sp: the callee starts there, as on the CPU */
+void sat_sp_at(u32 sp);                                  /* a computed stack move's real sp: the kit's frames and interrupts go below it */
 u32 tc_tail_sp(u32 target, const TcArgs *args, u32 sp);   /* the same, from a frame that is still open: the target runs with r15 = sp */
 u32 sat_in_r(int i); /* r0..r3 as the caller held them at this call: a function that never writes r0 returns it unchanged; SGL's inner routines read r1..r3 */
 void sat_pr_popped(void);                         /* the running function restored pr from its stack */
@@ -52,6 +72,52 @@ int sat_pr_took(void);                            /* the function just called di
 u32 sat_call(u32 sp, u32 addr, u32 a0, u32 a1, u32 a2, u32 a3); /* runs a guest function on a stack at sp */
 u32 sat_call_here(u32 addr, u32 level);                         /* an interrupt handler on a fresh frame, registers kept */
 void sat_stub_report(void);
+/* sat_interp.c: the SH-2 interpreter fallback (--fallback on|off; on in the onboard tool's boot runs; else game.json "fallback", off) */
+extern int sat_fallback_on;
+void sat_fallback_option(const char *value);
+int sat_fallback_ok(u32 addr);                                      /* code the interpreter may run: work RAM */
+u32 sat_interp(u32 entry, u32 top, const TcArgs *a, int stack_args); /* untranslated code as a function, on the shared CPU state */
+/* sat_interp with the frame at depth marked interpreted for the sampler (sat_perf.c, sat_interp_depth) */
+u32 sat_interp_marked(u32 cpu, int depth, u32 entry, u32 top, const TcArgs *a, int stack_args);
+u32 sat_interp_pure(u32 entry, u32 top, const TcArgs *a, int *ok); /* --fallback check: work RAM only, nothing kept but RAM */
+void sat_interp_tail_next(void);                                    /* the next sat_interp runs for an open frame's jump */
+u32 sat_interp_resume(u32 r0, u32 pc, u32 csp); /* after a load: the open frames from the pending call's return address (sat_state.c) */
+
+/* sat_state.c: save states (base/save_state.h): the safe point at a call, the resume after a load, each device's state */
+extern int sat_body_nest; /* gen_saturn.py: the levels a recursive function is inside itself (no safe point there) */
+static __inline void sat_body_in(void) { sat_body_nest++; }
+static __inline u32 sat_body_out(u32 r) { sat_body_nest--; return r; }
+typedef struct SatSt SatSt;                  /* a device's state being measured, written or read back */
+void sat_st(SatSt *io, void *p, u32 len);    /* one field, its bytes as they are */
+int sat_st_loading(const SatSt *io);         /* 1 while a state is read back (a field's fix-up comes after it) */
+enum { SAT_ST_FRAME = 44 };                  /* one open frame's bytes in the SH2 block (sat_call_state) */
+void sat_state_register(void);               /* sat_main.c: the provider, unless the game runs KRNL tasks */
+void sat_state_ready(void);                  /* sat_main.c: the game thread's resume point is set */
+void sat_state_point(u32 target, const TcArgs *a, u32 site, u32 csp); /* tc_call while a request waits */
+void sat_state_resume(void);                 /* the game thread after a load */
+const char *sat_call_unsafe(int saving, u32 site, u32 csp); /* sat_call.c: why this call cannot be the safe point, or NULL */
+void sat_call_state(SatSt *io);              /* sat_call.c: the SH-2s, their open frames, the slave */
+void sat_call_loaded(void);                  /* sat_call.c: after a load: the master runs, the slave starts again at its entry */
+void sat_interp_loaded(void);                /* sat_interp.c: after a load: no interpreted run is open */
+void sat_sys_state(SatSt *io);
+void sat_scu_dev_state(SatSt *io); /* not sat_scu_state: sat_sys.h has that name (the watchdog's report) */
+void sat_smpc_state(SatSt *io);
+void sat_cd_state(SatSt *io);
+void cdb_state(SatSt *io);
+void sat_scsp_state(SatSt *io);
+void sat_mix_state(SatSt *io);
+void sat_mem_state(SatSt *io);
+void sat_bios_state(SatSt *io);
+void sat_vdp_state(SatSt *io);
+void sat_interp_state(SatSt *io);
+int sat_fn_resident(const SatFn *f);                                /* its guard's words are in memory (or it has none) */
+int sat_interp_declines(u32 addr);                                  /* sat_absent: the interpreter's own branch to a translation not in memory */
+void sat_interp_resident_seen(void);                                /* sat_resident: the guard held */
+void sat_check_report(void);                                        /* sat_call.c: --fallback check's summary line */
+void sat_check_counts(u32 n[5]);                                    /* same, differ, hardware, moved, other r0 */
+void sat_pr_popped(void);
+int sat_fallback_count(void);
+void sat_fallback_report(void);                                    /* "fallbacks:" and a "fallback:" line per address, at exit */
 int sat_cpu_id(void);                                           /* 0 master, 1 slave */
 void sat_cpu_yield(void);                                       /* the other SH-2 takes a turn, if it has a program */
 void sat_poll_hint(u32 every);
@@ -62,6 +128,11 @@ SatNative sat_bup_native(u32 addr);  /* sat_bup.c: the backup-RAM library's serv
 void sat_bup_init(void);             /* its pointers in work RAM (called by sat_bios_init) */
 void sat_bup_path(const char *path); /* --save: the host file that holds the console's backup memory */
 const char *sat_bup_where(void);     /* and its name (sat_heads.c keeps its own save beside it) */
+void sat_bup_save_dir(const char *dir); /* --save-dir: the files in DIR unless --save names one (either order); an old save in the current folder is copied there once */
+/* sat_image.c: the code image made from the open disc (game.json image_files): 0 and a malloc'd image, else 4 (no disc,
+ * unreadable), 5 (a file missing or the SHA-256 differs: another revision), 1 (memory) or -1 (no table: image.bin) and why */
+int sat_image_from_disc(u8 **image, u32 *size, char *why, size_t cap);
+int sat_image_sha256_hex(const u8 *data, u32 size, char hex[65]);
 extern u32 sat_movie_fn; /* sat_movie.c: the game's movie routine the host plays instead (0: none, or emulated in this run) */
 int sat_movie_play(const TcArgs *a, u32 *ret); /* 1 and the routine's result when the host played it */
 void sat_movie_start(int play_run, int audio_on);

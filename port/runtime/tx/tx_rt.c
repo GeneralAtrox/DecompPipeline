@@ -337,20 +337,20 @@ static void call(u32 target, const PortTcArgs *a, PortTcRet *o, int want_f, cons
     if (g_prof_on) prof_call(target);
     u32 at = target;
     work_add(WC_GUEST_CALLS, 1);
+    if (g_perf_on) perf_push(guest_fold(target)); /* the sampler's call stack by original address (base/perf.h) */
     if (!g_ncall_hooks) {
         call_target(target, a, o, want_f, site);
+        if (g_perf_on) perf_pop();
         return;
     }
     if (at && !guest_is_ram(at) && guest_of_host(at)) at = guest_of_host(at); /* a host function pointer */
     g_call_args = a;
     call_hooks(at, 0);
-    if (g_call_skip) {
-        g_call_skip = 0;
-        memset(o, 0, sizeof *o);
-    } else {
-        call_target(target, a, o, want_f, site);
-    }
+    if (!g_call_skip) call_target(target, a, o, want_f, site);
+    else memset(o, 0, sizeof *o);
+    g_call_skip = 0;
     call_hooks(at, 1);
+    if (g_perf_on) perf_pop();
 }
 
 u32 tc_call(u32 target, const PortTcArgs *args)

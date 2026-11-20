@@ -26,7 +26,7 @@ static u8 g_page[PAGES]; /* region index + 1 per 64 KB page, 0 none */
 static int g_nreg;
 static u8 g_ocs[2][0x200]; /* each SH-2's on-chip registers 0xfffffe00..0xffffffff */
 static u8 *g_oc = g_ocs[0];
-void sat_mem_cpu(int id) { g_oc = g_ocs[id]; }
+void sat_mem_cpu(int id) { g_oc = g_ocs[id], sat_perf_cpu(id); } /* sat_perf_cpu: whose writes are whose */
 void sat_mem_icf(int cpu) { g_ocs[cpu][0x11] |= 0x80u; } /* FTCSR.ICF: the other CPU's input-capture signal */
 static u8 g_cache_tag[0x1000];  /* address array 0x60000000.. (kept, not modelled) */
 static u8 g_cache_data[0x1000]; /* data array 0xc0000000.. */
@@ -163,7 +163,7 @@ static u32 oc_read(u32 a, u32 size)
     u32 o = a & 0x1ffu, v = 0;
     if (o >= 0x120u && o < 0x140u) o -= 0x20u; /* the divider repeats at 0x...ff20 */
     if (o >= 0x118u && o < 0x120u) o -= 8u;    /* DVDNTH/DVDNTL are also read at 0x...ff18 and 0x...ff1c */
-    if (o == 0x11u) sat_poll_hint(8); /* FTCSR: a wait for the other CPU's signal */
+    if (o == 0x11u) sat_perf_flag(!(g_oc[0x11] & 0x80u)), sat_poll_hint(8); /* FTCSR: a wait for the other CPU's signal */
     if (o == 0x12u) { /* FRC: reading its upper byte latches the lower one, so a byte pair is one count (Robo Pit's movie clock) */
         u32 c = sat_frt_count();
         *(u16 *)(g_oc + 0x12) = bswap16((u16)c);
@@ -397,4 +397,13 @@ void sat_mem_report(void)
 {
     for (int i = 0; i < g_nreg; i++)
         if (g_reg[i].count) port_log("hw: region %s %u accesses\n", g_reg[i].name, g_reg[i].count);
+}
+
+/* a save state's on-chip registers (both SH-2s), the division unit's vector, the caches' arrays, the plain register
+ * files and the read count the wait heuristics run on */
+void sat_mem_state(SatSt *io)
+{
+    sat_st(io, g_ocs, sizeof g_ocs), sat_st(io, &g_divu_vcr, 4), sat_st(io, &g_reads, 4);
+    sat_st(io, g_cache_tag, sizeof g_cache_tag), sat_st(io, g_cache_data, sizeof g_cache_data);
+    for (int i = 0; i < g_nrf; i++) sat_st(io, g_rf[i]->mem, sizeof g_rf[i]->mem);
 }

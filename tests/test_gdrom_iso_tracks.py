@@ -77,6 +77,14 @@ class IsoTracks(unittest.TestCase):
     def test_iso_2048(self):
         self.check(2048)
 
+    def test_extract_all(self):
+        """extract --all writes every file of the disc at its path (tools/AutoOnboard/autoonboard.py's extract stage)."""
+        image = self.make(2048)
+        out = image.parent / "all"
+        gdrom.main(["extract", str(image), str(out), "--all"])
+        self.assertEqual(sorted(str(p.relative_to(out)) for p in out.rglob("*") if p.is_file()), ["1ST_READ.BIN"])
+        self.assertEqual((out / "1ST_READ.BIN").read_bytes(), BODY)
+
     def test_odd_sector_size_refused(self):
         with self.assertRaises(SystemExit):
             gdrom.Disc(self.make(2336))

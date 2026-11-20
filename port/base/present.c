@@ -185,7 +185,7 @@ void gfx_clear(u32 argb)
 int gfx_can_show(void) { return show_count_take(g_gfx.latency, 0); }
 
 /* --present-thread: waits a moment for the display to take a frame, holding no lock. */
-void gfx_show_wait(void) { show_count_take(g_gfx.latency, 2); }
+void gfx_show_wait(void) { u64 b = perf_timer_begin(); show_count_take(g_gfx.latency, 2), perf_timer_end(PERF_T_SHOW_WAIT, b); }
 
 /* The last resort, and the log's word for it. A frame is dropped only because presenting it would block; if the
  * display has taken none for a whole second in a window that is not hidden, something lost the counts (see
@@ -314,7 +314,7 @@ static void present_made(void)
     else
         hr = IDXGISwapChain1_Present(g_gfx.swap, test ? 0u : g_gfx.vsync ? 1u : 0u,
                                      test ? DXGI_PRESENT_TEST : flags | (nowait ? DXGI_PRESENT_DO_NOT_WAIT : 0u));
-    QueryPerformanceCounter(&after);
+    QueryPerformanceCounter(&after), perf_timer_since(PERF_T_PRESENT, (u64)before.QuadPart); /* base/perf.c, when on */
     if (gfx_on_present_thread()) g_split_present += after.QuadPart - before.QuadPart; /* gfx_lock_split */
     if (hr == DXGI_ERROR_WAS_STILL_DRAWING) { /* nothing queued, no count used: tried again with gfx_lock let go */
         if (!g_pending) g_would_wait++;

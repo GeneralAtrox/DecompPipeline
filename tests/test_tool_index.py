@@ -1,5 +1,5 @@
 """The tool index (CLAUDE.md "No redundant work": anything new is checked against what exists):
-1. every tools/*.py and core/*.py says what it does in a module docstring (a file that predates this check may use a
+1. every tools/*.py, tools/AutoOnboard/*.py and core/*.py says what it does in a module docstring (a file that predates this check may use a
    leading # comment block instead; core/__init__.py is exempt), so the next agent can find it before writing another;
 2. every tools/ or core/ file that is not on master at BASE (when this check landed) names the nearest existing tool
    or module and why it does not fit, in a line "Nearest existing: <tool or module> - <why it doesn't fit>";
@@ -30,7 +30,7 @@ END = "<!-- tools-index:end -->"
 
 
 def sources():
-    return sorted(p for d in ("tools", "core") for p in (TOOL / d).glob("*.py"))
+    return sorted(p for d in ("tools", "tools/AutoOnboard", "core") for p in (TOOL / d).glob("*.py"))
 
 
 def rel(p):
@@ -84,7 +84,8 @@ def summary(p):
 
 def index_lines():
     """The generated list: every tools/*.py by name, one line each."""
-    return [f"- `{p.name}`: {summary(p)}" for p in sorted((TOOL / "tools").glob("*.py"), key=lambda p: p.name)]
+    ps = sorted((TOOL / "tools").glob("*.py"), key=lambda p: p.name) + sorted((TOOL / "tools" / "AutoOnboard").glob("*.py"))
+    return [f"- `{p.relative_to(TOOL / 'tools').as_posix()}`: {summary(p)}" for p in ps]
 
 
 def split_doc(text):

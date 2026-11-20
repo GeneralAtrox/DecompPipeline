@@ -38,6 +38,7 @@ enum {
     PORT_CONSOLE_ONLINE = 4, /* online play: the Online menu (base/host_online.cpp) and the option --net on|off|HOST[:PORT] */
     PORT_CONSOLE_FCAP = 8,   /* a scene dump also records the next frame draw by draw (base/frame_capture.h; the kit writes the
                                 records). Without it nothing is armed, allocated or written: one test a frame */
+    PORT_CONSOLE_SPEED = 16, /* fast forward (base/speed.c): the console runs its clock port_speed() times as fast (Game > Fast forward) */
 };
 
 extern const PortConsole port_console;
@@ -92,7 +93,7 @@ int console_lockstep_time(HostTime *t);
  * most PORT_MENU_CHOICES_MAX) and calls set(index) for the one chosen. Neither keeps anything in the settings: setting,
  * get and values may be NULL. */
 typedef struct PortMenuItem {
-    const char *menu;            /* "Display", "Audio", "Input" or "Game" */
+    const char *menu;            /* "Display", "Audio", "Input" or "Game" (the base's own: "File") */
     const char *label;           /* with & for the mnemonic */
     int kind;                    /* PORT_MENU_CHECK, PORT_MENU_CHOICE, PORT_MENU_COMMAND or PORT_MENU_SUBMENU */
     const char *setting;         /* the settings.txt key */
@@ -116,6 +117,36 @@ const PortMenuItem *console_menu_extra(unsigned *count);
 /* A game's own entries (game.json game_menu: the game defines it), the same kind, after the console's in each menu.
  * Its settings are the game's: a key starting "game." is not a command-line option, so the game reads it itself. */
 const PortMenuItem *game_menu_extra(unsigned *count);
+
+/* ---- per-game options (base/game_options.c has the rules) ----
+ * A game declares its options in one table, `const PortOptions port_game_options = {items, n};` in its own code (a
+ * console kit port_console_options); the base gives each its menu entry, settings key, --ID flag, recording note and
+ * value. Adding one is a line in the table and a port_option("id") where the game reads it. */
+typedef struct PortOption {
+    const char *id;              /* the settings key, the flag (--ID), and the recording's note ("*ID") */
+    const char *menu;            /* "Display", "Audio", "Input" or "Game" */
+    const char *label;           /* with & for the mnemonic; a noted option says "(from the next start)" */
+    int kind;                    /* PORT_MENU_CHECK (0 off, 1 on) or PORT_MENU_CHOICE */
+    const char *const *choices;  /* a choice's labels */
+    const char *const *values;   /* and its words (the settings file's and the flag's) */
+    unsigned n;                  /* a choice's count */
+    unsigned dflt;               /* the value in a play run: an improvement is on (1) by default */
+    unsigned original;           /* the value that is the original game exactly: checks, scripted and --det runs */
+    unsigned flags;              /* PORT_OPTION_NOTE: fixed at start and kept in the recording; else live, never recorded */
+    int (*available)(void);      /* NULL: always; else 0 greys the entry */
+} PortOption;
+typedef struct PortOptions {
+    const PortOption *items;
+    unsigned n;
+} PortOptions;
+enum { PORT_OPTION_NOTE = 1 };
+extern const PortOptions port_game_options, port_console_options; /* the game's and the console's (empty if none) */
+int port_option(const char *id);       /* this run's value (a check 0/1, a choice its index); -1 if no such option */
+int port_option_find(const char *id);  /* its index for port_option_at, or -1 */
+int port_option_at(int index);
+int port_options_option(const char *arg, const char *value); /* --ID WORD (input_option passes it on) */
+void port_options_start(int play_run); /* the kit at start: the noted options' values (else at the first port_option) */
+const PortMenuItem *port_options_menu(unsigned *count); /* their menu entries (host_menu_extra.cpp) */
 
 /* ---- input ---- */
 /* The mouse given straight to a game (native_game.h pg_native_mouse_mode, pg_native_mouse). */

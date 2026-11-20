@@ -1,6 +1,6 @@
 /* VDP2: composes the picture from the scroll planes NBG0..NBG3, the VDP1 sprite layer and the back screen into
  * sat_frame (0x00RRGGBB). Per pixel each layer gives a colour and a priority; the highest priority wins, and a layer
- * with colour calculation on blends with the one under it. Cell and bitmap planes, 1- and 2-word pattern names, the
+ * with colour calculation on blends with the one under it (by its ratio, or added: CCMD). Cell and bitmap planes, 1- and 2-word pattern names, the
  * colour modes, scroll and zoom, colour offset, RBG0 (rotation parameter A, sat_vdp2_rot.c), windows and line scroll
  * (sat_vdp2_win.c); wider than the screen (sat_wide.c). Not yet: RBG1, rotation parameter B, vertical cell scroll, the sprite window, mosaic.
  *
@@ -11,6 +11,7 @@
 #include "sat.h"
 #include "sat_sys.h"
 #include "sat_vdp.h"
+#include "sat_vdp2_name.h"
 #include "work_count.h"
 #include "bands.h"
 
@@ -26,10 +27,12 @@ static u32 g_hist[2048]; /* NBG1 colour indexes drawn (a test aid) */
 static u32 g_spctl, g_ccctl, g_clofen, g_clofsl, g_ramctl, g_tvmd;
 static int g_off[2][3]; /* colour offsets A and B: r, g, b */
 u32 sat_cram[2048], sat_cram_mask; /* colour memory as RGB, made once a frame: it cannot change while the picture is composed */
+static u8 g_cram_msb[2048];          /* and each colour's MSB (a sprite's colour calculation condition 3 reads it) */
 /* each band of the picture's own scratch (bands.h): the name last read from a layer's map, so the rest of that cell's
  * dots need not read it again; RBG0's line; the NBG1 colour indexes it drew */
 typedef struct {
-    struct { u32 key, charnum, pal; int hf, vf; } cell[5];
+    struct { u32 key, charnum, pal, sf, tag; int hf, vf; } cell[5];
+    u32 lt; /* the last dot read's cell: clearer text's tag for it (sat_text_v2.c), 0 not lettering */
     SatRotLine rot;
     u32 hist[2048], rx[SAT_MAX_W], ry[SAT_MAX_W]; /* and RBG0's map dots on the line */
     u8 rok[SAT_MAX_W];
@@ -51,14 +54,18 @@ static void cram_load(void)
         if (mode == 2u) {
             u32 o = i * 4u, w = ((u32)sat_v2_cram[o] << 24) | ((u32)sat_v2_cram[o + 1] << 16) | ((u32)sat_v2_cram[o + 2] << 8) | sat_v2_cram[o + 3];
             sat_cram[i] = ((w & 0xffu) << 16) | (w & 0xff00u) | ((w >> 16) & 0xffu);
+            g_cram_msb[i] = (u8)(w >> 31);
         } else {
-            sat_cram[i] = sat_rgb555(((u32)sat_v2_cram[i * 2u] << 8) | sat_v2_cram[i * 2u + 1u]);
+            u32 c = ((u32)sat_v2_cram[i * 2u] << 8) | sat_v2_cram[i * 2u + 1u];
+            sat_cram[i] = sat_rgb555(c);
+            g_cram_msb[i] = (u8)(c >> 15);
         }
     }
 }
 
 /* the sprite layer's registers, read once a frame */
-static const u8 *g_spr_fb;
+static int g_v2on; /* clearer text found lettering in the planes for this picture (sat_text_v2.c) */
+static const u8 *g_spr_fb, *g_spr_src; static const u16 *g_tmask; /* clearer text (sat_text.c): the layer shown, the one with the lettering, its dots */
 static u32 g_spr_sh = 9u, g_spr_ox, g_spr_mask = 0x3ffffu; /* its row shift, x offset and mask: a wide twin's (sat_wide.c) */
 static int g_spr_prio[8], g_spr_ratio[8];
 static u32 g_spr_craoff;
@@ -130,20 +137,28 @@ static void nbg_setup(int n)
     g->craoff = (int)((R(0xe4) >> (4 * n)) & 7u) << 8;
     g->ccen = (int)((g_ccctl >> n) & 1u);
     g->ccratio = (int)((R(n < 2 ? 0x108 : 0x10a) >> ((n & 1) ? 8 : 0)) & 31u);
+    g->sfpr = (int)((R(0xea) >> (2 * n)) & 3u), g->sfcc = (int)((R(0xee) >> (2 * n)) & 3u);
+    g->sfcode = (int)(((R(0x24) >> n) & 1u) ? R(0x26) >> 8 : R(0x26) & 0xffu);
+    g->pnsf = (int)(((pnc >> 9) & 1u) | ((pnc >> 7) & 2u));
+    if (n < 2) g->bmsf = (int)(((R(0x2c) >> (sh + 5)) & 1u) | ((R(0x2c) >> (sh + 3)) & 2u));
 }
 
-/* the dot at scroll-space (px, py): 1 and *rgb when it is opaque */
-static int nbg_dot(Band *b, const Nbg *g, u32 px, u32 py, u32 *rgb)
+/* the dot at scroll-space (px, py): 1 and *rgb when it is opaque, and in *sf what the special functions read: bit 0 the
+ * character's (or bitmap's) special priority bit SPR, bit 1 its special colour calculation bit SCC, bit 2 the dot's code is
+ * one the special code (SFCODE) names, bit 3 the colour's MSB */
+static int nbg_dot(Band *b, const Nbg *g, u32 px, u32 py, u32 *rgb, u32 *sf)
 {
-    u32 base, dot, idx, pal = 0;
+    u32 base, dot, idx, pal = 0, chsf = (u32)g->pnsf, cidx;
     int cx, cy;
     if (g->bitmap) {
+        b->lt = sat_text_v2_bm >> (u32)(g - g_n) & 1u; /* clearer text: this bitmap has lettering (the map says where) */
         px &= (u32)g->bmw - 1u; /* every size here is a power of two: masks and shifts, not a divide per pixel per layer */
         py &= (u32)g->bmh - 1u;
         cx = (int)px;
         cy = (int)py;
         base = g->bmbase;
         pal = (u32)g->bmpal;
+        chsf = (u32)g->bmsf;
         switch (g->cc) {
         case 0: dot = vb(base + (py * (u32)g->bmw + px) / 2u); dot = (px & 1u) ? dot & 15u : dot >> 4; break;
         case 1: dot = vb(base + py * (u32)g->bmw + px); break;
@@ -152,55 +167,20 @@ static int nbg_dot(Band *b, const Nbg *g, u32 px, u32 py, u32 *rgb)
         default: dot = vl(base + (py * (u32)g->bmw + px) * 4u); break;
         }
     } else {
-        u32 planew = 512u * (u32)g->plw, planeh = 512u * (u32)g->plh, cs = (u32)g->charpx, csh = cs == 16u ? 4u : 3u, x, y, pn, charnum, pnaddr, plane, page, cellidx, cellbytes, cxx, cyy, key;
-        int hf = 0, vf = 0, layer = (int)(g - g_n);
-        px &= planew * (u32)g->maps - 1u;
-        py &= planeh * (u32)g->maps - 1u;
+        u32 cs = (u32)g->charpx, csh = cs == 16u ? 4u : 3u, x, y, charnum, cellidx, cellbytes, cxx, cyy, key;
+        int hf, vf, layer = (int)(g - g_n);
+        px &= 512u * (u32)g->plw * (u32)g->maps - 1u;
+        py &= 512u * (u32)g->plh * (u32)g->maps - 1u;
         key = (py >> csh) << 16 | (px >> csh);
         x = px & 511u;
         y = py & 511u;
-        if (b->cell[layer].key == key) {
-            charnum = b->cell[layer].charnum;
-            pal = b->cell[layer].pal;
-            hf = b->cell[layer].hf;
-            vf = b->cell[layer].vf;
-            goto named;
+        if (b->cell[layer].key != key) { /* a new cell: its name, and whether clearer text took it as lettering */
+            SatV2Name nm;
+            sat_v2_name_at(g, px, py, &nm);
+            b->cell[layer].key = key, b->cell[layer].charnum = nm.charnum, b->cell[layer].pal = nm.pal, b->cell[layer].sf = nm.sf;
+            b->cell[layer].hf = nm.hf, b->cell[layer].vf = nm.vf, b->cell[layer].tag = g_v2on ? sat_text_v2_tag(layer, nm.charnum, nm.pal, nm.hf, nm.vf) : 0u;
         }
-        plane = (py >> (8 + g->plh)) * (u32)g->maps + (px >> (8 + g->plw));
-        x = px & (planew - 1u);
-        y = py & (planeh - 1u);
-        page = (y >> 9) * (u32)g->plw + (x >> 9);
-        x &= 511u;
-        y &= 511u;
-        pnaddr = g->map[plane] + page * (u32)(cs == 8u ? 4096 : 1024) * (g->pn1w ? 2u : 4u) + ((y >> csh) * (512u >> csh) + (x >> csh)) * (g->pn1w ? 2u : 4u);
-        if (g->pn1w) {
-            pn = vw(pnaddr);
-            if (g->cnsm) {
-                charnum = (pn & 0xfffu) | (((u32)g->scn & 0x1cu) << 10);
-            } else {
-                charnum = (pn & 0x3ffu) | (((u32)g->scn & 0x1fu) << 10);
-                vf = (int)((pn >> 11) & 1u);
-                hf = (int)((pn >> 10) & 1u);
-            }
-            if (cs == 16u) {
-                charnum = g->cnsm ? (((pn & 0xfffu) << 2) | ((u32)g->scn & 3u) | (((u32)g->scn & 0x10u) << 10))
-                                  : (((pn & 0x3ffu) << 2) | ((u32)g->scn & 3u) | (((u32)g->scn & 0x1cu) << 10));
-            }
-            pal = g->cc == 1 ? ((pn >> 12) & 7u) << 4 : ((pn >> 12) & 15u) | ((u32)g->splt << 4); /* 256 colours: pn bits 14-12 are the bank */
-        } else {
-            pn = vl(pnaddr);
-            charnum = pn & 0x7fffu;
-            pal = (pn >> 16) & 0x7fu;
-            vf = (int)((pn >> 31) & 1u);
-            hf = (int)((pn >> 30) & 1u);
-            if (cs == 16u) charnum <<= 2;
-        }
-        b->cell[layer].key = key;
-        b->cell[layer].charnum = charnum;
-        b->cell[layer].pal = pal;
-        b->cell[layer].hf = hf;
-        b->cell[layer].vf = vf;
-named:
+        charnum = b->cell[layer].charnum, pal = b->cell[layer].pal, hf = b->cell[layer].hf, vf = b->cell[layer].vf, chsf = b->cell[layer].sf, b->lt = b->cell[layer].tag;
         cxx = x & (cs - 1u);
         cyy = y & (cs - 1u);
         if (hf) cxx = cs - 1u - cxx;
@@ -219,69 +199,75 @@ named:
         }
     }
     switch (g->cc) {
-    case 0: if (dot == 0 && !g->tpon) return 0; idx = ((pal & 0x7fu) << 4) | dot; *rgb = sat_cram_rgb(idx + (u32)g->craoff); return 1;
-    case 1: if (dot == 0 && !g->tpon) return 0; idx = ((pal & 0x70u) << 4) | dot; if (g == &g_n[1]) b->hist[(idx + (u32)g->craoff) & 0x7ffu]++; *rgb = sat_cram_rgb(idx + (u32)g->craoff); return 1;
-    case 2: if ((dot & 0x7ffu) == 0 && !g->tpon) return 0; *rgb = sat_cram_rgb((dot & 0x7ffu) + (u32)g->craoff); return 1;
-    case 3: if (!(dot & 0x8000u) && !g->tpon) return 0; *rgb = sat_rgb555(dot); return 1;
-    default: if (!(dot & 0x80000000u) && !g->tpon) return 0; *rgb = ((dot & 0xffu) << 16) | (dot & 0xff00u) | ((dot >> 16) & 0xffu); return 1;
+    case 0: if (dot == 0 && !g->tpon) return 0; idx = ((pal & 0x7fu) << 4) | dot; break;
+    case 1: if (dot == 0 && !g->tpon) return 0; idx = ((pal & 0x70u) << 4) | dot; if (g == &g_n[1]) b->hist[(idx + (u32)g->craoff) & 0x7ffu]++; break;
+    case 2: if ((dot & 0x7ffu) == 0 && !g->tpon) return 0; idx = dot & 0x7ffu; break;
+    case 3: if (!(dot & 0x8000u) && !g->tpon) return 0; *rgb = sat_rgb555(dot); *sf = chsf | (dot >> 12 & 8u); return 1;
+    default: if (!(dot & 0x80000000u) && !g->tpon) return 0; *rgb = ((dot & 0xffu) << 16) | (dot & 0xff00u) | ((dot >> 16) & 0xffu); *sf = chsf | (dot >> 28 & 8u); return 1;
     }
+    cidx = (idx + (u32)g->craoff) & sat_cram_mask;
+    *rgb = sat_cram[cidx];
+    *sf = chsf | (((u32)g->sfcode >> ((dot >> 1) & 7u) & 1u) << 2) | ((u32)g_cram_msb[cidx] << 3);
+    return 1;
+}
+
+/* a plane's dot's priority and colour calculation, with the special functions (SFPRMD, SFCCMD) applied: per character the
+ * priority's LSB is the name's SPR bit and the calculation only where its SCC bit is set; per dot only where the dot's
+ * code is also one the special code names; by MSB only where the colour's MSB is set. 0: the dot does not show */
+static __inline int nbg_prio(const Nbg *g, u32 sf, int *cce)
+{
+    int p = g->prio;
+    *cce = g->ccen;
+    if (g->sfpr == 1) p = (p & 6) | (int)(sf & 1u);
+    else if (g->sfpr == 2) p = (p & 6) | (int)((sf & 1u) && (sf & 4u));
+    if (*cce && g->sfcc) *cce = g->sfcc == 1 ? (int)(sf >> 1 & 1u) : g->sfcc == 2 ? (int)((sf & 2u) && (sf & 4u)) : (int)(sf >> 3 & 1u);
+    return p;
 }
 
 static u32 spr_word(u32 x, u32 y) { u32 o = (((y << g_spr_sh) + x + g_spr_ox) * 2u) & g_spr_mask; return (u32)g_spr_fb[o] << 8 | g_spr_fb[o + 1]; }
 /* the sprite layer at (x, y): 1 with colour and priority when a VDP1 pixel is there */
-static int spr_dot(u32 x, u32 y, u32 *rgb, int *prio, int *ccen, int *ratio)
+static int spr_dot(const u8 *fb, u32 x, u32 y, u32 *rgb, int *prio, int *ccen, int *ratio)
 {
-    const u8 *fb = g_spr_fb;
-    u32 o = (((y << g_spr_sh) + x + g_spr_ox) * 2u) & g_spr_mask, w = ((u32)fb[o] << 8) | fb[o + 1], type = g_spctl & 15u, pr, cc, dc, code;
+    u32 o = (((y << g_spr_sh) + x + g_spr_ox) * 2u) & g_spr_mask, w = ((u32)fb[o] << 8) | fb[o + 1], type = g_spctl & 15u, pr, cc, dc, code, msb;
     if ((g_spctl & 0x20u) && (w & 0x8000u)) { /* RGB data */
         *rgb = sat_rgb555(w);
         pr = 0;
         cc = 0;
+        msb = 1u;
     } else {
-        switch (type) {
+        switch (type) { /* the VDP2 manual's sprite data types: in 2..7 bit 15 is the shadow / sprite window bit, not priority */
         case 0: pr = w >> 14; cc = (w >> 11) & 7u; dc = w & 0x7ffu; break;
         case 1: pr = w >> 13; cc = (w >> 11) & 3u; dc = w & 0x7ffu; break;
-        case 2: pr = (w >> 15) & 1u; cc = (w >> 11) & 7u; dc = w & 0x7ffu; break;
-        case 3: pr = (w >> 14) & 3u; cc = (w >> 11) & 3u; dc = w & 0x7ffu; break;
-        case 4: pr = (w >> 14) & 3u; cc = (w >> 10) & 7u; dc = w & 0x3ffu; break;
-        case 5: pr = (w >> 13) & 7u; cc = (w >> 11) & 3u; dc = w & 0x7ffu; break;
-        case 6: pr = (w >> 13) & 7u; cc = (w >> 10) & 7u; dc = w & 0x3ffu; break;
+        case 2: pr = (w >> 14) & 1u; cc = (w >> 11) & 7u; dc = w & 0x7ffu; break;
+        case 3: pr = (w >> 13) & 3u; cc = (w >> 11) & 3u; dc = w & 0x7ffu; break;
+        case 4: pr = (w >> 13) & 3u; cc = (w >> 10) & 7u; dc = w & 0x3ffu; break;
+        case 5: pr = (w >> 12) & 7u; cc = (w >> 11) & 1u; dc = w & 0x7ffu; break;
+        case 6: pr = (w >> 12) & 7u; cc = (w >> 10) & 3u; dc = w & 0x3ffu; break;
         case 7: pr = (w >> 12) & 7u; cc = (w >> 9) & 7u; dc = w & 0x1ffu; break;
         default: pr = (w >> 7) & 1u; cc = 0; dc = w & 0x7fu; break;
         }
         if (dc == 0) return 0;
         *rgb = sat_cram_rgb(dc + g_spr_craoff);
+        msb = g_cram_msb[(dc + g_spr_craoff) & sat_cram_mask];
     }
     code = pr;
     *prio = g_spr_prio[code & 7u];
     *ccen = 0;
     *ratio = 0;
-    if (g_ccctl & 0x100u) {
-        u32 n = (g_spctl >> 8) & 7u, mode = (g_spctl >> 12) & 3u;
-        int ok = mode == 0 ? cc <= n : mode == 1 ? cc == n : mode == 2 ? cc >= n : (w & 0x8000u) != 0;
+    if (g_ccctl & 0x40u) { /* CCCTL's SPCCEN (bit 8 is CCMD); SPCCCS compares the priority number with SPCCN; CC bits: the ratio */
+        int n = (int)((g_spctl >> 8) & 7u), mode = (int)((g_spctl >> 12) & 3u), p = *prio;
+        int ok = mode == 0 ? p <= n : mode == 1 ? p == n : mode == 2 ? p >= n : msb != 0; /* 3: the colour's MSB (an RGB dot's is 1) */
         *ccen = ok;
         *ratio = g_spr_ratio[cc & 7u];
     }
     return 1;
 }
 static u32 blend(u32 a, u32 b, int ratio) /* a over b, a's weight (31 - ratio) / 32 */
-{
-    u32 out = 0;
-    for (int s = 0; s <= 16; s += 8) {
-        u32 ca = (a >> s) & 0xffu, cb = (b >> s) & 0xffu;
-        out |= ((ca * (u32)(31 - ratio) + cb * (u32)(ratio + 1)) / 32u) << s;
-    }
-    return out;
-}
+{ u32 out = 0; for (int s = 0; s <= 16; s += 8) out |= ((((a >> s) & 0xffu) * (u32)(31 - ratio) + ((b >> s) & 0xffu) * (u32)(ratio + 1)) / 32u) << s; return out; }
+static u32 add_sat(u32 a, u32 b) /* CCCTL's CCMD: a plus b, each channel held at 255 */
+{ u32 out = 0; for (int s = 0; s <= 16; s += 8) { u32 v = ((a >> s) & 0xffu) + ((b >> s) & 0xffu); out |= (v > 255u ? 255u : v) << s; } return out; }
 static u32 offset_color(u32 c, int sel)
-{
-    u32 out = 0;
-    for (int i = 0; i < 3; i++) {
-        int s = 16 - 8 * i, v = (int)((c >> s) & 0xffu) + g_off[sel][i];
-        out |= (u32)(v < 0 ? 0 : v > 255 ? 255 : v) << s;
-    }
-    return out;
-}
+{ u32 out = 0; for (int i = 0; i < 3; i++) { int s = 16 - 8 * i, v = (int)((c >> s) & 0xffu) + g_off[sel][i]; out |= (u32)(v < 0 ? 0 : v > 255 ? 255 : v) << s; } return out; }
 
 static void load_offsets(void)
 {
@@ -298,6 +284,12 @@ static __inline void top(Top *t, int l, int p, u32 c, int cce, int rat)
 {
     if (t->best < 0 || p > t->pb) t->second = t->best, t->ps = t->pb, t->cs = t->cb, t->best = l, t->pb = p, t->cb = c, t->cce = cce, t->rat = rat;
     else if (t->second < 0 || p > t->ps) t->second = l, t->ps = p, t->cs = c;
+}
+static u32 pick(const Top *t, u32 back) /* the dot's colour: the top layer's, its colour calculation with the second, the offset */
+{
+    u32 rgb = t->best < 0 ? back : !t->cce ? t->cb : (g_ccctl & 0x100u) ? add_sat(t->cb, t->second >= 0 ? t->cs : back) : blend(t->cb, t->second >= 0 ? t->cs : back, t->rat);
+    int l = t->best < 0 ? 5 : t->best == L_SPR ? 6 : t->best - 1;
+    return (g_clofen >> l) & 1u ? offset_color(rgb, (int)((g_clofsl >> l) & 1u)) : rgb;
 }
 
 /* the rows of one band (bands.h) of the picture, with that band's scratch. Per line: the layers that can show there
@@ -320,25 +312,32 @@ static void rows(void *ctx, unsigned band, unsigned bands)
         for (int i = 0; i < g_nact; i++)
             if (!sat_win_span(&wl, g_act[i] + 1, x0, g_ww, &each[na]) && (g_act[i] < 4 || sat_rbg0_row(&b->rot, y, x0, g_ww, b->rx, b->ry, b->rok))) act[na++] = g_act[i];
         for (u32 wx = 0, x = 0u - g_ox; wx < g_ww; wx++, x++) { /* x: the screen's, before it when widened */
-            Top t = {-1, -1, 0, 0, 0, 0, 0u, 0u};
-            u32 rgb;
-            int pr, cce, rat;
-            if (spr && !(each[5] && sat_win_hide(&wl, 0, x)) && spr_dot(w > 512u ? x / 2u : x, y, &rgb, &pr, &cce, &rat) && pr) top(&t, L_SPR, pr, rgb, cce, rat);
+            Top t = {-1, -1, 0, 0, 0, 0, 0u, 0u}, tw = t; /* tw: with the lettering, at a dot clearer text took it from */
+            u32 rgb, sf, spx = w > 512u ? x / 2u : x, mk = 0, lt = 0, id;
+            int pr, cce, rat, np, ncc;
+            if (spr && !(each[5] && sat_win_hide(&wl, 0, x))) {
+                if (spr_dot(g_spr_fb, spx, y, &rgb, &pr, &cce, &rat) && pr) top(&t, L_SPR, pr, rgb, cce, rat);
+                if (g_tmask && (mk = g_tmask[((((y << g_spr_sh) + spx + g_spr_ox) * 2u) & g_spr_mask) >> 1]) != 0) {
+                    if (spr_dot(g_spr_src, spx, y, &rgb, &pr, &cce, &rat) && pr) top(&tw, L_SPR, pr, rgb, cce, rat);
+                } else if (g_v2on) tw = t;
+            }
             for (int i = 0; i < na; i++) {
                 int n = act[i];
                 const Nbg *g = &g_n[n];
                 u32 sx = (wl.scx[n] + x * wl.zx[n]) >> 8, sy = wl.scy[n] >> 8;
                 if (each[i] && sat_win_hide(&wl, n + 1, x)) continue;
                 if (n == 4 && !(b->rok[wx] && (sx = b->rx[wx], sy = b->ry[wx], 1))) continue; /* RBG0: its map dot, or none */
-                if (nbg_dot(b, g, sx, sy, &rgb)) top(&t, L_NBG0 + n, g->prio, rgb, g->ccen, g->ccratio);
+                if (nbg_dot(b, g, sx, sy, &rgb, &sf) && (np = nbg_prio(g, sf, &ncc)) > 0) {
+                    if (g_v2on && b->lt && (id = sat_text_v2_map[y * g_ww + wx]) != 0 && sat_text_v2_layer[id] == (u8)n) { /* a plane's lettering: with it only */
+                        top(&tw, L_NBG0 + n, np, rgb, ncc, g->ccratio), lt = 1;
+                        continue;
+                    }
+                    top(&t, L_NBG0 + n, np, rgb, ncc, g->ccratio);
+                    if (mk || g_v2on) top(&tw, L_NBG0 + n, np, rgb, ncc, g->ccratio);
+                }
             }
-            if (t.best < 0) rgb = back;
-            else {
-                rgb = t.cb;
-                if (t.cce) rgb = blend(rgb, t.second >= 0 ? t.cs : back, t.rat);
-                if ((g_clofen >> (t.best == L_SPR ? 6 : t.best - 1)) & 1u) rgb = offset_color(rgb, (int)((g_clofsl >> (t.best == L_SPR ? 6 : t.best - 1)) & 1u));
-            }
-            if (t.best < 0 && ((g_clofen >> 5) & 1u)) rgb = offset_color(rgb, (int)((g_clofsl >> 5) & 1u));
+            rgb = pick(&t, back);
+            if (g_tmask || g_v2on) sat_text_with[y * g_ww + wx] = mk || lt ? pick(&tw, back) : rgb;
             if (g_pan) /* the menu panel: what is under it, marked for the presenter (sat_panel.c) */
                 rgb = sat_panel_dot(spr_word, w > 512u ? x / 2u : x, y, rgb, t.best == L_SPR ? t.pb : -1, t.best == L_SPR ? (t.second >= 0 ? t.ps : -1) : t.best >= 0 ? t.pb : -1, t.best == L_SPR && t.second >= 0 ? t.cs : back, wx ? out[wx - 1] : 0u);
             out[wx] = rgb;
@@ -363,7 +362,7 @@ void sat_compose(void)
     sat_frame_w = g_ww = sat_wide_width(w), g_ox = (g_ww - w) / 2u;
     sat_frame_h = h;
     if (!(g_tvmd & 0x8000u)) {
-        memset(sat_frame, 0, g_ww * h * sizeof(u32));
+        memset(sat_frame, 0, g_ww * h * sizeof(u32)), sat_text_frame(NULL, 0, 0, 0);
         return;
     }
     for (int i = 0; i < 5; i++) nbg_setup(i);
@@ -375,15 +374,19 @@ void sat_compose(void)
     g_w = w;
     g_h = h, g_pan = sat_panel_frame();
     g_bklines = (R(0xac) & 0x8000u) ? 1u : 0u; /* BKCLMD; TVMD bit 8 is the border's mode, not this */
+    g_spr_src = g_spr_fb, g_spr_fb = sat_text_spr(g_spr_src, &g_tmask, w);
+    g_v2on = sat_text_v2_scan(g_n, g_act, g_nact, w, h, g_ww, g_ox);
     bands_run(rows, NULL);
     memset(g_hist, 0, sizeof g_hist);
     for (unsigned b = 0; b < bands_count(); b++)
         for (u32 i = 0; i < 2048u; i++) g_hist[i] += g_band[b].hist[i];
+    sat_text_frame(sat_frame, g_ww, h, g_ox); /* clearer text's pictures over this one */
+    sat_game_frame(sat_frame, g_ww, h, g_ox); /* the game's drawing over the picture (sat_hooks.h; none: nothing) */
 }
 
 /* after a compose, for a kit screen (sat_screen.c): plane n's registers (NBG0..NBG3, RBG0); the sprite layer at a dot */
 const SatPlane *sat_v2_plane(int n) { return &g_n[n]; }
-int sat_v2_sprite(u32 x, u32 y, u32 *rgb) { int pr, cc, ratio; return spr_dot(x, y, rgb, &pr, &cc, &ratio); }
+int sat_v2_sprite(u32 x, u32 y, u32 *rgb) { int pr, cc, ratio; return spr_dot(g_spr_fb, x, y, rgb, &pr, &cc, &ratio); }
 
 void sat_v2_hist_report(void)
 {

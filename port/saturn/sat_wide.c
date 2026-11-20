@@ -8,6 +8,9 @@
  *  would); every other check has ox 0, and with ox 0 every path below is skipped, so the picture is the Saturn's.
  *  "widescreen": "rbg0" widens only pictures that show RBG0 (a 3D floor, as Robo Pit's fight): a 2D screen's planes
  *  are drawn for the screen alone (past it they hold the map's unused fill), so its menus keep their width and bars.
+ *  A game whose own code sets the wide hook (sat_hooks.h; Dragon Force's port/game/df_wide.c) is a widescreen game
+ *  without the game.json key, and the hook picks each blank whether its picture is widened: the game knows which of its
+ *  screens have more art (a map, a battlefield) and which are drawn for the screen alone (menus, story pictures).
  *  The log. "composed" lines are this decision, blank by blank; a black picture composed wide shows nothing more (Robo
  *  Pit keeps RBG0 on over an empty map through its logos and movies), so "shown" lines follow the last lit picture's
  *  width: what the player sees.
@@ -62,7 +65,9 @@ static void fill_twin(int i, int ox)
 /* sat_video.c, before each vertical blank's picture: the width this blank's pictures and VDP1 lists use */
 void sat_wide_frame(void)
 {
-#ifdef SAT_WIDESCREEN
+#ifndef SAT_WIDESCREEN
+    if (!sat_game_wide_set()) return; /* not a widescreen game: every path below is skipped */
+#endif
     u32 tvmd = ((u32)sat_v2_reg[0] << 8) | sat_v2_reg[1], hres = tvmd & 7u;
     u32 sw = (hres & 2u ? 640u : 320u) + ((hres & 1u) ? (hres & 2u ? 64u : 32u) : 0u);
     f32 k = g_gfx.frame ? port_widescreen() : g_gfx.aspect_set && g_gfx.aspect > 0.0f ? g_gfx.aspect * 0.75f : 1.0f;
@@ -76,6 +81,7 @@ void sat_wide_frame(void)
 #if SAT_WIDESCREEN == 2
     if (!(sat_v2_reg[0x21] & 0x10u)) k = 1.0f; /* "rbg0": a picture without RBG0 (BGON bit 4) is a 2D screen: its own width */
 #endif
+    if (sat_game_wide_set() && !SAT_G(wide)()) k = 1.0f; /* the game's own choice: a screen with no more art keeps its width */
     if (k > 1.0f && sw <= 352u) {
         u32 ww = ((u32)ceilf((f32)sw * k) + 1u) & ~1u;
         ox = (int)(ww - sw) / 2;
@@ -93,7 +99,6 @@ void sat_wide_frame(void)
     }
     sat_wide_ox = ox;
     sat_wide_sw = sw;
-#endif
 }
 
 /* ---- VDP1 (sat_vdp.c, sat_vdp1.c) ---- */
@@ -171,6 +176,7 @@ void sat_wide_post(const u32 *px, u32 w, u32 h, u32 vb)
             sw = g_recent[(g_nrecent - i) & 3u].sw;
             break;
         }
+    sat_text_post(px); /* its clearer text (sat_text.c), drawn over it */
     cpu_present_post_wide(px, w, h, vb, sw);
 }
 

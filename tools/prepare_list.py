@@ -3,7 +3,7 @@ oracle figures. With config "harness_reuse" on, a worker then reuses the harness
 (core/job.reusable_harness), so a large worker pool never waits on Ghidra slots. Functions whose harness is already current are left alone.
 
 usage: python tools/prepare_list.py --project DIR ADDR|@FILE... [--slots N] [--serve] [--out FILE.tsv] [--dry]
-           [--seed-offset N]
+           [--seed-offset N] [--rows FILE.tsv] [--kill-s S]
        python tools/prepare_list.py --project DIR --harness-stale [ADDR|@FILE...] [--slots N] [--serve] [--out FILE.tsv]
            [--dry]
   @FILE      one or more addresses per line ('#' comments); keep long hex lists off the command line
@@ -15,10 +15,17 @@ usage: python tools/prepare_list.py --project DIR ADDR|@FILE... [--slots N] [--s
              Ghidra (core/ghidra_server, config "ghidra_serve" enabled for this run): one JVM start and one queue turn
              per copy instead of per function, the same harness bytes (reprepare_stale --serve's rule). The master's
              queued marks wait for its next prepare
-  --out      a TSV of the results: addr, state (current / prepared / refused / error), signature, unsupported,
-             dev_valid, hidden_valid, blocks_hit_all, blocks_total, block_pct, detail; each row is appended the moment
+  --out      a TSV of the results: addr, state (current / prepared / refused / timeout / error), signature,
+             unsupported, dev_valid, hidden_valid, blocks_hit_all, blocks_total, block_pct, detail; each row is appended the moment
              its prepare ends (a run cut short keeps what finished), then the whole file is rewritten in input order
   --dry      list which functions would be prepared, prepare nothing
+  --rows     appends one line per function as soon as its prepare ends (not at the run's end): addr, state (prepared /
+             refused / timeout / error), the kill limit it ran under (--kill-s, '' for the config's), detail. A run
+             killed part way keeps every line written (tools/wave_game.py's translate step reads them: a timeout is not
+             prepared again at the same limit)
+  --kill-s S one function's prepare is killed after S s instead of config "ghidra_kill_s"/"ghidra_timeout_s" (this run
+             only; the oracle facts, and so the harness bytes, are unchanged: only the kill comes sooner). The kill
+             limit is part of a refusal's key, so a prepare killed at S s is tried again at a longer limit
 Servers stopped: it refuses while the project's server answers (prepare uses the master Ghidra project and writes
 harness/). Resumable, so a run cut short (tools/bounded.py) leaves only the rest:
 - a prepared harness is current (core/job.reusable_harness);
@@ -34,6 +41,7 @@ harness/). Resumable, so a run cut short (tools/bounded.py) leaves only the rest
 A served Ghidra that fails to start (core/ghidra_server.StartError: a project path Ghidra refuses, a project owned by
 another user) stops the run: the functions not yet started are listed as errors, not tried, instead of each starting a
 JVM that fails the same way.
+A prepare killed at its kill limit is state "timeout" in the run it ends in, a current refusal from then on.
 Exit 0 when every function has a current harness or a current refusal, 1 when a prepare failed otherwise.
 """
 import argparse
@@ -42,6 +50,7 @@ import collections
 import concurrent.futures
 import datetime
 import pathlib
+import re
 import socket
 import sys
 import threading
@@ -66,6 +75,7 @@ def row(addr, state, meta=None, summary=None, detail=""):
 
 
 REFUSALS = "prepare_refusals.json"  # under the project's state/
+TIMEOUT = re.compile(r"\bGhidra timeout\b|timed out", re.I)  # core/ghidra and core/ghidra_server: the kill limit hit
 
 
 class Refusals:
@@ -169,9 +179,10 @@ def run(cfg, addrs, prepare, reusable, workers, log=print, on_row=None, refusals
             if isinstance(e, StartError) and not halt:
                 halt.append(detail)
                 log(f"stopping: the Ghidra server failed to start ({detail}); the rest are not tried")
-            if refusals and msg.startswith("Ghidra timeout"):  # killed at the kill timeout: same limits, same end
-                refusals.record(a, "timeout", detail)
-                return row(a, "refused", detail=detail), None
+            if TIMEOUT.search(msg):  # killed at the kill timeout: same limits, same end
+                if refusals:
+                    refusals.record(a, "timeout", detail)
+                return row(a, "timeout", detail=detail), None
             return row(a, "error", detail=detail), None
         if meta.get("unsupported") and not summary:  # refused before any vector: meta.json only, never current
             if refusals:
@@ -196,8 +207,8 @@ def run(cfg, addrs, prepare, reusable, workers, log=print, on_row=None, refusals
         running = {}
         while True:
             while ready and len(running) < max(1, workers):
-                a, re = ready.popleft()
-                running[ex.submit(again if re else one, a)] = (a, re)
+                a, rerun = ready.popleft()
+                running[ex.submit(again if rerun else one, a)] = (a, rerun)
             if not running:
                 left = [a for a in todo if a not in queued]  # only a call cycle waits on itself: start its first
                 if not left:
@@ -207,10 +218,10 @@ def run(cfg, addrs, prepare, reusable, workers, log=print, on_row=None, refusals
                 continue
             done, _ = concurrent.futures.wait(running, return_when=concurrent.futures.FIRST_COMPLETED)
             for f in done:
-                a, re = running.pop(f)
+                a, rerun = running.pop(f)
                 rw, meta = f.result()
                 rows[a] = rw
-                if not re:
+                if not rerun:
                     n += 1
                     first.add(a)
                     pending = {c for c in callee_addrs(meta) if c in todo_set and c != a and c not in first}
@@ -227,7 +238,7 @@ def run(cfg, addrs, prepare, reusable, workers, log=print, on_row=None, refusals
                         late[u].discard(a)
                         if not late[u]:
                             ready.append((u, True))
-                log(f"  [{n}/{len(todo)}{' again' if re else ''}] {rw['addr']}: {rw['state']}"
+                log(f"  [{n}/{len(todo)}{' again' if rerun else ''}] {rw['addr']}: {rw['state']}"
                     + (f" blocks {rw['blocks_hit_all']}/{rw['blocks_total']} ({rw['block_pct']}%)"
                        if rw["blocks_total"] != "" else "")
                     + (f" unsupported: {rw['unsupported']}" if rw["unsupported"] else "")
@@ -241,6 +252,13 @@ def write_tsv(path, rows):
     clean = lambda v: str(v).replace("\t", " ").replace("\n", " ")  # noqa: E731
     lines = ["\t".join(COLUMNS)] + ["\t".join(clean(r[c]) for c in COLUMNS) for r in rows]
     pathlib.Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def append_row(path, rw, kill_s):
+    """--rows: one tab-separated line, flushed at once: addr, state, kill limit ('' = the config's), detail."""
+    detail = " ".join(str(rw["detail"]).split())[:300]
+    with open(path, "a", encoding="utf-8", newline="\n") as f:
+        f.write("\t".join([rw["addr"], rw["state"], str(kill_s or ""), detail]) + "\n")
 
 
 def harness_stale():
@@ -261,6 +279,8 @@ def main():
     ap.add_argument("--seed-offset", type=lambda x: int(x, 0), default=0,
                     help="developer only: add N to every function's vector seed (core/ghidra.vector_seed); a harness "
                          "already current is not re-prepared, so delete it first")
+    ap.add_argument("--rows")
+    ap.add_argument("--kill-s", type=int, default=0)
     a = ap.parse_args()
     if a.seed_offset:
         os.environ["DP_SEED_OFFSET"] = str(a.seed_offset)
@@ -279,6 +299,8 @@ def main():
     cfg = paths.config()
     if a.slots:
         cfg["ghidra_parallel"] = a.slots  # this run only
+    if a.kill_s:
+        cfg["ghidra_kill_s"] = a.kill_s  # this run only: the kill, not the oracle's budget (core/ghidra_server.kill_timeout)
     workers = max(1, int(cfg.get("ghidra_parallel", 1)))
     if a.serve:  # this run only: slots 1..N served; slot 0, the master, unused
         cfg["ghidra_parallel"] = workers + 1
@@ -302,20 +324,23 @@ def main():
         print(f"{len(addrs)} function(s): {len(addrs) - len(todo)} current, {len(refused)} refused earlier with the "
               f"same inputs, {len(todo) - len(refused)} to prepare [dry]")
         return 0
-    on_row = None
     if a.out:  # each row as it ends: a run cut short keeps what finished
         pathlib.Path(a.out).write_text("\t".join(COLUMNS) + "\n", encoding="utf-8")
 
-        def on_row(r):
+    def on_row(r):
+        if a.out:
             with open(a.out, "a", encoding="utf-8") as f:
                 f.write("\t".join(str(r[c]).replace("\t", " ").replace("\n", " ") for c in COLUMNS) + "\n")
+        if a.rows:  # wave_game's short lines, with the kill limit
+            append_row(a.rows, r, a.kill_s)
     rows = run(cfg, addrs, prepare, reusable, workers, log=lambda m: print(m, flush=True), on_row=on_row,
                refusals=refusals)
     if a.out:
         write_tsv(a.out, rows)
     bad = [r for r in rows if r["state"] == "error"]
     print(f"{sum(r['state'] == 'prepared' for r in rows)} prepared, {sum(r['state'] == 'current' for r in rows)} "
-          f"already current, {sum(r['state'] == 'refused' for r in rows)} refused, {len(bad)} error(s)")
+          f"already current, {sum(r['state'] == 'refused' for r in rows)} refused, "
+          f"{sum(r['state'] == 'timeout' for r in rows)} killed at the limit, {len(bad)} error(s)")
     return 1 if bad else 0
 
 

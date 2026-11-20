@@ -1,5 +1,7 @@
 /* The profiler's count of tc_call by target (prof.c's --prof): which translated functions the game calls, and how often. */
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "port.h"
 #include "platform.h"
 #include "prof.h"
@@ -30,10 +32,26 @@ void prof_call(u32 target)
     g_calls[s].n++;
 }
 
+static const char *g_calls_path;
+
+int prof_calls_option(const char *arg, const char *value)
+{
+    if (strcmp(arg, "--prof-calls")) return 0;
+    g_calls_path = value;
+    return 2;
+}
+
 void prof_calls_report(u32 blanks)
 {
     u32 top[24] = {0}, topn[24] = {0};
+    FILE *f;
     if (!g_ncalls_total) return;
+    if (g_calls_path && !fopen_s(&f, g_calls_path, "w") && f) {
+        fprintf(f, "# calls by guest address over %u vertical blanks: target count\n", blanks);
+        for (u32 s = 0; s < CALL_SLOTS; s++)
+            if (g_calls[s].n) fprintf(f, "%08x %u\n", g_calls[s].target, g_calls[s].n);
+        fclose(f);
+    }
     for (u32 s = 0; s < CALL_SLOTS; s++) {
         u32 n = g_calls[s].n, t = g_calls[s].target;
         if (!n) continue;

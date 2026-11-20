@@ -7,17 +7,50 @@ agent or the readable stage. This route chains the stage tools that exist (prepa
 decomp.py investigate, refine.py run) under one start, with wave.py's STOP file and RAM guard.
 
 usage: python tools/wave.py run --game WS [--slots 2] [--jobs 4] [--workers 3] [--readable-workers 4]
-           [--draft off|adopt|start] [--rd-chunk 60] [--only a,b|@FILE] [--rd-max N]
+           [--draft off|adopt|start] [--rd-chunk 60] [--only a,b|@FILE] [--rd-max N] [--stop-after STEP]
+           [--tx-chunk N] [--fn-seconds S] [--fn-seconds-late L] [--late-max N] [--retry-late]
+           [--novectors-max N] [--novectors-give-up] [--normal-priority]
   --only     the run's list is these functions of the scope, not the whole scope (a sample workspace's first run)
   --rd-max   the readable step takes at most N of the matched functions (a seeded draw, kept in the state file)
+  --stop-after STEP  the run ends after that step (and the summary): `translate` is the translator-only first pass
+             (tools/AutoOnboard/autoonboard.py). A later run without it goes on at the next step. A run that stops at or before
+             translate needs no harness_reuse: recording refuses a stale harness, and the agent step is never reached
+  --tx-chunk N  the translate step takes N functions at a time: it prepares the chunk's functions that have no current
+             harness, then translates them (one translate_backlog call), and records the chunk when it ends; the
+             prepare step leaves its work to these chunks. A run stopped or killed part way (an outer tools/bounded.py)
+             has every finished chunk judged, and the next run translates only the chunks not done. Inside a chunk
+             each function is recorded as it ends (prepare_list --rows: state/wave_game_prepare.tsv; translate_backlog
+             --rows: state/wave_game_translate.tsv), so a run killed mid-chunk keeps those too (recorded())
+  --fn-seconds-late L  a second pass: once no unrecorded function is left, the functions whose prepare was killed at a
+             limit under L are prepared once more with --kill-s L (translated if that works); one killed at L is
+             final. The first pass runs at a short --fn-seconds so a hung function costs little (FN_FIRST_S, FN_LATE_S)
+  --late-max N  the late pass tries at most N of those functions (the first N of the scope; a later run, with the
+             tried ones now prepared or killed at L, takes the next N)
+  --retry-late  run the translate step again although wave_game.json says it is done: its late pass and the
+             NOVECTORS pass (below) take what is left. Nothing is edited by hand in the state file
+  NOVECTORS  a function whose harness has fewer than min_valid_vectors valid vectors per set is not left with a message
+             nobody acts on: after the late pass the step re-prepares it ONCE with a fresh harness (state/vectors.json
+             raises its dev vector count to 4x config vectors_dev, so its stamp changes, and DP_SEED_OFFSET=1 draws
+             other vectors; the late limit applies), then judges it again. One still short is recorded as NEEDS_INPUTS
+             (a line in wave_game_translate.tsv: "needs a human input set" with the valid counts and why vectors were
+             invalid). Saturn's oracle has no per-function limits (oracle_limits is SH-4 only), so count and seed are
+             the knobs. --novectors-max N takes at most N; --novectors-give-up marks the ones not tried NEEDS_INPUTS
+  --normal-priority  the children start at normal priority; the default on Windows is below normal, so a build
+             or a player on the same machine is not starved by the Ghidra slots
+  --fn-seconds S  one function's prepare is killed after S s (prepare_list --kill-s). A function killed so, or whose
+             prepare failed, is recorded with its reason and not prepared again at that limit (given_up()): a later
+             run with a larger S tries the timeouts again. Saturn Bomberman, 2026-11-15: a few functions (KRNL's
+             endless main loop) each held a slot about 900 s, then failed, on every resumed run
 Steps, each recorded in WS/state/wave_game.json when done, so a run after a stop goes on where it ended:
   1 scope      the in-scope catalog functions (core/scope) not tiered "excluded" (core/orch.tier): the run's list
   2 prepare    tools/prepare_list.py --serve over those without a current harness, in chunks bounded by CHUNK_S,
                until a chunk exits 0 or two chunks running prepare nothing new
   3 translate  tools/translate_backlog.py --record over the list: a PASS is matched (ledger source "translated", no
-               agent); a FAIL is kept, so the agent starts from it and the same C is not judged again
+               agent); a FAIL is kept, so the agent starts from it and the same C is not judged again. One short row
+               per function (verdict, why) goes to state/wave_game_translate.tsv (translate_backlog --rows)
   4 agent      decomp.py investigate ADDR, --workers at a time, for each function with a current harness and no final
-               ledger status (config harness_reuse must be on: no prepare repeats). A function whose prepare failed is
+               ledger status (config harness_reuse must be on: no prepare repeats; a run that never reaches this step
+               does not need it). A function whose prepare failed is
                listed in the summary, never prepared again with the same limits
   5 readable   refine.py run over the matched functions without a final readable status, in chunks of --rd-chunk
                bounded by RD_CHUNK_S, until none is left or two chunks running finish none
@@ -44,7 +77,11 @@ sys.path.insert(0, str(TOOL))
 from core import filelock, proof, wave_ctl  # noqa: E402  (none reads core.paths: safe before DECOMP_PROJECT is set)
 
 PY = [sys.executable, "-B"]
+BELOW_NORMAL = 0x00004000  # Windows BELOW_NORMAL_PRIORITY_CLASS (subprocess has it on Windows only)
+NOVEC_DEV_X, NOVEC_SEED = 4, 1  # the NOVECTORS re-prepare: dev vectors x4, seed offset (core/ghidra.vector_seed)
 CHUNK_S, TRANSLATE_S, AGENT_S, RD_CHUNK_S, POLL_S = 7200, 7200, 10800, 14400, 2.0
+RAM_WAIT_S = 10  # between RAM readings while waiting out a guard kill (wave.py's levels)
+WHOLE_CHUNK = 5  # --tx-chunk: a chunk this size or more with no prepare at all stops the run instead of being recorded as done
 LEDGER_DONE = ("matched", "failed", "skipped")  # the main ledger's final statuses (core/orch), none of core/proof's
 RD_PASSED = proof.PASSED  # an attempt passed (core/proof.readable_state): the file the verify step judges again
 RD_DONE = RD_PASSED + ("failed", "blocked", "harness_stale", "raw_not_matched")  # and the ends a refine run records
@@ -86,7 +123,10 @@ class Run:
         filelock.write_json(self.state_file, self.st, indent=1)  # atomic: a reader never sees half a state
 
     def env(self):
-        return dict(os.environ, DECOMP_PROJECT=str(self.ws), PYTHONUNBUFFERED="1")
+        env = dict(os.environ, DECOMP_PROJECT=str(self.ws), PYTHONUNBUFFERED="1")
+        if getattr(self, "seed_offset", 0):  # the NOVECTORS re-prepare only (core/ghidra.SEED_OFFSET_ENV)
+            env["DP_SEED_OFFSET"] = str(self.seed_offset)
+        return env
 
     def stopped(self):
         return wave_ctl.stop_asked(wave().STOP_FILE)
@@ -99,8 +139,9 @@ class Run:
         out = open(logs / f"{time.strftime('%m%d-%H%M%S')}-{self.n}.log", "a", encoding="utf-8")
         out.write(f"$ {' '.join(map(str, cmd))}\n")
         out.flush()
+        flags = BELOW_NORMAL if sys.platform == "win32" and not getattr(self.o, "normal_priority", False) else 0
         return subprocess.Popen([str(c) for c in cmd], cwd=TOOL, env=self.env(), stdout=out,
-                                stderr=subprocess.STDOUT), out
+                                stderr=subprocess.STDOUT, creationflags=flags), out
 
     def pool(self, cmds, limit, width):
         """Run cmds, `width` at a time, each bounded by `limit` s. A STOP kills them all (exit 3); RAM at wave.py's
@@ -130,6 +171,19 @@ class Run:
                 self.log("STOP: state saved; run again to resume")
                 sys.exit(3)
         return rcs
+
+    def wait_ram(self):
+        """After a RAM guard kill: wave.py's RESUME_READINGS readings in a row under RESUME_UNDER (another job's
+        memory on a shared box), so the run goes on instead of ending. Bounded by the run's outer bound; STOP exits 3."""
+        w, ok = wave(), 0
+        while ok < w.RESUME_READINGS:
+            if self.stopped():
+                self.save()
+                self.log("STOP while waiting for RAM: state saved; run again to resume")
+                sys.exit(3)
+            ok = ok + 1 if w.ram() < w.RESUME_UNDER else 0
+            if ok < w.RESUME_READINGS:
+                time.sleep(RAM_WAIT_S)
 
     def one(self, cmd, limit):
         return self.pool([cmd], limit, 1)[0]
@@ -183,32 +237,129 @@ class Run:
                      + (f"; not in scope: {', '.join(out[:10])}{' ...' if len(out) > 10 else ''}" if out else ""))
         self.log(f"scope: {len(self.st['scope'])} functions")
 
-    def current(self):
-        return set(self.ask("current", self.listfile("scope", self.st["scope"])))
+    def current(self, funcs=None):
+        return set(self.ask("current", self.listfile("current", self.st["scope"] if funcs is None else funcs)))
 
-    def prepare(self):
+    def prepare_step(self):
+        if getattr(self.o, "tx_chunk", 0):
+            self.log("prepare: per translate chunk (--tx-chunk), each chunk's functions just before it is translated")
+            return
+        self.st["prepare_failed"] = self.prepare(self.st["scope"])
+
+    def fn_seconds(self):
+        return int(getattr(self.o, "fn_seconds", 0) or 0)
+
+    def prepare(self, funcs, fn_s=None):
+        """prepare_list.py --serve over those of funcs without a current harness, in CHUNK_S-bounded runs, until one
+        exits 0 or two running prepare nothing new. Returns how many of funcs are left without one. Each function's
+        result goes to state/wave_game_prepare.tsv as it ends; one given up (given_up) is not tried again."""
         idle = 0
+        fn_s = self.fn_seconds() if fn_s is None else fn_s
         while True:
-            cur = self.current()
-            todo = [a for a in self.st["scope"] if a not in cur]
+            cur, gone = self.current(funcs), given_up(self.ws, fn_s)
+            todo = [a for a in funcs if a not in cur and a not in gone]
             if not todo:
-                return
+                return sum(1 for a in funcs if a not in cur)
             rc = self.one(PY + ["tools/prepare_list.py", "--project", self.ws, f"@{self.listfile('prepare', todo)}",
-                                "--serve", "--slots", self.o.slots], CHUNK_S)
-            left = len(self.st["scope"]) - len(self.current())
+                                "--serve", "--slots", self.o.slots, "--rows", self.ws / "state" / PREPARE_ROWS]
+                          + (["--kill-s", fn_s] if fn_s else []), CHUNK_S)
+            if rc == "guard" and getattr(self.o, "tx_chunk", 0):  # another job's memory: wait, then the rest
+                self.log("prepare: killed by the RAM guard; waiting for RAM, then the functions not yet done")
+                self.wait_ram()
+                continue
+            now = self.current(funcs)
+            left = sum(1 for a in funcs if a not in now)
             self.log(f"prepare chunk: rc {rc}, {len(todo) - left} prepared, {left} without a current harness")
             idle = idle + 1 if left == len(todo) else 0
             if rc == 0 or idle >= 2 or rc not in (124, "guard"):
-                self.st["prepare_failed"] = left
-                return
+                return left
 
     def translate(self):
-        rc = self.one(PY + ["tools/translate_backlog.py", "--project", self.ws, "--only",
-                            f"@{self.listfile('scope', self.st['scope'])}", "--jobs", self.o.jobs, "--record"],
-                      TRANSLATE_S)
-        self.log(f"translate: rc {rc}")
-        if rc != 0:
-            raise SystemExit(f"translate_backlog.py ended rc {rc}: see {self.log_file}")
+        per = getattr(self.o, "tx_chunk", 0)
+        done = recorded(self.ws, self.st, self.fn_seconds()) if per else set(self.st.get("translated", []))
+        left = [a for a in self.st["scope"] if a not in done]
+        self.chunks(left, per, self.fn_seconds(), done)
+        late = int(getattr(self.o, "fn_seconds_late", 0) or 0)
+        if per and late > self.fn_seconds():  # nothing unrecorded is left: the 60 s timeouts get one longer try
+            rows = prepare_rows(self.ws)
+            slow = [a for a in self.st["scope"] if a in rows and rows[a][0] == "timeout" and rows[a][1] is not None
+                    and rows[a][1] < late]
+            self.log(f"translate: late pass, {len(slow)} function(s) killed at under {late} s are prepared again at {late} s")
+            cap = int(getattr(self.o, "late_max", 0) or 0)
+            if cap and len(slow) > cap:
+                self.log(f"translate: --late-max {cap}: the first {cap} of {len(slow)} are tried; a later run takes the rest")
+                slow = slow[:cap]
+            self.chunks(slow, per, late, set())
+        if per:
+            self.novectors(per, late or self.fn_seconds())
+
+    def novectors(self, per, fn_s):
+        """Each function the translator reported NOVECTORS (too few valid vectors) is re-prepared once, wider (state/
+        vectors.json, a seed offset), and judged again; one still short is recorded NEEDS_INPUTS with the reason."""
+        tried = self.st.setdefault("novectors_tried", [])
+        rows = translate_rows(self.ws)
+        todo = [a for a in self.st["scope"] if (rows.get(a) or ("",))[0] == "NOVECTORS" and a not in tried]
+        if not todo:
+            return
+        cap = int(getattr(self.o, "novectors_max", 0) or 0)
+        take, rest = (todo[:cap], todo[cap:]) if cap else (todo, [])
+        self.log(f"novectors: {len(todo)} function(s) have too few valid vectors; {len(take)} re-prepared once, wider")
+        if take:
+            widened = self.ask("widen", self.listfile("widen", take), NOVEC_DEV_X)
+            self.seed_offset = NOVEC_SEED
+            try:
+                self.chunks(take, per, fn_s, set())
+            finally:
+                self.seed_offset = 0
+            now = translate_rows(self.ws)
+            short = [a for a in take if (now.get(a) or ("NOVECTORS",))[0] == "NOVECTORS"]
+            note = f"re-prepared once with {NOVEC_DEV_X}x dev vectors and seed offset {NOVEC_SEED}"
+            short_rows(self.ws, [(a, f"needs a human input set: {(now.get(a) or ('', ''))[1] or 'no row'}; {note}"
+                                  f" (dev vectors {widened.get(a)})") for a in short])
+            tried.extend(take)
+            self.log(f"novectors: {len(take) - len(short)} of {len(take)} now have enough valid vectors, "
+                     f"{len(short)} are NEEDS_INPUTS")
+            self.save()
+        if rest and getattr(self.o, "novectors_give_up", False):
+            short_rows(self.ws, [(a, "needs a human input set: " + (rows.get(a) or ("", ""))[1]
+                                  + "; not re-prepared (--novectors-give-up after a stop rule)") for a in rest])
+            tried.extend(rest)
+            self.log(f"novectors: {len(rest)} not re-prepared, recorded NEEDS_INPUTS")
+            self.save()
+
+    def chunks(self, left, per, fn_s, done):
+        n = per or max(len(left), 1)
+        self.log(f"translate: {len(done & set(self.st['scope']))} of {len(self.st['scope'])} recorded by an earlier "
+                 f"start, {len(left)} left" + (f", in chunks of {n}, each prepared then translated" if per else ""))
+        for i in range(0, len(left), n):
+            chunk = left[i:i + n]
+            failed = self.prepare(chunk, fn_s) if per else 0
+            gone = set(given_up(self.ws, fn_s)) if per else set()
+            if per and len(chunk) >= WHOLE_CHUNK and failed == len(chunk) and not gone & set(chunk):
+                # not the functions (none was recorded as failing on its own): Ghidra, a lock, a disk
+                raise SystemExit(f"prepare chunk: none of its {len(chunk)} function(s) prepared, so it is not recorded "
+                                 f"(a fault around them, e.g. Ghidra's project refused): see {self.log_file}")
+            todo = chunk
+            while True:
+                rc = self.one(PY + ["tools/translate_backlog.py", "--project", self.ws, "--only",
+                                    f"@{self.listfile('translate', todo)}", "--jobs", self.o.jobs, "--record", "--rows",
+                                    self.ws / "state" / TRANSLATE_ROWS], TRANSLATE_S)
+                if rc != "guard" or not per:
+                    break
+                got = recorded(self.ws, {}, fn_s)  # the rows written before the kill are kept
+                todo = [a for a in chunk if a not in got]
+                self.log(f"translate: killed by the RAM guard; waiting for RAM, then {len(todo)} not yet judged")
+                self.wait_ram()
+                if not todo:
+                    rc = 0
+                    break
+            self.log(f"translate: rc {rc}, {i + len(chunk)} of {len(left)} function(s)")
+            if rc != 0:
+                raise SystemExit(f"translate_backlog.py ended rc {rc}: see {self.log_file}")
+            self.st.setdefault("translated", []).extend(chunk)
+            if per:
+                self.st["prepare_failed"] = self.st.get("prepare_failed", 0) + failed
+            self.save()
 
     def agent(self):
         cur = self.current()
@@ -278,25 +429,33 @@ class Run:
                "verified": sum(1 for a in self.st["scope"] if (rd.get(a) or {}).get("status") == "readable"
                                and (rd.get(a) or {}).get("verified")),
                "no_harness": self.st.get("no_harness", []), "agent_rc": self.st.get("agent_rc"),
+               "prepare_given_up": dict(collections.Counter(s for s, _ in given_up(self.ws, None).values())),
                "hours": self.st["hours"], "stuck": self.st.get("stuck"), "run": os.environ.get("DP_RUN")}
         filelock.write_json(self.ws / "state" / "wave_game_summary.json", out, indent=1)
         self.log("summary: " + json.dumps({k: v for k, v in out.items() if k != "no_harness"}))
         return out
 
     def go(self):
-        if not self.ask("reuse"):  # else every agent job would prepare its function again
+        early = getattr(self.o, "stop_after", None) in ("scope", "prepare", "translate")
+        if not early and not self.ask("reuse"):  # else every agent job would prepare its function again
             raise SystemExit(
                 f"{self.ws}: config harness_reuse is off. No check proves a workspace's harnesses reusable: the oracle "
                 "stamp does not cover the Ghidra project's own state, so turning it on is a person's decision (proven "
                 "only on gamecube_ppc, whose target.json turns it on; AGENTS.md, harness_reuse). Once decided, set "
-                f"\"harness_reuse\": true in {self.ws / 'project.json'} and run again")
+                f"\"harness_reuse\": true in {self.ws / 'project.json'} and run again (a run with --stop-after translate or "
+                "earlier needs no key: recording refuses a stale harness, and it never reaches the agent step)")
         self.st.setdefault("started", time.time())
         self.st["steps"].pop(str(self.st.pop("stuck", None)).split(":")[0], None)  # a stuck step saved as done (before 64cbabe7)
         wave_ctl.started(wave().STOP_FILE)  # a STOP there now was for the waves before this start: ignored, kept
-        for name, fn in (("scope", self.scope), ("prepare", self.prepare), ("translate", self.translate),
+        if getattr(self.o, "retry_late", False):  # the translate step runs again: its late and NOVECTORS passes
+            self.st["steps"].pop("translate", None)
+        for name, fn in (("scope", self.scope), ("prepare", self.prepare_step), ("translate", self.translate),
                          ("agent", self.agent), ("readable", self.readable_step), ("verify", self.verify)):
             self.step(name, fn)
             if self.st.get("stuck"):  # a later step must not clear it (step pops it): the start ends stuck
+                break
+            if name == getattr(self.o, "stop_after", None):
+                self.log(f"--stop-after {name}: the run ends here; a run without it goes on at the next step")
                 break
         return 1 if self.summary()["stuck"] else 0
 
@@ -310,12 +469,85 @@ def internal(cmd, ws, extra):
         return sorted(a for a, tier in t.items() if tier != "excluded")
     if cmd == "_reuse":
         return bool(paths.config().get("harness_reuse"))
+    if cmd == "_widen":  # {addr: dev vectors} after raising each listed function's count to factor x config vectors_dev
+        from core import ghidra
+        cfg, f = paths.config(), paths.STATE / "vectors.json"
+        over = paths.read_json(f) or {}
+        addrs = pathlib.Path(extra[0]).read_text(encoding="utf-8").split()
+        for a in addrs:
+            over[a] = max(ghidra.dev_vectors(cfg, a), int(extra[1]) * int(cfg["vectors_dev"]))
+        paths.write_json(f, over)
+        return {a: over[a] for a in addrs}
     if cmd == "_current":
         from core import job
         cfg = paths.config()
         want = pathlib.Path(extra[0]).read_text(encoding="utf-8").split()
         return [a for a in want if job.reusable_harness(cfg, a)]
     raise SystemExit(f"unknown internal command {cmd}")
+
+
+PREPARE_ROWS, TRANSLATE_ROWS = "wave_game_prepare.tsv", "wave_game_translate.tsv"
+
+
+def prepare_rows(ws):
+    """{addr: (state, kill limit or None, detail)}: each function's latest line of state/wave_game_prepare.tsv."""
+    out, f = {}, pathlib.Path(ws) / "state" / PREPARE_ROWS
+    try:
+        lines = f.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return out
+    for ln in lines:
+        p = ln.split("\t")
+        if len(p) >= 4 and p[1] in ("prepared", "error", "timeout"):
+            out[p[0]] = (p[1], int(p[2]) if p[2].isdigit() else None, p[3])
+    return out
+
+
+def translate_rows(ws):
+    """{addr: (verdict, why)}: each function's latest line of state/wave_game_translate.tsv."""
+    out = {}
+    try:
+        lines = (pathlib.Path(ws) / "state" / TRANSLATE_ROWS).read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return out
+    for ln in lines:
+        p = ln.split("\t")
+        if len(p) >= 2:
+            out[p[0]] = (p[1], p[4] if len(p) > 4 else "")
+    return out
+
+
+def short_rows(ws, items):
+    """Append NEEDS_INPUTS lines (addr, reason) to the translate rows, in translate_backlog's columns."""
+    with open(pathlib.Path(ws) / "state" / TRANSLATE_ROWS, "a", encoding="utf-8", newline="\n") as f:
+        for a, why in items:
+            f.write("\t".join([a, "NEEDS_INPUTS", "", "current", " ".join(why.split())[:300]]) + "\n")
+
+
+def given_up(ws, fn_s):
+    """{addr: (state, reason)} of the functions not prepared again at kill limit fn_s (0: the config's): a prepare
+    that failed on its own, or was killed at a limit at least fn_s. fn_s None: every function whose latest prepare
+    failed or was killed, at any limit (the summary and GAPS.md). A Ghidra server that failed to start (StartError)
+    and the functions not tried after it are not the functions' own failure: never given up."""
+    out = {}
+    for a, (state, lim, detail) in prepare_rows(ws).items():
+        if state == "error" and not detail.startswith(("StartError", "not tried")):
+            out[a] = ("error", f"prepare failed: {detail[:200]}")
+        elif state == "timeout" and (fn_s is None or lim is None or (fn_s and fn_s <= lim)):
+            out[a] = ("timeout", f"prepare killed at its limit ({lim or 'config'} s): not tried again at that limit")
+    return out
+
+
+def recorded(ws, st, fn_s=None):
+    """The functions the translator pass has finished with, per function: those in recorded chunks, those with a
+    translate_backlog --rows line (judged, or refused by it), and those whose prepare was given up (given_up)."""
+    out = set(st.get("translated") or [])
+    try:
+        out |= {ln.split("\t", 1)[0] for ln in (pathlib.Path(ws) / "state" / TRANSLATE_ROWS).read_text(
+            encoding="utf-8", errors="replace").splitlines() if "\t" in ln}
+    except OSError:
+        pass
+    return out | set(given_up(ws, fn_s))
 
 
 def only_list(arg):
@@ -333,6 +565,15 @@ def main(cmd, game, rest):
     ap.add_argument("--draft", choices=("off", "adopt", "start"))
     ap.add_argument("--only")
     ap.add_argument("--rd-max", type=int)
+    ap.add_argument("--stop-after", choices=("scope", "prepare", "translate", "agent", "readable"))
+    ap.add_argument("--tx-chunk", type=int, default=0)
+    ap.add_argument("--fn-seconds", type=int, default=0)
+    ap.add_argument("--fn-seconds-late", type=int, default=0)
+    ap.add_argument("--late-max", type=int, default=0)
+    ap.add_argument("--retry-late", action="store_true")
+    ap.add_argument("--novectors-max", type=int, default=0)
+    ap.add_argument("--novectors-give-up", action="store_true")
+    ap.add_argument("--normal-priority", action="store_true")
     o = ap.parse_args(rest)
     if cmd != "run" or not game:
         ap.error("the game route is `wave.py run --game WS`")

@@ -67,15 +67,33 @@ def changed_tests(base, cwd):
     return [n for n in names if TESTS.search(n) and (pathlib.Path(cwd) / n).is_file()]
 
 
+# git-ignored files a check needs that a fresh worktree lacks: config.local.json names MSVC (vcvars), Ghidra and the JDK.
+# Without it the throwaway worktree skipped every MSVC test, so a C fix's check "passed" there (2026-11-17).
+LOCAL_FILES = ("config.local.json",)
+
+
+def local_files(cwd):
+    """{name: bytes} of LOCAL_FILES from cwd, else from the main worktree (a linked worktree has no copy of its own)."""
+    out, roots = {}, [pathlib.Path(cwd)]
+    common = git("rev-parse", "--path-format=absolute", "--git-common-dir", cwd=cwd).stdout.strip()
+    if common:
+        roots.append(pathlib.Path(common).parent)
+    for n in LOCAL_FILES:
+        f = next((r / n for r in roots if (r / n).is_file()), None)
+        if f:
+            out[n] = f.read_bytes()
+    return out
+
+
 def on_base(base, overlay, cmd, seconds, cwd):
-    """Run cmd on base's tree with the test files overlaid: {path: bytes}."""
+    """Run cmd on base's tree with the test files overlaid: {path: bytes}, and this checkout's LOCAL_FILES."""
     with tempfile.TemporaryDirectory(prefix="fb") as t:
         wt = pathlib.Path(t) / "base"
         r = git("worktree", "add", "-q", "--detach", str(wt), base, cwd=cwd)
         if r.returncode:
             return None, f"no worktree of {base}: {r.stderr.strip()}"
         try:
-            for n, data in overlay.items():
+            for n, data in {**local_files(cwd), **overlay}.items():
                 (wt / n).parent.mkdir(parents=True, exist_ok=True)
                 (wt / n).write_bytes(data)
             return run(cmd, wt, seconds)

@@ -24,6 +24,7 @@
 #include "game_log.h"
 #include "host_internal.hpp"
 #include "host_place.h"
+#include "save_state.h"
 
 namespace {
 
@@ -124,16 +125,15 @@ std::string window_setting()
 void set_title(const char *extra)
 {
     std::string t = g_title;
-    if (extra && *extra) t += std::string(" - ") + extra;
+    for (const char *x : {extra, port_speed_label()}) if (x && *x) t += std::string(" - ") + x; // then fast forward's (speed.c)
     SDL_SetWindowTitle(g_window, t.c_str());
 }
 
 // The title bar's " - extra" (host_window_title_extra, below): two buffers, the one shown and the one a writer fills
 char g_extra[2][96];
 volatile LONG g_extra_at, g_extra_gen;
-LONG g_extra_shown;
+LONG g_extra_shown, g_speed_shown; // and fast forward's label's (speed.c port_speed_gen)
 volatile DWORD g_pump_thread; // the window's thread, the one in gfx_pump
-
 const char *title_extra(void) { return g_extra[g_extra_at]; }
 
 void set_paused(bool on)
@@ -168,12 +168,15 @@ void handle(const SDL_Event &e)
             host::window_set_fullscreen(g_windowed);
         }
         if (!e.key.repeat && e.key.key == SDLK_F9) game_log_line("keyboard: F9 (Copy agent prompt)"), scene_dump_request();
+        if (!e.key.repeat && (e.key.key == SDLK_F5 || e.key.key == SDLK_F8)) save_state_key(e.key.key == SDLK_F8); // save_state.c
+        if (e.key.key == SDLK_TAB && !(e.key.mod & SDL_KMOD_ALT)) port_speed_key(1); // fast forward while held (speed.c)
         host_text_key(static_cast<int>(e.key.key), static_cast<int>(e.key.mod)); // a console's own text field (host_text.cpp)
         break;
+    case SDL_EVENT_KEY_UP: if (e.key.key == SDLK_TAB) port_speed_key(0); break;
     case SDL_EVENT_MOUSE_BUTTON_DOWN: case SDL_EVENT_MOUSE_BUTTON_UP: case SDL_EVENT_MOUSE_MOTION: case SDL_EVENT_MOUSE_WHEEL:
     case SDL_EVENT_TEXT_INPUT: host::mouse_event(e); break; // the mouse, and the game's typing (host_mouse.cpp)
     case SDL_EVENT_WINDOW_FOCUS_LOST:
-        input_kbm_focus_lost();
+        input_kbm_focus_lost(), port_speed_key(0); // the keys' releases (Tab's: fast forward) go to another window
         host::mouse_capture_sync(); // lets go of the pointer
         port_log("host: window lost the focus (the keyboard is not read)\n");
         game_log_line("window: lost the focus (the keyboard is not read)");
@@ -193,11 +196,9 @@ void handle(const SDL_Event &e)
 }
 
 bool on_off(const char *value) { return std::strcmp(value, "off") != 0 && std::strcmp(value, "0") != 0; }
-
 } // namespace
 
 namespace host {
-
 Prefs &prefs() { return g_prefs; }
 void window_replace() { if (g_window && g_windowed) place_window(); }
 bool window_fullscreen() { return g_window && !g_windowed; }
@@ -373,7 +374,8 @@ extern "C" void gfx_pump(void)
 {
     if (!g_window) return;
     g_pump_thread = GetCurrentThreadId();
-    if (!g_paused && g_extra_gen != g_extra_shown) { g_extra_shown = g_extra_gen; set_title(title_extra()); } // another thread's extra
+    if (!g_paused && (g_extra_gen != g_extra_shown || port_speed_gen() != g_speed_shown)) // another thread's extra, fast forward
+        g_extra_shown = g_extra_gen, g_speed_shown = port_speed_gen(), set_title(title_extra());
     frame_counter(); /* frames shown by the other thread (--present-thread) count here */
     host::modal_pump([] { // the events on the modal fiber (host_modal.cpp): a menu held open keeps the game running
         for (SDL_Event ev; SDL_PollEvent(&ev);) {

@@ -3,8 +3,11 @@ resumes it, keeping the play's start, end and repeat count (a mode of 0xff keeps
 exactly that pair; the kit took the seek's 0xffffff as a position past the disc's end, so the music went silent after the
 first pause (the user's launcher run, 2026-11-04). Fast loads (the user's black pause after skipping the intro,
 2026-11-04): a data play fills the buffer in a frame unless its first sector starts a Sega FILM movie, and only when
-asked. tests/sat_cd_play_test.c builds the file at /W4 /WX in 32-bit MSVC and writes the commands to the registers as
-the game does.
+asked. The NetLink modem's window at 0x25895001 is not CD registers: Saturn Bomberman's modem probe cleared HIRQ
+through it and took the exit to the CD player (2026-11-16). The boot ROM's hand-over (game.json boot_dir): with the
+image started at /BOMSS/0KRNL.BIN instead of the loader /0, its file system read the root, did not find PROGRAM.BIN and
+took the same exit; the CD block now holds the folder above and names the boot folder's file id (2026-11-16). tests/sat_cd_play_test.c builds the file at /W4 /WX in
+32-bit MSVC and writes the commands to the registers as the game does.
 Controls: the check must fail on each planted copy of a wrong behaviour. Skips when no 32-bit MSVC is installed here.
 Run: python -W error tests/test_sat_cd_play.py.
 Nearest existing: tests/test_sat_dmac.py - the same way of building a kit file with a C test, for the SH-2's DMA.
@@ -28,6 +31,11 @@ PLANTS = {
     "fast loads taken when not asked": ("return sat_cd_fast_loads > 0 && t", "return t"),
     "a movie loaded fast": (' && memcmp(raw + 16, "FILM", 4) != 0;', ";"),
     "fast loads asked but not given": ("g_quick = quick(start);", "g_quick = 0, (void)quick(start);"),
+    "the NetLink window decoded as CD registers": ("if ((p & 0xf000u) != 0x5000u) return 0;", "if (p != 0u) return 0;"),
+    "the boot folder's root not read into the CD block": ("    int fid = 0;\n    read_dir(0xffffffu);", "    int fid = 0;"),
+    "the boot folder's id counted without . and ..": ("            fid = i;", "            fid = i - 2;"),
+    "a nested boot folder leaves the root current": ("            if (fid) read_dir((u32)fid);", "            if (0) read_dir((u32)fid);"),
+    "a file taken as the boot folder": ("while (i < g_ndir && !((g_dir[i].attr & 2) &&", "while (i < g_ndir && !((1) &&"),
 }
 
 

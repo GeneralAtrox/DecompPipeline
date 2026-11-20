@@ -6,6 +6,7 @@
 #define PROF_H
 
 #include "rd_rt.h"
+#include "perf.h" /* base: the sampler, which reads this profiler's section (prof.c hands it over) */
 
 enum {
     PROF_WAIT,       /* sleeping or spinning for the next vertical blank (real time only) */
@@ -53,9 +54,8 @@ void prof_tc_note_present(void);                     /* from the present thread:
 void prof_tc_blank(const u64 *us, u64 work);         /* a blank's microseconds by row (PROF_N + 1) and its work */
 void prof_tc_report_due(void);                       /* off the lock: the line when 10 s have passed */
 void prof_tc_flush(void);                            /* at exit */
-/* prof_sample.c: --prof-sample US, --prof-samples FILE */
-int prof_sample_option(const char *arg, const char *value);
-void prof_sample_frame(int on);                      /* each blank under --prof: on from --prof-from */
-void prof_sample_report(void);                       /* at exit */
+/* prof_calls.c: --prof-calls FILE, every counted target and its count at exit (the top 24 go to the log as before).
+ * The sampler that was prof_sample.c is base/perf.c now, for every console. */
+int prof_calls_option(const char *arg, const char *value);
 
 #endif

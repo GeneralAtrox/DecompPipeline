@@ -95,7 +95,8 @@ class ContractDocument(unittest.TestCase):
         rows = [x for x in (section("Command-line options") + section("Enhancements")).splitlines() if x[:1] == "|"]
         named = set(re.findall(r"`(--[a-z][a-z0-9-]*)", "\n".join(rows)))
         self.assertTrue(named)
-        self.assertEqual(sorted(o for o in named if f'"{o}"' not in code), [])
+        # an option of a PortOption table (base/game_options.c) takes "--" + its id
+        self.assertEqual(sorted(o for o in named if f'"{o}"' not in code and f'{{"{o[2:]}", ' not in code), [])
 
     def test_one_copy(self):
         readme = (KIT / "README.md").read_text(encoding="utf-8")
@@ -264,6 +265,24 @@ class ContractKey(unittest.TestCase):
         doc.write_text("no version\n", encoding="utf-8")
         with self.assertRaises(SystemExit):
             game_config.contract_version(doc)
+
+
+class SaturnGameHeader(unittest.TestCase):
+    def test_kit_files_using_a_game_define_include_sat_game_h(self):
+        """gen_saturn.py writes each game.json switch as a #define in sat_game.h. A kit file that tests one without including
+        that header always builds the switch off: smpc_intback and controller did (2026-11-16), and their unit test passed
+        because it sets the define on the compiler line."""
+        root = pathlib.Path(__file__).resolve().parent.parent / "port"
+        gen = (root / "tools" / "gen_saturn.py").read_text(encoding="utf-8")
+        defs = sorted(set(re.findall(r"#define (SAT_[A-Z0-9_]+)", gen)))
+        self.assertIn("SAT_SMPC_HARDWARE", defs)
+        bad = []
+        for f in sorted((root / "saturn").glob("*.[ch]")):
+            s = f.read_text(encoding="utf-8", errors="replace")
+            used = [d for d in defs if re.search(r"#\s*(?:ifdef|ifndef|if|elif)\b[^\n]*\b" + d + r"\b", s)]
+            if used and '#include "sat_game.h"' not in s:
+                bad.append(f"{f.name}: {', '.join(used)}")
+        self.assertEqual(bad, [])
 
 
 if __name__ == "__main__":

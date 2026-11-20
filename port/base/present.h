@@ -15,6 +15,7 @@
 #pragma warning(pop)
 #include "base.h"
 #include "work_count.h"
+#include "perf.h" /* present.c times the show wait and each Present */
 
 /* The calls that do the work, counted for --work-counts (work_count.h). A Map to read is left out: it may be a poll of
  * the GPU, and how many depends on the GPU's speed. */

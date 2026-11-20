@@ -20,6 +20,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "present_cpu.h"
+#include "present_overlay.h"
 #include "present.h"
 #include "host.h"
 #include "play_stats.h"
@@ -45,6 +46,9 @@ static ID3D11SamplerState *g_sampler;
 static ID3D11Texture2D *g_tex;
 static ID3D11ShaderResourceView *g_srv;
 static u32 g_tex_w, g_tex_h, g_shown_w, g_shown_h, g_shown_sw, g_post_sw; /* sw: the screen's width in the frame */
+enum { OVER = 2048 }; /* pictures over a frame (cpu_present_overlay): the next post's, and the shown frame's */
+static PresentOverlay g_over_next[OVER], g_over_copy[OVER], *g_over_shown; /* copy: the showing thread's own */
+static unsigned g_over_n, g_over_shown_n;
 
 static int g_thread_mode = -1, g_check; /* --present-thread: 1 on, 0 off, -1 auto; --present-check on */
 static volatile LONG g_fps = -1;         /* --fps, the menu's cap: shown frames a second, 0 none, -1 not chosen (144) */
@@ -87,6 +91,7 @@ static int make_pipeline(void)
     ps = compile(fn, "ps_main", "ps_5_0");
     pp = compile(fn, "ps_panel", "ps_5_0");
     if (!vs || !ps) return 0;
+    (void)pov_init((void *)fn);
     hr = ID3D11Device_CreateVertexShader(g_gfx.dev, ID3D10Blob_GetBufferPointer(vs), ID3D10Blob_GetBufferSize(vs), NULL, &g_vs);
     if (SUCCEEDED(hr)) hr = ID3D11Device_CreatePixelShader(g_gfx.dev, ID3D10Blob_GetBufferPointer(ps), ID3D10Blob_GetBufferSize(ps), NULL, &g_ps);
     if (SUCCEEDED(hr) && pp && FAILED(ID3D11Device_CreatePixelShader(g_gfx.dev, ID3D10Blob_GetBufferPointer(pp), ID3D10Blob_GetBufferSize(pp), NULL, &g_ps_panel)))
@@ -177,6 +182,7 @@ static void draw_and_show(void)
     ID3D11DeviceContext_PSSetSamplers(cx, 0, 1, &g_sampler);
     ID3D11DeviceContext_PSSetShaderResources(cx, 0, 1, &g_srv);
     ID3D11DeviceContext_Draw(cx, 3, 0);
+    pov_draw(g_over_shown, g_over_shown_n, &vp, g_shown_w, g_shown_h);
     present_show();
 }
 
@@ -186,7 +192,14 @@ void cpu_present(const u32 *xrgb, unsigned w, unsigned h)
         gfx_pump();
         return;
     }
+    g_over_shown = g_over_next, g_over_shown_n = g_over_n, g_over_n = 0;
     if (upload(xrgb, w, h, g_post_sw)) draw_and_show();
+}
+
+void cpu_present_overlay(const PresentOverlay *o, unsigned n)
+{
+    g_over_n = n < OVER ? n : OVER;
+    if (g_over_n) memcpy(g_over_next, o, g_over_n * sizeof *o);
 }
 
 /* ---- --present-thread ---- */
@@ -197,6 +210,8 @@ enum { SLOTS = 3 };
 static struct {
     u32 *px;
     u32 cap, w, h, sw, vb, hash;
+    PresentOverlay over[OVER];
+    unsigned over_n;
 } g_slot[SLOTS];
 static CRITICAL_SECTION g_cs;              /* guards g_newest, g_taken and g_posted */
 static int g_up, g_newest = -1, g_taken = -1; /* the slot posted last; the one the showing thread is reading */
@@ -279,6 +294,7 @@ static DWORD WINAPI show_thread(void *arg)
         }
         gfx_lock();
         play_stats_draw(1);
+        if (s >= 0) memcpy(g_over_copy, g_slot[s].over, g_slot[s].over_n * sizeof g_over_copy[0]), g_over_shown = g_over_copy, g_over_shown_n = g_slot[s].over_n; /* for its repeats too */
         if (s >= 0) ok = upload(g_check && g_ck_px ? g_ck_px : g_slot[s].px, g_slot[s].w, g_slot[s].h, g_slot[s].sw);
         if (g_tex_w) draw_and_show();
         play_stats_draw(0);
@@ -343,6 +359,8 @@ void cpu_present_post_wide(const u32 *xrgb, unsigned w, unsigned h, u32 vb, unsi
     g_slot[s].h = h;
     g_slot[s].sw = sw;
     g_slot[s].vb = vb;
+    g_slot[s].over_n = g_over_n, g_over_n = 0;
+    if (g_slot[s].over_n) memcpy(g_slot[s].over, g_over_next, g_slot[s].over_n * sizeof g_over_next[0]);
     if (g_check) g_slot[s].hash = hash_px(xrgb, w * h);
     EnterCriticalSection(&g_cs);
     g_newest = s;

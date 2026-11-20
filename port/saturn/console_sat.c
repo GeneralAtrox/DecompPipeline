@@ -22,9 +22,9 @@ const PortMenuItem *sat_logos_menu(void); /* sat_logos.c */
 #include "present_cpu.h"
 
 #if defined(SAT_NETPLAY) && !defined(SAT_NET_IN_GAME)
-#define SAT_CONSOLE_FLAGS (PORT_CONSOLE_FPSCAP | PORT_CONSOLE_ONLINE) /* online play (sat_net.c): the Online menu */
+#define SAT_CONSOLE_FLAGS (PORT_CONSOLE_FPSCAP | PORT_CONSOLE_ONLINE | PORT_CONSOLE_SPEED) /* online play (sat_net.c): the Online menu */
 #else
-#define SAT_CONSOLE_FLAGS PORT_CONSOLE_FPSCAP
+#define SAT_CONSOLE_FLAGS (PORT_CONSOLE_FPSCAP | PORT_CONSOLE_SPEED) /* fast forward: sat_sys.c's clock */
 #endif
 const PortConsole port_console = {"saturn", "Saturn", SAT_GAME_NAME, "saturn kit 1", 320u, 224u, SAT_FRAME_HZ, SAT_CONSOLE_FLAGS};
 
@@ -176,6 +176,15 @@ static const PortMenuItem k_menu[] = {
     {"Display", "Native mo&vie player (from the next start)", PORT_MENU_CHECK, "movie-native", sat_movie_get, sat_movie_set, NULL, NULL, 0, alone},
 };
 
+/* The plug-in backup memory cartridge (sat_bup.c device 1): a kit-wide option because it is console hardware, not one game's
+ * improvement (Dragon Force's Record needs it; any game may look for one). On in play runs, off in checks, scripted runs and
+ * replays, which then see the console exactly as before; a recording made with it on keeps the note "*memory-cartridge". */
+static const PortOption k_options[] = {
+    {"memory-cartridge", "Game", "Backup memory &cartridge (from the next start)", PORT_MENU_CHECK, NULL, NULL, 0u, 1u, 0u,
+     PORT_OPTION_NOTE, NULL},
+};
+const PortOptions port_console_options = {k_options, 1u};
+
 const PortMenuItem *console_menu_extra(unsigned *count)
 {
     static PortMenuItem menu[8];
@@ -190,6 +199,7 @@ const PortMenuItem *console_menu_extra(unsigned *count)
 #endif
     if (sat_logos_menu()) menu[n++] = *sat_logos_menu(); /* Game > Skip the opening logos (sat_logos.c) */
     if (sat_level_menu()) menu[n++] = *sat_level_menu(); /* Game > Edited arena, greyed online (sat_level.c) */
+    if (sat_game_menu()) menu[n++] = *sat_game_menu(); /* the game's own entry (sat_hooks.h; Dragon Force: Quick dialogue) */
     *count = n;
     return menu;
 }
@@ -197,7 +207,7 @@ const PortMenuItem *console_menu_extra(unsigned *count)
 void console_pads_changed(void) {}
 
 /* ---- the presenter's hooks: a CPU frame goes through base/present_cpu.c, which has no overlay; a game with game.json
- * "widescreen" has its picture composed wider in a play run (sat_wide.c) ---- */
+ * "widescreen", or whose own code has a wide hook, has its picture composed wider in a play run (sat_wide.c) ---- */
 int console_present_option(const char *arg, const char *value)
 {
     (void)arg;
@@ -209,7 +219,7 @@ void console_present_release(void) {}
 #ifdef SAT_WIDESCREEN
 int console_widens(void) { return 1; }
 #else
-int console_widens(void) { return 0; }
+int console_widens(void) { return sat_game_wide_set(); } /* the game's own code picks its wide pictures (sat_hooks.h wide) */
 #endif
 int extra_interp(void) { return sat_inb_live(); }
 void extra_set_fps(unsigned fps) { cpu_present_set_fps(fps); } /* the menu's cap: the showing thread's rate */
@@ -236,5 +246,14 @@ int console_check_image(const char *image)
         return port_install_fail(5, "%s is another game than this port's " SAT_GAME_NAME " (product %.10s, wanted " SAT_PRODUCT ")", image,
                                  hdr + 0x20);
 #endif
+    {
+        u8 *code = NULL;
+        u32 n = 0;
+        char why[400];
+        int bad = sat_image_from_disc(&code, &n, why, sizeof why); /* the code image's files and SHA-256 (sat_image.c) */
+        free(code);
+        if (bad > 0) return port_install_fail(bad, "%s: %s", image, why);
+        if (!bad) port_log("setup: the code image's files are on %s (%u bytes, SHA-256 as this build's)\n", image, n);
+    }
     return 0;
 }

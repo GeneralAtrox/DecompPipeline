@@ -11,6 +11,10 @@
 #ifndef SAT_HOOKS_H
 #define SAT_HOOKS_H
 
+struct SatTextSprite; /* sat_text.h */
+struct SatTextItem;
+struct SatTextCells;
+
 typedef struct SatGameHooks {
     int (*option)(const char *name, const char *value);            /* a command-line option of the game's: 1 taken, 0 not its */
     void (*start)(int play_run);                                   /* at start, after the kit's own parts; play_run: an unscripted run */
@@ -31,6 +35,28 @@ typedef struct SatGameHooks {
     void (*lobby_join)(u32 hub_row, const u32 box[3]);
     void (*lobby_host)(u32 hub_row, const u32 box[3]);
     void (*lobby_back)(const char *note);                          /* a match the game's own menu started goes back to it, saying why */
+    void (*pad)(u32 data[2]);                                      /* sat_input.c: ports 1 and 2 as the game is about to read them
+                                                                      (sat_pad_data's form), after the host's pads: the game may
+                                                                      change them (Dragon Force's Quick dialogue); not online */
+    const struct PortMenuItem *(*menu)(void);                             /* console_sat.c: one more menu entry of the game's, or NULL */
+    int (*wide)(void);                                             /* sat_wide.c, each vertical blank: 1 this picture may be composed
+                                                                      wider than the screen, 0 it keeps the screen's width (a 2D
+                                                                      screen with no more art). Set, the game is a widescreen one
+                                                                      (console_widens) without game.json "widescreen" (Dragon Force) */
+    void (*frame)(u32 *px, u32 w, u32 h, u32 ox);                  /* sat_vdp2.c: the picture just composed (w dots a line, h lines,
+                                                                      the screen ox dots in from the left: sat_wide.c), each
+                                                                      compose, in-between frames too: the game may draw over it
+                                                                      (Saturn Bomberman's pause menu) */
+    int (*text)(const struct SatTextSprite *s);                    /* sat_text.c, Clearer text on: a textured VDP1 sprite about to
+                                                                      be drawn; nonzero (a tag of the game's): it is lettering, shown
+                                                                      sharp over the picture (Dragon Force) */
+    int (*text_image)(const struct SatTextItem *it, int k, u32 *out); /* that lettering's picture k times its size, premultiplied
+                                                                      0xAARRGGBB; 0: the kit's own (A3 of its dots) */
+    int (*text_cells)(const struct SatTextCells *c);               /* sat_text_v2.c, Clearer text on: a scroll plane's cell (tag
+                                                                      0), or a block of cells given that tag; nonzero: lettering
+                                                                      (the block's tag), shown sharp over the picture as text's.
+                                                                      NULL, once a picture: 0 nothing to look at here, else
+                                                                      the screen (answers are kept per screen) */
 } SatGameHooks;
 
 extern const SatGameHooks sat_game_table; /* the game's (or the empty one) */
@@ -50,6 +76,10 @@ static __inline void sat_game_lobby_join(u32 r, const u32 b[3]) { if (SAT_G(lobb
 static __inline void sat_game_lobby_host(u32 r, const u32 b[3]) { if (SAT_G(lobby_host)) SAT_G(lobby_host)(r, b); }
 static __inline void sat_game_lobby_back(const char *note) { if (SAT_G(lobby_back)) SAT_G(lobby_back)(note); }
 static __inline void sat_game_heads_bup(u32 name, int wrote) { if (SAT_G(heads_bup)) SAT_G(heads_bup)(name, wrote); }
+static __inline void sat_game_pad(u32 data[2]) { if (SAT_G(pad)) SAT_G(pad)(data); }
+static __inline const struct PortMenuItem *sat_game_menu(void) { return SAT_G(menu) ? SAT_G(menu)() : NULL; }
+static __inline void sat_game_frame(u32 *px, u32 w, u32 h, u32 ox) { if (SAT_G(frame)) SAT_G(frame)(px, w, h, ox); }
+static __inline int sat_game_wide_set(void) { return SAT_G(wide) != NULL; }
 static __inline void sat_game_screen_grab(void) { if (SAT_G(screen_grab)) SAT_G(screen_grab)(); }
 
 #endif

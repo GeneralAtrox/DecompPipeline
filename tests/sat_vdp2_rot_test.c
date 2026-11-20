@@ -21,12 +21,29 @@ const u8 *sat_v1_display_fb(void) { return sat_v1_fb[0]; }
 u32 sat_vblank_count(void) { return 0; }
 void port_log(const char *fmt, ...) { (void)fmt; }
 void sat_v2_dump_regs(void) {}
+u32 sat_text_with[SAT_MAX_W * SAT_MAX_H]; /* clearer text (sat_text.c) is not built: the sprite layer as drawn */
+const u8 *sat_text_spr(const u8 *fb, const u16 **mask, u32 frame_w) { (void)frame_w; *mask = NULL; return fb; }
+void sat_text_frame(u32 *px, u32 w, u32 h, u32 ox) { (void)px, (void)w, (void)h, (void)ox; }
+u16 sat_text_v2_map[SAT_MAX_W * SAT_MAX_H];
+u8 sat_text_v2_layer[SAT_V2_ITEMS + 1];
+u32 sat_text_v2_bm;
+int sat_text_v2_scan(const SatPlane *p, const int *a, int n, u32 w, u32 h, u32 ww, u32 ox) { (void)p, (void)a, (void)n, (void)w, (void)h, (void)ww, (void)ox; return 0; }
+u32 sat_text_v2_tag(int l, u32 c, u32 p, int hf, int vf) { (void)l, (void)c, (void)p, (void)hf, (void)vf; return 0; }
 /* sat_wide.c's side of the composer: g_wide dots more each side when set */
 static u32 g_wide;
 int sat_wide_now;
 u32 sat_wide_sw;
 u32 sat_wide_width(u32 w) { sat_wide_now = (int)g_wide, sat_wide_sw = w; return w + 2u * g_wide; }
 const u8 *sat_wide_spr(const u8 *guest, u32 *shift, u32 *ox, u32 *mask) { *shift = 9u, *ox = 0u, *mask = 0x3ffffu; return guest; }
+/* the game's table (sat_hooks.h): its frame hook sees each composed picture; it draws a dot only while g_hook_draw is set */
+static u32 g_hook_n, g_hook_w, g_hook_h, g_hook_ox, g_hook_draw;
+static u32 *g_hook_px;
+static void hook_frame(u32 *px, u32 w, u32 h, u32 ox)
+{
+    g_hook_n++, g_hook_px = px, g_hook_w = w, g_hook_h = h, g_hook_ox = ox;
+    if (g_hook_draw) px[(h / 2u) * w + ox + 5u] = 0x123456u;
+}
+const SatGameHooks sat_game_table = {.frame = hook_frame};
 void port_exit(const char *why, int code)
 {
     printf("FAIL: %s\n", why);
@@ -188,6 +205,30 @@ int main(void)
     check(dot(12, 15) == RED && dot(16, 15) == BLUE && dot(3, 12) == RED && dot(14, 12) == BLUE && dot(3, 5) == BLUE, "the line window table, within the window's lines");
     reg(0xd4, 0), reg(0xd8, 0);
 
+    /* the special functions, as Saturn Bomberman's board sets them for its planes (SFPRMD and SFCCMD 1: per character):
+     * RBG0 calculated over the blue back screen at ratio 16 only where the name says so (1-word names: PNCR's SCC, bit 8) */
+    table();
+    reg(0xec, 0x0010), reg(0x10c, 0x0010), reg(0xee, 0x0100); /* R0CCEN, CCRR 16, SFCCMD RBG0 per character */
+    compose();
+    check(dot(10, 10) == RED, "special colour calculation per character: a name without SCC is not calculated");
+    reg(0x38, 0x8100);
+    compose();
+    check(dot(10, 10) == 0x770087u && dot(300, 10) == 0x007787u, "special colour calculation per character: SCC set, calculated");
+    reg(0xee, 0x0200), reg(0x26, 0x0004); /* per dot: SFCODE A names code 2 (dots 4, 5): red's dot 5, not green's 6 */
+    compose();
+    check(dot(10, 10) == 0x770087u && dot(300, 10) == GREEN, "special colour calculation per dot: only the special code's dots");
+    reg(0xee, 0x0300), cram(5, 0x801f); /* by MSB: red's colour has its MSB set */
+    compose();
+    check(dot(10, 10) == 0x770087u && dot(300, 10) == GREEN, "special colour calculation by the colour's MSB");
+    cram(5, 0x001f), reg(0xee, 0), reg(0xec, 0), reg(0x10c, 0), reg(0x26, 0), reg(0x38, 0x8000);
+    reg(0xfc, 0x0001), reg(0xea, 0x0100); /* SFPRMD per character, priority 1: the LSB is the name's SPR (PNCR bit 9) */
+    compose();
+    check(dot(10, 10) == BLUE, "special priority per character: SPR clear makes priority 0, not shown");
+    reg(0x38, 0x8200);
+    compose();
+    check(dot(10, 10) == RED, "special priority per character: SPR set, shown");
+    reg(0x38, 0x8000), reg(0xea, 0), reg(0xfc, 0x0003);
+
     reg(0x20, 0x0001);                   /* NBG0 only: a 512x256 256-colour bitmap at 0, red left of x 64, green after */
     reg(0x28, 0x0012), reg(0xf8, 0x0004), reg(0x70, 4);
     for (u32 v = 0; v < 256; v++)
@@ -204,6 +245,55 @@ int main(void)
     compose();
     check(dot(0, 50) == GREEN && dot(0, 51) == GREEN && dot(0, 49) == RED && dot(0, 52) == RED, "one entry per 2 lines (LSS 1)");
     reg(0x9a, 0);
+
+    g_hook_n = 0, g_hook_draw = 1, g_wide = 24;
+    compose();
+    g_wide = 0, g_hook_draw = 0;
+    check(g_hook_n == 2 && g_hook_px == sat_frame && g_hook_w == sat_frame_w && g_hook_h == sat_frame_h && g_hook_ox == 24u &&
+              dot(24 + 5, sat_frame_h / 2u) == 0x123456u,
+          "the game's frame hook draws over each composed picture, told the width and the screen's place in it");
+
+    /* the sprite layer's colour calculation as Dragon Force sets it (its highlight strips): SPCTL 0x1631 (type 1, palette and
+     * RGB dots, calculate where the priority NUMBER equals 6), PRISA 0x0607 (code 0: 7, code 1: 6), CCCTL 0x0040 (SPCCEN);
+     * the dot's CC bits pick the ratio: S0CCRT 16, S1CCRT 31. No planes: the back screen (blue) is under it. */
+    reg(0x20, 0x0000), reg(0xe0, 0x1631), reg(0xf0, 0x0607), reg(0x100, 0x1f10), reg(0xec, 0x0040);
+    {
+        static const u16 words[4] = {0x2005, 0x0005, 0x2805, 0x2001}; /* code 1 CC 0 red; code 0 red; code 1 CC 1 red; code 1 dc 1 */
+        for (u32 i = 0; i < 4; i++) sat_v1_fb[0][(5u * 512u + 5u + i) * 2u] = (u8)(words[i] >> 8), sat_v1_fb[0][(5u * 512u + 5u + i) * 2u + 1u] = (u8)words[i];
+    }
+    compose();
+    check(dot(5, 5) == 0x770087u, "sprite colour calculation (SPCCEN, priority number 6 == SPCCN): red over blue at ratio 16");
+    check(dot(6, 5) == RED, "sprite colour calculation: priority number 7 is not calculated (SPCCCS 'equal')");
+    check(dot(7, 5) == BLUE, "sprite colour calculation: the dot's CC bits pick the ratio (S1CCRT 31: all of what is under)");
+    reg(0xec, 0x0100);
+    compose();
+    check(dot(5, 5) == RED, "CCCTL's CCMD (bit 8) alone does not turn the sprite's calculation on");
+    reg(0xec, 0x0140);
+    compose();
+    check(dot(5, 5) == 0xff00ffu, "CCMD: the sprite added to what is under it");
+    /* sprite type 6 as Saturn Bomberman sets it (SPCTL 0x3616): bit 15 is the shadow / window bit, the priority code is
+     * bits 14-12, CC bits 11-10, the colour 9-0. Code 1 is priority number 5 (= SPCCN, 'equal'), every other code 7. */
+    reg(0xe0, 0x1506), reg(0xf0, 0x0507), reg(0xf2, 0x0707), reg(0xf4, 0x0707), reg(0xf6, 0x0707), reg(0x100, 0x1f10), reg(0xec, 0x0040);
+    {
+        static const u16 words[3] = {0x1005, 0x9405, 0x2005}; /* code 1 CC 0; SD + code 1 CC 1; code 2 */
+        for (u32 i = 0; i < 3; i++) sat_v1_fb[0][(5u * 512u + 5u + i) * 2u] = (u8)(words[i] >> 8), sat_v1_fb[0][(5u * 512u + 5u + i) * 2u + 1u] = (u8)words[i];
+    }
+    compose();
+    check(dot(5, 5) == 0x770087u, "sprite type 6: the priority code is bits 14-12 (code 1, number 5: calculated at ratio 16)");
+    check(dot(6, 5) == BLUE, "sprite type 6: bit 15 is the shadow bit, the CC bits are 11-10 (code 1, CC 1: ratio 31)");
+    check(dot(7, 5) == RED, "sprite type 6: code 2 is number 7, not calculated");
+    /* condition 3: the colour's MSB in colour memory (Bomberman's SPCCCS), not the sprite word's bit 15 */
+    reg(0xe0, 0x3606), cram(9, 0x801f), cram(10, 0x001f);
+    {
+        static const u16 words[3] = {0x0009, 0x000a, 0x800a}; /* MSB colour; plain colour; plain colour with the word's bit 15 */
+        for (u32 i = 0; i < 3; i++) sat_v1_fb[0][(5u * 512u + 5u + i) * 2u] = (u8)(words[i] >> 8), sat_v1_fb[0][(5u * 512u + 5u + i) * 2u + 1u] = (u8)words[i];
+    }
+    compose();
+    check(dot(5, 5) == 0x770087u, "SPCCCS 3: a colour with its MSB set is calculated");
+    check(dot(6, 5) == RED && dot(7, 5) == RED, "SPCCCS 3: a colour without it is not, whatever the word's bit 15");
+    cram(9, 0), cram(10, 0);
+    memset(sat_v1_fb[0], 0, sizeof sat_v1_fb[0]);
+    reg(0xe0, 0), reg(0xf0, 0), reg(0xf2, 0), reg(0xf4, 0), reg(0xf6, 0), reg(0x100, 0), reg(0xec, 0);
 
     table();
     reg(0x20, 0x0000);

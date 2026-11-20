@@ -3,10 +3,12 @@
  * histogram, so a session of any length costs the same few kilobytes. The clock is the QueryPerformanceCounter, not
  * prof_now(): that one can be the thread's cycle count (--prof-clock cycles), and this must be wall time. */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <windows.h>
 #include "base.h"
 #include "console.h"
+#include "perf.h"
 #include "play_stats.h"
 #include "session.h"
 
@@ -22,12 +24,17 @@ static u64 g_idle, g_idle_start; /* clock ticks of sleep inside the current tick
 static u64 g_late, g_late_loading, g_shown_loading, g_disc_start, g_disc_bytes;
 static u64 g_repeat; /* the frame-rate cap's slots (144 uncapped) that showed no new frame, loading screens left out */
 static volatile LONG g_tick_pending;    /* the last tick's work in us + 1, until a shown frame takes it; 0 none */
+static volatile LONG g_tick_id;         /* that tick's number (perf.h), for --play-frames */
 static volatile LONG64 g_loading_until; /* clock ticks: a gap that starts before this is a loading screen's */
 static DWORD g_game_tid;                /* the thread of the wait and tick hooks */
 static u32 g_depth, g_gaps_more;
 static int g_force, g_in_wait, g_draw_in_tick; /* g_force: --play-summary 1 on, -1 off, 0 auto */
 static u64 g_gap_logged;
 static DWORD g_span_tid; /* a native frame's span open on this thread (play_stats_native), 0 none */
+void *g_play_by[2];
+static u32 g_by_prev[2], g_gaps_named, g_late_from; /* g_late_from: --play-late-from, the first blank a gap line names */
+static struct { u32 by, prev, gaps, late, long_tick; } g_paths[8]; /* late gaps by the path that showed its two ends */
+static u64 g_by_gaps[4], g_by_late[4], g_by_tick[4]; /* late gaps by slots missed (1, 2, 3-7, 8+): gaps, slots, a long tick's */
 
 static u64 now(void)
 {
@@ -64,6 +71,8 @@ static int decide(void)
 
 int play_stats_option(const char *arg, const char *value)
 {
+    if (perf_option(arg, value)) return 2; /* --perf-*, --play-frames: every console takes them through this */
+    if (!strcmp(arg, "--play-late-from") && value) return g_late_from = (u32)strtoul(value, NULL, 10), 2;
     if (strcmp(arg, "--play-summary") || !value) return 0;
     g_force = !strcmp(value, "on") ? 1 : !strcmp(value, "off") ? -1 : 0;
     return 2;
@@ -90,6 +99,7 @@ static void tick_gap(u64 ticks)
 static void tick_done(u64 us)
 {
     add(TICK, us);
+    InterlockedExchange(&g_tick_id, (LONG)g_perf_tick);
     InterlockedExchange(&g_tick_pending, (LONG)(us < 0x7ffffffeu ? us + 1u : 0x7fffffffu));
 }
 
@@ -102,10 +112,21 @@ static void tick_in_span(u64 us, u64 in)
     if (us > in) InterlockedExchange(&g_tick_pending, (LONG)(us - in < 0x7ffffffeu ? us - in + 1u : 0x7fffffffu));
 }
 
+static void segment_start(void)
+{
+    play_stats_restart();
+    port_log("play: the measured segment starts at vertical blank %u (--perf-from): the summary and verdict count from here\n",
+             port_vblank_count());
+}
+
 void play_stats_wait_slow(int begin)
 {
     u64 t;
     if (!g_play_stats && decide() < 0) return;
+    if (begin) perf_plant(); /* inside the tick's work */
+    else g_perf_tick++;
+    if (g_perf_on | g_perf_frames) perf_thread(PERF_GAME);
+    if (perf_segment_due()) segment_start();
     t = now();
     g_game_tid = GetCurrentThreadId(); /* a draw on this thread outside the wait is the tick's own (its render) */
     if (begin) {
@@ -130,6 +151,9 @@ void play_stats_tick_slow(double ms)
 {
     if (!g_play_stats && decide() < 0) return;
     if (ms < 0.0) return;
+    g_perf_tick++;
+    if (g_perf_on | g_perf_frames) perf_thread(PERF_GAME);
+    if (perf_segment_due()) segment_start();
     g_game_tid = GetCurrentThreadId();
     if (g_span_tid && g_span_tid == GetCurrentThreadId()) {
         u64 us = (u64)(ms * 1000.0), open = us_of(now() - g_draw_start);
@@ -176,13 +200,16 @@ void play_stats_disc_slow(u32 bytes)
 
 void play_stats_shown_slow(void)
 {
-    u64 t, gap, slots;
+    u64 t, gap = 0, slots, make;
     LONG tick;
     int loading;
     if (!g_play_stats && decide() < 0) return;
     t = now();
     tick = InterlockedExchange(&g_tick_pending, 0);
     loading = g_frames && (u64)InterlockedCompareExchange64(&g_loading_until, 0, 0) >= g_last;
+    u32 base = (u32)(uintptr_t)GetModuleHandleW(NULL), by[2]; /* 0: not through gfx_show or gfx_present */
+    for (int i = 0; i < 2; i++) by[i] = g_play_by[i] ? (u32)(uintptr_t)g_play_by[i] - base : 0u;
+    g_play_by[0] = g_play_by[1] = NULL;
     if (g_frames) {
         gap = us_of(t - g_last);
         add(FRAME, gap);
@@ -190,15 +217,34 @@ void play_stats_shown_slow(void)
         if (slots > 1u) *(loading ? &g_late_loading : &g_late) += slots - 1u;
         u64 cap = extra_fps() ? extra_fps() : 144u, at_cap = (gap * cap + 500000u) / 1000000u;
         if (at_cap > 1u && !loading) g_repeat += at_cap - 1u;
+        if (slots > 1u && !loading) { /* which gaps the late slots come from, and whether the tick's work took half of it */
+            int k = slots == 2u ? 0 : slots == 3u ? 1 : slots <= 8u ? 2 : 3;
+            g_by_gaps[k]++, g_by_late[k] += slots - 1u;
+            int lt = tick > 0 && ((u64)tick - 1u) * 2u > gap, j = 0;
+            g_by_tick[k] += lt;
+            while (j < 7 && g_paths[j].gaps && (g_paths[j].by != by[0] || g_paths[j].prev != g_by_prev[0])) j++;
+            if (!g_paths[j].gaps) g_paths[j].by = j < 7 ? by[0] : ~0u, g_paths[j].prev = j < 7 ? g_by_prev[0] : ~0u;
+            g_paths[j].gaps++, g_paths[j].late += (u32)(slots - 1u), g_paths[j].long_tick += lt;
+            if (slots >= 4u && port_vblank_count() >= g_late_from && g_gaps_named++ < 40u) /* which path showed it (symbolize.py) */
+                port_log("play late gap: %.1f ms at vertical blank %u, tick %.1f ms; shown from port.exe+%x via +%x, the one "
+                         "before from +%x via +%x\n", (double)gap / 1000.0, port_vblank_count(),
+                         tick > 0 ? (double)(tick - 1) / 1000.0 : 0.0, by[0], by[1], g_by_prev[0], g_by_prev[1]);
+        }
     } else {
         g_first = t;
     }
     add(DRAW, us_of(g_draw_acc));
+    make = us_of(g_xdraw_acc) + (tick > 0 ? (u64)tick - 1u : 0u);
     if (loading) g_shown_loading++;
-    else add(MAKE, us_of(g_xdraw_acc) + (tick > 0 ? (u64)tick - 1u : 0u));
+    else add(MAKE, make);
+    if ((g_perf_on | g_perf_frames) && GetCurrentThreadId() != g_game_tid) perf_thread(PERF_SHOW);
+    if (g_perf_frames) /* flags: 1 a loading screen's, 2 the first frame of its tick */
+        perf_frame((u32)gap, (u32)make, tick > 0 ? (u32)tick - 1u : 0u, (u32)g_tick_id, (loading ? 1u : 0u) | (tick > 0 ? 2u : 0u),
+                   (u32)us_of(g_draw_acc));
     g_draw_acc = g_xdraw_acc = 0;
     g_last = t;
     g_frames++;
+    g_by_prev[0] = by[0], g_by_prev[1] = by[1];
 }
 
 double play_stats_percentile(const u32 *hist, u64 count, double p)
@@ -217,8 +263,11 @@ void play_stats_restart(void)
 {
     if (g_play_stats <= 0) return;
     memset(g_s, 0, sizeof g_s);
-    g_frames = g_first = g_last = g_wait_end = g_draw_start = g_draw_acc = g_xdraw_acc = g_idle = g_idle_start = 0;
+    g_frames = g_first = g_last = g_wait_end = g_draw_acc = g_xdraw_acc = g_idle = g_idle_start = 0;
+    g_draw_start = g_depth ? now() : 0; /* a draw open across the restart counts from here, not from 0 (a 3008 s "make") */
     g_late = g_late_loading = g_shown_loading = g_repeat = 0;
+    memset(g_by_gaps, 0, sizeof g_by_gaps), memset(g_by_late, 0, sizeof g_by_late), memset(g_by_tick, 0, sizeof g_by_tick);
+    memset(g_paths, 0, sizeof g_paths);
     InterlockedExchange(&g_tick_pending, 0);
 }
 
@@ -239,6 +288,7 @@ void play_stats_report(void)
     DWORD hn = sizeof host;
     u64 judged = g_frames - g_shown_loading;
     double make99, span = g_frames > 1 ? (double)(g_last - g_first) / (double)g_freq : 0.0;
+    perf_report();
     if (g_play_stats <= 0 || g_frames < 2 || span <= 0.0) return;
     console_view(&view);
     n = sprintf_s(line, sizeof line, "play summary: shown_fps %.1f output %ux%u frames %llu", (double)(g_frames - 1u) / span,
@@ -260,4 +310,12 @@ void play_stats_report(void)
      * be compatible at any fps") */
     port_log("play smoothness: cap %u, %llu repeated slot(s) in %llu shown (%.2f per 1000, bar 1)\n", extra_fps(), g_repeat,
              judged, judged ? (double)g_repeat * 1000.0 / (double)judged : 0.0);
+    if (g_late) /* where the late slots come from: many short gaps (pacing) or a few long ones (a slow tick) */
+        port_log("play late: gaps missing 1 slot %llu, 2 slots %llu (%llu late), 3 to 7 %llu (%llu late), 8 or more %llu "
+                 "(%llu late); of them with the tick over half the gap %llu, %llu, %llu, %llu\n", g_by_gaps[0], g_by_gaps[1],
+                 g_by_late[1], g_by_gaps[2], g_by_late[2], g_by_gaps[3], g_by_late[3], g_by_tick[0], g_by_tick[1],
+                 g_by_tick[2], g_by_tick[3]);
+    for (int j = 0; j < 8 && g_paths[j].gaps; j++) /* ffffffff: the paths past the first seven */
+        port_log("play late path: shown from port.exe+%x after port.exe+%x: %u gaps, %u late, %u with the tick over half\n",
+                 g_paths[j].by, g_paths[j].prev, g_paths[j].gaps, g_paths[j].late, g_paths[j].long_tick);
 }

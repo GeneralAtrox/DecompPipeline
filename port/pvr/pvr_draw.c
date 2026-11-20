@@ -46,6 +46,9 @@ static ID3D11ShaderResourceView **g_srv, **g_kept; /* kept: an in-between frame'
 static GpuBatch *g_gpu;
 static u32 g_srv_cap;
 static int g_failed, g_gpu_blend, g_vb_own; /* --interp-gpu: this frame blends on the GPU; g_vb holds the scene */
+static const char *const k_timers[PVR_T_END - PVR_T_TEX] = {"pvr textures", "pvr batch and constant upload", "pvr vertex upload",
+    "pvr clears", "pvr pipeline bind", "pvr batch states", "pvr draw calls", "pvr modifier volumes and autosort",
+    "pvr wait for the graphics lock", "pvr ta log once"}; /* the PVR_T_* timers (pvr_int.h) */
 
 static int init_pipeline(void)
 {
@@ -58,6 +61,7 @@ static int init_pipeline(void)
     };
     D3D11_BUFFER_DESC d;
     if (g_vs) return 1;
+    perf_kit_timers(k_timers, PVR_T_END - PVR_T_TEX);
     if (FAILED(ID3D11Device_CreateVertexShader(g_gfx.dev, g_pvr_vs, sizeof g_pvr_vs, NULL, &g_vs)) ||
         FAILED(ID3D11Device_CreatePixelShader(g_gfx.dev, g_pvr_ps, sizeof g_pvr_ps, NULL, &g_ps)) ||
         FAILED(ID3D11Device_CreateInputLayout(g_gfx.dev, el, 5, g_pvr_vs, sizeof g_pvr_vs, &g_layout)))
@@ -95,43 +99,13 @@ static int ensure_depth(void)
     return 1;
 }
 
-/* A dynamic buffer of at least `bytes`, recreated larger when needed. */
-static int ensure_buffer(ID3D11Buffer **b, u32 *cap, u32 bytes, UINT bind, u32 stride)
-{
-    D3D11_BUFFER_DESC d;
-    u32 n = *cap ? *cap : 1u << 20;
-    if (*b && bytes <= *cap) return 1;
-    while (n < bytes) n *= 2u;
-    if (*b) ID3D11Buffer_Release(*b);
-    *b = NULL;
-    memset(&d, 0, sizeof d);
-    d.ByteWidth = n;
-    d.Usage = D3D11_USAGE_DYNAMIC;
-    d.BindFlags = bind;
-    d.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-    if (stride) {
-        d.MiscFlags = D3D11_RESOURCE_MISC_BUFFER_STRUCTURED;
-        d.StructureByteStride = stride;
-    }
-    if (FAILED(ID3D11Device_CreateBuffer(g_gfx.dev, &d, NULL, b))) return 0;
-    *cap = n;
-    return 1;
-}
-
-static int upload(ID3D11Buffer *b, const void *data, u32 bytes)
-{
-    D3D11_MAPPED_SUBRESOURCE m;
-    if (FAILED(ID3D11DeviceContext_Map(g_gfx.ctx, (ID3D11Resource *)b, 0, D3D11_MAP_WRITE_DISCARD, 0, &m))) return 0;
-    memmove(m.pData, data, bytes);
-    ID3D11DeviceContext_Unmap(g_gfx.ctx, (ID3D11Resource *)b, 0);
-    return 1;
-}
-
 /* Textures for every batch (decoded on first use), and the batch states the pixel shader reads. */
 static int prepare_batches(void)
 {
     PvrScene *s = g_sc;
     u32 n = s->nbatch ? s->nbatch : 1u;
+    u64 t = perf_timer_begin();
+    int ok;
     if (n > g_srv_cap) {
         void *a = realloc(g_srv, n * sizeof *g_srv), *b;
         if (!a) return 0;
@@ -151,11 +125,13 @@ static int prepare_batches(void)
         g_gpu[i].flags = g_srv[i] ? bt->flags : bt->flags & ~PVR_BF_TEXTURE;
     }
     pvr_wide_scene(s);
+    perf_timer_end(PVR_T_TEX, t);
+    t = perf_timer_begin();
     if (g_bb_srv && n * sizeof(GpuBatch) > g_bb_cap) {
         ID3D11ShaderResourceView_Release(g_bb_srv);
         g_bb_srv = NULL;
     }
-    if (!ensure_buffer(&g_bb, &g_bb_cap, n * (u32)sizeof(GpuBatch), D3D11_BIND_SHADER_RESOURCE, sizeof(GpuBatch)))
+    if (!pvr_buffer_ensure(&g_bb, &g_bb_cap, n * (u32)sizeof(GpuBatch), D3D11_BIND_SHADER_RESOURCE, sizeof(GpuBatch)))
         return 0;
     if (!g_bb_srv) {
         D3D11_SHADER_RESOURCE_VIEW_DESC v;
@@ -165,12 +141,15 @@ static int prepare_batches(void)
         v.Buffer.NumElements = g_bb_cap / (u32)sizeof(GpuBatch);
         if (FAILED(ID3D11Device_CreateShaderResourceView(g_gfx.dev, (ID3D11Resource *)g_bb, &v, &g_bb_srv))) return 0;
     }
-    return upload(g_bb, g_gpu, n * (u32)sizeof(GpuBatch));
+    ok = pvr_buffer_upload(g_bb, g_gpu, n * (u32)sizeof(GpuBatch));
+    perf_timer_end(PVR_T_UPLOAD, t);
+    return ok;
 }
 
 static f32 frame_consts(void)
 {
     FrameConsts c;
+    u64 t;
     memset(&c, 0, sizeof c);
     c.depth_scale = pvr_depth_scale(g_sc->max_z, g_pvr_drawn->bg_xyz[0][2]);
     c.fog_density = pvr_fog_density(g_pvr_drawn->fog_density);
@@ -180,7 +159,9 @@ static f32 frame_consts(void)
     for (u32 i = 0; i < 128u; i++) c.fog_table[i] = g_pvr_debug & PVR_DBG_NOFOG ? 0u : g_pvr_drawn->fog_table[i];
     c.wide[0] = 1.0f / port_widescreen();
     c.wide[1] = 1.0f / port_tallscreen();
-    upload(g_cb, &c, sizeof c);
+    t = perf_timer_begin();
+    pvr_buffer_upload(g_cb, &c, sizeof c);
+    perf_timer_end(PVR_T_UPLOAD, t);
     return c.depth_scale;
 }
 
@@ -222,7 +203,9 @@ static void draw_list(u32 pass, u32 list)
     for (u32 i = s->range[pass][list][0]; i < s->range[pass][list][1]; i++) {
         const PvrBatch *b = &s->batch[i];
         ID3D11SamplerState *smp;
+        u64 t;
         if (!b->count || ((b->isp >> ISP_DEPTH_SHIFT) & 7u) == DEPTH_NEVER) continue;
+        t = perf_timer_begin();
         smp = pvr_sampler_state(b->tsp, b->uv_out, pvr_tex_pack_mode(g_srv[i]));
         ID3D11DeviceContext_PSSetShaderResources(g_gfx.ctx, 0, 1, &g_srv[i]);
         ID3D11DeviceContext_PSSetSamplers(g_gfx.ctx, 0, 1, &smp);
@@ -231,7 +214,10 @@ static void draw_list(u32 pass, u32 list)
             g_gfx.ctx, pvr_depth_state(list, g_pvr_debug & PVR_DBG_NODEPTH ? b->isp | 7u << ISP_DEPTH_SHIFT : b->isp),
             b->flags & PVR_BF_SHADOW ? STENCIL_SHADOW : 0u);
         pvr_scissor(b);
+        perf_timer_end(PVR_T_STATES, t);
+        t = perf_timer_begin();
         ID3D11DeviceContext_Draw(g_gfx.ctx, b->count, b->first);
+        perf_timer_end(PVR_T_DRAW, t);
     }
 }
 
@@ -241,6 +227,7 @@ static void bind_pipeline(void)
     ID3D11DeviceContext *cx = g_gfx.ctx;
     D3D11_VIEWPORT vp = {0.0f, 0.0f, (f32)g_gfx.draw_w, (f32)g_gfx.draw_h, 0.0f, 1.0f};
     UINT stride = sizeof(PvrVtx), offset = 0;
+    u64 t = perf_timer_begin();
     ID3D11DeviceContext_OMSetRenderTargets(cx, 1, &g_gfx.draw_rtv, g_dsv);
     ID3D11DeviceContext_RSSetViewports(cx, 1, &vp);
     ID3D11DeviceContext_RSSetState(cx, pvr_raster_state());
@@ -253,15 +240,19 @@ static void bind_pipeline(void)
     ID3D11DeviceContext_PSSetConstantBuffers(cx, 0, 1, &g_cb);
     ID3D11DeviceContext_PSSetShaderResources(cx, 1, 1, &g_bb_srv);
     if (g_gpu_blend) pvr_blend_gpu_bind(cx, g_vb);
+    perf_timer_end(PVR_T_BIND, t);
 }
 
 static void draw_translucent(const PvrPass *pass, u32 p)
 {
     const u32 *r = g_sc->range[p][PVRX_LIST_TRANSLUCENT];
     if (pass->autosort && r[1] > r[0] && pvr_oit_begin(g_dsv)) {
+        u64 t;
         draw_list(p, PVRX_LIST_TRANSLUCENT);
+        t = perf_timer_begin();
         if (pvr_modvol_trans_needed(g_sc, p)) pvr_modvol_trans_draw(g_sc, p);
         pvr_oit_resolve();
+        perf_timer_end(PVR_T_PASSES, t);
         bind_pipeline();
     } else {
         if (pvr_modvol_trans_needed(g_sc, p)) pvr_todo("pvr: translucent modifier volumes without autosort");
@@ -273,23 +264,32 @@ static int draw_scene(const PvrPass *passes, int reuse)
 {
     ID3D11DeviceContext *cx = g_gfx.ctx;
     f32 bg[4], scale;
+    u64 t;
     if (!init_pipeline() || !ensure_depth() || ((!reuse || reuse == 3) && !prepare_batches())) return 0;
-    if (g_sc->nvtx && !(reuse == 2 && g_vb_own) && (!ensure_buffer(&g_vb, &g_vb_cap, g_sc->nvtx * (u32)sizeof(PvrVtx),
-        D3D11_BIND_VERTEX_BUFFER, 0) || !upload(g_vb, g_sc->vtx, g_sc->nvtx * (u32)sizeof(PvrVtx))))
+    t = perf_timer_begin();
+    if (g_sc->nvtx && !(reuse == 2 && g_vb_own) && (!pvr_buffer_ensure(&g_vb, &g_vb_cap, g_sc->nvtx * (u32)sizeof(PvrVtx),
+        D3D11_BIND_VERTEX_BUFFER, 0) || !pvr_buffer_upload(g_vb, g_sc->vtx, g_sc->nvtx * (u32)sizeof(PvrVtx))))
         return 0;
+    perf_timer_end(PVR_T_VERTS, t);
     g_vb_own = !(reuse & 1); /* 2: the scene's own vertices, blended on the GPU; 3: a slot's, blended */
     scale = frame_consts();
     pvr_argb_float(g_pvr_drawn->bg_argb[0] | 0xff000000u, bg);
+    t = perf_timer_begin();
     if (!g_pvr_keep) clear_background(bg); /* port_render_keep_frame: the frame as it is (pvr_frame_bars) */
+    perf_timer_end(PVR_T_CLEAR, t);
     bind_pipeline();
     for (u32 p = 0; p < g_sc->passes; p++) {
+        t = perf_timer_begin();
         if (p == 0 || passes[p].z_clear)
             ID3D11DeviceContext_ClearDepthStencilView(cx, g_dsv, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL,
                                                       g_pvr_drawn->bg_xyz[0][2] * scale > 1.0f ? 1.0f : g_pvr_drawn->bg_xyz[0][2] * scale, 0);
+        perf_timer_end(PVR_T_CLEAR, t);
         draw_list(p, PVRX_LIST_OPAQUE);
         draw_list(p, PVRX_LIST_PUNCH);
         if (g_sc->range[p][PVRX_LIST_OPAQUE_MOD][1] > g_sc->range[p][PVRX_LIST_OPAQUE_MOD][0]) {
+            t = perf_timer_begin();
             pvr_modvol_draw(g_sc, p, g_cb);
+            perf_timer_end(PVR_T_PASSES, t);
             bind_pipeline();
         }
         draw_translucent(&passes[p], p);
@@ -303,7 +303,9 @@ int pvr_render(const PvrPass *passes, u32 count)
 {
     u64 pt = prof_begin(PROF_D3D);
     int early = pvr_slot_alone() && pvr_blend_early_parse(g_scenes, passes, count); /* --interp-early: parsed, paired */
+    u64 lt = perf_timer_begin();
     gfx_lock();
+    perf_timer_end(PVR_T_LOCK, lt);
     pvr_slot_begin(), g_sc = &g_scenes[pvr_slot()]; /* a split screen's view: its own slot */
     port_extra_thread_hold(); /* no in-between frame until this one has been counted (--present-thread) */
     play_stats_draw(1);

@@ -2,8 +2,12 @@
 fight showed the blue back screen where the arena's grass and dirt floor is (the launcher, 2026-11-02; Mednafen draws the
 floor). tests/sat_vdp2_rot_test.c builds both files at /W4 /WX in 32-bit MSVC, programs the registers, a map and a
 rotation parameter table as the fight does, and reads dots of the composed picture; then the windows and NBG0's line
-scroll (sat_vdp2_win.c: Robo Pit's sky shows only above the horizon through window 0). Each picture is composed in one band
-and again in four (base/bands.c), and the two must match.
+scroll (sat_vdp2_win.c: Robo Pit's sky shows only above the horizon through window 0); then the sprite layer's colour
+calculation (Dragon Force's half-transparent highlights were drawn solid: the kit took CCMD for SPCCEN; Saturn Bomberman's
+sprite type 6 was read with the shadow bit as priority, and condition 3 on the word's bit 15, not the colour's MSB;
+and the special priority and colour calculation modes (SFPRMD, SFCCMD) were ignored: a whole plane was calculated). Each picture is composed in one band
+and again in four (base/bands.c), and the two must match. Then the game's frame hook (sat_hooks.h): called on each
+composed picture with its width and the screen's place in it, and what it draws stays in the picture.
 Controls: the check must fail on each planted mistake. Skips when no 32-bit MSVC is installed here.
 Run: python -W error tests/test_sat_vdp2_rot.py.
 Nearest existing: tests/test_sat_vdp_fb.py - the same way of building a kit file with a C test, for VDP1's framebuffers.
@@ -45,6 +49,19 @@ PLANTS = {
     "widened: no window taken as one at x -1": ("sat_vdp2_win.c", "l->xs[d] = 0x80000000u;", "l->xs[d] = 0xffffffffu;"),
     "widened: windows stop at the screen's edges": ("sat_vdp2_win.c", "if (sat_wide_now) xs =", "if (0) xs ="),
     "widened: the picture stretched, not wider": ("sat_vdp2.c", "x = 0u - g_ox; wx < g_ww;", "x = 0u; wx < g_ww;"),
+    "the game's frame hook not called": ("sat_vdp2.c", "sat_game_frame(sat_frame, g_ww, h, g_ox);", "(void)0;"),
+    "the game's frame hook told the screen's width, not the picture's": ("sat_vdp2.c", "sat_game_frame(sat_frame, g_ww, h, g_ox);",
+                                                                        "sat_game_frame(sat_frame, g_w, h, g_ox);"),
+    "sprite colour calculation on CCMD, not SPCCEN": ("sat_vdp2.c", "if (g_ccctl & 0x40u) {", "if (g_ccctl & 0x100u) {"),
+    "sprite colour calculation by the CC bits, not the priority number": ("sat_vdp2.c", "p = *prio;", "p = (int)cc;"),
+    "sprite type 6's priority read from bits 15-13": ("sat_vdp2.c", "case 6: pr = (w >> 12) & 7u; cc = (w >> 10) & 3u;", "case 6: pr = (w >> 13) & 7u; cc = (w >> 10) & 7u;"),
+    "sprite condition 3 on the word's bit 15, not the colour's MSB": ("sat_vdp2.c", ": msb != 0;", ": (w & 0x8000u) != 0;"),
+    "special colour calculation ignored (SFCCMD)": ("sat_vdp2.c", "if (*cce && g->sfcc)", "if (0)"),
+    "special priority ignored (SFPRMD)": ("sat_vdp2.c", "if (g->sfpr == 1) p =", "if (0) p ="),
+    "the special code ignored (per dot)": ("sat_vdp2.c", "(int)((sf & 2u) && (sf & 4u))", "(int)(sf >> 1 & 1u)"),
+    "the colour's MSB ignored for planes": ("sat_vdp2.c", "((u32)g_cram_msb[cidx] << 3)", "0u"),
+    "a dot of priority 0 shown": ("sat_vdp2.c", "&ncc)) > 0)", "&ncc)) >= 0)"),
+    "CCMD's add mode as a ratio": ("sat_vdp2.c", "!t->cce ? t->cb : (g_ccctl & 0x100u) ?", "!t->cce ? t->cb : 0 ?"),
 }
 
 

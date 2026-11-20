@@ -164,15 +164,23 @@ not apply). Paths and addresses are strings (`"0x06000000"`).
 | `name` | The game's name: the log, setup's messages and online play's check that both copies are the same game (`SAT_GAME_NAME`; default `Saturn game`) |
 | `image` | The code image the port loads (a composite of the disc's code files until the disc loader replaces it); `--image` overrides |
 | `image_base` | Where it loads in work RAM |
+| `image_files` | Optional: the disc files of the code image, `[["/0", "0x06010000"], ...]` (disc path, load address), as onboarding composed `image`. With `image_sha256`, a run without `--image` makes the image from `--disc` (`sat_image.c`): a release has no image.bin, and setup and verify refuse a disc that makes another (exit code 5). AutoOnboard writes both. Absent: the `image` file |
+| `image_sha256` | The SHA-256 of the image `image_files` makes (64 hex digits); required with it |
+| `fallback` | Optional: `"on"` or `"off"`: `--fallback`'s default in this build (`sat_interp.c`), as the boot proved it: a launcher passes no flags |
 | `product` | Optional: the disc header's product number; setup and verify refuse a disc with another (exit code 5, `console_sat.c`). Without it, any Saturn disc is accepted |
 | `entry` | The guest function the port calls first (on the game's thread) |
 | `entry_sp` | Its initial stack |
 | `entry_gbr` | Optional: its initial GBR (default: `entry_sp`) |
+| `boot_dir` | Optional: the folder of the program the image starts at when it replaces the disc's first-read loader (`/BOMSS`); the CD block's file system and the boot ROM's words at 06000ccc..06000cce hand that folder to the game's file system, as the loader left them (`sat_cd.c`) |
 | `slave_sp` | Optional: the slave SH-2's stack top (the game loads it from its own memory, which the translated slave program does not run) |
 | `frame_hz` | 50 (PAL) or 60 (NTSC); the vertical blank comes on the real clock |
 | `exit_regs` | The registers a function hands on at return besides r0 (the SH-2 asm of the game's library reads them after a call): r4..r7 and r1..r3; a callee that never writes one hands the caller's back |
 | `vblank_flags` | Optional: offsets from GBR of the bytes only the vertical-blank handler sets: a loop that reads one waits for the vertical blank (`sat_vblank_wait`) instead of spinning |
 | `main_loops` | Optional: the game's main loop functions: each call is a turn with nothing to do yet, and enough of them in one vertical blank wait for the next (`sat_idle_turn`, `sat_sys.c`) |
+| `controller` | Optional: `"saturn"`: the Saturn pad on the host's controller by default (A B X Y as they are, RB C, LB Z, LT L, RT R, Start, the d-pad; the stick clicks, Back, Guide and the right stick unassigned), by the host button each action reads (`sat_input.c`). The keyboard is game.json `keys`. The pad is still named dreamcast in the log: the base has no per-console name (a proposal is in the handover). Absent: the layout games made before it keep (C on RT, Z on LT, L on LB, R on RB) |
+| `confirm` | Optional: the game's own button that moves on in its menus (`"A"` `"B"` `"C"` `"X"` `"Y"` `"Z"` `"L"` `"R"`), found by AutoOnboard's menu probe (`onboard_sat.py`): the kit puts it on the host's A (keyboard Z), and the Saturn button that had host A takes the host button confirm had, so every button keeps one (`sat_input.c`). Absent: the layout above unchanged |
+| `cancel` | Optional: the game's own button that backs out of a menu (same values, not confirm's), found by the same probe: the kit puts it on the host's B (keyboard X) the same way. Absent: the layout above unchanged |
+| `smpc_intback` | Optional: `"hardware"`: the SMPC's INTBACK peripheral report as the hardware gives it (SR bit 7 PDE, 6 PDL, 5 NPE, 4 RESB never; the report per port, 32 bytes a packet; a CONTINUE is IREG0 bit 7 inverted from the last one, a BREAK wins), which SBL games need to take the pad (`sat_smpc.c`). Absent or `false`: the older report (SR 0x90, one packet, only a CONTINUE with bit 7 set), which a game made before it, with its recordings, keeps |
 | `sound_cpu` | `true`: SMPC SNDON starts a 68000 on the driver the game loaded into sound RAM, and the SCSP's timers, interrupts and 32 voices run each frame (`sat_m68k*.c`, `sat_scsp*.c`); the mixed sound goes to the wave device and, with `--wav FILE`, to a WAV file. `sound_clear` and `sound_stream` are then unused. Emulated hardware: for bring-up and as the answer key for a native sound driver, not the play path to keep (RUNTIME_TARGET.md) |
 | `sound_clear` | Sound-RAM mailbox bytes the missing 68K driver would clear |
 | `sound_stream` | The driver's stream-progress report: `start_addr`, `start_cmd`, `status_addr`, `status_count`, `status_step`, `block`, `rate` |
@@ -324,9 +332,12 @@ check run as these are.
 | `twin_stick` | `--twin-stick on\|off` | on for a game with game.json `twin_stick`: in its fights the right stick turns and the left stick's sideways direction sidesteps; the d-pad turns as before | off in a scripted run unless given; a replay plays the recorded pad, which holds the buttons twin-stick pressed | Input > Controls > Twin-stick | `twin-stick` |
 | `menu_checks` | none: the game's own, which it reads from `game.NAME` | off, or on for an entry with `"default": true` | off: a check run has no settings file, and a default is never on there | Game > each entry's label | `game.NAME` |
 | `auto_load` | `--auto-load on\|off` | on for a game with game.json `auto_load` when its save file is there: the game's load path is driven at boot | off unless given; a replay takes the recorded choice | Game > Auto-load save | `auto-load` |
+| `fast_forward` | `--fast-forward 2x\|3x\|4x\|max` | 3x, only while Tab or its button (R3 until the player picks another: Input > Controls > Fast forward) is held: the console runs its machine's clock that many times as fast (base/speed.c), for a console with PORT_CONSOLE_SPEED; the title bar says so | never: not in a check run, a replay, online play or on the fixed clock (`speed: fast forward not offered`) | Game > Fast forward speed | `fast-forward` |
+| `fast_forward_toggle` | `--fast-forward-toggle on\|off` | off: held, not toggled | never | Game > Fast forward: toggle | `fast-forward-toggle` |
+| `game_options` | `--ID WORD` (each option's: on/off, or one of a choice's values) | each option's `default`: an improvement is on (a game's own options: a `PortOption` table, `base/game_options.c`, docs/NEW_GAME.md "Adding a per-game option"; Dragon Force's `quick-dialogue`) | its `original` unless given; a replay takes the recording's note | the menu its table names | the option's id |
 
 Not enhancements: the player's preferences the menu also saves, which change neither what the game draws nor its
-timing: `vsync`, `fps`, `volume`, `mute-unfocused`, `rumble`, `pause-unfocused`. `pad-art` (the Input menu's Controller pictures) picks among a texture pack's controller images and does nothing without one.
+timing: `vsync`, `fps`, `volume`, `mute-unfocused`, `rumble`, `pause-unfocused`, `bind-fast-forward` (Fast forward's button). `pad-art` (the Input menu's Controller pictures) picks among a texture pack's controller images and does nothing without one.
 
 ## Releasing for Phangrade
 

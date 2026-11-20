@@ -44,7 +44,11 @@ u32 xfer_end(void);                               /* bytes moved; deletes sector
 int xfer_active(void);
 
 extern u32 sat_cd_data_rate; /* sat_cd.c */
+extern u32 sat_cd_log_left;  /* sat_cd.c: --cd-log N, the next N register events logged */
+extern u32 sat_cd_log_from, sat_cd_log_held; /* sat_cd.c: --cd-log N@VB, held until vertical blank VB */
+int sat_cd_boot_dir(const char *path);           /* the boot folder's file id (game.json "boot_dir"), -1 if absent */
 void sat_cd_played(u32 start, u32 at, u32 end); /* sat_movie.c: a movie the host played leaves the drive paused at `at` */
 extern int sat_cd_fast_loads; /* sat_cd.c: 1 a load fills the buffer at once, 0 the drive's rate, -1 not set */
+int sat_cd_loading(void);     /* sat_cd.c: a quick data play is going, or the game took its sectors in the last two blanks */
 
 #endif

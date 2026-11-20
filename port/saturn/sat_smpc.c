@@ -1,10 +1,21 @@
 /* The SMPC (0x00100000): the system manager. A command written to COMREG runs at once and clears SF. INTBACK returns
  * the status block (clock, region, system flags) and then the peripheral data, in OREG, and raises the SCU's
  * system-manager interrupt for each packet: the game's handler copies OREG and, when SR says more is coming (NPE),
- * writes IREG0 = CONTINUE for the next. SNDON / SNDOFF start and stop the sound CPU (sat_scsp.c). */
+ * asks for the next by inverting IREG0 bit 7 (CONTINUE), or ends the command with IREG0 bit 6 (BREAK).
+ * The peripheral report is the hardware's: per port a status byte (F0 nothing, F1 one device), then a standard digital
+ * pad (ID 02, two data bytes, a pressed button 0); a port in 0-byte mode (IREG1) is left out; 32 bytes go a packet.
+ * SR: bit 7 a peripheral packet, 6 its first (PDL), 5 more to come (NPE), 4 the reset button (RESB), 3..0 the port
+ * modes. SBL's handler (Saturn Bomberman, 0x0609d0aa) takes a first packet only with SR & 0xc0 = 0xc0 and a later one
+ * with 0x80, and counts SR bit 4 as the reset button held. The kit gave 0x90 (bits 6 and 4 swapped), so every pad
+ * report was dropped, and a CONTINUE of 0x00 was ignored: Start at the title did nothing (2026-11-16).
+ * That report is behind game.json "saturn" "smpc_intback": "hardware" (SAT_SMPC_HARDWARE). Without it the kit keeps what a
+ * game made before it (Robo Pit's live line and golden recording) has always had: SR 0x90 on the peripheral packet, one
+ * packet with both ports, and only a CONTINUE with IREG0 bit 7 set answered.
+ * SNDON / SNDOFF start and stop the sound CPU (sat_scsp.c). */
 #include <string.h>
 #include <time.h>
 #include "sat.h"
+#include "sat_game.h"  /* SAT_SMPC_HARDWARE: the game.json switch */
 #include "sat_sys.h"
 #include "session.h"
 
@@ -12,13 +23,28 @@
 #define OREG(n) (0x21u + 2u * (n))
 #define IREG0 0x01u
 #define IREG1 0x03u
+#ifdef SAT_SMPC_HARDWARE
+#define SR_PDE 0x80u  /* a peripheral data packet (clear on the status reply) */
+#define SR_PDL 0x40u  /* the first peripheral packet; the status reply has it too, as the kit always gave */
+#define SR_NPE 0x20u  /* more data remains: CONTINUE for it */
+#define SR_RESB 0x10u /* the reset button held: never here */
+#else
 #define SR_PDE 0x80u
 #define SR_RESB 0x40u
 #define SR_NPE 0x20u
 #define SR_PDL 0x10u
+#endif
 
 static u8 g_reg[0x80];
+#ifdef SAT_SMPC_HARDWARE
+static u8 g_peri[64]; /* the peripheral report of the running INTBACK */
+static u32 g_peri_len, g_peri_at;
+static int g_wait; /* 1: the status went out, the report follows a CONTINUE; 2: more of the report follows */
+static u8 g_cont;  /* IREG0 bit 7 at the last CONTINUE taken: the next one inverts it */
+static u8 g_ireg1; /* IREG1 of the running INTBACK: the port modes */
+#else
 static int g_peri_pending; /* an INTBACK that asked for peripheral data and has not had it yet */
+#endif
 
 static u32 smpc_read(u32 p, u32 size)
 {
@@ -80,6 +106,42 @@ static void intback_status(void)
     g_reg[OREG(31)] = 0x00;
 }
 
+#ifdef SAT_SMPC_HARDWARE
+/* the report: each port not in 0-byte mode (IREG1 bits 5-4 port 1, 7-6 port 2, mode 3), its digital pad (F1 02 data0
+ * data1) or nothing connected (F0). No multitap is reported: a team fight's seats past two come from sat_team.c. */
+static void peripheral_report(void)
+{
+    static u32 last = 0xffffffffu, n_diff;
+    u32 pads[2], there = sat_pad_data(pads), d = pads[0];
+    if (d != last && n_diff++ < 200) port_log("smpc: vb %u the game read pad data %04x\n", sat_vblank_count(), d);
+    last = d;
+    g_peri_len = g_peri_at = 0;
+    for (u32 p = 0; p < 2; p++) {
+        if ((g_ireg1 >> (4u + 2u * p) & 3u) == 3u) continue;
+        if (!(there & 1u << p)) {
+            g_peri[g_peri_len++] = 0xf0;
+            continue;
+        }
+        g_peri[g_peri_len++] = 0xf1;
+        g_peri[g_peri_len++] = 0x02;
+        g_peri[g_peri_len++] = (u8)pads[p];
+        g_peri[g_peri_len++] = (u8)(pads[p] >> 8);
+    }
+}
+
+/* the next 32 bytes of the report in OREG0..31, SR saying whether it is the first and whether more remains */
+static void peripheral_packet(int first)
+{
+    u32 n = g_peri_len - g_peri_at;
+    if (n > 32u) n = 32u;
+    memset(g_reg + 0x20, 0, 0x40);
+    for (u32 i = 0; i < n; i++) g_reg[OREG(i)] = g_peri[g_peri_at + i];
+    g_peri_at += n;
+    g_wait = g_peri_at < g_peri_len ? 2 : 0;
+    g_reg[0x61] = (u8)(SR_PDE | (first ? SR_PDL : 0u) | (g_wait ? SR_NPE : 0u) | (g_ireg1 >> 4 & 0x0fu));
+    sat_scu_raise(7u);
+}
+#else
 /* each port: the digital pad (F1 02 data0 data1), or nothing connected (F0) */
 static void intback_peripheral(void)
 {
@@ -99,6 +161,7 @@ static void intback_peripheral(void)
         g_reg[OREG(7)] = (u8)(pads[1] >> 8);
     }
 }
+#endif
 
 static void command(u32 cmd)
 {
@@ -107,6 +170,18 @@ static void command(u32 cmd)
         int want_status = g_reg[IREG0] & 1, want_peri = (g_reg[IREG1] & 8) != 0;
         static int n_intback;
         if (sat_vblank_count() >= 1000 && n_intback++ < 400) port_log("smpc: vb %u INTBACK ireg %02x %02x %02x\n", sat_vblank_count(), g_reg[IREG0], g_reg[IREG1], g_reg[0x05]);
+#ifdef SAT_SMPC_HARDWARE
+        g_ireg1 = g_reg[IREG1];
+        if (want_status) {
+            intback_status();
+            g_wait = want_peri;
+            g_reg[0x61] = (u8)(SR_PDL | (want_peri ? SR_NPE : 0u));
+            sat_scu_raise(7u);
+        } else if (want_peri) {
+            peripheral_report();
+            peripheral_packet(1);
+        }
+#else
         if (want_status) {
             intback_status();
             g_peri_pending = want_peri;
@@ -119,6 +194,7 @@ static void command(u32 cmd)
             break;
         }
         sat_scu_raise(7u);
+#endif
         break;
     }
     case 0x02: /* SSHON: the slave comes up in the BIOS idle loop (the next MINIT starts its program) */
@@ -142,6 +218,20 @@ static void smpc_write(u32 p, u32 size, u32 value)
     for (u32 i = 0; i < size; i++) g_reg[(o + i) & 0x7fu] = (u8)(value >> (8u * (size - 1u - i)));
     if (o == 0x1fu) {
         command(value & 0xffu);
+#ifdef SAT_SMPC_HARDWARE
+    } else if (o == IREG0 && g_wait && (value & 0x40u)) { /* INTBACK BREAK: the rest is dropped */
+        g_wait = 0;
+        g_reg[0x61] &= 0x0fu;
+    } else if (o == IREG0 && g_wait && ((value ^ g_cont) & 0x80u)) { /* INTBACK CONTINUE: bit 7 inverted */
+        int first = g_wait == 1;
+        g_cont = (u8)(value & 0x80u);
+        if (first) peripheral_report();
+        peripheral_packet(first);
+    } else if (o == IREG0 && (value & 0xc0u) == 0x80u) {
+        static int n_idle;
+        if (n_idle++ < 20) port_log("smpc: vb %u INTBACK CONTINUE with nothing pending\n", sat_vblank_count());
+    }
+#else
     } else if (o == IREG0 && (value & 0x80u) && g_peri_pending) { /* INTBACK CONTINUE: the peripheral data */
         g_peri_pending = 0;
         intback_peripheral();
@@ -152,6 +242,7 @@ static void smpc_write(u32 p, u32 size, u32 value)
     } else if (o == IREG0 && (value & 0x40u)) { /* INTBACK BREAK */
         g_peri_pending = 0;
     }
+#endif
 }
 
 /* MINIT / SINIT (0x01000000 / 0x01800000): one SH-2 signals the other's input capture. The slave is not run yet: a
@@ -177,4 +268,15 @@ void sat_smpc_init(void)
     sat_map(0x01800000u, 0x01810000u, "SINIT", sig_read, sig_write);
     memset(g_reg, 0, sizeof g_reg);
     sat_map(SMPC_LO, SMPC_LO + 0x10000u, "SMPC", smpc_read, smpc_write);
+}
+
+void sat_smpc_state(SatSt *io)
+{
+    sat_st(io, g_reg, sizeof g_reg);
+#ifdef SAT_SMPC_HARDWARE
+    sat_st(io, g_peri, sizeof g_peri), sat_st(io, &g_peri_len, 4), sat_st(io, &g_peri_at, 4), sat_st(io, &g_wait, 4);
+    sat_st(io, &g_cont, 1), sat_st(io, &g_ireg1, 1);
+#else
+    sat_st(io, &g_peri_pending, 4);
+#endif
 }

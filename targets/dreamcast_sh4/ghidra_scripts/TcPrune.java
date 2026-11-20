@@ -75,6 +75,9 @@ public class TcPrune extends GhidraScript {
         if (e.getOffset() % 4 != 0 || !ramPointer(e) || !ramPointer(e.add(4))) return null;
         for (Reference r : getReferencesTo(e)) {
             Address from = r.getFromAddress();
+            // a reference from outside memory (Ghidra's Entry Point reference, offset 1 of its own space) has no word
+            // to read, and add(1) overflows there (Saturn Bomberman with H2HLIBUS at 06002f00)
+            if (!from.isMemoryAddress() || !currentProgram.getMemory().contains(from)) continue;
             if (!currentProgram.getMemory().contains(from.add(1))) continue;
             int op = word(from);
             long t = op >> 12 == 0xd ? ((from.getOffset() & ~3L) + 4) + (op & 0xff) * 4L

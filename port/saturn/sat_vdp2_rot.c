@@ -57,6 +57,9 @@ void sat_rbg0_setup(SatPlane *g)
     g->craoff = (int)(R(0xe6) & 7u) << 8;
     g->ccen = (int)((R(0xec) >> 4) & 1u);
     g->ccratio = (int)(R(0x10c) & 31u);
+    g->sfpr = (int)((R(0xea) >> 8) & 3u), g->sfcc = (int)((R(0xee) >> 8) & 3u); /* special functions (sat_vdp2.c's nbg_dot) */
+    g->sfcode = (int)((R(0x24) & 0x10u) ? R(0x26) >> 8 : R(0x26) & 0xffu);
+    g->pnsf = (int)(((pnc >> 9) & 1u) | ((pnc >> 7) & 2u)), g->bmsf = (int)(((R(0x2e) >> 5) & 1u) | ((R(0x2e) >> 3) & 2u));
     g->zx = g->zy = 0x100;
     g_r.ovr = (int)((plsz >> 2) & 3u);
     g_r.w = g->bitmap ? 512u : 2048u * (u32)g->plw;

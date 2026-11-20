@@ -171,6 +171,78 @@ class OverlayImage(unittest.TestCase):
             overlay_image.build([(0x0602C000, b"\x00" * 8, "A", False), (0x0602C004, b"\x00", "B", False)])
 
 
+
+class OverlayPointers(unittest.TestCase):
+    def test_bodies_with_pointers_adds_table_code(self):
+        """translator/tools/overlay.py --bodies --pointers: a function the list lacks, reached only through a table of
+        code addresses, is translated too (Saturn Bomberman's KRNL calls 060342f8 through its table at 060b5364; the
+        census's list lacked it and the kit hit a STUB). A table word inside a listed body adds nothing."""
+        d = tmpdir("satovlptr_")
+        img = bytearray(0x100)
+        for at, words in ((0x00, (0x000B, 0x0009)), (0x10, (0x000B, 0x0009)),            # listed: rts; nop
+                          (0x20, (0xE001, 0x000B, 0x0009))):                             # not listed: mov #1,r0; rts; nop
+            struct.pack_into(f">{len(words)}H", img, at, *words)
+        struct.pack_into(">4I", img, 0x40, 0x06000000, 0x06000010, 0x06000020, 0x06000012)  # a handler table
+        (d / "img.bin").write_bytes(bytes(img))
+        (d / "bodies.txt").write_text("06000000 06000000 06000004\n06000010 06000010 06000014\n", encoding="utf-8")
+        tool = SAT / "translator" / "tools" / "overlay.py"
+        base = [sys.executable, str(tool), "--image", str(d / "img.bin"), "--load", "0x06000000", "--range",
+                "0x06000000", "0x06000100", "--bodies", str(d / "bodies.txt")]
+        for flags, want in (([], {"06000000", "06000010"}), (["--pointers"], {"06000000", "06000010", "06000020"})):
+            out = d / ("p" if flags else "n")
+            r = subprocess.run(base + flags + ["--out", str(out)], capture_output=True, text=True, timeout=120)
+            self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+            self.assertEqual({q.stem for q in (out / "c").glob("*.c")}, want)
+        rows = json.loads((d / "p" / "overlay.json").read_text(encoding="utf-8"))
+        self.assertEqual(rows["06000020"].get("found"), "table")
+        self.assertNotIn("found", rows["06000000"])
+
+    def test_pointers_take_a_thunk_into_a_shared_tail(self):
+        """A table entry that is a two-instruction thunk, `bra` into a listed function's shared tail with a delay slot
+        that sets an argument, is translated (Dragon Force's CD driver: 002208fc is `bra 00220798; mov #1,r4`, and
+        00220798 is `rts; mov #1,r0`, the tail 0022079c's neighbour shares. The candidate's branch landed in known
+        code, so it was dropped, 0022098c's call to it was a STUB returning 0, the sector transfer never ran and the
+        stream stayed busy: a black screen from vertical blank 221). A candidate whose own first instructions overlap
+        known code is still dropped."""
+        d = tmpdir("satovlthunk_")
+        img = bytearray(0x100)
+        # listed 06000000: bf 06000006; rts; nop; 06000006: rts; mov #1,r0 (the tail a branch shares)
+        struct.pack_into(">5H", img, 0x00, 0x8B01, 0x000B, 0x0009, 0x000B, 0xE001)
+        # not listed, in a table: bra 06000006 with mov #2/#3/#4,r4 in the slot
+        for at, disp, slot in ((0x10, 0xFF9, 0xE402), (0x14, 0xFF7, 0xE403), (0x18, 0xFF5, 0xE404)):
+            struct.pack_into(">2H", img, at, 0xA000 | disp, slot)
+        struct.pack_into(">4I", img, 0x40, 0x06000010, 0x06000014, 0x06000018, 0x06000008)  # 06000008: a slot, not a start
+        (d / "img.bin").write_bytes(bytes(img))
+        (d / "bodies.txt").write_text("06000000 06000000 0600000a\n", encoding="utf-8")
+        tool = SAT / "translator" / "tools" / "overlay.py"
+        r = subprocess.run([sys.executable, str(tool), "--image", str(d / "img.bin"), "--load", "0x06000000", "--range",
+                            "0x06000000", "0x06000100", "--bodies", str(d / "bodies.txt"), "--pointers", "--out",
+                            str(d / "p")], capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+        self.assertEqual({q.stem for q in (d / "p" / "c").glob("*.c")}, {"06000000", "06000010", "06000014", "06000018"})
+
+    def test_pointers_find_a_table_of_records(self):
+        """A table of records that each hold a code address at the same offset, with data words between (Saturn
+        Bomberman's KRNL calls 0606e89e, 0606ea8c and 06074604 through the 16-byte records at 060b957c, the handler
+        at +12): --pointers translates the handlers the list lacks (STUB 0606e89e)."""
+        d = tmpdir("satovlrec_")
+        img = bytearray(0x100)
+        for at, words in ((0x00, (0x000B, 0x0009)), (0x10, (0x000B, 0x0009)), (0x20, (0xE001, 0x000B, 0x0009)),
+                          (0x28, (0xE002, 0x000B, 0x0009)), (0x30, (0xE003, 0x000B, 0x0009))):
+            struct.pack_into(f">{len(words)}H", img, at, *words)
+        for k, fn in enumerate((0x06000020, 0x06000028, 0x06000030)):
+            struct.pack_into(">4I", img, 0x40 + 16 * k, 0x00010002, 0x00C80000, 0x00000001, fn)
+        (d / "img.bin").write_bytes(bytes(img))
+        (d / "bodies.txt").write_text("06000000 06000000 06000004\n06000010 06000010 06000014\n", encoding="utf-8")
+        tool = SAT / "translator" / "tools" / "overlay.py"
+        r = subprocess.run([sys.executable, str(tool), "--image", str(d / "img.bin"), "--load", "0x06000000", "--range",
+                            "0x06000000", "0x06000100", "--bodies", str(d / "bodies.txt"), "--pointers", "--out",
+                            str(d / "p")], capture_output=True, text=True, timeout=120)
+        self.assertEqual(r.returncode, 0, r.stderr[-2000:])
+        self.assertEqual({q.stem for q in (d / "p" / "c").glob("*.c")},
+                         {"06000000", "06000010", "06000020", "06000028", "06000030"})
+
+
 # ---------- the oracle scripts ----------
 
 @unittest.skipUnless(CP and jdk("javac") and jdk("java"), "no ghidra_home or JDK on this machine")

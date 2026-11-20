@@ -226,6 +226,22 @@ class FailsBefore(unittest.TestCase):
         self.assertTrue(said.startswith(fails_before.TRAILER), said)
         self.assertIn("add is wrong", said)
 
+    def test_the_old_tree_gets_this_checkouts_config_local(self):
+        """2026-11-17: the throwaway worktree had no config.local.json (git-ignored), so every MSVC test skipped there and
+        a C fix's check passed on the unfixed build. It now gets this checkout's copy, or the main worktree's when this is
+        a linked worktree with none of its own."""
+        self.write(".gitignore", "config.local.json\n")
+        self.commit("ignore")
+        self.write("config.local.json", '{"vcvars": "x"}')
+        read = [sys.executable, "-c", "import json, os; f = 'config.local.json'; print(json.load(open(f))['vcvars'] if os.path.isfile(f) else 'missing')"]
+        rc, out = fails_before.on_base("master", {}, read, 60, self.root)
+        self.assertEqual((rc, out.strip()), (0, "x"), out)
+        linked = self.root.parent / (self.root.name + "-linked")
+        self.git("worktree", "add", "-q", "--detach", str(linked), "master")
+        self.addCleanup(lambda: self.git("worktree", "remove", "--force", str(linked)))
+        rc, out = fails_before.on_base("master", {}, read, 60, linked)
+        self.assertEqual((rc, out.strip()), (0, "x"), out)
+
     def test_plant_a_check_that_passes_on_the_unfixed_build_is_refused(self):
         self.write("lib.py", "def add(a, b):\n    return a + b\n")
         rc, said = self.prove("assert 1 + 1 == 2\n")

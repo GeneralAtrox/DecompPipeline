@@ -11,6 +11,7 @@ static int g_fail;
 void sat_v1_draw(void) { g_draws++; put(sat_v1_draw_fb(), g_draws * 2u, 2, 0x8000u | g_draws); }
 void sat_scu_raise(u32 n) { (void)n; }
 void sat_perf_vblank(void) {}
+void sat_text_dirty(const u8 *guest, int cpu) { (void)guest, (void)cpu; } /* clearer text (sat_text.c) is not built */
 void sat_sample(void) {}
 void sat_vblank_counted(void) {}
 void sat_frame_limit_check(void) {}
@@ -129,3 +130,4 @@ int main(void)
 
 /* the kit pieces this test does not build: the input-lag frame hook (sat_inb.c) is off */
 void sat_inb_drawn(const u8 *fb) { (void)fb; }
+void sat_inb_fb_written(const u8 *fb) { (void)fb; }

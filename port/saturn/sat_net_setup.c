@@ -60,21 +60,21 @@ int sat_net_option(const char *a, const char *v)
 
 #ifndef SAT_NETPLAY
 int sat_net_on(void) { return 0; }
-void sat_net_start(const char *image)
+void sat_net_start(const u8 *image, u32 size)
 {
-    (void)image;
+    (void)image, (void)size;
     if (g_opt.host || g_opt.join) port_log("netplay: this build has no online play (game.json netplay)\n");
 }
 void sat_net_started(void) {}
 void sat_net_vblank(void) {}
 u32 sat_net_pads(u32 data[2]) { (void)data; return 1u; }
 void sat_net_end(void) {}
+long long sat_net_next(void) { return 0; } /* no clock kept: as sat_net.c's before its first frame */
 #else
 #define S sat_net
 static u8 *g_snap;
 static u32 g_snap_len;
 static char g_copy[MAX_PATH + 16];
-static u8 g_buf[65536];
 static LONGLONG g_deadline;
 
 void sat_net_plant(u32 f) /* --net-test-desync: this side only */
@@ -138,18 +138,16 @@ void sat_net_idle(LONGLONG until)
 
 static const char *save_path(void)
 {
-    const char *s = host_arg("--save");
-    return s && *s ? s : "saturn_backup.bin";
+    return sat_bup_where(); /* --save, else --save-dir's saturn_backup.bin, else the current folder's (sat_bup.c) */
 }
 
-static const char *g_image; /* the code image, for the digest */
-static int digest(const char *image, u8 out[NET_DIGEST])
+static u8 g_dg[NET_DIGEST]; /* the code image's digest, made at the start */
+static int g_dg_ok;
+static int digest(const u8 *image, u32 size, u8 out[NET_DIGEST])
 {
     static const char tag[] = "saturn netplay 1";
     BCRYPT_ALG_HANDLE alg = NULL;
     BCRYPT_HASH_HANDLE h = NULL;
-    FILE *f;
-    size_t n;
     int ok = 0;
     memset(out, 0, NET_DIGEST);
     if (!BCRYPT_SUCCESS(BCryptOpenAlgorithmProvider(&alg, BCRYPT_SHA256_ALGORITHM, NULL, 0))) return 0;
@@ -157,12 +155,7 @@ static int digest(const char *image, u8 out[NET_DIGEST])
         BCryptHashData(h, (PUCHAR)tag, sizeof tag, 0);
         if (port_console.version) BCryptHashData(h, (PUCHAR)port_console.version, (ULONG)strlen(port_console.version), 0);
         BCryptHashData(h, (PUCHAR)SAT_GAME_NAME, sizeof SAT_GAME_NAME, 0);
-        f = fopen(image, "rb");
-        if (f) {
-            while ((n = fread(g_buf, 1, sizeof g_buf, f)) > 0) BCryptHashData(h, g_buf, (ULONG)n, 0);
-            fclose(f);
-            ok = 1;
-        }
+        if (image && size) ok = BCRYPT_SUCCESS(BCryptHashData(h, (PUCHAR)image, size, 0)); /* the bytes the file held */
         BCryptFinishHash(h, out, NET_DIGEST, 0);
         BCryptDestroyHash(h);
     }
@@ -261,16 +254,14 @@ static void join_setup(void)
 /* sat_lobby.c: the link on the game's port with the game's digest (join NULL: a host) */
 int sat_net_open(const char *join, NetUdpMessage on_msg, NetUdpState on_state)
 {
-    u8 dg[NET_DIGEST];
-    if (!digest(g_image ? g_image : "", dg)) port_log("netplay: can't read the code image for the digest\n");
-    return net_udp_start(g_opt.port > 0 ? g_opt.port : SAT_NET_PORT, join, dg, on_msg, on_state, NULL);
+    if (!g_dg_ok) port_log("netplay: no code image for the digest\n");
+    return net_udp_start(g_opt.port > 0 ? g_opt.port : SAT_NET_PORT, join, g_dg, on_msg, on_state, NULL);
 }
 
-void sat_net_start(const char *image)
+void sat_net_start(const u8 *image, u32 size)
 {
-    u8 dg[NET_DIGEST];
     int port = g_opt.port > 0 ? g_opt.port : SAT_NET_PORT;
-    g_image = image;
+    g_dg_ok = digest(image, size, g_dg);
 #ifdef SAT_NET_IN_GAME /* online play starts in the game's own menu: a saved --net from the old Online menu is not taken */
     if (g_opt.saved && !sat_lobby_match && (g_opt.host || g_opt.join))
         port_log("netplay: --net is taken only from the game's own online screens; this run plays alone\n"), g_opt.host = g_opt.join = NULL;
@@ -292,14 +283,14 @@ void sat_net_start(const char *image)
     host_window_option("--pause-unfocused", "off"); /* a paused copy would stop the other player's game too */
     sat_movie_option("--movie-native", "off");      /* the game's own movie player: the native one keeps the real clock's time */
     session_option("--record", "off");              /* a recording would hold this side's pad only */
-    if (!digest(image, dg)) port_log("netplay: can't read the code image %s for the digest\n", image);
+    if (!g_dg_ok) port_log("netplay: no code image for the digest\n");
     if (S.host) snapshot();
     net_udp_test(g_opt.loss, g_opt.lag, g_opt.jitter);
 #ifdef SAT_NET_DROP_MS
     net_udp_drop(SAT_NET_DROP_MS); /* game.json netplay drop_ms */
     port_log("netplay: the other player is gone after %u ms without a packet (game.json netplay drop_ms)\n", (u32)SAT_NET_DROP_MS);
 #endif
-    if (net_udp_start(port, g_opt.join, dg, sat_net_msg, sat_net_link, NULL))
+    if (net_udp_start(port, g_opt.join, g_dg, sat_net_msg, sat_net_link, NULL))
         sat_game_lobby_back("no-network"), port_exit("netplay: the network did not start", PORT_EXIT_NET_FAILED);
     if (g_opt.loss || g_opt.lag || g_opt.jitter)
         game_log_line("netplay: TEST network: %d%% of packets lost, %d ms late, up to %d ms more", g_opt.loss, g_opt.lag, g_opt.jitter);

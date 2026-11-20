@@ -27,6 +27,14 @@ void cpu_present_set_fps(unsigned fps);                    /* the menu's frame-r
 void cpu_present_panel(int on); /* a dot whose top byte is 1 + G/2 is shown mixed half and half with grey G (a menu panel) */
 unsigned cpu_present_fps(void);
 void cpu_present_report(void);                             /* --present-check: the log's line */
+/* Pictures drawn over the next posted frame at the window's resolution (present_overlay.c): each at x, y, w, h in the
+ * frame's dots, from an image of premultiplied 0xAARRGGBB with an id no other image has, never changed once posted and
+ * kept by the poster until no slot can still show it (8 posts). Given before cpu_present_post(_wide); n 0 for none. */
+typedef struct PresentImage { u32 id, w, h; const u32 *px; void *srv; } PresentImage; /* srv: its texture, made ahead (cpu_present_prepare) or NULL */
+void cpu_present_prepare(PresentImage *im);   /* any thread: the image's texture made now, so the frame that first shows it does not pay */
+void cpu_present_unprepare(PresentImage *im); /* that texture let go (the image is no longer posted) */
+typedef struct PresentOverlay { float x, y, w, h; const PresentImage *img; } PresentOverlay;
+void cpu_present_overlay(const PresentOverlay *o, unsigned n);
 
 #ifdef __cplusplus
 }

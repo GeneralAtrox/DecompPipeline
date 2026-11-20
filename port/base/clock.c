@@ -7,6 +7,7 @@
 #include "base.h"
 #include "console.h"
 #include "session.h"
+#include "perf.h"
 
 /* --fixed-clock: a virtual clock in units of 1/46,875,000 s (both 60 Hz and the 781,250 Hz TMU divide it). It only
  * moves when the game looks at it (a microsecond per look, so polling loops end) and at each vertical blank (to the
@@ -154,11 +155,14 @@ static int save_read(const char *name, void *buf, u32 size)
     DWORD got = 0;
     LARGE_INTEGER len;
     int ok;
+    u64 began;
     if (!save_path(name, path, sizeof path)) return -1;
+    began = perf_timer_begin();
     f = CreateFileA(path, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     if (f == INVALID_HANDLE_VALUE) return 0;
     ok = GetFileSizeEx(f, &len) && len.QuadPart == size && ReadFile(f, buf, size, &got, NULL) && got == size;
     CloseHandle(f);
+    perf_timer_end(PERF_T_FILE, began);
     return ok;
 }
 

@@ -39,7 +39,7 @@ DRIVER_C = r"""#include <stdio.h>
 #include "play_stats.h"
 static PortView g_view; /* the console's view (base/console.h) */
 void console_view(PortView *v) { *v = g_view; }
-static int g_fixed, g_replay, g_gap, g_slow, g_tick, g_intick, g_disc;
+static int g_fixed, g_replay, g_gap, g_slow, g_tick, g_intick, g_disc, g_restart;
 const PortConsole port_console = {"test", "Test", "Fixture", "0", 640u, 480u, 60u, 0u};
 u32 port_vblank_count(void) { return 7u; }
 int host_fixed_clock(void) { return g_fixed; }
@@ -75,6 +75,8 @@ static void frames(int n)
         if (g_intick) draws();     /* its render, inside the tick */
         play_stats_wait(1);
         if (!g_intick) draws();    /* in-between draws, in the wait */
+        if (i == 300 && g_restart) /* a measured segment starts (--perf-from load+N) while a draw is open */
+            play_stats_draw(1), play_stats_restart(), spin_us(150), play_stats_draw(0);
         play_stats_shown();
         if (i == 5 && g_disc) play_stats_disc(1u << 20); /* a load: 1 MB from the disc */
         spin_us(i == 5 && g_gap ? 40000u : 550u); /* gap: one tick of 40 ms, over 2 blanks of 60 Hz */
@@ -101,6 +103,7 @@ int main(int argc, char **argv)
         else if (!strcmp(argv[i], "tick")) g_tick = 1;
         else if (!strcmp(argv[i], "intick")) g_intick = 1;
         else if (!strcmp(argv[i], "disc")) g_disc = 1;
+        else if (!strcmp(argv[i], "restart")) g_restart = 1;
         else play_stats_option("--play-summary", argv[i]);
     }
     if (g_slow) { /* measured ticks, as the Saturn reports them: no clock, so the lines are exact */
@@ -130,7 +133,7 @@ class PlayStats(unittest.TestCase):
              "boot_file": "", "console": None, "id": "FIXTURE", "boot_sha256": []}), encoding="utf-8")
         (d / "stats_main.c").write_text(DRIVER_C, encoding="utf-8")
         rd = TOOL / "targets" / "dreamcast_sh4" / "runtime_rd"
-        srcs = " ".join(f'"{p}"' for p in [KIT / "base" / "play_stats.c", d / "stats_main.c"])
+        srcs = " ".join(f'"{p}"' for p in [KIT / "base" / "play_stats.c", KIT / "base" / "perf.c", KIT / "base" / "perf_trace.c", d / "stats_main.c"])
         cl = (f'cl /nologo /TC /std:c11 /W4 /WX /O2 /I"{d}" /I"{KIT / "runtime"}" /I"{KIT / "pvr"}" '
               f'/I"{KIT / "base"}" /I"{rd}" {srcs} /Fe:stats.exe')
         vc = str(game_config.vcvars32()).replace("/", "\\")
@@ -187,6 +190,11 @@ class PlayStats(unittest.TestCase):
         s = self.summary("intick")
         self.assertGreater(s["make_ms"][0], 0.25)  # a render inside the tick is in the tick's work: 0.3, not 0.6
         self.assertLess(s["make_ms"][0], 0.45)
+
+    def test_a_restart_inside_a_draw(self):
+        s = self.summary("restart")
+        self.assertEqual(s["judged"], 400)  # counted from the restart
+        self.assertLess(s["make_ms"][2], 5.0)  # the open draw counts from the restart: before, from 0 (3008 s on build box A)
 
     def test_missed_slots_and_loading_screens(self):
         s = self.summary("gap")

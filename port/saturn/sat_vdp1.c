@@ -6,13 +6,11 @@
  *
  * Nearest existing: pvr/ (PowerVR TA-list renderer on D3D11) - different chip and a CPU framebuffer the VDP2 reads. */
 #include <string.h>
-#include <windows.h>
 #include "sat.h"
 #include "sat_sys.h"
 #include "sat_vdp.h"
 #include "sat_walk.h"
 #include "work_count.h"
-#include "bands.h"
 
 enum { CM_BANK16, CM_LUT16, CM_BANK64, CM_BANK128, CM_BANK256, CM_RGB };
 
@@ -34,11 +32,11 @@ typedef struct {
 static __declspec(thread) int g_sysx, g_sysy, g_ux0, g_uy0, g_ux1, g_uy1, g_lx, g_ly, g_ox, g_sh = 9, g_sw1; /* g_ox: a wide twin's x offset (sat_wide.c) */
 static __declspec(thread) int g_by0, g_by1 = 255; /* the framebuffer rows this band writes */
 static __declspec(thread) u8 *g_fb;
-static int g_v1_bands = 1; /* --v1-bands on|off */
-
+static __declspec(thread) int g_tv; static int g_scan; /* clearer text (sat_text.c): textured sprites passed; a walk that only finds the lettering */
 static u32 v1w(u32 a) { return ((u32)sat_v1_vram[a & 0x7fffeu] << 8) | sat_v1_vram[(a & 0x7fffeu) + 1]; }
 static int sx13(u32 v) { return (int)((s32)(v << 19) >> 19); }
 static int wl(int v) { return g_ox && v <= 0 ? v - g_ox : v; } static int wr(int v) { return g_ox && v >= g_sw1 ? v + g_ox : v; } /* a clip edge at the screen's: the wide edge */
+static void wfill(Pt *p) /* a polygon across the screen's whole width (a clear or a fade): to a wide twin's edges too */ { int lo = p[0].x, hi = p[0].x; for (int i = 1; i < 4; i++) lo = p[i].x < lo ? p[i].x : lo, hi = p[i].x > hi ? p[i].x : hi; for (int i = 0; g_ox && lo <= 0 && hi >= g_sw1 && i < 4; i++) p[i].x = wr(wl(p[i].x)); }
 
 static u16 fbget(u32 x, u32 y)
 {
@@ -135,7 +133,7 @@ static int imin(int a, int b) { return a < b ? a : b; }
 static int outside(const Draw *d, int x0, int y0, int x1, int y1)
 {
     u32 clipm = (d->pmod >> 9) & 3u;
-    if (x1 < -g_ox || y1 < 0 || x0 > g_sysx || y0 > g_sysy) return 1;
+    if (g_scan || x1 < -g_ox || y1 < 0 || x0 > g_sysx || y0 > g_sysy) return 1;
     /* none of this band's rows (no wrap): a polygon line's no-hole pixel can land one past its box, so one row more */
     if (x1 + 1 + g_ox <= (g_ox ? 1023 : 511) && y1 + 1 <= 255 && (y1 + 1 < g_by0 || y0 - 1 > g_by1)) return 1;
     return clipm == 1u && (x1 < g_ux0 || y1 < g_uy0 || x0 > g_ux1 || y0 > g_uy1);
@@ -259,12 +257,34 @@ static void gouraud(u32 cmd, Pt *p, Draw *d)
         for (int i = 0; i < 4; i++) p[i].g = (u16)v1w(gr + 2u * (u32)i);
 }
 
+/* a textured sprite: clearer text's scan (sat_text.c) hands it to the game; drawn, lettering's box is kept before and after */
+static void keep(int it, int after)
+{
+    int x0, y0, x1, y1;
+    u16 *k = sat_text_keep(it, after, &x0, &y0, &x1, &y1);
+    for (int y = y0 > g_by0 ? y0 : g_by0; y <= y1 && y <= g_by1; y++)
+        for (int x = x0; x <= x1; x++) k[(y - y0) * (x1 - x0 + 1) + x - x0] = fbget((u32)x, (u32)y);
+}
+static void squad(const Draw *d, const Pt *q, u32 cmd, u32 comm)
+{
+    int v = g_tv++, it = -1;
+    if (g_scan) {
+        SatTextSprite s = {cmd, comm, d->pmod, d->colr, v1w(cmd + 8u), d->tw, d->th, imin(imin(q[0].x, q[1].x), imin(q[2].x, q[3].x)), imin(imin(q[0].y, q[1].y), imin(q[2].y, q[3].y)),
+                           imax(imax(q[0].x, q[1].x), imax(q[2].x, q[3].x)), imax(imax(q[0].y, q[1].y), imax(q[2].y, q[3].y)), d->tex};
+        sat_text_seen(&s);
+        return;
+    }
+    if (sat_text_on && (it = sat_text_item(v)) >= 0) keep(it, 0);
+    quad(d, q);
+    if (it >= 0) keep(it, 1);
+}
+
 static void draw_cmd(u32 cmd, u32 ctrl)
 {
     Pt p[4];
     Draw d;
     u32 comm = ctrl & 15u;
-    if (!g_by0) work_add(WC_SPRITE_COMMANDS, 1);
+    if (!g_by0 && !g_scan) work_add(WC_SPRITE_COMMANDS, 1);
     memset(&d, 0, sizeof d);
     d.pmod = v1w(cmd + 4u);
     d.colr = (u16)v1w(cmd + 6u), sat_panel_mark(d.pmod, d.colr); /* a menu panel the presenter draws (sat_panel.c) */
@@ -283,7 +303,7 @@ static void draw_cmd(u32 cmd, u32 ctrl)
         {
             int x = p[0].x, y = p[0].y;
             Pt q[4] = {{x, y, p[0].g}, {x + d.tw - 1, y, p[1].g}, {x + d.tw - 1, y + d.th - 1, p[2].g}, {x, y + d.th - 1, p[3].g}};
-            quad(&d, q);
+            squad(&d, q, cmd, comm);
         }
         break;
     case 1: { /* scaled sprite */
@@ -309,7 +329,7 @@ static void draw_cmd(u32 cmd, u32 ctrl)
         {
             Pt q[4] = {{x0, y0, 0x8210u}, {x1, y0, 0x8210u}, {x1, y1, 0x8210u}, {x0, y1, 0x8210u}};
             gouraud(cmd, q, &d);
-            quad(&d, q);
+            squad(&d, q, cmd, comm);
         }
         break;
     }
@@ -324,10 +344,10 @@ static void draw_cmd(u32 cmd, u32 ctrl)
         d.hflip = (ctrl >> 4) & 1u;
         d.vflip = (ctrl >> 5) & 1u;
         gouraud(cmd, p, &d);
-        quad(&d, p);
+        squad(&d, p, cmd, comm);
         break;
     case 4: /* polygon */
-        verts(cmd, p, 4);
+        verts(cmd, p, 4), wfill(p);
         gouraud(cmd, p, &d);
         quad(&d, p);
         break;
@@ -360,7 +380,6 @@ static void draw_cmd(u32 cmd, u32 ctrl)
     }
 }
 
-
 /* The list's state at its top (sat_vdp1_list.c walks it): the whole screen, no user clip, the origin at 0,0. */
 void sat_v1_begin(u8 *fb)
 {
@@ -376,25 +395,6 @@ void sat_v1_begin(u8 *fb)
 /* one command: a drawing, or a clip or local-coordinate command that sets the state for the ones after it */
 void sat_v1_cmd(u32 cmd, u32 ctrl) { draw_cmd(cmd, ctrl); }
 
-int sat_v1_first_band(void) { return !g_by0; }
-void sat_v1_bands_set(int on) { g_v1_bands = on; }
-
-static void v1_band(void *fb, unsigned band, unsigned bands)
-{
-    g_by0 = (int)(256u * band / bands), g_by1 = (int)(256u * (band + 1u) / bands) - 1;
-    (void)sat_v1_run((u8 *)fb);
-}
-
-void sat_v1_draw(void)
-{
-    LARGE_INTEGER t0, t1;
-    QueryPerformanceCounter(&t0);
-    sat_perf_phase(2);
-    u8 *fb = sat_v1_draw_fb(), *wfb = sat_wide_fb(fb); /* wider than the screen: into its twin, then the middle back */
-    if (g_v1_bands) bands_run(v1_band, wfb ? wfb : fb);
-    else g_by0 = 0, g_by1 = 255, (void)sat_v1_run(wfb ? wfb : fb);
-    if (wfb) sat_wide_back(fb);
-    sat_perf_phase(0);
-    QueryPerformanceCounter(&t1);
-    sat_perf_v1(t1.QuadPart - t0.QuadPart);
-}
+int sat_v1_first_band(void) { return !g_by0 && !g_scan; }
+/* sat_vdp1_list.c: this thread's walk writes rows y0..y1; scan 1: it only finds the lettering (sat_text.c), -1 as it was */
+void sat_v1_mode(int scan, int y0, int y1) { g_scan = scan >= 0 ? scan : g_scan, g_by0 = y0, g_by1 = y1, g_tv = 0; }

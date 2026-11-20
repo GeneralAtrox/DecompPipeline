@@ -110,6 +110,10 @@ u32 input_bind_get(unsigned action);            /* the sources action takes now 
 void input_bind_toggle(unsigned action, unsigned source); /* a source on or off it; 0 ("none") clears it */
 const char *input_bind_text(unsigned action, char *buf, size_t cap); /* the settings file's words */
 void input_binds_apply(HostPad pad[HOST_PADS]); /* the assignments, before the pad is recorded */
+/* The base's own action beside the console's (Input > Controls > Fast forward, kept as bind-fast-forward, R3 until the
+ * player chooses): input_bind_get/toggle/text take it as this number. held: one of its sources is held in this pad. */
+#define INPUT_BIND_SPEED 32u
+int input_bind_held(unsigned action, const HostPad *pad);
 
 /* host_text.cpp: typing and pasting into a console's own text field (digits . : - Backspace Enter Esc; Ctrl+V, Shift+Insert) */
 void host_text_capture(int on);             /* the field is open (keys are queued) or shut */

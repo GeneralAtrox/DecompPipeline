@@ -26,6 +26,13 @@ std::string trim(const std::string &s)
 // host_bar.cpp, host_online.cpp, host_resolution.cpp) and the console's and game's own entries. The user, 2026-11-13: "a
 // settings file should not be controlling how the game behaves"; any other option (presenting, threads, waits, the swap
 // chain, pacing) is the command line's only, for tests and agents.
+// game_options.c's; a program built without it (a test of this file alone) has no options (/alternatename).
+extern "C" int port_option_find_none(const char *) { return -1; }
+#if defined(_M_IX86)
+#pragma comment(linker, "/alternatename:_port_option_find=_port_option_find_none")
+#else
+#pragma comment(linker, "/alternatename:port_option_find=port_option_find_none")
+#endif
 static bool player_key(const std::string &key)
 {
     static const char *const base[] = {"window", "fullscreen-mode", "aspect", "fps", "fps-counter", "vsync", "menu-bar", "volume",
@@ -33,6 +40,7 @@ static bool player_key(const std::string &key)
     for (const char *k : base)
         if (key == k) return true;
     if (key.rfind("bind-", 0) == 0 || key.rfind("kbm-", 0) == 0) return true;
+    if (port_option_find(key.c_str()) >= 0) return true; // the base's, the console's and the game's options (game_options.c)
     auto listed = [&key](const PortMenuItem *items, unsigned n) {
         for (unsigned i = 0; items && i < n; i++)
             if (items[i].setting && key == items[i].setting) return true;

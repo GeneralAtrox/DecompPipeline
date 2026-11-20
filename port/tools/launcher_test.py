@@ -5,6 +5,10 @@ play, bounded, and checks each exit code and what each run leaves in its data fo
 
 GOOD is this game's disc image. OTHER_GAME (optional) is another game's image, for the exit code 5 cases. WORK (default
 a new temporary folder, removed afterwards) receives a copy of GOOD. Exits 0 when every case passes.
+
+A Saturn kit port (its log says "port: image ..."): the play run must make its code image from the disc (no image.bin
+beside it, port/saturn/sat_image.c), and a save in the folder it starts in (where older builds kept it) must land in
+USERDATA\\saves.
 """
 import argparse
 import json
@@ -15,10 +19,11 @@ import sys
 import tempfile
 
 TIMEOUT = 600  # a setup copies the whole image
+OLD_SAVE = b"SBUP" + bytes(4)  # an empty Saturn backup RAM file (port/saturn/sat_bup.c), where older builds kept it
 
 
-def run(exe, *args, timeout=TIMEOUT):
-    p = subprocess.Popen([str(exe), *map(str, args)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+def run(exe, *args, timeout=TIMEOUT, cwd=None):
+    p = subprocess.Popen([str(exe), *map(str, args)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, cwd=cwd)
     try:
         out, err = p.communicate(timeout=timeout)
         return p.returncode, out, err
@@ -97,13 +102,22 @@ def main():
             code, out, err = run(exe, "--assets", wrong.parent, "--verify-assets", timeout=120)
             c.check("verify: another game, exit 5", code == 5, f"exit {code}, {err!r}")
 
-        data = root / "userdata"
+        data, start = root / "userdata", root / "start"
+        start.mkdir(exist_ok=True)
+        (start / "saturn_backup.bin").write_bytes(OLD_SAVE)  # read only by a Saturn port
         code, out, err = run(exe, "--assets", assets, "--data-directory", data, "--headless", "--fixed-clock", "1",
-                             "--seconds", "8", timeout=120)
+                             "--seconds", "8", timeout=120, cwd=start)
         log = data / "logs" / "port.log"
         text = log.read_text(encoding="utf-8", errors="replace") if log.is_file() else ""
         c.check("play: --assets with --data-directory runs to the watchdog (exit 2)", code == 2, f"exit {code}")
-        c.check("play: the log is in the data folder and the boot file loaded", "bytes loaded" in text, str(log))
+        c.check("play: the log is in the data folder and the boot file loaded",
+                "bytes loaded" in text or "port: image " in text, str(log))
+        if "port: image " in text:  # a Saturn kit port
+            c.check("play (Saturn): the code image is made from the disc, not an image.bin",
+                    "port: image built from the disc" in text, next((ln for ln in text.splitlines() if "port: image" in ln), ""))
+            save = data / "saves" / "saturn_backup.bin"
+            c.check("play (Saturn): the save from the folder it started in is in USERDATA\\saves",
+                    save.is_file() and "from the current folder copied to" in text, str(save))
     finally:
         if not a.work:
             shutil.rmtree(root, ignore_errors=True)

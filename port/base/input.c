@@ -104,7 +104,12 @@ int input_option(const char *arg, const char *value)
         return 2;
     }
     if (!strncmp(arg, "--bind-", 7)) return input_bind_option(arg, value);
+    if (!strcmp(arg, "--fast-forward-test")) return port_speed_option(arg, value); /* speed.c's test aid */
     if (!strncmp(arg, "--kbm-", 6)) return input_kbm_option(arg, value);
+    {
+        int used = port_options_option(arg, value); /* the base's, the console's and the game's options (game_options.c) */
+        if (used) return used;
+    }
     return port_twin_option(arg, value) || pad_virtual_option(arg, value) ? 2 : input_script_option(arg, value); /* pad_twin.c, pad_virtual.c */
 }
 
@@ -305,6 +310,7 @@ u32 host_pads_read(HostPad pad[HOST_PADS])
         g_right[p][0] = (s8)(s[p].rx ? s[p].rx : pad[p].buttons & HOST_PAD_RS_LEFT ? -128 : pad[p].buttons & HOST_PAD_RS_RIGHT ? 127 : 0);
         g_right[p][1] = (s8)(s[p].ry ? s[p].ry : pad[p].buttons & HOST_PAD_RS_UP ? -128 : pad[p].buttons & HOST_PAD_RS_DOWN ? 127 : 0);
     }
+    if (input_live()) port_speed_pads(pad, n); /* fast forward's button (speed.c), as the devices gave it; nothing of it is recorded */
     input_binds_apply(pad);
     session_pad(&pad[0]); /* recorded, or the replay's */
     for (u32 p = 0; p < n; p++) /* players 2..8 and the right sticks too, so a game several play replays */

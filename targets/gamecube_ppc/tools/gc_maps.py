@@ -1,6 +1,7 @@
 """GameCube map readers for symbol_inventory.py: CodeWarrior link maps and section layouts, SN Systems (ld style) maps, address
 lists, binary or encrypted maps. read_map(path) returns a MapStats: function and data names, sizes, the library and object
-each function came from, SDK, runtime (MSL) and MetroTRK functions, and a sample of virtual addresses.
+each function came from, SDK, runtime (MSL) and MetroTRK functions, and a sample of virtual addresses. functions(path)
+lists a CodeWarrior map's functions one by one, with their address, size, library and object (gc_names.py).
 
 Nearest existing: symbol_inventory.py's own previous inline readers (split out at the 400-line cap); no other GameCube
 tool reads a map (gcrel.py reads .rel modules only).
@@ -231,3 +232,29 @@ def read_ld(lines, st):
     return st
 
 
+def functions(path):
+    """(functions, vtables) of a CodeWarrior map with a section layout: [{"name", "addr", "size", "lib", "obj"}] for the
+    sized symbols of .init and .text at a virtual address, and the addresses of __vt__ objects in its data sections.
+    Other map forms give ([], [])."""
+    fns, vts, section = [], [], None
+    for ln in pathlib.Path(path).read_text(encoding="latin1", errors="replace").splitlines():
+        if ln[:1] == ".":
+            m = SECTION.match(ln)
+            if m:
+                section = m.group(1)
+            continue
+        if not ln.startswith(" ") or section is None:
+            continue
+        m = LAYOUT.match(ln)
+        if not m or not m.group(3):
+            continue
+        _addr, size, vaddr, _align, name, rest = m.groups()
+        if name == section or name.startswith("..."):
+            continue
+        toks = rest.split()
+        lib, obj = (toks[0], toks[1]) if len(toks) >= 2 else ("", toks[0] if toks else "")
+        if section in MAP_SECTIONS_TEXT and int(size, 16) and int(vaddr, 16) >= 0x80000000:
+            fns.append({"name": name, "addr": int(vaddr, 16), "size": int(size, 16), "lib": lib, "obj": obj})
+        elif name.startswith("__vt__"):
+            vts.append(int(vaddr, 16))
+    return fns, vts

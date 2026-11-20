@@ -32,6 +32,7 @@ void play_stats_wait_slow(int begin);
 void play_stats_tick_slow(double ms);
 void play_stats_draw_slow(int enter);
 void play_stats_shown_slow(void);
+extern void *g_play_by[2]; /* who showed the frame (gfx_show's caller, and gfx_present's), for the first late gaps' lines */
 static inline void play_stats_wait(int begin) { if (g_play_stats >= 0) play_stats_wait_slow(begin); }
 /* A console that measures its own tick (the Saturn's, which has no single place where the game waits) reports it here:
  * the host's work of one vertical blank in milliseconds, the wait for the clock left out; instead of the wait hooks. */

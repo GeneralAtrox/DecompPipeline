@@ -19,6 +19,11 @@ typedef struct {
     TcArgs tail_args;
     u32 last_top; /* the entry sp of the call that returned last */
     unsigned char popped[MAXDEPTH + 2]; /* per frame: the function restored pr from its stack, so it returned to its caller's caller */
+    u32 site[MAXDEPTH + 2];     /* per frame: the return address its caller's call handed it as PR (SAT_PR_NONE: none known) */
+    u32 saved[MAXDEPTH + 2][7]; /* per frame: r8..r14 as the caller held them at the call (what the frame gives back) */
+    u32 ret_next;               /* sat_ret while the other CPU runs (0: none) */
+    u32 ftop[MAXDEPTH + 2];     /* per frame: its entry sp; bit 0: the call gave no sp (the caller's r15 is not known);
+                                   bit 1: the frame runs in the SH-2 interpreter now (sat_interp.c) */
 } SatCpu;
 
 extern SatCpu g_cpu[2];

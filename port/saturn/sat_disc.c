@@ -5,6 +5,7 @@
 #include <string.h>
 #include "sat_disc.h"
 #include "work_count.h"
+#include "sat_sys.h"
 
 enum { MAXFILES = 99, PREGAP = 150 };
 typedef struct {
@@ -28,6 +29,9 @@ int sat_disc_open(const char *cue)
     const char *slash;
     FILE *c;
     u32 lba = 0, idx0 = 0;
+    for (u32 i = 0; i < g_nparts; i++) fclose(g_part[i].f); /* opened again (setup's copy, play's code image): afresh */
+    memset(g_part, 0, sizeof g_part), memset(g_track, 0, sizeof g_track);
+    g_nparts = g_ntracks = g_end = 0;
     if (!cue || !*cue) return 1;
     c = fopen(cue, "r");
     if (!c) return 1;
@@ -45,6 +49,7 @@ int sat_disc_open(const char *cue)
             p->f = fopen(path, "rb");
             if (!p->f) {
                 fclose(c);
+                while (g_nparts) fclose(g_part[--g_nparts].f); /* a track file missing: no disc, not half of one */
                 return 1;
             }
             _fseeki64(p->f, 0, SEEK_END);
@@ -81,7 +86,17 @@ u32 sat_disc_ntracks(void) { return g_ntracks; }
 const SatTrack *sat_disc_track(u32 tno) { return tno >= 1 && tno <= g_ntracks ? &g_track[tno] : NULL; }
 u32 sat_disc_leadout(void) { return g_end; }
 
-int sat_disc_read(u32 fad, u8 *raw)
+static int disc_read(u32 fad, u8 *raw);
+int sat_disc_read(u32 fad, u8 *raw) /* the sampler sees disc time as the kit's (sat_sec) */
+{
+    int was = sat_sec, r;
+    sat_sec = SAT_SEC_DISC;
+    r = disc_read(fad, raw);
+    sat_sec = was;
+    return r;
+}
+
+static int disc_read(u32 fad, u8 *raw)
 {
     work_add(WC_DISC_BYTES, SAT_SECTOR);
     u32 lba;

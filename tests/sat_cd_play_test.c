@@ -1,7 +1,8 @@
 /* The CD block's play and seek (sat_cd.c, included whole for its static functions): a disc of one data and two audio
  * tracks, commands written to CR1..CR4 as a game does, one sector a frame. Checks a pause (seek 0xffffff) and a resume
  * (play 0xffffff) as Robo Pit's pause menu sends them, and fast loads: a load fills the buffer in a frame, a movie (its
- * first sector starts "FILM") keeps the drive's rate. Run by tests/test_sat_cd_play.py. */
+ * first sector starts "FILM") keeps the drive's rate, and that the NetLink modem's window (absent) is not decoded as CD
+ * registers. Run by tests/test_sat_cd_play.py. */
 #define _CRT_SECURE_NO_WARNINGS
 #include <stdio.h>
 #include "sat_cd.c"
@@ -31,8 +32,19 @@ int sat_disc_read(u32 fad, u8 *raw)
     memcpy(raw + 16, fad == 400 ? "FILM" : "DATA", 4); /* a movie file starts at 400 */
     return fad < 3000;
 }
-int sat_disc_root(SatFile *root) { (void)root; return 1; }
-int sat_disc_dir(u32 dir_lba, u32 size, SatFile *out, int max) { (void)dir_lba, (void)size, (void)out, (void)max; return 0; }
+/* Saturn Bomberman's disc: the loader /0, the game's folder BOMSS (its program PROGRAM.BIN) and XBAND/SUB */
+static const SatFile g_root[] = {{170, 2048, 0, 0, 0, 2, 20, "."}, {170, 2048, 0, 0, 0, 2, 20, ".."}, {183, 435296, 0, 0, 0, 0, 33, "0"},
+                                 {171, 2048, 0, 0, 0, 2, 21, "BOMSS"}, {181, 2048, 0, 0, 0, 2, 31, "XBAND"}};
+static const SatFile g_xband[] = {{181, 2048, 0, 0, 0, 2, 31, "."}, {170, 2048, 0, 0, 0, 2, 20, ".."}, {190, 2048, 0, 0, 0, 2, 40, "SUB"}};
+int sat_disc_root(SatFile *root) { *root = g_root[0]; return 0; }
+int sat_disc_dir(u32 dir_lba, u32 size, SatFile *out, int max)
+{
+    const SatFile *d = dir_lba == 31 ? g_xband : g_root;
+    int n = dir_lba == 31 ? 3 : 5;
+    (void)size;
+    for (int i = 0; i < n && i < max; i++) out[i] = d[i];
+    return n;
+}
 void sat_cdda_flush(void) {}
 void sat_cdda_push(const u8 *raw) { memcpy(&g_last, raw, 4); g_pushed++; }
 void cdb_reset(int selectors_too) { (void)selectors_too; }
@@ -118,6 +130,22 @@ int main(void)
     cmd(0x10, 0x800000u | 400u, 0x00, 0x800000u | 100u);
     frames(1);
     check(g_stored == 2u, "fast loads: a movie keeps the drive's rate");
+
+    g_hirq = 0x07c1u; /* the NetLink modem's probe (Saturn Bomberman's H2HLIBUS): UART registers 2 and 7 at 0x25895001 + 4n */
+    reg_write(0x05895009u, 1, 0);
+    reg_write(0x0589501du, 1, 0x22);
+    check(g_hirq == 0x07c1u, "no NetLink: a write to the modem's window leaves HIRQ (CMOK) alone");
+    check(reg_read(0x0589501du, 1) == 0xffu, "no NetLink: the modem's scratch register reads open bus, not what was written");
+
+    /* the boot ROM's hand-over (game.json boot_dir): the CD block's file system holds the folder above, the id names it */
+    g_ndir = 0;
+    check(sat_cd_boot_dir("BOMSS") == 3 && g_ndir == 5, "boot folder BOMSS: file id 3 of the root, which the CD block holds");
+    cmd(0x73, 0, 0, 3); /* Get File Info of file id 3 */
+    check(g_cr[1] == 6 && g_dir[3].fad == 171u, "boot folder: the CD block answers for its file id");
+    check(sat_cd_boot_dir("XBAND/SUB") == 2 && g_ndir == 3 && g_dir[0].fad == 181u, "a nested boot folder: its parent is the current directory");
+    check(sat_cd_boot_dir("bomss") == 3, "boot folder: ISO names match in any case");
+    check(sat_cd_boot_dir("0") == -1 && sat_cd_boot_dir("NOPE") == -1, "boot folder: a file or a missing folder is not one");
+    check(sat_cd_boot_dir("") == 0 && g_ndir == 5, "boot folder: the root itself");
 
     puts(g_fail ? "FAILED" : "all ok");
     return g_fail;

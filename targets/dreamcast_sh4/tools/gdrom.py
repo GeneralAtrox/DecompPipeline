@@ -2,7 +2,8 @@
 
     python gdrom.py info    <image.cue|.gdi>
     python gdrom.py list    <image.cue|.gdi> [out.tsv]
-    python gdrom.py extract <image.cue|.gdi> <out_dir> [NAME ...]   (default: the boot file named in IP.BIN)
+    python gdrom.py extract <image.cue|.gdi> <out_dir> [NAME ... | --all]   (default: the boot file named in IP.BIN;
+        --all: every file on the disc, at its path: tools/AutoOnboard/autoonboard.py's game-data)
     python gdrom.py scan    <image.cue|.gdi> [out.tsv]
         every file scored as SH-4 code (sts.l pr,@-r15 and lds.l @r15+,pr per KB): the boot file plus any overlay or second
         program to look at; for each code file the link form (pointers into it as 0x8c... P1 or 0x0c... P0: a P0
@@ -190,7 +191,8 @@ def main(argv):
     else:
         out = pathlib.Path(argv[2])
         out.mkdir(parents=True, exist_ok=False)  # a new folder: never overwrite earlier extractions
-        want = set(argv[3:]) or {disc.ip()["boot_file"]}
+        every = argv[3:] == ["--all"]
+        want = ({p for p, _, _ in disc.walk()} if every else set(argv[3:])) or {disc.ip()["boot_file"]}
         found = {p: (lba, size) for p, lba, size in disc.walk() if p in want or p.split("/")[-1] in want}
         for p, (lba, size) in found.items():
             dst = out / p

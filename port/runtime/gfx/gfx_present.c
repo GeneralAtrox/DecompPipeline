@@ -8,6 +8,7 @@
 #include "game_log.h"
 #include "prof.h"
 #include "play_stats.h"
+#include <intrin.h>
 
 static int g_edges = PORT_BORDER_EDGES;
 int gfx_edges_on(void) { return g_edges; }
@@ -56,6 +57,7 @@ void gfx_present(void)
         gfx_pump();
         return;
     }
+    g_play_by[1] = _ReturnAddress(); /* play_stats: who presented it */
     gfx_lock();
     port_extra_thread_hold(); /* the frame target holds this frame until it is shown */
     gfx_frame_done();
@@ -64,9 +66,10 @@ void gfx_present(void)
     gfx_unlock();
 }
 
-void gfx_show(void)
+__declspec(noinline) void gfx_show(void) /* not inlined: its return address is its caller, gfx_present's is apart */
 {
     u64 pt = prof_begin(PROF_PRESENT);
+    g_play_by[0] = _ReturnAddress();
     gfx_lock();
     gfx_movie_check_shown(); /* --movie-check on */
     present_show();

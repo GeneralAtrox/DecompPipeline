@@ -1,10 +1,11 @@
 """GameCube executable readers for symbol_inventory.py: the strings that matter in a .dol, .elf or .rel (Dolphin SDK build lines,
 the OS revision, compiler and MetroTRK strings, middleware names and versions), the DOL header's section ranges and an ELF's
-sections, symbol table and DWARF section sizes.
+sections, symbol table and DWARF section sizes; elf_image() lays an ELF out by address with its symbols (gc_names.py).
 
 Nearest existing: gcrel.py parses .rel relocations for the translator and records no strings; symbol_inventory.py's previous
 inline readers (split out at the 400-line cap).
 """
+import pathlib
 import re
 import struct
 
@@ -159,3 +160,37 @@ def read_elf(path, acc):
     return info
 
 
+def elf_image(path):
+    """(image, base, symbols, exec ranges) of a 32-bit big-endian ELF for gc_names.py: its loaded sections with
+    contents laid out by address from base, and every symbol as (name, value, size, type, bind, file), file being the
+    STT_FILE symbol before it (CodeWarrior lists each file's local symbols after its file symbol). ValueError when it is
+    not such an ELF or its sections span over 64 MB."""
+    b = pathlib.Path(path).read_bytes()
+    if b[:4] != b"\x7fELF" or b[4] != 1 or b[5] != 2:
+        raise ValueError("not a 32-bit big-endian ELF")
+    shoff, = struct.unpack(">I", b[32:36])
+    shentsize, shnum, _ = struct.unpack(">HHH", b[46:52])
+    secs = [struct.unpack(">10I", b[shoff + i * shentsize:shoff + i * shentsize + 40]) for i in range(shnum)]
+    load = [(ad, of, sz, bool(fl & 4)) for _n, t, fl, ad, of, sz, *_ in secs if t == 1 and fl & 2 and ad and sz]
+    if not load:
+        raise ValueError("no loaded sections with contents")
+    base, end = min(s[0] for s in load), max(s[0] + s[2] for s in load)
+    if end - base > 64 << 20:
+        raise ValueError(f"its loaded sections span {(end - base) >> 20} MB")
+    img = bytearray(end - base)
+    for ad, of, sz, _x in load:
+        img[ad - base:ad - base + sz] = b[of:of + sz]
+    syms, cur = [], ""
+    for _n, t, _fl, _ad, of, sz, lk, *_ in secs:
+        if t != 2:
+            continue
+        st = secs[lk]
+        strs = b[st[4]:st[4] + st[5]]
+        for i in range(sz // 16):
+            nm, val, size, ia, _oth, shn = struct.unpack_from(">IIIBBH", b, of + 16 * i)
+            name = strs[nm:strs.find(b"\0", nm)].decode("latin1") if nm else ""
+            if ia & 15 == 4:
+                cur = name
+            elif name:
+                syms.append((name, val, size, ia & 15, ia >> 4, cur if ia >> 4 == 0 else ""))
+    return bytes(img), base, syms, [(ad, ad + sz) for ad, _of, sz, x in load if x]

@@ -10,6 +10,7 @@
 #include <windows.h>
 #include "base.h"
 #include "pace.h"
+#include "perf.h"
 
 #ifndef CREATE_WAITABLE_TIMER_HIGH_RESOLUTION
 #define CREATE_WAITABLE_TIMER_HIGH_RESOLUTION 0x00000002
@@ -22,13 +23,16 @@ void pace_sleep_us(u64 us)
 {
     static __declspec(thread) HANDLE timer;
     LARGE_INTEGER due;
+    u64 began = perf_timer_begin();
     if (!timer) timer = CreateWaitableTimerExW(NULL, NULL, CREATE_WAITABLE_TIMER_HIGH_RESOLUTION, TIMER_ALL_ACCESS);
     due.QuadPart = -(LONGLONG)(us * 10u); /* relative, in 100 ns */
     if (!timer || !SetWaitableTimer(timer, &due, 0, NULL, NULL, FALSE)) {
         Sleep(1);
+        perf_timer_end(PERF_T_SLEEP, began);
         return;
     }
     WaitForSingleObject(timer, (DWORD)(us / 1000u) + 2u);
+    perf_timer_end(PERF_T_SLEEP, began);
 }
 
 void pace_nap_until(u64 deadline_us, int extra)

@@ -9,12 +9,24 @@ caller left room, and each call passes the caller's r15 (tc_call_sp), so a calle
 TcArgs holds reads the rest from the caller's stack. Nothing else in a function is touched, and the stub/verdict state is
 reported at run time.
 
-  gen_saturn.py --game game.json --tx DIR_OF_ADDR.C --out OUTDIR
+  gen_saturn.py --game game.json --tx DIR_OF_ADDR.C [--tx DIR ...] --out OUTDIR [--guard FILE@ADDR ...]
+
+--guard FILE@ADDR: FILE's bytes are code the game puts at ADDR at run time, where other code can sit at another time (an
+overlay, or a block a loader copies to work RAM low). Each function translated inside it starts with a check of its first
+16 bytes in guest memory (sat_resident, port/saturn/sat_call.c) and is a STUB while they differ (sat_absent), so a
+translation never runs over another overlay's code.
+
+--overlay TAG=DIR@FILE@ADDR: DIR's ADDR.c files are a translation of FILE, a code file the game loads at ADDR at run time
+over other code (Dragon Force's DF.BIN, the battle, and FIELD0..7.BIN all load over /0 at 06010000). Each function is
+guarded with FILE's bytes and named fn_ADDR_TAG, so one address can have a translation per overlay; the table lists
+them all with their guard words and the kit runs the one whose bytes are in memory (port/saturn/sat_call.c find).
+Each overlay's functions are chunks of their own.
 """
 import argparse
 import json
 import pathlib
 import re
+import struct
 import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -22,20 +34,25 @@ import scene_map  # noqa: E402
 import gen_saturn_menus  # noqa: E402
 import gen_saturn_level  # noqa: E402
 import gen_saturn_heads  # noqa: E402
+import gen_saturn_image  # noqa: E402  (image_files, image_sha256, fallback)
 import game_config  # noqa: E402  (SATURN_KEYS: the keys a saturn object may have)
 
 CHUNK = 120
-DYNAMIC = 0x2000
 MARGIN = 64
 ENTRY_SP = re.compile(r"\br15\s*=\s*0x060fe000u;")
 # the wrapper of a function that calls itself passes the entry sp to its body as a constant: the body must run at the sp
 # the caller really gave it (stack-passed arguments are read at r15 + 0x54...), as every other function does
 WRAP_SP = re.compile(r"\bbody\(0x060fe000u,")
 PUSH = re.compile(r"\br15\s*(-=|\+=)\s*([^;]*);")
+# a self-recursive function's body starts at the sp its wrapper (WRAP_SP) or its own recursive call hands it
+BODY_SP = re.compile(r"\br15\s*=\s*sp;")
 OTHER_R15 = re.compile(r"\br15\s*=(?!=)\s*([^;]*);")
 COMMENT = re.compile(r"/\*.*?\*/", re.S)
-SAFE_R15 = re.compile(r"(?:sat_entry_sp|r\d+(?: [+-] (?:0x[0-9a-f]+|\d+)u)?|rd32\(r15\)|rd32\(0x[0-9a-f]+u\))")
+SAFE_R15 = re.compile(r"(?:sat_entry_sp|sp|r\d+(?: [+-] (?:0x[0-9a-f]+|\d+)u)?|rd32\(r15\)|rd32\(0x[0-9a-f]+u\))")
 DECL = re.compile(r"\bu32 r0\s*=\s*0(?:,[^;]*)?;")  # the statement: the translator's compact form has it on the function's first line
+# a statement that writes r15 (not a comparison, not a declarator after a comma), up to its `;`
+R15_WRITE = re.compile(r"(?<!,)(?<!, )(\br15\s*(?:-=|\+=|=(?!=))\s*[^;]*);")
+DECL_OR_COMMENT = re.compile(r"(\bu32 r0\s*=\s*0(?:,[^;]*)?;|/\*.*?\*/)", re.S)
 HELPERS = (
     "static u32 sx8(u32 a){return (u32)(s32)(s8)rd8(a);}",
     "static u32 sx16(u32 a){return (u32)(s32)(s16)rd16(a);}",
@@ -47,6 +64,16 @@ CALL = re.compile(r"(\br0\s*=\s*tc_call\([^;]*\);)")
 TAIL_CALL = re.compile(r"\br0\s*=\s*tc_call\([^;]*\);\s*$")
 JUMP = re.compile(r"\br0\s*=\s*tc_call\(([^;]*)\);\s*return r0;")
 CALL_SP = re.compile(r"\btc_call\(([^;]*?), &a\)")  # a call from a frame whose r15 is the real sp: the callee's 9th+ stack words
+# The translator's --call-sites marks (overlay.py): `/*@ret ADDR*/` after a call's target is the return address the SH-2's
+# bsr/jsr put in PR. The kit hands it to the callee (sat_at before the call, sat_pr_in on entry), so the PR a function pushes
+# is the real one instead of the judge's return sentinel, and the kit keeps where each open frame resumes (save states).
+SITE = re.compile(r"\b(tc_call|tc_call_sp|tx_call)\(([^,;]*?)\s*/\*@ret ([0-9a-f]{8})\*/")
+SITE_LEFT = re.compile(r"\s*/\*@ret [0-9a-f]{8}\*/")  # on a jump (tc_tail_sp): it keeps its own PR, as on the CPU
+SENTINEL_PR = re.compile(r"\bpr\s*=\s*0x060ff000u;")
+WRAP_PR = re.compile(r"\bbody\(sat_entry_sp,\s*0x060ff000u")
+# a recursive function calling itself: the kit counts the levels open (sat.h sat_body_nest; a save state's safe point
+# is never inside one, whose frame the kit's chain does not hold)
+BODY_SELF = re.compile(r"\bbody\(r15,([^;]*)\);")
 PARAM = {4: "a0", 5: "a1", 6: "a2", 7: "a3"}
 
 
@@ -80,14 +107,17 @@ def exit_regs(text, regs):
 
 def frame_bound(text):
     """(bytes, computed): what a body can push below its entry sp: every `r15 -= K` summed (covers any path, never
-    clamped - SGL loaders take 12 KB locals), or DYNAMIC and computed=True for a computed move. Plain restores
-    (`r15 = r14`, `r15 = rd32(...)`) are the frame being unwound, not new room."""
+    clamped - SGL loaders take 12 KB locals), or MARGIN and computed=True for a computed move, whose real sp the kit is
+    told as it moves (track_sp). Plain restores (`r15 = r14`, `r15 = rd32(...)`) are the frame being unwound, not new
+    room, and a recursive body's `r15 = sp` is its entry sp. There is no catch-all frame: an 8 KB one reached past a small
+    task stack into what lies below it (Saturn Bomberman's sound task put its callees' frames on the CD library's work
+    area there, and Battle mode never finished loading), and an interrupt taken inside such a function landed there too."""
     code = DECL.sub(" ", COMMENT.sub(" ", text))
     n = 0
     for op, rhs in PUSH.findall(code):
         k = re.fullmatch(r"(0x[0-9a-f]+|\d+)u", rhs.strip())
         if not k:
-            return DYNAMIC, True
+            return MARGIN, True
         v = int(k.group(1), 0)
         if op == "-=":
             n += v
@@ -95,8 +125,71 @@ def frame_bound(text):
             n += (1 << 32) - v
     for rhs in OTHER_R15.findall(code):
         if not SAFE_R15.fullmatch(rhs.strip()):
-            return DYNAMIC, True
+            return MARGIN, True
     return n + MARGIN, False
+
+
+def track_sp(text):
+    """A function whose r15 moves by a computed amount (an SH-2 `sub rN,r15`: locals sized at run time) tells the kit its
+    real sp after every write to r15 (sat_sp_at, port/saturn/sat_call.c), as a comma expression so `if (...) r15 = x;
+    else` stays one statement. The kit then places a callee that is not handed r15, and an interrupt taken inside the
+    function, below the guest's real sp, as the CPU does, where no fixed bound can be known. The declaration line and
+    comments are left alone."""
+    parts = DECL_OR_COMMENT.split(text)
+    for i in range(0, len(parts), 2):
+        parts[i] = R15_WRITE.sub(r"\1, sat_sp_at(r15);", parts[i])
+    return "".join(parts)
+
+
+def pass_call_sp(text):
+    """Each call from a frame whose r15 is the real sp passes it (tc_call_sp), so the callee's frame starts there. A function
+    that calls itself runs in `body(sp, ...)`, whose `r15 = sp` is a real entry sp too: each level's callees start below
+    that level's pushes, as on the CPU (Saturn Bomberman's 06035e94, the sound task's recursive routine)."""
+    if ("r15 = sat_entry_sp;" in text and "body(" not in text) or BODY_SP.search(text):
+        return CALL_SP.sub(r"tc_call_sp(\1, &a, r15)", text)
+    return text
+
+
+def parse_guard(spec):
+    """(base, bytes) of a --guard FILE@ADDR."""
+    f, base = spec.rsplit("@", 1)
+    return int(base, 16), pathlib.Path(f).read_bytes()
+
+
+def guard_words(addr, guards):
+    """The 4 words a guarded function checks (guard below), or None outside every guarded file."""
+    a = addr & ~3
+    for base, data in guards:
+        if base <= a and a + 16 <= base + len(data):
+            return struct.unpack(">4I", data[a - base:a - base + 16])
+    return None
+
+
+def parse_overlay(spec):
+    """(tag, tx dir, (base, bytes)) of an --overlay TAG=DIR@FILE@ADDR."""
+    tag, rest = spec.split("=", 1)
+    if not re.fullmatch(r"[A-Za-z0-9_]+", tag):
+        sys.exit(f"--overlay {spec}: the tag must be letters, digits and _")
+    d, f, base = rest.rsplit("@", 2)
+    return tag, pathlib.Path(d), (int(base, 16), pathlib.Path(f).read_bytes())
+
+
+def tagged(text, addr, tag):
+    """An overlay's function under a name of its own: fn_ADDR_TAG (and its body helper body_ADDR_TAG)."""
+    return re.sub(rf"\b(fn|body)_{addr:08x}\(", lambda m: f"{m.group(1)}_{addr:08x}_{tag}(", text)
+
+
+def guard(text, addr, guards):
+    """The function's text with a residency check first (--guard): its first 16 bytes as translated, compared with the
+    guest's memory at each call. Unchanged outside every guarded file."""
+    a = addr & ~3
+    for base, data in guards:
+        if base <= a and a + 16 <= base + len(data):
+            w = struct.unpack(">4I", data[a - base:a - base + 16])
+            check = (f" if (!sat_resident(0x{addr:08x}u, " + ", ".join(f"0x{x:08x}u" for x in w)
+                     + f")) return sat_absent(0x{addr:08x}u);")
+            return re.sub(rf"(u32 fn_{addr:08x}\([^)]*\)\s*\{{)", lambda m: m.group(1) + check, text, count=1)
+    return text
 
 
 def functions(tx):
@@ -116,6 +209,15 @@ def pr_returns(text):
     (SGL jumps into the middle of a handler that way): mark the pop, and have the call site's label test ask."""
     text = POP_PR.sub(lambda m: m.group(0) + " sat_pr_popped();", text)
     return LABEL_RETURN.sub(lambda m: m.group(1) + "sat_window_back(r15); if (pr == " + m.group(2) + " && !sat_pr_took()) goto", text)
+
+
+def call_sites(text):
+    """PR on entry is the return address the caller's call handed it (sat_pr_in: the judge's sentinel 060ff000 where the
+    call had no mark, so C without marks runs as before), and each marked call sets it (sat_at) just before the call."""
+    text = SENTINEL_PR.sub("pr = sat_pr_in();", text)
+    text = WRAP_PR.sub("body(sat_entry_sp, sat_pr_in()", text)
+    text = SITE.sub(lambda m: f"{m.group(1)}(sat_at(0x{m.group(3)}u, {m.group(2)})", text)
+    return SITE_LEFT.sub("", text)
 
 
 def live_in(text):
@@ -147,24 +249,31 @@ def check_keys(cfg, where):
 def main(argv=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("--game", required=True)
-    ap.add_argument("--tx", required=True)
+    ap.add_argument("--tx", required=True, action="append", help="a dir of ADDR.c files (more than one: their union)")
     ap.add_argument("--out", required=True)
     ap.add_argument("--extra", action="append", default=[], help="a dir of more ADDR.c files (functions the catalogue missed)")
+    ap.add_argument("--guard", action="append", default=[], help="FILE@ADDR: code loaded at run time (see above)")
+    ap.add_argument("--overlay", action="append", default=[], help="TAG=DIR@FILE@ADDR: a translation of an overlay (see above)")
     a = ap.parse_args(argv)
+    guards = [parse_guard(g) for g in a.guard]
+    overlays = [parse_overlay(o) for o in a.overlay]
     cfg = json.loads(pathlib.Path(a.game).read_text(encoding="utf-8"))["saturn"]
     check_keys(cfg, a.game)
     regs = tuple(cfg.get("exit_regs", (4,)))
     out = pathlib.Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    fns = functions(pathlib.Path(a.tx))
+    fns = {}
+    for d in a.tx:
+        fns.update(functions(pathlib.Path(d)))
     more = {}
     for extra in a.extra:
         more.update(functions(pathlib.Path(extra)))
     fns = {k: v for k, v in fns.items() if k not in more}
     if not fns:
-        sys.exit(f"no ADDR.c files in {a.tx}")
+        sys.exit(f"no ADDR.c files in {', '.join(a.tx)}")
     rows, chunk, idx, extra_texts = [], [], 0, []
-    for addr, p in sorted({**fns, **more}.items()):
+    def prepare(addr, p):
+        """(the function's text for the kit, its frame bound, computed)"""
         text = p.read_text(encoding="utf-8")
         body = ENTRY_SP.sub("r15 = sat_entry_sp;", text, count=1)
         text = body.replace('#include "tc_rt.h"\n', "")
@@ -179,9 +288,20 @@ def main(argv=None):
         text = vblank_waits(text, cfg.get("vblank_flags", ()))
         if f"0x{addr:08x}" in cfg.get("main_loops", ()):
             text = re.sub(r"(u32 fn_[0-9a-f]+\([^)]*\)\s*\{)", lambda m: m.group(1) + " sat_idle_turn();", text, count=1)
-        if "r15 = sat_entry_sp;" in text and "body(" not in text:
-            text = CALL_SP.sub(r"tc_call_sp(\1, &a, r15)", text)
-        rows.append((addr, fb, computed))
+        text = pass_call_sp(text)
+        if computed:
+            text = track_sp(text)
+        text = call_sites(text)
+        text = BODY_SELF.sub(r"sat_body_out(body((sat_body_in(), r15),\1));", text)
+        # a function that calls itself carries a file-local `static u32 body(...)`; a chunk holds many functions, so two
+        # of them in one chunk clash (Saturn Bomberman: C2084). Each gets its own name; behaviour is unchanged.
+        text = re.sub(r"\bbody\(", f"body_{addr:08x}(", text)
+        return text, fb, computed
+
+    for addr, p in sorted({**fns, **more}.items()):
+        text, fb, computed = prepare(addr, p)
+        text = guard(text, addr, guards)
+        rows.append((addr, f"fn_{addr:08x}", fb, computed, guard_words(addr, guards)))
         if addr in more:
             extra_texts.append(text)
             continue
@@ -192,11 +312,36 @@ def main(argv=None):
     if chunk:
         write_chunk(out, idx, chunk)
         idx += 1
+    novl = 0
+    for tag, d, img in overlays:
+        chunk = []
+        for addr, p in sorted(functions(d).items()):
+            words = guard_words(addr, [img])
+            if words is None:
+                continue  # not inside the file: nothing to tell its code from another's
+            text, fb, computed = prepare(addr, p)
+            chunk.append(tagged(guard(text, addr, [img]), addr, tag))
+            rows.append((addr, f"fn_{addr:08x}_{tag}", fb, computed, words))
+            novl += 1
+            if len(chunk) == CHUNK:
+                write_chunk(out, idx, chunk)
+                chunk, idx = [], idx + 1
+        if chunk:
+            write_chunk(out, idx, chunk)
+            idx += 1
+    rows.sort(key=lambda r: r[0])  # stable: an address's translations keep their order (the image's first)
     write_extra(out, extra_texts)
     table = ['#include "tc_rt.h"', '#include "sat.h"', ""]
-    table += [f"u32 fn_{ad:08x}(u32 a0, u32 a1, u32 a2, u32 a3);" for ad, _, _ in rows]
+    table += [f"u32 {r[1]}(u32 a0, u32 a1, u32 a2, u32 a3);" for r in rows]
+    gw = [r for r in rows if r[4]]
+    if gw:  # the guard words of each guarded function: the kit picks among an address's translations by them
+        table += ["", "static const u32 sat_guard_words[][4] = {"]
+        table += ["    {" + ", ".join(f"0x{x:08x}u" for x in r[4]) + "}," for r in gw]
+        table += ["};"]
+    gi = {id(r): i for i, r in enumerate(gw)}
     table += ["", "const SatFn sat_fns[] = {"]
-    table += [f"    {{0x{ad:08x}u, fn_{ad:08x}, {fb}u}}," for ad, fb, _ in rows]
+    table += [f"    {{0x{r[0]:08x}u, {r[1]}, {r[2]}u" + (f", sat_guard_words[{gi[id(r)]}]" if r[4] else "") + "},"
+              for r in rows]
     table += ["};", f"const int sat_nfns = {len(rows)};", ""]
     (out / "sat_table.c").write_text("\n".join(table), encoding="utf-8")
     hdr = [
@@ -213,8 +358,17 @@ def main(argv=None):
     ]
     if cfg.get("product"):  # the disc header's product number (console_sat.c refuses another game's disc)
         hdr.append(f"#define SAT_PRODUCT {json.dumps(cfg['product'].ljust(10))}")
+    if cfg.get("boot_dir"):  # the folder of the program the image starts at: the boot ROM's hand-over (sat_cd.c)
+        hdr.append(f"#define SAT_BOOT_DIR {json.dumps(cfg['boot_dir'].strip('/'))}")
+    hdr += gen_saturn_image.image_h(cfg)  # the code image made from the disc, and --fallback's default (a launcher's run)
     if cfg.get("slave_sp"):  # the slave SH-2's stack top: the game loads it from its own memory, which the translated slave program does not run
         hdr.append(f"#define SAT_SLAVE_SP 0x{int(cfg['slave_sp'], 0):08x}u")
+    hdr += pad_h(cfg)
+    sm = cfg.get("smpc_intback")  # the SMPC's INTBACK peripheral report as the hardware gives it (sat_smpc.c); absent: the older one
+    if sm not in (None, False, "hardware"):
+        sys.exit(f"game.json smpc_intback: {sm!r} is not \"hardware\" or false")
+    if sm:
+        hdr.append("#define SAT_SMPC_HARDWARE 1")
     if cfg.get("sound_cpu"):  # the 68000 runs the game's own sound driver (sat_scsp.c); the stand-ins below are then unused
         hdr.append("#define SAT_SOUND_CPU 1")
     ws = cfg.get("widescreen")
@@ -255,7 +409,33 @@ def main(argv=None):
     game_dir = pathlib.Path(a.game).resolve().parent  # scene_dump.json sits beside game.json; without it the dump has the kit's fields only
     (out / "scene_map.c").write_text(scene_map.scene_map_c({"dir": game_dir}, "", "", header=""), encoding="utf-8")
     (out / "sat_chunks.txt").write_text("\n".join(f"txchunk_{i:02d}.c" for i in range(idx)) + "\n", encoding="utf-8")
-    print(f"{len(rows)} functions, {idx} chunks, {sum(1 for _, _, c in rows if c)} with a computed frame")
+    print(f"{len(rows)} functions, {idx} chunks, {sum(1 for r in rows if r[3])} with a computed frame"
+          + (f", {novl} of them in {len(overlays)} overlay(s)" if overlays else ""))
+
+
+PAD_BUTTONS = ("A", "B", "C", "X", "Y", "Z", "L", "R")  # the Saturn buttons a game's confirm and cancel can be
+
+
+def pad_h(cfg):
+    """sat_game.h's lines for the Saturn pad on the host's (sat_input.c): "controller": "saturn" (the layout), and "confirm"
+    and "cancel", the game's own buttons that move on and back out (AutoOnboard's menu probe finds them), which the kit puts
+    on the host's A and B (keyboard Z and X), the buttons they displace taking the host buttons confirm and cancel had."""
+    hdr = []
+    ctl = cfg.get("controller")  # the Saturn pad's layout on the host's pad (sat_input.c)
+    if ctl not in (None, False, "saturn"):
+        sys.exit(f"game.json controller: {ctl!r} is not \"saturn\" or false")
+    if ctl:
+        hdr.append("#define SAT_CONTROLLER_SATURN 1")
+    for key in ("confirm", "cancel"):
+        b = cfg.get(key)
+        if b is None:
+            continue
+        if b not in PAD_BUTTONS:
+            sys.exit(f"game.json {key}: {b!r} is not one of {' '.join(PAD_BUTTONS)}")
+        hdr.append(f"#define SAT_{key.upper()} {json.dumps(b)}")
+    if cfg.get("confirm") is not None and cfg.get("confirm") == cfg.get("cancel"):
+        sys.exit(f"game.json confirm and cancel are both {cfg['confirm']!r}")
+    return hdr
 
 
 def twin_stick_h(ts):

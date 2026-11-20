@@ -1,6 +1,10 @@
 // The menu bar, after Lodoss's desktop_stage_menu (MIT, the user's own): a native Win32 menu on the SDL window,
 // reached through a window subclass. Every choice applies at once and goes into the settings file (as the option it
 // stands for), so the next run starts the same way. The menu shows while windowed; full screen hides it.
+//   File:    restart (host_menu_extra.cpp: the game again on its own command line; greyed in a replay or check run),
+//            save state and load state (save_state.c: 8 slots, F5 / F8; greyed in a replay, a check, an online match or
+//            on a console without states), the note that states are separate from the game's own save (always greyed),
+//            then exit (the window's close, as Alt+F4)
 //   Display: full screen, resolution (host_resolution.cpp), aspect (fit the window, 4:3, 16:9, 21:9), VSync,
 //            frame rate (the cap), frame-rate counter, then the console's own entries (console_menu_extra: the
 //            Dreamcast's VMU screen and texture pack), then the game's (game_menu_extra, game.json game_menu):
@@ -10,7 +14,9 @@
 //            mouse (host_menu_kbm.cpp: mouse steer's settings, each key and mouse input of the layout), then the
 //            console's
 //   Game:    auto-load save (autoload.c; greyed for a game that names no load path), then the console's (the Dreamcast's:
-//            the game's own on/off settings, game.json menu_checks)
+//            the game's own on/off settings, game.json menu_checks), the game's, and the options (game_options.c: the
+//            base's fast forward speed and toggle, speed.c; Tab or Input > Controls > Fast forward; then the console's
+//            and the game's own options, Dragon Force's Quick dialogue)
 //   Online:  a console with online play (host_online.cpp): play alone, host, join; while a match is on, the entries that
 //            would change the game for both players are greyed and refused (Pause when unfocused, Auto-load, Resume)
 //   The Phangrade title bar (host_bar.cpp, the default) draws this menu; menu-bar=native shows the native one again.
@@ -27,6 +33,8 @@
 #include "host_internal.hpp"
 #include "autoload.h"
 #include "level_edit.h"
+#include "save_state.h"
+#include <vector>
 
 namespace {
 
@@ -48,7 +56,7 @@ enum : UINT {
     kPauseUnfocused, kTwinStick,
     kResume = 310,
     kAutoLoad = 311,
-    kLevelEdit = 312,
+    kLevelEdit = 312, kExit = 313,
     kOnline = 320, // kOnline + N: host_online.cpp's entries
 };
 
@@ -56,6 +64,7 @@ HWND g_hwnd;
 HMENU g_menu;
 const PortMenuItem *g_extra; // the console's entries, then the game's (host_menu_extra.cpp)
 unsigned g_extra_count;
+std::vector<std::pair<HMENU, UINT>> g_extra_at; // each entry's popup and position, to grey it as available() says now
 
 const char *on_off(bool on) { return on ? "on" : "off"; }
 
@@ -82,16 +91,18 @@ std::wstring wide(const char *s)
     return w;
 }
 
-// The console's entries for a menu, after a separator; the ones it cannot apply are greyed.
-void append_extras(HMENU m, const char *menu)
+// The console's entries for a menu, after a separator (unless first); the ones it cannot apply are greyed.
+void append_extras(HMENU m, const char *menu, bool separator = true)
 {
     bool first = true;
     for (unsigned i = 0; i < g_extra_count; i++) {
         const PortMenuItem &e = g_extra[i];
         if (std::strcmp(e.menu, menu)) continue;
-        if (first) AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
+        if (first && separator) AppendMenuW(m, MF_SEPARATOR, 0, nullptr);
         first = false;
         UINT grey = e.available && !e.available() ? MF_GRAYED : 0u;
+        if (g_extra_at.size() < g_extra_count) g_extra_at.resize(g_extra_count);
+        g_extra_at[i] = {m, static_cast<UINT>(GetMenuItemCount(m))};
         if (e.tag && e.kind == PORT_MENU_SUBMENU) { // the game's own list (host_menu_tagged.cpp)
             AppendMenuW(m, MF_POPUP | grey, reinterpret_cast<UINT_PTR>(host::menu_tagged_popup(i)), wide(e.label).c_str());
         } else if (e.kind == PORT_MENU_CHOICE || e.kind == PORT_MENU_SUBMENU) {
@@ -159,6 +170,13 @@ HMENU input_menu()
             AppendMenuW(one, MF_STRING, kBind + 32 * i + s, s ? wide(input_source_name(s)).c_str() : L"(none)");
         AppendMenuW(controls, MF_POPUP, reinterpret_cast<UINT_PTR>(one), wide(actions[i].name).c_str());
     }
+    { // the base's own action: fast forward (speed.c), after the console's buttons
+        HMENU one = CreatePopupMenu();
+        for (unsigned s = 0; s < input_source_count(); s++)
+            AppendMenuW(one, MF_STRING, kBind + 32 * INPUT_BIND_SPEED + s, s ? wide(input_source_name(s)).c_str() : L"(none)");
+        AppendMenuW(controls, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(controls, MF_POPUP | (port_speed_offered() ? 0u : MF_GRAYED), reinterpret_cast<UINT_PTR>(one), L"&Fast forward");
+    }
     AppendMenuW(m, MF_POPUP | (n ? 0u : MF_GRAYED), reinterpret_cast<UINT_PTR>(controls), L"&Controls");
     AppendMenuW(m, MF_POPUP, reinterpret_cast<UINT_PTR>(host::kbm_menu()), L"&Keyboard and mouse"); // host_menu_kbm.cpp
     append_extras(m, "Input");
@@ -196,8 +214,14 @@ void sync()
     check(kVsync, gfx_vsync() != 0);
     for (UINT n = 0; n < kFpsCapCount; n++) check(kFpsCap + n, extra_fps() == kFpsCaps[n]);
     check(kFpsCounter, p.fps_counter);
+    save_state_labels(); // each slot's time (save_state.c)
     for (unsigned i = 0; i < g_extra_count; i++) {
         const PortMenuItem &e = g_extra[i];
+        if (i < g_extra_at.size() && g_extra_at[i].first && e.available) // offered now? (a provider, an online match)
+            EnableMenuItem(g_extra_at[i].first, g_extra_at[i].second, MF_BYPOSITION | (e.available() ? MF_ENABLED : MF_GRAYED));
+        if (e.kind == PORT_MENU_SUBMENU && !e.tag && e.choices) // labels that change (the slots' times)
+            for (unsigned n = 0; n < e.n_choices; n++)
+                ModifyMenuW(g_menu, kExtra + 16 * i + n, MF_BYCOMMAND | MF_STRING, kExtra + 16 * i + n, wide(e.choices[n]).c_str());
         if (e.kind == PORT_MENU_CHOICE) {
             for (unsigned n = 0; n < e.n_choices; n++) check(kExtra + 16 * i + n, e.get() == static_cast<int>(n));
         } else if (e.kind == PORT_MENU_CHECK) {
@@ -223,6 +247,8 @@ void sync()
     console_actions(&na);
     for (unsigned i = 0; i < na && i < 32; i++)
         for (unsigned s = 0; s < input_source_count(); s++) check(kBind + 32 * i + s, s ? (input_bind_get(i) >> s & 1u) != 0 : input_bind_get(i) == 0);
+    for (unsigned s = 0; s < input_source_count(); s++)
+        check(kBind + 32 * INPUT_BIND_SPEED + s, s ? (input_bind_get(INPUT_BIND_SPEED) >> s & 1u) != 0 : input_bind_get(INPUT_BIND_SPEED) == 0);
     host::kbm_menu_sync(g_menu);
 }
 
@@ -256,7 +282,9 @@ void command(UINT id)
         game_log_line("menu: not applied: %s", host::online_locked());
         return;
     }
-    if (id == kFullScreen) {
+    if (id == kExit) { // File > Exit: the window's close
+        PostMessageW(g_hwnd, WM_CLOSE, 0, 0);
+    } else if (id == kFullScreen) {
         host::window_set_fullscreen(!host::window_fullscreen());
     } else if (host::resolution_command(id)) { // Display > Resolution: done and kept (host_resolution.cpp)
     } else if (id >= kAspect && id < kAspect + kAspectCount) {
@@ -304,6 +332,14 @@ void command(UINT id)
     } else if (id >= kBind) {
         unsigned na = 0, i = (id - kBind) / 32, s = (id - kBind) % 32;
         const PortAction *actions = console_actions(&na);
+        if (i == INPUT_BIND_SPEED) { // Input > Controls > Fast forward (speed.c)
+            char text[128];
+            input_bind_toggle(i, s);
+            std::string value = input_bind_text(i, text, sizeof text);
+            for (char &c : value) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            host::settings_set("bind-fast-forward", value);
+            return;
+        }
         if (i >= na) return;
         input_bind_toggle(i, s);
         char text[128];
@@ -346,6 +382,11 @@ void menu_attach(void *hwnd)
     if (!g_hwnd) return;
     g_extra = host::menu_extras(&g_extra_count);
     g_menu = CreateMenu();
+    HMENU file = CreatePopupMenu(); // first on the bar: Restart (host_menu_extra.cpp), then Exit
+    append_extras(file, "File", false);
+    AppendMenuW(file, MF_SEPARATOR, 0, nullptr);
+    AppendMenuW(file, MF_STRING, kExit, L"E&xit\tAlt+F4");
+    AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(file), L"&File");
     AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(display_menu()), L"&Display");
     AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(audio_menu()), L"&Audio");
     AppendMenuW(g_menu, MF_POPUP, reinterpret_cast<UINT_PTR>(input_menu()), L"&Input");
